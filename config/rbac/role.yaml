@@ -29,7 +29,7 @@ rules:
 - apiGroups:
   - upgrade.home-operations.com
   resources:
-  - kubernetes
+  - kubernetesplans
   - talosupgrades
   verbs:
   - create
@@ -42,14 +42,14 @@ rules:
 - apiGroups:
   - upgrade.home-operations.com
   resources:
-  - kubernetes/finalizers
+  - kubernetesplans/finalizers
   - talosupgrades/finalizers
   verbs:
   - update
 - apiGroups:
   - upgrade.home-operations.com
   resources:
-  - kubernetes/status
+  - kubernetesplans/status
   - talosupgrades/status
   verbs:
   - get

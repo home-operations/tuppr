@@ -10,6 +10,26 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-upgrade-home-operations-com-v1alpha1-kubernetesplan
+  failurePolicy: Fail
+  name: vkubernetesplan.kb.io
+  rules:
+  - apiGroups:
+    - upgrade.home-operations.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - kubernetesplans
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-upgrade-home-operations-com-v1alpha1-talos
   failurePolicy: Fail
   name: vtalos.kb.io
