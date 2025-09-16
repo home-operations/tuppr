@@ -25,7 +25,6 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -391,37 +390,21 @@ func (r *KubernetesPlanReconciler) createKubernetesUpgradeJob(ctx context.Contex
 							Name:  "talosctl",
 							Image: talosctlImage,
 							Args:  args,
-							Env: []corev1.EnvVar{
-								{
-									Name:  "TALOSCONFIG",
-									Value: "/var/run/secrets/talos.dev/talosconfig",
-								},
-							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
-									Name:      "talup",
+									Name:      "talos",
 									MountPath: "/var/run/secrets/talos.dev",
 									ReadOnly:  true,
-								},
-							},
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("100m"),
-									corev1.ResourceMemory: resource.MustParse("128Mi"),
-								},
-								Limits: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("500m"),
-									corev1.ResourceMemory: resource.MustParse("512Mi"),
 								},
 							},
 						},
 					},
 					Volumes: []corev1.Volume{
 						{
-							Name: "talup",
+							Name: "talos",
 							VolumeSource: corev1.VolumeSource{
 								Secret: &corev1.SecretVolumeSource{
-									SecretName: TalosConfigSecretName,
+									SecretName: "talup",
 								},
 							},
 						},

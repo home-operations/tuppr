@@ -23,7 +23,7 @@ import (
 
 	upgradev1alpha1 "github.com/home-operations/talup/api/v1alpha1"
 	"github.com/home-operations/talup/internal/controller"
-	talupwebhook "github.com/home-operations/talup/internal/webhook"
+	// talupwebhook "github.com/home-operations/talup/internal/webhook"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -219,20 +219,19 @@ func main() {
 		}
 	}
 
-	// Setup webhook
-	if err = (&talupwebhook.TalosPlanValidator{
-		Client: mgr.GetClient(),
-	}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "TalosPlan")
-		os.Exit(1)
-	}
+	// if err = (&talupwebhook.TalosPlanValidator{
+	// 	Client: mgr.GetClient(),
+	// }).SetupWebhookWithManager(mgr); err != nil {
+	// 	setupLog.Error(err, "unable to create webhook", "webhook", "TalosPlan")
+	// 	os.Exit(1)
+	// }
 
-	if err = (&talupwebhook.KubernetesPlanValidator{
-		Client: mgr.GetClient(),
-	}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "KubernetesPlan")
-		os.Exit(1)
-	}
+	// if err = (&talupwebhook.KubernetesPlanValidator{
+	// 	Client: mgr.GetClient(),
+	// }).SetupWebhookWithManager(mgr); err != nil {
+	// 	setupLog.Error(err, "unable to create webhook", "webhook", "KubernetesPlan")
+	// 	os.Exit(1)
+	// }
 
 	// +kubebuilder:scaffold:builder
 
