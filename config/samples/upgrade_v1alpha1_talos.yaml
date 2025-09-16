@@ -1,0 +1,9 @@
+apiVersion: upgrade.home-operations.com/v1alpha1
+kind: Talos
+metadata:
+  labels:
+    app.kubernetes.io/name: talup
+    app.kubernetes.io/managed-by: kustomize
+  name: talos-sample
+spec:
+  # TODO(user): Add fields here

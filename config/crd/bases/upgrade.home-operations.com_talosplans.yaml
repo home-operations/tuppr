@@ -1,0 +1,184 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.18.0
+  name: talosplans.upgrade.home-operations.com
+spec:
+  group: upgrade.home-operations.com
+  names:
+    kind: TalosPlan
+    listKind: TalosPlanList
+    plural: talosplans
+    singular: talosplan
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.currentNode
+      name: Current Node
+      type: string
+    - jsonPath: .status.completedNodes
+      name: Completed
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: TalosPlan is the Schema for the talosupgrades API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: TalosPlanSpec defines the desired state of TalosPlan
+            properties:
+              force:
+                default: false
+                description: Force the upgrade (skip checks on etcd health and members)
+                type: boolean
+              image:
+                description: Image is the Talos installer image to upgrade to
+                properties:
+                  repository:
+                    description: Repository is the container image repository
+                    type: string
+                  tag:
+                    description: Tag is the container image tag
+                    type: string
+                required:
+                - repository
+                - tag
+                type: object
+              maxRetries:
+                default: 3
+                description: MaxRetries maximum number of retries before marking as
+                  failed
+                type: integer
+              nodeSelector:
+                additionalProperties:
+                  type: string
+                description: NodeSelector to target specific nodes for upgrade
+                type: object
+              rebootMode:
+                default: default
+                description: RebootMode select the reboot mode during upgrade
+                enum:
+                - default
+                - powercycle
+                type: string
+              talosctl:
+                default:
+                  image:
+                    repository: ghcr.io/siderolabs/talosctl
+                    tag: latest
+                description: Talosctl specifies the talosctl image configuration
+                properties:
+                  image:
+                    default:
+                      repository: ghcr.io/siderolabs/talosctl
+                      tag: latest
+                    description: Image specifies the talosctl container image
+                    properties:
+                      repository:
+                        description: Repository is the container image repository
+                        type: string
+                      tag:
+                        description: Tag is the container image tag
+                        type: string
+                    required:
+                    - repository
+                    - tag
+                    type: object
+                required:
+                - image
+                type: object
+              timeout:
+                default: 30m
+                description: Timeout for the upgrade operation
+                type: string
+            required:
+            - image
+            - talosctl
+            type: object
+          status:
+            description: TalosPlanStatus defines the observed state of TalosPlan
+            properties:
+              completedNodes:
+                description: CompletedNodes are nodes that have been successfully
+                  upgraded
+                items:
+                  type: string
+                type: array
+              currentNode:
+                description: CurrentNode is the node currently being upgraded
+                type: string
+              failedNodes:
+                description: FailedNodes are nodes that failed to upgrade
+                items:
+                  description: NodeUpgradeStatus tracks the upgrade status of individual
+                    nodes
+                  properties:
+                    jobName:
+                      description: JobName is the name of the job handling this node's
+                        upgrade
+                      type: string
+                    lastError:
+                      description: LastError contains the last error message
+                      type: string
+                    nodeName:
+                      description: NodeName is the name of the node
+                      type: string
+                    retries:
+                      description: Retries is the number of times upgrade was attempted
+                      type: integer
+                  required:
+                  - nodeName
+                  - retries
+                  type: object
+                type: array
+              lastUpdated:
+                description: LastUpdated timestamp of last status update
+                format: date-time
+                type: string
+              message:
+                description: Message provides details about the current state
+                type: string
+              observedGeneration:
+                description: ObservedGeneration reflects the generation of the most
+                  recently observed spec
+                format: int64
+                type: integer
+              phase:
+                description: Phase represents the current phase of the upgrade
+                enum:
+                - Pending
+                - InProgress
+                - Completed
+                - Failed
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
