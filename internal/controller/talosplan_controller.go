@@ -30,15 +30,8 @@ import (
 )
 
 const (
-	PhasePending    = "Pending"
-	PhaseInProgress = "InProgress"
-	PhaseCompleted  = "Completed"
-	PhaseFailed     = "Failed"
-
-	TalosPlanFinalizer    = "upgrade.home-operations.com/talos-finalizer"
-	SchematicAnnotation   = "extensions.talos.dev/schematic"
-	TalosConfigSecretName = "talup"
-	TalosConfigSecretKey  = "talosconfig"
+	TalosPlanFinalizer  = "upgrade.home-operations.com/talos-finalizer"
+	SchematicAnnotation = "extensions.talos.dev/schematic"
 )
 
 // TalosPlanReconciler reconciles a TalosPlan object
