@@ -3,7 +3,7 @@ package controller
 const (
 	// Shared constants with TalosReconciler
 	TalosConfigSecretName = "talup"
-	TalosConfigSecretKey  = "talosconfig"
+	TalosConfigSecretKey  = "config"
 
 	// Phase constants
 	PhasePending    = "Pending"
