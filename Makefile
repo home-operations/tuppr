@@ -108,6 +108,13 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+.PHONY: helm-crds
+helm-crds: manifests
+	@echo "Copying CRDs to Helm chart..."
+	@mkdir -p charts/talup/crds
+	@cp config/crd/bases/*.yaml charts/talup/crds/
+	@echo "CRDs copied to charts/talup/crds/"
+
 .PHONY: test
 test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
@@ -156,7 +163,7 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 ##@ Build
 
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
+build: manifests generate fmt vet helm-crds ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
 .PHONY: run
