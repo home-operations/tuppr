@@ -1,3 +1,4 @@
+---
 # This NetworkPolicy allows ingress traffic
 # with Pods running on namespaces labeled with 'metrics: enabled'. Only Pods on those
 # namespaces are able to gather data from the metrics endpoint.
@@ -19,9 +20,9 @@ spec:
   ingress:
     # This allows ingress traffic from any namespace with the label metrics: enabled
     - from:
-      - namespaceSelector:
-          matchLabels:
-            metrics: enabled  # Only from namespaces with this label
+        - namespaceSelector:
+            matchLabels:
+              metrics: enabled # Only from namespaces with this label
       ports:
         - port: 8443
           protocol: TCP

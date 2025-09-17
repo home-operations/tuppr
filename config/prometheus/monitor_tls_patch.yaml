@@ -1,3 +1,4 @@
+---
 # Patch for Prometheus ServiceMonitor to enable secure TLS configuration
 # using certificates managed by cert-manager
 - op: replace

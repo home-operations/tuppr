@@ -1,11 +1,6 @@
 [pre-commit]
 parallel = true
 
-[pre-commit.commands.format-yaml]
-run = "yamlfmt {staged_files}"
-glob = ["*.yaml"]
-stage_fixed = true
-
 [pre-commit.commands.format-just]
 run = """
 for file in {staged_files}; do
@@ -13,4 +8,14 @@ for file in {staged_files}; do
 done
 """
 glob = ["*.just", ".justfile"]
+stage_fixed = true
+
+[pre-commit.commands.format-go]
+run = "go fmt {staged_files}"
+glob = ["*.go"]
+stage_fixed = true
+
+[pre-commit.commands.format-yaml]
+run = "yamlfmt {staged_files}"
+glob = ["*.yaml"]
 stage_fixed = true

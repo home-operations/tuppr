@@ -1,14 +1,20 @@
+---
 # Default values for talup
 replicaCount: 1
+
 image:
   repository: ghcr.io/home-operations/talup
   pullPolicy: IfNotPresent
   tag: ""
+
 talosServiceAccount:
   secretName: talup
+
 imagePullSecrets: []
+
 nameOverride: ""
 fullnameOverride: ""
+
 serviceAccount:
   # Specifies whether a service account should be created
   create: true
@@ -19,12 +25,14 @@ serviceAccount:
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
   name: ""
+
 podAnnotations: {}
 podLabels: {}
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 65532
   fsGroup: 65532
+
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
@@ -33,10 +41,12 @@ securityContext:
   readOnlyRootFilesystem: true
   runAsNonRoot: true
   runAsUser: 65532
+
 service:
   type: ClusterIP
   port: 8080
   metricsPort: 8080
+
 resources:
   limits:
     cpu: 500m
@@ -44,6 +54,7 @@ resources:
   requests:
     cpu: 10m
     memory: 64Mi
+
 livenessProbe:
   httpGet:
     path: /healthz
@@ -56,18 +67,22 @@ readinessProbe:
     port: 8081
   initialDelaySeconds: 5
   periodSeconds: 10
+
 autoscaling:
   enabled: false
   minReplicas: 1
   maxReplicas: 100
   targetCPUUtilizationPercentage: 80
+
 # Additional volumes on the output Deployment definition.
 volumes: []
+
 # Additional volumeMounts on the output Deployment definition.
 volumeMounts: []
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
 # Controller configuration
 controller:
   # Leader election configuration
@@ -83,21 +98,18 @@ controller:
   # Health probe configuration
   health:
     port: 8081
+
 # Webhook configuration
 webhook:
   enabled: true
   port: 9443
   certManager:
     enabled: true
+
 # RBAC configuration
 rbac:
   create: true
-# CRD management
-crds:
-  # Whether to install CRDs
-  install: true
-  # Whether to keep CRDs on uninstall
-  keep: true
+
 # Monitoring
 monitoring:
   serviceMonitor:

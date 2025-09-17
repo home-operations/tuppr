@@ -1,3 +1,4 @@
+---
 # This rule is not used by the project talup itself.
 # It is provided to allow the cluster admin to help manage permissions for users.
 #
@@ -13,15 +14,15 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: talos-admin-role
 rules:
-- apiGroups:
-  - upgrade.home-operations.com
-  resources:
-  - talos
-  verbs:
-  - '*'
-- apiGroups:
-  - upgrade.home-operations.com
-  resources:
-  - talos/status
-  verbs:
-  - get
+  - apiGroups:
+      - upgrade.home-operations.com
+    resources:
+      - talos
+    verbs:
+      - '*'
+  - apiGroups:
+      - upgrade.home-operations.com
+    resources:
+      - talos/status
+    verbs:
+      - get

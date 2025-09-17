@@ -4,29 +4,29 @@ kind: ClusterRole
 metadata:
   name: manager-role
 rules:
-- apiGroups:
-  - upgrade.home-operations.com
-  resources:
-  - kubernetes
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - upgrade.home-operations.com
-  resources:
-  - kubernetes/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - upgrade.home-operations.com
-  resources:
-  - kubernetes/status
-  verbs:
-  - get
-  - patch
-  - update
+  - apiGroups:
+      - upgrade.home-operations.com
+    resources:
+      - kubernetes
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - upgrade.home-operations.com
+    resources:
+      - kubernetes/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - upgrade.home-operations.com
+    resources:
+      - kubernetes/status
+    verbs:
+      - get
+      - patch
+      - update
