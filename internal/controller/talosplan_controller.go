@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -338,8 +339,7 @@ func (r *TalosPlanReconciler) getTalosClientForNode(ctx context.Context, namespa
 		return nil, fmt.Errorf("failed to parse talosconfig: %w", err)
 	}
 
-	// Override the endpoints in the config to target the specific node
-	endpoint := nodeIP + ":50000"
+	endpoint := net.JoinHostPort(nodeIP, "50000")
 	logger.Info("Setting Talos endpoint", "originalEndpoints", config.Contexts[config.Context].Endpoints, "newEndpoint", endpoint)
 	config.Contexts[config.Context].Endpoints = []string{endpoint}
 
@@ -442,63 +442,6 @@ func (r *TalosPlanReconciler) extractSchematicFromMachineConfig(installImage str
 
 	logger.V(1).Info("No schematic found in image", "image", installImage)
 	return "", fmt.Errorf("no schematic found in image: %s", installImage)
-}
-
-func (r *TalosPlanReconciler) getTalosClient(ctx context.Context, namespace string) (*talosclient.Client, error) {
-	logger := log.FromContext(ctx)
-	logger.V(1).Info("Creating Talos client", "namespace", namespace)
-
-	// Get the talosconfig secret
-	secret := &corev1.Secret{}
-	secretKey := types.NamespacedName{
-		Name:      TalosConfigSecretName,
-		Namespace: namespace,
-	}
-
-	logger.V(1).Info("Retrieving talosconfig secret", "secretName", TalosConfigSecretName, "namespace", namespace)
-	if err := r.Get(ctx, secretKey, secret); err != nil {
-		logger.Error(err, "Failed to get talosconfig secret", "secretName", TalosConfigSecretName, "namespace", namespace)
-		return nil, fmt.Errorf("failed to get talosconfig secret: %w", err)
-	}
-
-	// Get the config data using the correct key
-	configData, exists := secret.Data[TalosConfigSecretKey]
-	if !exists {
-		logger.Error(fmt.Errorf("key not found"), "Talosconfig key not found in secret", "key", TalosConfigSecretKey)
-		return nil, fmt.Errorf("talosconfig key '%s' not found in secret", TalosConfigSecretKey)
-	}
-
-	logger.V(1).Info("Found talosconfig data", "dataLength", len(configData))
-
-	// Parse the config
-	config, err := talosclientconfig.FromBytes(configData)
-	if err != nil {
-		logger.Error(err, "Failed to parse talosconfig")
-		return nil, fmt.Errorf("failed to parse talosconfig: %w", err)
-	}
-
-	// Create client options with more permissive settings for development
-	opts := []talosclient.OptionFunc{
-		talosclient.WithConfig(config),
-		talosclient.WithGRPCDialOptions(
-			grpc.WithTransportCredentials(
-				credentials.NewTLS(&tls.Config{
-					InsecureSkipVerify: true,
-				}),
-			),
-		),
-	}
-
-	// Create and return the client
-	logger.V(1).Info("Creating Talos client with config")
-	client, err := talosclient.New(ctx, opts...)
-	if err != nil {
-		logger.Error(err, "Failed to create Talos client")
-		return nil, err
-	}
-
-	logger.V(1).Info("Successfully created Talos client")
-	return client, nil
 }
 
 func (r *TalosPlanReconciler) getNodeInternalIP(node *corev1.Node) (string, error) {
@@ -834,10 +777,10 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 	}
 	backoffLimit := int32(maxRetries)
 
-	// Build talosctl upgrade command args
+	nodeEndpoint := net.JoinHostPort(targetNodeIP, "50000")
 	args := []string{
 		"upgrade",
-		"--nodes", targetNodeIP,
+		"--nodes", nodeEndpoint,
 		"--image", targetImage,
 		"--debug",
 	}
@@ -850,7 +793,6 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 		args = append(args, "--force")
 	}
 
-	// Add reboot mode
 	rebootMode := "default"
 	if talosPlan.Spec.RebootMode != "" {
 		rebootMode = talosPlan.Spec.RebootMode
