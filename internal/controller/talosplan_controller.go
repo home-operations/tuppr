@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -21,7 +20,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/cosi-project/runtime/pkg/resource"
-	"github.com/distribution/reference"
 	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
 	talosclientconfig "github.com/siderolabs/talos/pkg/machinery/client/config"
 	"github.com/siderolabs/talos/pkg/machinery/resources/config"
@@ -238,7 +236,7 @@ func (r *TalosPlanReconciler) nodeNeedsUpgrade(ctx context.Context, talosPlan *u
 
 	// Get node IP address
 	logger.V(1).Info("Getting node IP address", "node", node.Name)
-	nodeIP, err := r.getNodeInternalIP(node)
+	nodeIP, err := GetNodeInternalIP(node)
 	if err != nil {
 		logger.Error(err, "Failed to get node IP", "node", node.Name)
 		return false, fmt.Errorf("failed to get node IP: %w", err)
@@ -281,7 +279,7 @@ func (r *TalosPlanReconciler) nodeNeedsUpgrade(ctx context.Context, talosPlan *u
 	currentInstallImage := machineConfig.Config().Machine().Install().Image()
 	logger.Info("Retrieved current install image", "node", node.Name, "currentInstallImage", currentInstallImage)
 
-	currentSchematic, err := r.extractSchematicFromMachineConfig(currentInstallImage)
+	currentSchematic, err := ExtractSchematicFromMachineConfig(currentInstallImage)
 	if err != nil {
 		logger.V(1).Info("Could not extract schematic from machine config", "node", node.Name, "image", currentInstallImage, "error", err)
 		currentSchematic = ""
@@ -289,11 +287,11 @@ func (r *TalosPlanReconciler) nodeNeedsUpgrade(ctx context.Context, talosPlan *u
 	logger.Info("Current schematic", "node", node.Name, "currentSchematic", currentSchematic)
 
 	// Get node schematic annotation
-	nodeSchematic := r.getSchematicFromNode(node)
+	nodeSchematic := GetSchematicFromNode(node)
 	logger.V(1).Info("Node schematic annotation", "node", node.Name, "nodeSchematic", nodeSchematic)
 
 	// Extract target version and schematic from target image
-	targetVersion, targetSchematic := r.extractVersionAndSchematic(targetImage)
+	targetVersion, targetSchematic := ExtractVersionAndSchematic(targetImage)
 	if targetVersion == "" {
 		logger.Info("Could not extract target version from image, assuming upgrade needed", "image", targetImage)
 		return true, nil
@@ -379,26 +377,26 @@ func (r *TalosPlanReconciler) getTalosClientForNode(ctx context.Context, namespa
 	}
 
 	// Create and return the client
-	logger.V(1).Info("Creating Talos client", "endpoint", endpoint)
+	logger.V(1).Info("Creating Talos client", "endpoint", nodeIP)
 	client, err := talosclient.New(clientCtx, opts...)
 	if err != nil {
-		logger.Error(err, "Failed to create Talos client", "endpoint", endpoint)
-		return nil, fmt.Errorf("failed to create Talos client for %s: %w", endpoint, err)
+		logger.Error(err, "Failed to create Talos client", "endpoint", nodeIP)
+		return nil, fmt.Errorf("failed to create Talos client for %s: %w", nodeIP, err)
 	}
 
 	// Test the connection with a quick version call
-	logger.V(1).Info("Testing connection to Talos node", "endpoint", endpoint)
+	logger.V(1).Info("Testing connection to Talos node", "endpoint", nodeIP)
 	testCtx, testCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer testCancel()
 
 	_, err = client.Version(testCtx)
 	if err != nil {
-		logger.Error(err, "Failed to connect to Talos node", "endpoint", endpoint)
+		logger.Error(err, "Failed to connect to Talos node", "endpoint", nodeIP)
 		client.Close()
-		return nil, fmt.Errorf("failed to connect to Talos node %s: %w", endpoint, err)
+		return nil, fmt.Errorf("failed to connect to Talos node %s: %w", nodeIP, err)
 	}
 
-	logger.Info("Successfully created and tested Talos client", "endpoint", endpoint)
+	logger.Info("Successfully created and tested Talos client", "endpoint", nodeIP)
 	return client, nil
 }
 
@@ -426,96 +424,6 @@ func (r *TalosPlanReconciler) getMachineConfig(ctx context.Context, talosClient 
 
 	logger.V(1).Info("Successfully retrieved machine config")
 	return machineConfig, nil
-}
-
-func (r *TalosPlanReconciler) extractSchematicFromMachineConfig(installImage string) (string, error) {
-	logger := log.FromContext(context.Background())
-	logger.V(1).Info("Extracting schematic from install image", "image", installImage)
-
-	// Parse the install image reference to extract schematic
-	ref, err := reference.ParseAnyReference(installImage)
-	if err != nil {
-		logger.Error(err, "Failed to parse install image reference", "image", installImage)
-		return "", fmt.Errorf("failed to parse install image reference: %w", err)
-	}
-
-	namedRef, ok := ref.(reference.Named)
-	if !ok {
-		logger.Error(fmt.Errorf("not a named reference"), "Install image is not a named reference", "image", installImage)
-		return "", fmt.Errorf("not a named reference")
-	}
-
-	// Extract schematic from the image name path
-	imageName := namedRef.Name()
-	logger.V(1).Info("Parsed image name", "imageName", imageName)
-
-	if strings.Contains(imageName, "factory.talos.dev") {
-		// For factory images, schematic is the last part of the path
-		parts := strings.Split(imageName, "/")
-		if len(parts) >= 3 {
-			schematic := parts[len(parts)-1]
-			logger.V(1).Info("Extracted schematic from factory image", "schematic", schematic, "image", installImage)
-			return schematic, nil
-		}
-	}
-
-	logger.V(1).Info("No schematic found in image", "image", installImage)
-	return "", fmt.Errorf("no schematic found in image: %s", installImage)
-}
-
-func (r *TalosPlanReconciler) getNodeInternalIP(node *corev1.Node) (string, error) {
-	logger := log.FromContext(context.Background())
-	logger.V(1).Info("Getting internal IP for node", "node", node.Name)
-
-	for i, addr := range node.Status.Addresses {
-		logger.V(1).Info("Node address", "node", node.Name, "index", i, "type", addr.Type, "address", addr.Address)
-		if addr.Type == corev1.NodeInternalIP {
-			logger.V(1).Info("Found internal IP", "node", node.Name, "ip", addr.Address)
-			return addr.Address, nil
-		}
-	}
-
-	logger.Error(fmt.Errorf("no internal IP found"), "No internal IP found for node", "node", node.Name)
-	return "", fmt.Errorf("no internal IP found for node %s", node.Name)
-}
-
-func (r *TalosPlanReconciler) extractVersionAndSchematic(image string) (version, schematic string) {
-	logger := log.FromContext(context.Background())
-	logger.V(1).Info("Extracting version and schematic from image", "image", image)
-
-	// Use strings.Cut for cleaner parsing (Go 1.18+)
-	imagePath, version, found := strings.Cut(image, ":")
-	if !found {
-		logger.Error(fmt.Errorf("invalid image format"), "Image does not contain version tag", "image", image)
-		return "", ""
-	}
-
-	logger.V(1).Info("Extracted version", "version", version)
-
-	// Check if this is a factory image (contains schematic)
-	if strings.Contains(imagePath, "factory.talos.dev") {
-		pathParts := strings.Split(imagePath, "/")
-		if len(pathParts) >= 3 {
-			schematic = pathParts[len(pathParts)-1]
-			logger.V(1).Info("Extracted schematic from factory image", "schematic", schematic)
-		}
-	}
-
-	logger.V(1).Info("Extraction complete", "image", image, "version", version, "schematic", schematic)
-	return version, schematic
-}
-
-func (r *TalosPlanReconciler) getSchematicFromNode(node *corev1.Node) string {
-	logger := log.FromContext(context.Background())
-
-	if node.Annotations == nil {
-		logger.V(1).Info("Node has no annotations", "node", node.Name)
-		return ""
-	}
-
-	schematic := node.Annotations[SchematicAnnotation]
-	logger.V(1).Info("Retrieved schematic from node annotation", "node", node.Name, "schematic", schematic)
-	return schematic
 }
 
 func (r *TalosPlanReconciler) verifyNodeUpgrade(ctx context.Context, talosPlan *upgradev1alpha1.TalosPlan, nodeName string) bool {
@@ -569,8 +477,8 @@ func (r *TalosPlanReconciler) handlePendingPhase(ctx context.Context, talosPlan 
 		}
 
 		if needsUpgrade &&
-			!r.isNodeInList(node.Name, talosPlan.Status.CompletedNodes) &&
-			!r.isNodeInFailedList(node.Name, talosPlan.Status.FailedNodes) {
+			!IsNodeInList(node.Name, talosPlan.Status.CompletedNodes) &&
+			!IsNodeInFailedList(node.Name, talosPlan.Status.FailedNodes) {
 			targetNode = &node
 			break
 		}
@@ -761,7 +669,7 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 		return nil, fmt.Errorf("failed to get target node: %w", err)
 	}
 
-	targetNodeIP, err := r.getNodeInternalIP(targetNode)
+	targetNodeIP, err := GetNodeInternalIP(targetNode)
 	if err != nil {
 		logger.Error(err, "Failed to get target node IP", "node", nodeName)
 		return nil, fmt.Errorf("failed to get target node IP: %w", err)
@@ -939,18 +847,6 @@ func (r *TalosPlanReconciler) getTargetNodes(ctx context.Context, talosPlan *upg
 	}
 
 	return nodeList.Items, nil
-}
-
-// Optimize isNodeInList using slices.Contains
-func (r *TalosPlanReconciler) isNodeInList(nodeName string, nodeList []string) bool {
-	return slices.Contains(nodeList, nodeName)
-}
-
-// Optimize isNodeInFailedList using slices.ContainsFunc
-func (r *TalosPlanReconciler) isNodeInFailedList(nodeName string, failedNodes []upgradev1alpha1.NodeUpgradeStatus) bool {
-	return slices.ContainsFunc(failedNodes, func(node upgradev1alpha1.NodeUpgradeStatus) bool {
-		return node.NodeName == nodeName
-	})
 }
 
 // SetupWithManager sets up the controller with the Manager.
