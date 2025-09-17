@@ -657,7 +657,6 @@ func (r *TalosPlanReconciler) handleInProgressPhase(ctx context.Context, talosPl
 
 	if talosPlan.Status.CurrentNode == "" {
 		logger.Info("No current node, moving to pending to start next upgrade")
-		// No current node, move to pending to start next upgrade
 		talosPlan.Status.Phase = PhasePending
 		return ctrl.Result{}, r.Status().Update(ctx, talosPlan)
 	}
@@ -675,7 +674,6 @@ func (r *TalosPlanReconciler) handleInProgressPhase(ctx context.Context, talosPl
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Error(err, "Job not found", "job", jobName)
-			// Job doesn't exist, move to failed
 			return r.markNodeFailed(ctx, talosPlan, talosPlan.Status.CurrentNode, "Job not found")
 		}
 		logger.Error(err, "Failed to get upgrade job", "job", jobName)
@@ -700,10 +698,28 @@ func (r *TalosPlanReconciler) handleInProgressPhase(ctx context.Context, talosPl
 		}
 	}
 
+	// Check if job failed after all retries
 	if job.Status.Failed > 0 {
-		logger.Error(fmt.Errorf("job failed"), "Upgrade job failed", "job", jobName, "node", talosPlan.Status.CurrentNode)
-		// Job failed
-		return r.markNodeFailed(ctx, talosPlan, talosPlan.Status.CurrentNode, "Upgrade job failed")
+		// Get the backoffLimit to check if we've exhausted retries
+		backoffLimit := int32(3) // default
+		if job.Spec.BackoffLimit != nil {
+			backoffLimit = *job.Spec.BackoffLimit
+		}
+
+		if job.Status.Failed > backoffLimit {
+			logger.Error(fmt.Errorf("job failed after retries"), "Upgrade job failed after all retries",
+				"job", jobName,
+				"node", talosPlan.Status.CurrentNode,
+				"failed", job.Status.Failed,
+				"backoffLimit", backoffLimit)
+
+			return r.markNodeFailed(ctx, talosPlan, talosPlan.Status.CurrentNode,
+				fmt.Sprintf("Upgrade job failed after %d retries", job.Status.Failed))
+		} else {
+			logger.Info("Job has failures but still retrying", "job", jobName,
+				"failed", job.Status.Failed,
+				"backoffLimit", backoffLimit)
+		}
 	}
 
 	// Check for timeout
@@ -720,7 +736,7 @@ func (r *TalosPlanReconciler) handleInProgressPhase(ctx context.Context, talosPl
 		return r.markNodeFailed(ctx, talosPlan, talosPlan.Status.CurrentNode, "Upgrade timeout")
 	}
 
-	// Job still running
+	// Job still running or retrying
 	logger.V(1).Info("Job still running", "job", jobName)
 	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 }
@@ -761,51 +777,20 @@ func (r *TalosPlanReconciler) markNodeFailed(ctx context.Context, talosPlan *upg
 	logger := log.FromContext(ctx)
 	logger.Info("Marking node as failed", "node", nodeName, "reason", reason)
 
-	// Find existing failed node entry or create new one
-	var nodeStatus *upgradev1alpha1.NodeUpgradeStatus
-	for i := range talosPlan.Status.FailedNodes {
-		if talosPlan.Status.FailedNodes[i].NodeName == nodeName {
-			nodeStatus = &talosPlan.Status.FailedNodes[i]
-			break
-		}
-	}
+	// Add to failed nodes list (for tracking purposes)
+	talosPlan.Status.FailedNodes = append(talosPlan.Status.FailedNodes, upgradev1alpha1.NodeUpgradeStatus{
+		NodeName:  nodeName,
+		LastError: reason,
+		Retries:   0, // Job handled the retries
+	})
 
-	if nodeStatus == nil {
-		logger.Info("Creating new failed node status", "node", nodeName)
-		talosPlan.Status.FailedNodes = append(talosPlan.Status.FailedNodes, upgradev1alpha1.NodeUpgradeStatus{
-			NodeName:  nodeName,
-			Retries:   1,
-			LastError: reason,
-		})
-		nodeStatus = &talosPlan.Status.FailedNodes[len(talosPlan.Status.FailedNodes)-1]
-	} else {
-		logger.Info("Updating existing failed node status", "node", nodeName, "currentRetries", nodeStatus.Retries)
-		nodeStatus.Retries++
-		nodeStatus.LastError = reason
-	}
-
-	maxRetries := talosPlan.Spec.MaxRetries
-	if maxRetries == 0 {
-		maxRetries = 3
-	}
-
-	logger.Info("Node failure status", "node", nodeName, "retries", nodeStatus.Retries, "maxRetries", maxRetries)
-
-	if nodeStatus.Retries >= maxRetries {
-		// Max retries reached, mark as failed
-		logger.Info("Max retries reached, marking plan as failed", "node", nodeName, "retries", nodeStatus.Retries)
-		talosPlan.Status.Phase = PhaseFailed
-		talosPlan.Status.CurrentNode = ""
-		talosPlan.Status.Message = fmt.Sprintf("Node %s failed after %d retries: %s", nodeName, nodeStatus.Retries, reason)
-	} else {
-		// Retry
-		logger.Info("Will retry node upgrade", "node", nodeName, "retries", nodeStatus.Retries, "maxRetries", maxRetries)
-		talosPlan.Status.Phase = PhasePending
-		talosPlan.Status.CurrentNode = ""
-		talosPlan.Status.Message = fmt.Sprintf("Node %s failed (retry %d/%d): %s", nodeName, nodeStatus.Retries, maxRetries, reason)
-	}
-
+	// Mark plan as failed - manual intervention needed
+	logger.Info("Node failed, marking plan as failed", "node", nodeName)
+	talosPlan.Status.Phase = PhaseFailed
+	talosPlan.Status.CurrentNode = ""
+	talosPlan.Status.Message = fmt.Sprintf("Node %s failed: %s", nodeName, reason)
 	talosPlan.Status.LastUpdated = metav1.Now()
+
 	return ctrl.Result{RequeueAfter: time.Second * 30}, r.Status().Update(ctx, talosPlan)
 }
 
@@ -842,6 +827,13 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 	}
 	ttlSeconds := int32(timeout.Seconds())
 
+	// Use MaxRetries for backoffLimit
+	maxRetries := talosPlan.Spec.MaxRetries
+	if maxRetries == 0 {
+		maxRetries = 3
+	}
+	backoffLimit := int32(maxRetries)
+
 	// Build talosctl upgrade command args
 	args := []string{
 		"upgrade",
@@ -867,7 +859,7 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 		args = append(args, "--reboot-mode", "powercycle")
 	}
 
-	logger.Info("Command args", "args", args)
+	logger.Info("Command args", "args", args, "backoffLimit", backoffLimit)
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -881,6 +873,7 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 			},
 		},
 		Spec: batchv1.JobSpec{
+			BackoffLimit:            &backoffLimit,
 			TTLSecondsAfterFinished: &ttlSeconds,
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -952,7 +945,7 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 		return nil, err
 	}
 
-	logger.Info("Successfully created upgrade job", "job", jobName, "targetNode", nodeName)
+	logger.Info("Successfully created upgrade job", "job", jobName, "targetNode", nodeName, "maxRetries", backoffLimit)
 	return job, nil
 }
 
