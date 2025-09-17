@@ -17,6 +17,10 @@ type KubernetesPlanSpec struct {
 	// +kubebuilder:validation:Pattern=`^[0-9]+\.[0-9]+\.[0-9]+$`
 	Version string `json:"version"`
 
+	// Talosctl specifies the talosctl image to use for upgrade operations
+	// +optional
+	Talosctl *ImageSpec `json:"talosctl,omitempty"`
+
 	// PrePullImages determines whether to pre-pull images before upgrade
 	// +kubebuilder:default=true
 	// +optional

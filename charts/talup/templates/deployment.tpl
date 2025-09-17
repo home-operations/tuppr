@@ -48,8 +48,7 @@ spec:
             {{- end }}
             - --metrics-bind-address=:{{ .Values.controller.metrics.port }}
             - --health-probe-bind-address=:{{ .Values.controller.health.port }}
-            - --talosctl-image={{ .Values.talup.talosctl.image.repository }}:{{ .Values.talup.talosctl.image.tag }}
-            - --talos-config-secret={{ .Values.talup.talosctl.configSecret }}
+            - --talos-config-secret={{ .Values.talosServiceAccount.secretName }}
           ports:
             - name: webhook-server
               containerPort: {{ .Values.webhook.port }}
