@@ -4,15 +4,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// ImageSpec defines container image configuration
+type ImageSpec struct {
+	// Repository is the container image repository
+	// +kubebuilder:validation:Required
+	Repository string `json:"repository"`
+
+	// Tag is the container image tag
+	// +kubebuilder:validation:Required
+	Tag string `json:"tag"`
+}
+
 // TalosPlanSpec defines the desired state of TalosPlan
 type TalosPlanSpec struct {
 	// Image is the Talos installer image to upgrade to
 	// +kubebuilder:validation:Required
 	Image ImageSpec `json:"image"`
-
-	// Talosctl specifies the talosctl image configuration
-	// +kubebuilder:default={"image":{"repository":"ghcr.io/siderolabs/talosctl","tag":"latest"}}
-	Talosctl TalosctlSpec `json:"talosctl"`
 
 	// Force the upgrade (skip checks on etcd health and members)
 	// +kubebuilder:default=false
@@ -22,14 +29,6 @@ type TalosPlanSpec struct {
 	// +kubebuilder:validation:Enum=default;powercycle
 	// +kubebuilder:default="default"
 	RebootMode string `json:"rebootMode,omitempty"`
-
-	// Timeout for the upgrade operation
-	// +kubebuilder:default="30m"
-	Timeout string `json:"timeout,omitempty"`
-
-	// MaxRetries maximum number of retries before marking as failed
-	// +kubebuilder:default=3
-	MaxRetries int `json:"maxRetries,omitempty"`
 
 	// NodeSelector to target specific nodes for upgrade
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
