@@ -73,3 +73,17 @@ func IsNodeInFailedList(nodeName string, failedNodes []upgradev1alpha1.NodeUpgra
 		return node.NodeName == nodeName
 	})
 }
+
+func ExtractVersionFromOSImage(osImage string) string {
+	// osImage format: "Talos (v1.11.1)"
+	// Extract the version part between parentheses
+	start := strings.Index(osImage, "(")
+	end := strings.Index(osImage, ")")
+
+	if start == -1 || end == -1 || start >= end {
+		return ""
+	}
+
+	version := osImage[start+1 : end]
+	return strings.TrimSpace(version)
+}

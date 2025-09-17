@@ -2,9 +2,7 @@ package controller
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
-	"strings"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -18,13 +16,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	"github.com/cosi-project/runtime/pkg/resource"
-	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
-	talosclientconfig "github.com/siderolabs/talos/pkg/machinery/client/config"
-	"github.com/siderolabs/talos/pkg/machinery/resources/config"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 
 	upgradev1alpha1 "github.com/home-operations/talup/api/v1alpha1"
 )
@@ -201,9 +192,6 @@ func (r *TalosPlanReconciler) isUpgradeNeeded(ctx context.Context, talosPlan *up
 	}
 
 	logger.Info("Found target nodes", "count", len(nodes))
-	for _, node := range nodes {
-		logger.V(1).Info("Target node", "name", node.Name)
-	}
 
 	targetImage := fmt.Sprintf("%s:%s", talosPlan.Spec.Image.Repository, talosPlan.Spec.Image.Tag)
 	logger.Info("Target image", "image", targetImage)
@@ -211,7 +199,7 @@ func (r *TalosPlanReconciler) isUpgradeNeeded(ctx context.Context, talosPlan *up
 	for _, node := range nodes {
 		logger.Info("Checking node upgrade status", "node", node.Name)
 
-		// Check if node needs upgrade using Talos SDK
+		// Simple check using node status - no API calls needed!
 		needsUpgrade, err := r.nodeNeedsUpgrade(ctx, talosPlan, &node, targetImage)
 		if err != nil {
 			logger.Error(err, "Failed to check if node needs upgrade", "node", node.Name)
@@ -234,61 +222,14 @@ func (r *TalosPlanReconciler) nodeNeedsUpgrade(ctx context.Context, talosPlan *u
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Checking individual node upgrade status", "node", node.Name, "targetImage", targetImage)
 
-	// Get node IP address
-	logger.V(1).Info("Getting node IP address", "node", node.Name)
-	nodeIP, err := GetNodeInternalIP(node)
-	if err != nil {
-		logger.Error(err, "Failed to get node IP", "node", node.Name)
-		return false, fmt.Errorf("failed to get node IP: %w", err)
-	}
-	logger.Info("Using node IP", "node", node.Name, "ip", nodeIP)
+	// Extract current version from node's OSImage field
+	// Example: "Talos (v1.11.1)" -> "v1.11.1"
+	currentVersion := ExtractVersionFromOSImage(node.Status.NodeInfo.OSImage)
+	logger.Info("Retrieved current version from OSImage", "node", node.Name, "osImage", node.Status.NodeInfo.OSImage, "currentVersion", currentVersion)
 
-	// Create a Talos client specifically for this node
-	logger.V(1).Info("Creating node-specific Talos client")
-	talosClient, err := r.getTalosClientForNode(ctx, talosPlan.Namespace, nodeIP)
-	if err != nil {
-		logger.Error(err, "Failed to get Talos client for node")
-		return false, fmt.Errorf("failed to get Talos client: %w", err)
-	}
-	defer talosClient.Close()
-
-	// Get version information from the node
-	logger.V(1).Info("Getting version from node", "node", node.Name, "ip", nodeIP)
-	versionResp, err := talosClient.Version(ctx)
-	if err != nil {
-		logger.Error(err, "Failed to get version from node", "node", node.Name, "ip", nodeIP)
-		return false, fmt.Errorf("failed to get version from node %s: %w", node.Name, err)
-	}
-
-	if len(versionResp.Messages) == 0 {
-		logger.Error(fmt.Errorf("no version response"), "No version response from node", "node", node.Name)
-		return false, fmt.Errorf("no version response from node %s", node.Name)
-	}
-
-	currentVersion := versionResp.Messages[0].Version.Tag
-	logger.Info("Retrieved current version", "node", node.Name, "currentVersion", currentVersion)
-
-	// Get machine config to extract current schematic
-	logger.V(1).Info("Getting machine config", "node", node.Name)
-	machineConfig, err := r.getMachineConfig(ctx, talosClient)
-	if err != nil {
-		logger.Error(err, "Failed to get machine config", "node", node.Name)
-		return false, fmt.Errorf("failed to get machine config from node %s: %w", node.Name, err)
-	}
-
-	currentInstallImage := machineConfig.Config().Machine().Install().Image()
-	logger.Info("Retrieved current install image", "node", node.Name, "currentInstallImage", currentInstallImage)
-
-	currentSchematic, err := ExtractSchematicFromMachineConfig(currentInstallImage)
-	if err != nil {
-		logger.V(1).Info("Could not extract schematic from machine config", "node", node.Name, "image", currentInstallImage, "error", err)
-		currentSchematic = ""
-	}
-	logger.Info("Current schematic", "node", node.Name, "currentSchematic", currentSchematic)
-
-	// Get node schematic annotation
-	nodeSchematic := GetSchematicFromNode(node)
-	logger.V(1).Info("Node schematic annotation", "node", node.Name, "nodeSchematic", nodeSchematic)
+	// Get current schematic from node annotation
+	currentSchematic := GetSchematicFromNode(node)
+	logger.Info("Current schematic from annotation", "node", node.Name, "currentSchematic", currentSchematic)
 
 	// Extract target version and schematic from target image
 	targetVersion, targetSchematic := ExtractVersionAndSchematic(targetImage)
@@ -303,15 +244,14 @@ func (r *TalosPlanReconciler) nodeNeedsUpgrade(ctx context.Context, talosPlan *u
 		"currentVersion", currentVersion,
 		"targetVersion", targetVersion,
 		"currentSchematic", currentSchematic,
-		"nodeSchematic", nodeSchematic,
 		"targetSchematic", targetSchematic,
 	)
 
 	// Need upgrade if:
 	// 1. Versions don't match, OR
-	// 2. Schematics don't match (comparing machine config schematic with node annotation)
+	// 2. Schematics don't match
 	versionMismatch := currentVersion != targetVersion
-	schematicMismatch := targetSchematic != "" && nodeSchematic != currentSchematic
+	schematicMismatch := targetSchematic != "" && currentSchematic != targetSchematic
 
 	needsUpgrade := versionMismatch || schematicMismatch
 
@@ -324,113 +264,11 @@ func (r *TalosPlanReconciler) nodeNeedsUpgrade(ctx context.Context, talosPlan *u
 	return needsUpgrade, nil
 }
 
-func (r *TalosPlanReconciler) getTalosClientForNode(ctx context.Context, namespace, nodeIP string) (*talosclient.Client, error) {
-	logger := log.FromContext(ctx)
-	logger.V(1).Info("Creating Talos client for specific node", "namespace", namespace, "nodeIP", nodeIP)
-
-	// Get the talosconfig secret
-	secret := &corev1.Secret{}
-	secretKey := types.NamespacedName{
-		Name:      TalosConfigSecretName,
-		Namespace: namespace,
-	}
-
-	logger.V(1).Info("Retrieving talosconfig secret", "secretName", TalosConfigSecretName, "namespace", namespace)
-	if err := r.Get(ctx, secretKey, secret); err != nil {
-		logger.Error(err, "Failed to get talosconfig secret", "secretName", TalosConfigSecretName, "namespace", namespace)
-		return nil, fmt.Errorf("failed to get talosconfig secret: %w", err)
-	}
-
-	// Get the config data using the correct key
-	configData, exists := secret.Data[TalosConfigSecretKey]
-	if !exists {
-		logger.Error(fmt.Errorf("key not found"), "Talosconfig key not found in secret", "key", TalosConfigSecretKey)
-		return nil, fmt.Errorf("talosconfig key '%s' not found in secret", TalosConfigSecretKey)
-	}
-
-	logger.V(1).Info("Found talosconfig data", "dataLength", len(configData))
-
-	// Parse the config
-	config, err := talosclientconfig.FromBytes(configData)
-	if err != nil {
-		logger.Error(err, "Failed to parse talosconfig")
-		return nil, fmt.Errorf("failed to parse talosconfig: %w", err)
-	}
-
-	logger.Info("Setting Talos endpoint", "originalEndpoints", config.Contexts[config.Context].Endpoints, "newEndpoint", nodeIP)
-	config.Contexts[config.Context].Endpoints = []string{nodeIP}
-
-	// Add timeout context for client creation
-	clientCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	// Create client options with more permissive settings
-	opts := []talosclient.OptionFunc{
-		talosclient.WithConfig(config),
-		talosclient.WithGRPCDialOptions(
-			grpc.WithTransportCredentials(
-				credentials.NewTLS(&tls.Config{
-					InsecureSkipVerify: true,
-				}),
-			),
-		),
-	}
-
-	// Create and return the client
-	logger.V(1).Info("Creating Talos client", "endpoint", nodeIP)
-	client, err := talosclient.New(clientCtx, opts...)
-	if err != nil {
-		logger.Error(err, "Failed to create Talos client", "endpoint", nodeIP)
-		return nil, fmt.Errorf("failed to create Talos client for %s: %w", nodeIP, err)
-	}
-
-	// Test the connection with a quick version call
-	logger.V(1).Info("Testing connection to Talos node", "endpoint", nodeIP)
-	testCtx, testCancel := context.WithTimeout(ctx, 5*time.Second)
-	defer testCancel()
-
-	_, err = client.Version(testCtx)
-	if err != nil {
-		logger.Error(err, "Failed to connect to Talos node", "endpoint", nodeIP)
-		client.Close()
-		return nil, fmt.Errorf("failed to connect to Talos node %s: %w", nodeIP, err)
-	}
-
-	logger.Info("Successfully created and tested Talos client", "endpoint", nodeIP)
-	return client, nil
-}
-
-func (r *TalosPlanReconciler) getMachineConfig(ctx context.Context, talosClient *talosclient.Client) (*config.MachineConfig, error) {
-	logger := log.FromContext(ctx)
-	logger.V(1).Info("Retrieving machine config via COSI")
-
-	// Get machine config using COSI client
-	res, err := talosClient.COSI.Get(ctx, resource.NewMetadata(
-		"config",
-		"MachineConfigs.config.talos.dev",
-		"v1alpha1",
-		resource.VersionUndefined,
-	))
-	if err != nil {
-		logger.Error(err, "Failed to get machine config via COSI")
-		return nil, fmt.Errorf("failed to get machine config: %w", err)
-	}
-
-	machineConfig, ok := res.(*config.MachineConfig)
-	if !ok {
-		logger.Error(fmt.Errorf("type assertion failed"), "Unexpected resource type for machine config")
-		return nil, fmt.Errorf("unexpected resource type for machine config")
-	}
-
-	logger.V(1).Info("Successfully retrieved machine config")
-	return machineConfig, nil
-}
-
 func (r *TalosPlanReconciler) verifyNodeUpgrade(ctx context.Context, talosPlan *upgradev1alpha1.TalosPlan, nodeName string) bool {
 	logger := log.FromContext(ctx)
 	logger.Info("Verifying node upgrade", "node", nodeName)
 
-	// Get the node and check if it has the expected version using Talos SDK
+	// Get the node and check if it has the expected version
 	node := &corev1.Node{}
 	if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
 		logger.Error(err, "Failed to get node for verification", "node", nodeName)
@@ -504,7 +342,7 @@ func (r *TalosPlanReconciler) handlePendingPhase(ctx context.Context, talosPlan 
 	}
 
 	logger.Info("Creating upgrade job for claimed node", "targetNode", targetNode.Name)
-	job, err := r.createUpgradeJob(ctx, talosPlan, targetNode.Name)
+	job, err := r.createOrUpdateUpgradeJob(ctx, talosPlan, targetNode.Name)
 	if err != nil {
 		logger.Error(err, "Failed to create upgrade job", "node", targetNode.Name)
 		// Reset status on failure
@@ -658,9 +496,9 @@ func (r *TalosPlanReconciler) markNodeFailed(ctx context.Context, talosPlan *upg
 	return ctrl.Result{RequeueAfter: time.Second * 30}, r.Status().Update(ctx, talosPlan)
 }
 
-func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *upgradev1alpha1.TalosPlan, nodeName string) (*batchv1.Job, error) {
+func (r *TalosPlanReconciler) createOrUpdateUpgradeJob(ctx context.Context, talosPlan *upgradev1alpha1.TalosPlan, nodeName string) (*batchv1.Job, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Creating upgrade job", "node", nodeName)
+	logger.Info("Creating or updating upgrade job", "node", nodeName)
 
 	// Get target node IP for the talosctl command
 	targetNode := &corev1.Node{}
@@ -674,44 +512,11 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 		logger.Error(err, "Failed to get target node IP", "node", nodeName)
 		return nil, fmt.Errorf("failed to get target node IP: %w", err)
 	}
-	logger.Info("Target node details", "node", nodeName, "ip", targetNodeIP)
 
-	// Use string builder for job name construction
-	var jobNameBuilder strings.Builder
-	jobNameBuilder.WriteString("talos-upgrade-")
-	jobNameBuilder.WriteString(talosPlan.Name)
-	jobNameBuilder.WriteString("-")
-	jobNameBuilder.WriteString(nodeName)
-	jobName := jobNameBuilder.String()
+	// Prepare job name
+	jobName := fmt.Sprintf("talos-upgrade-%s-%s", talosPlan.Name, nodeName)
 
-	talosctlImage := fmt.Sprintf("%s:%s", talosPlan.Spec.Talosctl.Image.Repository, talosPlan.Spec.Talosctl.Image.Tag)
-	targetImage := fmt.Sprintf("%s:%s", talosPlan.Spec.Image.Repository, talosPlan.Spec.Image.Tag)
-
-	logger.Info("Job configuration",
-		"jobName", jobName,
-		"talosctlImage", talosctlImage,
-		"targetImage", targetImage)
-
-	// args := []string{"get", "--nodes", targetNodeIP, "links"} // TESTING
-
-	// Build args slice more efficiently
-	args := []string{"upgrade", "--nodes", targetNodeIP, "--image", targetImage, "--debug"}
-
-	if talosPlan.Spec.Timeout != "" {
-		args = append(args, "--timeout", talosPlan.Spec.Timeout)
-	}
-
-	if talosPlan.Spec.Force {
-		args = append(args, "--force")
-	}
-
-	if rebootMode := talosPlan.Spec.RebootMode; rebootMode == "powercycle" {
-		args = append(args, "--reboot-mode", "powercycle")
-	}
-
-	logger.Info("Command args", "args", args)
-
-	// Create labels map more efficiently
+	// Build labels
 	labels := map[string]string{
 		"app.kubernetes.io/name":       "talos-upgrade",
 		"app.kubernetes.io/instance":   talosPlan.Name,
@@ -719,96 +524,123 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 		"talup.io/target-node":         nodeName,
 	}
 
+	talosctlImage := fmt.Sprintf("%s:%s", talosPlan.Spec.Talosctl.Image.Repository, talosPlan.Spec.Talosctl.Image.Tag)
+	targetImage := fmt.Sprintf("%s:%s", talosPlan.Spec.Image.Repository, talosPlan.Spec.Image.Tag)
+
+	// Use IP address for talosctl command
+	args := []string{"upgrade", "--nodes", targetNodeIP, "--image", targetImage, "--debug"}
+	if talosPlan.Spec.Timeout != "" {
+		args = append(args, "--timeout", talosPlan.Spec.Timeout)
+	}
+	if talosPlan.Spec.Force {
+		args = append(args, "--force")
+	}
+	if talosPlan.Spec.RebootMode == "powercycle" {
+		args = append(args, "--reboot-mode", "powercycle")
+	}
+
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
 			Namespace: talosPlan.Namespace,
-			Labels:    labels,
 		},
-		Spec: batchv1.JobSpec{
-			BackoffLimit:            ptr.To(int32(DefaultBackoffLimit)),
-			Completions:             ptr.To(int32(1)),
-			TTLSecondsAfterFinished: ptr.To(int32(DefaultTTLSecondsAfterFinished)),
-			Parallelism:             ptr.To(int32(1)),
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels, // Reuse the same labels map
-				},
-				Spec: corev1.PodSpec{
-					RestartPolicy: corev1.RestartPolicyNever,
-					SecurityContext: &corev1.PodSecurityContext{
-						RunAsNonRoot: ptr.To(true),
-						RunAsUser:    ptr.To(int64(65534)),
-						RunAsGroup:   ptr.To(int64(65534)),
-						FSGroup:      ptr.To(int64(65534)),
-					},
-					Affinity: &corev1.Affinity{
-						NodeAffinity: &corev1.NodeAffinity{
-							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-								NodeSelectorTerms: []corev1.NodeSelectorTerm{
-									{
-										MatchExpressions: []corev1.NodeSelectorRequirement{
-											{
-												Key:      "kubernetes.io/hostname",
-												Operator: corev1.NodeSelectorOpNotIn,
-												Values:   []string{nodeName},
+	}
+
+	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, job, func() error {
+		// Set owner reference
+		if err := controllerutil.SetControllerReference(talosPlan, job, r.Scheme); err != nil {
+			return err
+		}
+
+		// Only set labels and spec if this is a new job - Jobs are immutable once created!
+		if job.CreationTimestamp.IsZero() {
+			job.Labels = labels
+			job.Spec = batchv1.JobSpec{
+				BackoffLimit:            ptr.To(int32(DefaultBackoffLimit)),
+				Completions:             ptr.To(int32(1)),
+				TTLSecondsAfterFinished: ptr.To(int32(DefaultTTLSecondsAfterFinished)),
+				Parallelism:             ptr.To(int32(1)),
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{Labels: labels},
+					Spec: corev1.PodSpec{
+						RestartPolicy: corev1.RestartPolicyNever,
+						SecurityContext: &corev1.PodSecurityContext{
+							RunAsNonRoot: ptr.To(true),
+							RunAsUser:    ptr.To(int64(65534)),
+							RunAsGroup:   ptr.To(int64(65534)),
+							FSGroup:      ptr.To(int64(65534)),
+						},
+						Affinity: &corev1.Affinity{
+							NodeAffinity: &corev1.NodeAffinity{
+								RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+									NodeSelectorTerms: []corev1.NodeSelectorTerm{
+										{
+											MatchExpressions: []corev1.NodeSelectorRequirement{
+												{
+													Key:      "kubernetes.io/hostname",
+													Operator: corev1.NodeSelectorOpNotIn,
+													Values:   []string{nodeName},
+												},
 											},
 										},
 									},
 								},
 							},
 						},
-					},
-					Containers: []corev1.Container{
-						{
-							Name:            "talosctl",
-							Image:           talosctlImage,
-							ImagePullPolicy: corev1.PullIfNotPresent,
-							Args:            args,
-							SecurityContext: &corev1.SecurityContext{
-								AllowPrivilegeEscalation: ptr.To(false),
-								ReadOnlyRootFilesystem:   ptr.To(true),
-								Capabilities: &corev1.Capabilities{
-									Drop: []corev1.Capability{"ALL"},
+						Tolerations: []corev1.Toleration{{
+							Key:      "node-role.kubernetes.io/control-plane",
+							Operator: corev1.TolerationOpExists,
+							Effect:   corev1.TaintEffectNoSchedule,
+						}},
+						Containers: []corev1.Container{
+							{
+								Name:            "talosctl",
+								Image:           talosctlImage,
+								ImagePullPolicy: corev1.PullIfNotPresent,
+								Args:            args,
+								SecurityContext: &corev1.SecurityContext{
+									AllowPrivilegeEscalation: ptr.To(false),
+									ReadOnlyRootFilesystem:   ptr.To(true),
+									Capabilities: &corev1.Capabilities{
+										Drop: []corev1.Capability{"ALL"},
+									},
 								},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "talos",
-									MountPath: "/var/run/secrets/talos.dev",
-									ReadOnly:  true,
+								VolumeMounts: []corev1.VolumeMount{
+									{
+										Name:      "talos",
+										MountPath: "/var/run/secrets/talos.dev",
+										ReadOnly:  true,
+									},
 								},
 							},
 						},
-					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "talos",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: TalosConfigSecretName,
+						Volumes: []corev1.Volume{
+							{
+								Name: "talos",
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: TalosConfigSecretName,
+									},
 								},
 							},
 						},
 					},
 				},
-			},
-		},
-	}
+			}
+		}
+		return nil
+	})
 
-	// Set owner reference
-	if err := controllerutil.SetControllerReference(talosPlan, job, r.Scheme); err != nil {
-		logger.Error(err, "Failed to set controller reference")
+	if err != nil {
+		logger.Error(err, "Failed to create/update job", "job", jobName)
 		return nil, err
 	}
 
-	logger.V(1).Info("Creating job", "job", jobName)
-	if err := r.Create(ctx, job); err != nil {
-		logger.Error(err, "Failed to create job", "job", jobName)
-		return nil, err
-	}
-
-	logger.Info("Successfully created upgrade job", "job", jobName, "targetNode", nodeName)
+	logger.Info("Successfully created/updated upgrade job",
+		"operation", op,
+		"job", jobName,
+		"targetNode", nodeName,
+		"targetIP", targetNodeIP)
 	return job, nil
 }
 
