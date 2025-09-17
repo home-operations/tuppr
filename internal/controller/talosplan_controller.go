@@ -28,7 +28,6 @@ const (
 type TalosPlanReconciler struct {
 	client.Client
 	Scheme            *runtime.Scheme
-	TalosctlImage     string
 	TalosConfigSecret string
 }
 
@@ -345,11 +344,22 @@ func (r *TalosPlanReconciler) buildJob(talosPlan *upgradev1alpha1.TalosPlan, nod
 	   }
 	*/
 
-	talosctlImage := r.TalosctlImage
+	talosctlImage := fmt.Sprintf("%s:%s", talosPlan.Spec.Talosctl.Repository, talosPlan.Spec.Talosctl.Tag)
+
+	var pullPolicy corev1.PullPolicy
+	switch talosPlan.Spec.Talosctl.PullPolicy {
+	case "Always":
+		pullPolicy = corev1.PullAlways
+	case "Never":
+		pullPolicy = corev1.PullNever
+	default:
+		pullPolicy = corev1.PullIfNotPresent
+	}
 
 	logger.Info("Building job specification",
 		"node", nodeName,
 		"talosctlImage", talosctlImage,
+		"pullPolicy", pullPolicy,
 		"args", args)
 
 	return &batchv1.Job{
@@ -392,9 +402,10 @@ func (r *TalosPlanReconciler) buildJob(talosPlan *upgradev1alpha1.TalosPlan, nod
 						Effect:   corev1.TaintEffectNoSchedule,
 					}},
 					InitContainers: []corev1.Container{{
-						Name:  "health-check",
-						Image: talosctlImage,
-						Args:  []string{"health", "--nodes", nodeIP, "--wait-timeout=5m"},
+						Name:            "health-check",
+						Image:           talosctlImage,
+						Args:            []string{"health", "--nodes", nodeIP, "--wait-timeout=5m"},
+						ImagePullPolicy: pullPolicy,
 						SecurityContext: &corev1.SecurityContext{
 							AllowPrivilegeEscalation: ptr.To(false),
 							ReadOnlyRootFilesystem:   ptr.To(true),
@@ -409,9 +420,10 @@ func (r *TalosPlanReconciler) buildJob(talosPlan *upgradev1alpha1.TalosPlan, nod
 						}},
 					}},
 					Containers: []corev1.Container{{
-						Name:  "talosctl",
-						Image: talosctlImage,
-						Args:  args,
+						Name:            "talosctl",
+						Image:           talosctlImage,
+						Args:            args,
+						ImagePullPolicy: pullPolicy,
 						SecurityContext: &corev1.SecurityContext{
 							AllowPrivilegeEscalation: ptr.To(false),
 							ReadOnlyRootFilesystem:   ptr.To(true),

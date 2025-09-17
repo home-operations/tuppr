@@ -1,44 +1,36 @@
----
 name: Build
-
 on:
   push:
     branches:
       - main
-
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
       packages: write
-      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
-
       - name: Log in to Container Registry
         uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5.8.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |-
+            type=ref,event=branch
             type=sha,prefix={{branch}}-
-
       - name: Build and push Docker image
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
@@ -49,26 +41,21 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
       - name: Set up Helm
         uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
           version: v3.19.0
-
       - name: Setup Go
         uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
-
       - name: Generate manifests and CRDs
         run: make helm-crds
-
       - name: Package Helm chart
         run: |
           helm package charts/talup \
-            --version ${{ steps.meta.outputs.tags }} \
-            --app-version ${{ steps.meta.outputs.tags }}
-
+            --version 0.0.0 \
+            --app-version 0.0.0
       - name: Publish Helm chart to GHCR
         run: |
-          helm push talup-${{ steps.meta.outputs.tags }}.tgz oci://${{ env.REGISTRY }}/${{ github.repository }}/charts
+          helm push talup-0.0.0.tgz oci://${{ env.REGISTRY }}/${{ github.repository }}/charts

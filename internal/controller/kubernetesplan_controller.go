@@ -15,7 +15,6 @@ import (
 type KubernetesPlanReconciler struct {
 	client.Client
 	Scheme            *runtime.Scheme
-	TalosctlImage     string
 	TalosConfigSecret string
 }
 
