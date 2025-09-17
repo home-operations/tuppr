@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,6 +34,9 @@ import (
 const (
 	TalosPlanFinalizer  = "upgrade.home-operations.com/talos-finalizer"
 	SchematicAnnotation = "extensions.talos.dev/schematic"
+	TalosPort           = "50000"
+	DefaultTimeout      = 30 * time.Minute
+	DefaultMaxRetries   = 3
 )
 
 // TalosPlanReconciler reconciles a TalosPlan object
@@ -339,7 +343,7 @@ func (r *TalosPlanReconciler) getTalosClientForNode(ctx context.Context, namespa
 		return nil, fmt.Errorf("failed to parse talosconfig: %w", err)
 	}
 
-	endpoint := net.JoinHostPort(nodeIP, "50000")
+	endpoint := net.JoinHostPort(nodeIP, TalosPort)
 	logger.Info("Setting Talos endpoint", "originalEndpoints", config.Contexts[config.Context].Endpoints, "newEndpoint", endpoint)
 	config.Contexts[config.Context].Endpoints = []string{endpoint}
 
@@ -464,21 +468,18 @@ func (r *TalosPlanReconciler) extractVersionAndSchematic(image string) (version,
 	logger := log.FromContext(context.Background())
 	logger.V(1).Info("Extracting version and schematic from image", "image", image)
 
-	// Parse image like: factory.talos.dev/metal-installer/05b4a47a70bc97786ed83d200567dcc8a13f731b164537ba59d5397d668851fa:v1.11.1
-	// or ghcr.io/siderolabs/installer:v1.11.1
-
-	parts := strings.Split(image, ":")
-	if len(parts) < 2 {
+	// Use strings.Cut for cleaner parsing (Go 1.18+)
+	imagePath, version, found := strings.Cut(image, ":")
+	if !found {
 		logger.Error(fmt.Errorf("invalid image format"), "Image does not contain version tag", "image", image)
 		return "", ""
 	}
 
-	version = parts[len(parts)-1]
 	logger.V(1).Info("Extracted version", "version", version)
 
 	// Check if this is a factory image (contains schematic)
-	if strings.Contains(image, "factory.talos.dev") {
-		pathParts := strings.Split(parts[0], "/")
+	if strings.Contains(imagePath, "factory.talos.dev") {
+		pathParts := strings.Split(imagePath, "/")
 		if len(pathParts) >= 3 {
 			schematic = pathParts[len(pathParts)-1]
 			logger.V(1).Info("Extracted schematic from factory image", "schematic", schematic)
@@ -755,7 +756,14 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 	}
 	logger.Info("Target node details", "node", nodeName, "ip", targetNodeIP)
 
-	jobName := fmt.Sprintf("talos-upgrade-%s-%s", talosPlan.Name, nodeName)
+	// Use string builder for job name construction
+	var jobNameBuilder strings.Builder
+	jobNameBuilder.WriteString("talos-upgrade-")
+	jobNameBuilder.WriteString(talosPlan.Name)
+	jobNameBuilder.WriteString("-")
+	jobNameBuilder.WriteString(nodeName)
+	jobName := jobNameBuilder.String()
+
 	talosctlImage := fmt.Sprintf("%s:%s", talosPlan.Spec.Talosctl.Image.Repository, talosPlan.Spec.Talosctl.Image.Tag)
 	targetImage := fmt.Sprintf("%s:%s", talosPlan.Spec.Image.Repository, talosPlan.Spec.Image.Tag)
 
@@ -764,26 +772,21 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 		"talosctlImage", talosctlImage,
 		"targetImage", targetImage)
 
-	timeout, _ := time.ParseDuration(talosPlan.Spec.Timeout)
-	if timeout == 0 {
-		timeout = 30 * time.Minute
-	}
+	timeout := r.getTimeout(talosPlan.Spec.Timeout)
 	ttlSeconds := int32(timeout.Seconds())
 
-	// Use MaxRetries for backoffLimit
-	maxRetries := talosPlan.Spec.MaxRetries
-	if maxRetries == 0 {
-		maxRetries = 3
+	// Use better default handling
+	maxRetries := max(talosPlan.Spec.MaxRetries, DefaultMaxRetries)
+	if talosPlan.Spec.MaxRetries == 0 {
+		maxRetries = DefaultMaxRetries
 	}
 	backoffLimit := int32(maxRetries)
 
-	nodeEndpoint := net.JoinHostPort(targetNodeIP, "50000")
-	args := []string{
-		"upgrade",
-		"--nodes", nodeEndpoint,
-		"--image", targetImage,
-		"--debug",
-	}
+	nodeEndpoint := net.JoinHostPort(targetNodeIP, TalosPort)
+
+	// Build args slice more efficiently
+	args := make([]string, 0, 8) // Pre-allocate with estimated capacity
+	args = append(args, "upgrade", "--nodes", nodeEndpoint, "--image", targetImage, "--debug")
 
 	if talosPlan.Spec.Timeout != "" {
 		args = append(args, "--timeout", talosPlan.Spec.Timeout)
@@ -793,42 +796,36 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 		args = append(args, "--force")
 	}
 
-	rebootMode := "default"
-	if talosPlan.Spec.RebootMode != "" {
-		rebootMode = talosPlan.Spec.RebootMode
-	}
-	if rebootMode == "powercycle" {
+	// Simplify reboot mode handling
+	if rebootMode := talosPlan.Spec.RebootMode; rebootMode == "powercycle" {
 		args = append(args, "--reboot-mode", "powercycle")
 	}
 
 	logger.Info("Command args", "args", args, "backoffLimit", backoffLimit)
 
+	// Create labels map more efficiently
+	labels := map[string]string{
+		"app.kubernetes.io/name":       "talos-upgrade",
+		"app.kubernetes.io/instance":   talosPlan.Name,
+		"app.kubernetes.io/managed-by": "talup",
+		"talup.io/target-node":         nodeName,
+	}
+
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
 			Namespace: talosPlan.Namespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/name":       "talos-upgrade",
-				"app.kubernetes.io/instance":   talosPlan.Name,
-				"app.kubernetes.io/managed-by": "talup",
-				"talup.io/target-node":         nodeName,
-			},
+			Labels:    labels,
 		},
 		Spec: batchv1.JobSpec{
 			BackoffLimit:            &backoffLimit,
 			TTLSecondsAfterFinished: &ttlSeconds,
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app.kubernetes.io/name":       "talos-upgrade",
-						"app.kubernetes.io/instance":   talosPlan.Name,
-						"app.kubernetes.io/managed-by": "talup",
-						"talup.io/target-node":         nodeName,
-					},
+					Labels: labels, // Reuse the same labels map
 				},
 				Spec: corev1.PodSpec{
 					RestartPolicy: corev1.RestartPolicyNever,
-					// Use anti-affinity to avoid scheduling on the target node
 					Affinity: &corev1.Affinity{
 						NodeAffinity: &corev1.NodeAffinity{
 							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
@@ -865,7 +862,7 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 							Name: "talos",
 							VolumeSource: corev1.VolumeSource{
 								Secret: &corev1.SecretVolumeSource{
-									SecretName: "talup",
+									SecretName: TalosConfigSecretName,
 								},
 							},
 						},
@@ -889,6 +886,18 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 
 	logger.Info("Successfully created upgrade job", "job", jobName, "targetNode", nodeName, "maxRetries", backoffLimit)
 	return job, nil
+}
+
+func (r *TalosPlanReconciler) getTimeout(timeoutStr string) time.Duration {
+	if timeoutStr == "" {
+		return DefaultTimeout
+	}
+
+	timeout, err := time.ParseDuration(timeoutStr)
+	if err != nil {
+		return DefaultTimeout
+	}
+	return timeout
 }
 
 func (r *TalosPlanReconciler) getTargetNodes(ctx context.Context, talosPlan *upgradev1alpha1.TalosPlan) ([]corev1.Node, error) {
@@ -916,22 +925,16 @@ func (r *TalosPlanReconciler) getTargetNodes(ctx context.Context, talosPlan *upg
 	return nodeList.Items, nil
 }
 
+// Optimize isNodeInList using slices.Contains
 func (r *TalosPlanReconciler) isNodeInList(nodeName string, nodeList []string) bool {
-	for _, name := range nodeList {
-		if name == nodeName {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(nodeList, nodeName)
 }
 
+// Optimize isNodeInFailedList using slices.ContainsFunc
 func (r *TalosPlanReconciler) isNodeInFailedList(nodeName string, failedNodes []upgradev1alpha1.NodeUpgradeStatus) bool {
-	for _, node := range failedNodes {
-		if node.NodeName == nodeName {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(failedNodes, func(node upgradev1alpha1.NodeUpgradeStatus) bool {
+		return node.NodeName == nodeName
+	})
 }
 
 // SetupWithManager sets up the controller with the Manager.
