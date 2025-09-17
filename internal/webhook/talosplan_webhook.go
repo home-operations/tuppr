@@ -3,6 +3,7 @@ package webhook
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -130,14 +131,7 @@ func (v *TalosPlanValidator) validateTalosSpec(talos *upgradev1alpha1.TalosPlan)
 	// Validate reboot mode if provided
 	if talos.Spec.RebootMode != "" {
 		validModes := []string{"default", "powercycle"}
-		isValid := false
-		for _, mode := range validModes {
-			if talos.Spec.RebootMode == mode {
-				isValid = true
-				break
-			}
-		}
-		if !isValid {
+		if !slices.Contains(validModes, talos.Spec.RebootMode) {
 			return fmt.Errorf("spec.rebootMode '%s' is invalid. Valid values are: %v", talos.Spec.RebootMode, validModes)
 		}
 	}
