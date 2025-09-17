@@ -847,7 +847,6 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 		"upgrade",
 		"--nodes", targetNodeIP,
 		"--image", targetImage,
-		"--preserve", "true",
 		"--debug",
 	}
 
