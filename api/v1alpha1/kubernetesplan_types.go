@@ -37,13 +37,6 @@ type KubernetesPlanSpec struct {
 	// +kubebuilder:validation:Pattern=`^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$`
 	// +optional
 	Timeout string `json:"timeout,omitempty"`
-
-	// MaxRetries specifies the maximum number of retries for failed upgrades
-	// +kubebuilder:default=3
-	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=10
-	// +optional
-	MaxRetries int `json:"maxRetries,omitempty"`
 }
 
 // KubernetesPlanStatus defines the observed state of KubernetesPlan

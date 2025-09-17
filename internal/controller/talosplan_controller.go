@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"net"
 	"slices"
 	"strings"
 	"time"
@@ -15,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -32,11 +32,13 @@ import (
 )
 
 const (
-	TalosPlanFinalizer  = "upgrade.home-operations.com/talos-finalizer"
-	SchematicAnnotation = "extensions.talos.dev/schematic"
-	TalosPort           = "50000"
-	DefaultTimeout      = 30 * time.Minute
-	DefaultMaxRetries   = 3
+	TalosPlanFinalizer             = "upgrade.home-operations.com/talos-finalizer"
+	SchematicAnnotation            = "extensions.talos.dev/schematic"
+	TalosPort                      = "50000"
+	DefaultTimeout                 = 30 * time.Minute
+	DefaultBackoffLimit            = 3    // 3 retries
+	DefaultActiveDeadlineSeconds   = 1800 // 30 minutes
+	DefaultTTLSecondsAfterFinished = 900  // 15 minutes
 )
 
 // TalosPlanReconciler reconciles a TalosPlan object
@@ -109,6 +111,20 @@ func (r *TalosPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		logger.V(1).Info("Already completed, requeuing for periodic check")
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+	}
+
+	// If upgrade is needed but we're in Completed/Failed phase, reset to start new upgrade
+	if upgradeNeeded && (talosPlan.Status.Phase == PhaseCompleted || talosPlan.Status.Phase == PhaseFailed) {
+		logger.Info("Upgrade needed but plan is completed/failed, resetting to start new upgrade")
+		talosPlan.Status.Phase = PhasePending
+		talosPlan.Status.CurrentNode = ""
+		talosPlan.Status.Message = "Starting new upgrade"
+		talosPlan.Status.LastUpdated = metav1.Now()
+		talosPlan.Status.ObservedGeneration = talosPlan.Generation
+		// Clear completed/failed nodes to start fresh
+		talosPlan.Status.CompletedNodes = []string{}
+		talosPlan.Status.FailedNodes = []upgradev1alpha1.NodeUpgradeStatus{}
+		return ctrl.Result{}, r.Status().Update(ctx, &talosPlan)
 	}
 
 	// Initialize status if needed
@@ -343,9 +359,8 @@ func (r *TalosPlanReconciler) getTalosClientForNode(ctx context.Context, namespa
 		return nil, fmt.Errorf("failed to parse talosconfig: %w", err)
 	}
 
-	endpoint := net.JoinHostPort(nodeIP, TalosPort)
-	logger.Info("Setting Talos endpoint", "originalEndpoints", config.Contexts[config.Context].Endpoints, "newEndpoint", endpoint)
-	config.Contexts[config.Context].Endpoints = []string{endpoint}
+	logger.Info("Setting Talos endpoint", "originalEndpoints", config.Contexts[config.Context].Endpoints, "newEndpoint", nodeIP)
+	config.Contexts[config.Context].Endpoints = []string{nodeIP}
 
 	// Add timeout context for client creation
 	clientCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -452,8 +467,8 @@ func (r *TalosPlanReconciler) getNodeInternalIP(node *corev1.Node) (string, erro
 	logger := log.FromContext(context.Background())
 	logger.V(1).Info("Getting internal IP for node", "node", node.Name)
 
-	for _, addr := range node.Status.Addresses {
-		logger.V(1).Info("Node address", "node", node.Name, "type", addr.Type, "address", addr.Address)
+	for i, addr := range node.Status.Addresses {
+		logger.V(1).Info("Node address", "node", node.Name, "index", i, "type", addr.Type, "address", addr.Address)
 		if addr.Type == corev1.NodeInternalIP {
 			logger.V(1).Info("Found internal IP", "node", node.Name, "ip", addr.Address)
 			return addr.Address, nil
@@ -534,24 +549,19 @@ func (r *TalosPlanReconciler) handlePendingPhase(ctx context.Context, talosPlan 
 	logger := log.FromContext(ctx)
 	logger.Info("Handling pending phase", "talosPlan", talosPlan.Name)
 
-	// Get nodes that need upgrade
+	// **ATOMIC OPERATION: Update status first as a "lock"**
+	// Only proceed if we successfully claim a node
 	nodes, err := r.getTargetNodes(ctx, talosPlan)
 	if err != nil {
 		logger.Error(err, "Failed to get target nodes")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Evaluating nodes for upgrade", "totalNodes", len(nodes))
-
 	targetImage := fmt.Sprintf("%s:%s", talosPlan.Spec.Image.Repository, talosPlan.Spec.Image.Tag)
 
-	// Find first node that needs upgrade and isn't completed or failed
+	// Find first node that needs upgrade
 	var targetNode *corev1.Node
 	for _, node := range nodes {
-		logger.Info("Evaluating node", "node", node.Name,
-			"inCompleted", r.isNodeInList(node.Name, talosPlan.Status.CompletedNodes),
-			"inFailed", r.isNodeInFailedList(node.Name, talosPlan.Status.FailedNodes))
-
 		needsUpgrade, err := r.nodeNeedsUpgrade(ctx, talosPlan, &node, targetImage)
 		if err != nil {
 			logger.Error(err, "Failed to check if node needs upgrade", "node", node.Name)
@@ -562,13 +572,11 @@ func (r *TalosPlanReconciler) handlePendingPhase(ctx context.Context, talosPlan 
 			!r.isNodeInList(node.Name, talosPlan.Status.CompletedNodes) &&
 			!r.isNodeInFailedList(node.Name, talosPlan.Status.FailedNodes) {
 			targetNode = &node
-			logger.Info("Selected node for upgrade", "node", node.Name)
 			break
 		}
 	}
 
 	if targetNode == nil {
-		// All nodes are upgraded
 		logger.Info("All nodes are upgraded, marking plan as completed")
 		talosPlan.Status.Phase = PhaseCompleted
 		talosPlan.Status.Message = "All nodes successfully upgraded"
@@ -577,21 +585,33 @@ func (r *TalosPlanReconciler) handlePendingPhase(ctx context.Context, talosPlan 
 		return ctrl.Result{}, r.Status().Update(ctx, talosPlan)
 	}
 
-	// Create upgrade job for the target node
-	logger.Info("Creating upgrade job", "targetNode", targetNode.Name)
-	job, err := r.createUpgradeJob(ctx, talosPlan, targetNode.Name)
-	if err != nil {
-		logger.Error(err, "Failed to create upgrade job", "node", targetNode.Name)
+	talosPlan.Status.Phase = PhaseInProgress
+	talosPlan.Status.CurrentNode = targetNode.Name
+	talosPlan.Status.Message = fmt.Sprintf("Claiming node %s for upgrade", targetNode.Name)
+	talosPlan.Status.LastUpdated = metav1.Now()
+
+	if err := r.Status().Update(ctx, talosPlan); err != nil {
+		logger.Error(err, "Failed to claim node", "node", targetNode.Name)
 		return ctrl.Result{}, err
 	}
 
-	// Update status
-	talosPlan.Status.Phase = PhaseInProgress
-	talosPlan.Status.CurrentNode = targetNode.Name
+	logger.Info("Creating upgrade job for claimed node", "targetNode", targetNode.Name)
+	job, err := r.createUpgradeJob(ctx, talosPlan, targetNode.Name)
+	if err != nil {
+		logger.Error(err, "Failed to create upgrade job", "node", targetNode.Name)
+		// Reset status on failure
+		talosPlan.Status.Phase = PhasePending
+		talosPlan.Status.CurrentNode = ""
+		talosPlan.Status.Message = fmt.Sprintf("Failed to create job for node %s", targetNode.Name)
+		r.Status().Update(ctx, talosPlan)
+		return ctrl.Result{}, err
+	}
+
+	// Update message to reflect job creation
 	talosPlan.Status.Message = fmt.Sprintf("Upgrading node %s", targetNode.Name)
 	talosPlan.Status.LastUpdated = metav1.Now()
 
-	logger.Info("Created upgrade job", "job", job.Name, "node", targetNode.Name)
+	logger.Info("Successfully created upgrade job", "job", job.Name, "node", targetNode.Name)
 	return ctrl.Result{RequeueAfter: time.Second * 30}, r.Status().Update(ctx, talosPlan)
 }
 
@@ -629,10 +649,9 @@ func (r *TalosPlanReconciler) handleInProgressPhase(ctx context.Context, talosPl
 		"failed", job.Status.Failed,
 		"active", job.Status.Active)
 
-	// Check job conditions
-	if job.Status.Succeeded > 0 {
+	switch {
+	case job.Status.Succeeded > 0:
 		logger.Info("Job succeeded, verifying node upgrade", "job", jobName, "node", talosPlan.Status.CurrentNode)
-		// Job succeeded, verify node upgrade using Talos SDK
 		if r.verifyNodeUpgrade(ctx, talosPlan, talosPlan.Status.CurrentNode) {
 			logger.Info("Node upgrade verified successfully", "node", talosPlan.Status.CurrentNode)
 			return r.markNodeCompleted(ctx, talosPlan, talosPlan.Status.CurrentNode)
@@ -640,12 +659,9 @@ func (r *TalosPlanReconciler) handleInProgressPhase(ctx context.Context, talosPl
 			logger.Error(fmt.Errorf("verification failed"), "Node upgrade verification failed", "node", talosPlan.Status.CurrentNode)
 			return r.markNodeFailed(ctx, talosPlan, talosPlan.Status.CurrentNode, "Node upgrade verification failed")
 		}
-	}
 
-	// Check if job failed after all retries
-	if job.Status.Failed > 0 {
-		// Get the backoffLimit to check if we've exhausted retries
-		backoffLimit := int32(3) // default
+	case job.Status.Failed > 0:
+		backoffLimit := int32(DefaultBackoffLimit)
 		if job.Spec.BackoffLimit != nil {
 			backoffLimit = *job.Spec.BackoffLimit
 		}
@@ -667,11 +683,7 @@ func (r *TalosPlanReconciler) handleInProgressPhase(ctx context.Context, talosPl
 	}
 
 	// Check for timeout
-	timeout, _ := time.ParseDuration(talosPlan.Spec.Timeout)
-	if timeout == 0 {
-		timeout = 30 * time.Minute
-	}
-
+	timeout := r.getTimeout(talosPlan.Spec.Timeout)
 	jobAge := time.Since(job.CreationTimestamp.Time)
 	logger.V(1).Info("Job timing", "job", jobName, "age", jobAge, "timeout", timeout)
 
@@ -772,21 +784,10 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 		"talosctlImage", talosctlImage,
 		"targetImage", targetImage)
 
-	timeout := r.getTimeout(talosPlan.Spec.Timeout)
-	ttlSeconds := int32(timeout.Seconds())
-
-	// Use better default handling
-	maxRetries := max(talosPlan.Spec.MaxRetries, DefaultMaxRetries)
-	if talosPlan.Spec.MaxRetries == 0 {
-		maxRetries = DefaultMaxRetries
-	}
-	backoffLimit := int32(maxRetries)
-
-	nodeEndpoint := net.JoinHostPort(targetNodeIP, TalosPort)
+	// args := []string{"get", "--nodes", targetNodeIP, "links"} // TESTING
 
 	// Build args slice more efficiently
-	args := make([]string, 0, 8) // Pre-allocate with estimated capacity
-	args = append(args, "upgrade", "--nodes", nodeEndpoint, "--image", targetImage, "--debug")
+	args := []string{"upgrade", "--nodes", targetNodeIP, "--image", targetImage, "--debug"}
 
 	if talosPlan.Spec.Timeout != "" {
 		args = append(args, "--timeout", talosPlan.Spec.Timeout)
@@ -796,12 +797,11 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 		args = append(args, "--force")
 	}
 
-	// Simplify reboot mode handling
 	if rebootMode := talosPlan.Spec.RebootMode; rebootMode == "powercycle" {
 		args = append(args, "--reboot-mode", "powercycle")
 	}
 
-	logger.Info("Command args", "args", args, "backoffLimit", backoffLimit)
+	logger.Info("Command args", "args", args)
 
 	// Create labels map more efficiently
 	labels := map[string]string{
@@ -818,14 +818,22 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 			Labels:    labels,
 		},
 		Spec: batchv1.JobSpec{
-			BackoffLimit:            &backoffLimit,
-			TTLSecondsAfterFinished: &ttlSeconds,
+			BackoffLimit:            ptr.To(int32(DefaultBackoffLimit)),
+			Completions:             ptr.To(int32(1)),
+			TTLSecondsAfterFinished: ptr.To(int32(DefaultTTLSecondsAfterFinished)),
+			Parallelism:             ptr.To(int32(1)),
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: labels, // Reuse the same labels map
 				},
 				Spec: corev1.PodSpec{
 					RestartPolicy: corev1.RestartPolicyNever,
+					SecurityContext: &corev1.PodSecurityContext{
+						RunAsNonRoot: ptr.To(true),
+						RunAsUser:    ptr.To(int64(65534)),
+						RunAsGroup:   ptr.To(int64(65534)),
+						FSGroup:      ptr.To(int64(65534)),
+					},
 					Affinity: &corev1.Affinity{
 						NodeAffinity: &corev1.NodeAffinity{
 							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
@@ -845,9 +853,17 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 					},
 					Containers: []corev1.Container{
 						{
-							Name:  "talosctl",
-							Image: talosctlImage,
-							Args:  args,
+							Name:            "talosctl",
+							Image:           talosctlImage,
+							ImagePullPolicy: corev1.PullIfNotPresent,
+							Args:            args,
+							SecurityContext: &corev1.SecurityContext{
+								AllowPrivilegeEscalation: ptr.To(false),
+								ReadOnlyRootFilesystem:   ptr.To(true),
+								Capabilities: &corev1.Capabilities{
+									Drop: []corev1.Capability{"ALL"},
+								},
+							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "talos",
@@ -884,7 +900,7 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 		return nil, err
 	}
 
-	logger.Info("Successfully created upgrade job", "job", jobName, "targetNode", nodeName, "maxRetries", backoffLimit)
+	logger.Info("Successfully created upgrade job", "job", jobName, "targetNode", nodeName)
 	return job, nil
 }
 

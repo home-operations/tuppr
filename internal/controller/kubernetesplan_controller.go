@@ -553,12 +553,7 @@ func (r *KubernetesPlanReconciler) markNodeFailed(ctx context.Context, kubernete
 		nodeStatus.LastError = reason
 	}
 
-	maxRetries := kubernetesPlan.Spec.MaxRetries
-	if maxRetries == 0 {
-		maxRetries = 3
-	}
-
-	if nodeStatus.Retries >= maxRetries {
+	if nodeStatus.Retries >= DefaultBackoffLimit {
 		kubernetesPlan.Status.Phase = PhaseFailed
 		kubernetesPlan.Status.CurrentNode = ""
 		kubernetesPlan.Status.Message = fmt.Sprintf("Kubernetes upgrade failed on node %s after %d retries: %s", nodeName, nodeStatus.Retries, reason)
@@ -566,7 +561,7 @@ func (r *KubernetesPlanReconciler) markNodeFailed(ctx context.Context, kubernete
 	} else {
 		kubernetesPlan.Status.Phase = PhasePending
 		kubernetesPlan.Status.CurrentNode = ""
-		kubernetesPlan.Status.Message = fmt.Sprintf("Kubernetes upgrade failed on node %s (retry %d/%d): %s", nodeName, nodeStatus.Retries, maxRetries, reason)
+		kubernetesPlan.Status.Message = fmt.Sprintf("Kubernetes upgrade failed on node %s (retry %d/%d): %s", nodeName, nodeStatus.Retries, DefaultBackoffLimit, reason)
 		logger.Info("Kubernetes upgrade failed, will retry", "node", nodeName, "retries", nodeStatus.Retries)
 	}
 

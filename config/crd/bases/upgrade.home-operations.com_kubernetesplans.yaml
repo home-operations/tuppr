@@ -73,13 +73,6 @@ spec:
               - The secret must have a key "talosconfig" with valid Talos configuration data
               - At least one control plane node must be accessible via the provided talosconfig
             properties:
-              maxRetries:
-                default: 3
-                description: MaxRetries specifies the maximum number of retries for
-                  failed upgrades
-                maximum: 10
-                minimum: 0
-                type: integer
               nodeSelector:
                 additionalProperties:
                   type: string
