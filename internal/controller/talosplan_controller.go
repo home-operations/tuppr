@@ -813,14 +813,6 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 	logger := log.FromContext(ctx)
 	logger.Info("Creating upgrade job", "node", nodeName)
 
-	// Find a node different from the target node to run the job
-	executorNode, err := r.findExecutorNode(ctx, talosPlan, nodeName)
-	if err != nil {
-		logger.Error(err, "Failed to find executor node", "targetNode", nodeName)
-		return nil, fmt.Errorf("failed to find executor node: %w", err)
-	}
-	logger.Info("Selected executor node", "executorNode", executorNode, "targetNode", nodeName)
-
 	// Get target node IP for the talosctl command
 	targetNode := &corev1.Node{}
 	if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, targetNode); err != nil {
@@ -850,12 +842,12 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 	}
 	ttlSeconds := int32(timeout.Seconds())
 
-	// Build talosctl upgrade command args similar to your script
+	// Build talosctl upgrade command args
 	args := []string{
 		"upgrade",
-		"--nodes", targetNodeIP, // Use IP instead of hostname
+		"--nodes", targetNodeIP,
 		"--image", targetImage,
-		"--preserve", "true", // Always preserve data
+		"--preserve", "true",
 		"--debug",
 	}
 
@@ -892,10 +884,33 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 		Spec: batchv1.JobSpec{
 			TTLSecondsAfterFinished: &ttlSeconds,
 			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app.kubernetes.io/name":       "talos-upgrade",
+						"app.kubernetes.io/instance":   talosPlan.Name,
+						"app.kubernetes.io/managed-by": "talup",
+						"talup.io/target-node":         nodeName,
+					},
+				},
 				Spec: corev1.PodSpec{
 					RestartPolicy: corev1.RestartPolicyNever,
-					NodeSelector: map[string]string{
-						"kubernetes.io/hostname": executorNode,
+					// Use anti-affinity to avoid scheduling on the target node
+					Affinity: &corev1.Affinity{
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{
+												Key:      "kubernetes.io/hostname",
+												Operator: corev1.NodeSelectorOpNotIn,
+												Values:   []string{nodeName},
+											},
+										},
+									},
+								},
+							},
+						},
 					},
 					Containers: []corev1.Container{
 						{
@@ -938,44 +953,8 @@ func (r *TalosPlanReconciler) createUpgradeJob(ctx context.Context, talosPlan *u
 		return nil, err
 	}
 
-	logger.Info("Successfully created upgrade job", "job", jobName, "executorNode", executorNode, "targetNode", nodeName)
+	logger.Info("Successfully created upgrade job", "job", jobName, "targetNode", nodeName)
 	return job, nil
-}
-
-func (r *TalosPlanReconciler) findExecutorNode(ctx context.Context, talosPlan *upgradev1alpha1.TalosPlan, targetNode string) (string, error) {
-	logger := log.FromContext(ctx)
-	logger.V(1).Info("Finding executor node", "targetNode", targetNode)
-
-	nodes, err := r.getTargetNodes(ctx, talosPlan)
-	if err != nil {
-		logger.Error(err, "Failed to get target nodes for executor selection")
-		return "", err
-	}
-
-	logger.V(1).Info("Evaluating nodes for executor role", "totalNodes", len(nodes))
-
-	// Find a node that's not the target node and is ready
-	for _, node := range nodes {
-		isReady := r.isNodeReady(&node)
-		logger.V(1).Info("Evaluating node", "node", node.Name, "isTarget", node.Name == targetNode, "isReady", isReady)
-
-		if node.Name != targetNode && isReady {
-			logger.Info("Selected executor node", "executorNode", node.Name, "targetNode", targetNode)
-			return node.Name, nil
-		}
-	}
-
-	logger.Error(fmt.Errorf("no suitable executor found"), "No suitable executor node found", "targetNode", targetNode)
-	return "", fmt.Errorf("no suitable executor node found")
-}
-
-func (r *TalosPlanReconciler) isNodeReady(node *corev1.Node) bool {
-	for _, condition := range node.Status.Conditions {
-		if condition.Type == corev1.NodeReady {
-			return condition.Status == corev1.ConditionTrue
-		}
-	}
-	return false
 }
 
 func (r *TalosPlanReconciler) getTargetNodes(ctx context.Context, talosPlan *upgradev1alpha1.TalosPlan) ([]corev1.Node, error) {
