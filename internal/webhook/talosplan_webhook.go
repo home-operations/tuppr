@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -21,8 +20,7 @@ import (
 )
 
 const (
-	TalosConfigSecretName = "talup"
-	TalosConfigSecretKey  = "talosconfig"
+	TalosConfigSecretKey = "talosconfig"
 )
 
 // log is for logging in this package.
@@ -30,7 +28,8 @@ var taloslog = logf.Log.WithName("talos-resource")
 
 // TalosPlanValidator validates Talos resources
 type TalosPlanValidator struct {
-	Client client.Client
+	Client            client.Client
+	TalosConfigSecret string
 }
 
 //+kubebuilder:webhook:path=/validate-upgrade-home-operations-com-v1alpha1-talos,mutating=false,failurePolicy=fail,sideEffects=None,groups=upgrade.home-operations.com,resources=taloses,verbs=create;update,versions=v1alpha1,name=vtalos.kb.io,admissionReviewVersions=v1
@@ -40,7 +39,7 @@ var _ webhook.CustomValidator = &TalosPlanValidator{}
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type
 func (v *TalosPlanValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	talos := obj.(*upgradev1alpha1.TalosPlan)
-	taloslog.Info("validate create", "name", talos.Name)
+	taloslog.Info("validate create", "name", talos.Name, "talosConfigSecret", v.TalosConfigSecret)
 
 	return v.validateTalos(ctx, talos)
 }
@@ -48,7 +47,7 @@ func (v *TalosPlanValidator) ValidateCreate(ctx context.Context, obj runtime.Obj
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type
 func (v *TalosPlanValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
 	talos := newObj.(*upgradev1alpha1.TalosPlan)
-	taloslog.Info("validate update", "name", talos.Name)
+	taloslog.Info("validate update", "name", talos.Name, "talosConfigSecret", v.TalosConfigSecret)
 
 	return v.validateTalos(ctx, talos)
 }
@@ -62,23 +61,28 @@ func (v *TalosPlanValidator) ValidateDelete(ctx context.Context, obj runtime.Obj
 func (v *TalosPlanValidator) validateTalos(ctx context.Context, talos *upgradev1alpha1.TalosPlan) (admission.Warnings, error) {
 	var warnings admission.Warnings
 
+	taloslog.Info("validating talos plan",
+		"name", talos.Name,
+		"namespace", talos.Namespace,
+		"secretName", v.TalosConfigSecret)
+
 	// Validate that the Talos config secret exists
 	secret := &corev1.Secret{}
 	err := v.Client.Get(ctx, types.NamespacedName{
-		Name:      TalosConfigSecretName,
+		Name:      v.TalosConfigSecret,
 		Namespace: talos.Namespace,
 	}, secret)
 
 	if err != nil {
 		return warnings, fmt.Errorf("talosconfig secret '%s' not found in namespace '%s'. Please create this secret with your Talos configuration before creating TalosPlan resources: %w",
-			TalosConfigSecretName, talos.Namespace, err)
+			v.TalosConfigSecret, talos.Namespace, err)
 	}
 
 	// Validate that the secret has the required key
-	configData, exists := secret.Data[TalosConfigSecretKey]
+	configData, exists := secret.Data["config"]
 	if !exists {
 		return warnings, fmt.Errorf("talosconfig secret '%s' missing required key '%s'. The secret must contain your talosconfig data under this key",
-			TalosConfigSecretName, TalosConfigSecretKey)
+			v.TalosConfigSecret, "config")
 	}
 
 	// Add warning if secret data is empty
@@ -90,7 +94,7 @@ func (v *TalosPlanValidator) validateTalos(ctx context.Context, talos *upgradev1
 	_, err = talosclientconfig.FromBytes(configData)
 	if err != nil {
 		return warnings, fmt.Errorf("talosconfig in secret '%s' is invalid and cannot be parsed: %w. Please ensure the secret contains valid Talos configuration data",
-			TalosConfigSecretName, err)
+			v.TalosConfigSecret, err)
 	}
 
 	// Validate spec fields
@@ -98,6 +102,7 @@ func (v *TalosPlanValidator) validateTalos(ctx context.Context, talos *upgradev1
 		return warnings, fmt.Errorf("spec validation failed: %w", err)
 	}
 
+	taloslog.Info("talos plan validation successful", "name", talos.Name)
 	return warnings, nil
 }
 
@@ -111,34 +116,12 @@ func (v *TalosPlanValidator) validateTalosSpec(talos *upgradev1alpha1.TalosPlan)
 		return fmt.Errorf("spec.image.tag cannot be empty")
 	}
 
-	// Validate talosctl image
-	if talos.Spec.Talosctl.Image.Repository == "" {
-		return fmt.Errorf("spec.talosctl.image.repository cannot be empty")
-	}
-
-	if talos.Spec.Talosctl.Image.Tag == "" {
-		return fmt.Errorf("spec.talosctl.image.tag cannot be empty")
-	}
-
-	// Validate timeout if provided
-	if talos.Spec.Timeout != "" {
-		// Try to parse the timeout
-		if _, err := time.ParseDuration(talos.Spec.Timeout); err != nil {
-			return fmt.Errorf("spec.timeout '%s' is not a valid duration: %w", talos.Spec.Timeout, err)
-		}
-	}
-
 	// Validate reboot mode if provided
 	if talos.Spec.RebootMode != "" {
 		validModes := []string{"default", "powercycle"}
 		if !slices.Contains(validModes, talos.Spec.RebootMode) {
 			return fmt.Errorf("spec.rebootMode '%s' is invalid. Valid values are: %v", talos.Spec.RebootMode, validModes)
 		}
-	}
-
-	// Validate maxRetries
-	if talos.Spec.MaxRetries < 0 {
-		return fmt.Errorf("spec.maxRetries cannot be negative")
 	}
 
 	return nil

@@ -10,9 +10,9 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-upgrade-home-operations-com-v1alpha1-kubernetesplan
+      path: /validate-upgrade-home-operations-com-v1alpha1-kubernetes
   failurePolicy: Fail
-  name: vkubernetesplan.kb.io
+  name: vkubernetes.kb.io
   rules:
   - apiGroups:
     - upgrade.home-operations.com
@@ -22,7 +22,7 @@ webhooks:
     - CREATE
     - UPDATE
     resources:
-    - kubernetesplans
+    - kuberneteses
   sideEffects: None
 - admissionReviewVersions:
   - v1

@@ -5,19 +5,9 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - ""
+  - upgrade.home-operations.com
   resources:
-  - nodes
-  - pods
-  - secrets
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - batch
-  resources:
-  - jobs
+  - kubernetes
   verbs:
   - create
   - delete
@@ -29,28 +19,13 @@ rules:
 - apiGroups:
   - upgrade.home-operations.com
   resources:
-  - kubernetesplans
-  - talosupgrades
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - upgrade.home-operations.com
-  resources:
-  - kubernetesplans/finalizers
-  - talosupgrades/finalizers
+  - kubernetes/finalizers
   verbs:
   - update
 - apiGroups:
   - upgrade.home-operations.com
   resources:
-  - kubernetesplans/status
-  - talosupgrades/status
+  - kubernetes/status
   verbs:
   - get
   - patch

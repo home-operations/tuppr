@@ -48,7 +48,10 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var talosctlImage string
+	var talosConfigSecret string
 	var tlsOpts []func(*tls.Config)
+
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -66,6 +69,11 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&talosctlImage, "talosctl-image", "ghcr.io/siderolabs/talosctl:latest",
+		"The talosctl container image to use for upgrade jobs")
+	flag.StringVar(&talosConfigSecret, "talos-config-secret", "talup",
+		"The name of the secret containing talos configuration")
+
 	opts := zap.Options{
 		Development: true,
 	}
@@ -73,6 +81,10 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	setupLog.Info("Starting talup controller manager",
+		"talosctl-image", talosctlImage,
+		"talos-config-secret", talosConfigSecret)
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -187,16 +199,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	setupLog.Info("Setting up controllers")
+
 	if err := (&controller.KubernetesPlanReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		TalosctlImage:     talosctlImage,
+		TalosConfigSecret: talosConfigSecret,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KubernetesPlan")
 		os.Exit(1)
 	}
+
 	if err := (&controller.TalosPlanReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		TalosctlImage:     talosctlImage,
+		TalosConfigSecret: talosConfigSecret,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TalosPlan")
 		os.Exit(1)

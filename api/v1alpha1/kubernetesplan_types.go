@@ -17,10 +17,6 @@ type KubernetesPlanSpec struct {
 	// +kubebuilder:validation:Pattern=`^[0-9]+\.[0-9]+\.[0-9]+$`
 	Version string `json:"version"`
 
-	// Talosctl specifies the talosctl image configuration
-	// +kubebuilder:default={"image":{"repository":"ghcr.io/siderolabs/talosctl","tag":"latest"}}
-	Talosctl TalosctlSpec `json:"talosctl"`
-
 	// PrePullImages determines whether to pre-pull images before upgrade
 	// +kubebuilder:default=true
 	// +optional
@@ -30,13 +26,6 @@ type KubernetesPlanSpec struct {
 	// If not specified, all control plane nodes will be targeted
 	// +optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
-
-	// Timeout specifies the timeout for the upgrade operation
-	// Must be a valid duration string (e.g., "30m", "1h")
-	// +kubebuilder:default="30m"
-	// +kubebuilder:validation:Pattern=`^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$`
-	// +optional
-	Timeout string `json:"timeout,omitempty"`
 }
 
 // KubernetesPlanStatus defines the observed state of KubernetesPlan

@@ -69,11 +69,6 @@ spec:
                 - repository
                 - tag
                 type: object
-              maxRetries:
-                default: 3
-                description: MaxRetries maximum number of retries before marking as
-                  failed
-                type: integer
               nodeSelector:
                 additionalProperties:
                   type: string
@@ -86,39 +81,8 @@ spec:
                 - default
                 - powercycle
                 type: string
-              talosctl:
-                default:
-                  image:
-                    repository: ghcr.io/siderolabs/talosctl
-                    tag: latest
-                description: Talosctl specifies the talosctl image configuration
-                properties:
-                  image:
-                    default:
-                      repository: ghcr.io/siderolabs/talosctl
-                      tag: latest
-                    description: Image specifies the talosctl container image
-                    properties:
-                      repository:
-                        description: Repository is the container image repository
-                        type: string
-                      tag:
-                        description: Tag is the container image tag
-                        type: string
-                    required:
-                    - repository
-                    - tag
-                    type: object
-                required:
-                - image
-                type: object
-              timeout:
-                default: 30m
-                description: Timeout for the upgrade operation
-                type: string
             required:
             - image
-            - talosctl
             type: object
           status:
             description: TalosPlanStatus defines the observed state of TalosPlan

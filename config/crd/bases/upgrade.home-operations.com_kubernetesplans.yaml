@@ -85,39 +85,6 @@ spec:
                 description: PrePullImages determines whether to pre-pull images before
                   upgrade
                 type: boolean
-              talosctl:
-                default:
-                  image:
-                    repository: ghcr.io/siderolabs/talosctl
-                    tag: latest
-                description: Talosctl specifies the talosctl image configuration
-                properties:
-                  image:
-                    default:
-                      repository: ghcr.io/siderolabs/talosctl
-                      tag: latest
-                    description: Image specifies the talosctl container image
-                    properties:
-                      repository:
-                        description: Repository is the container image repository
-                        type: string
-                      tag:
-                        description: Tag is the container image tag
-                        type: string
-                    required:
-                    - repository
-                    - tag
-                    type: object
-                required:
-                - image
-                type: object
-              timeout:
-                default: 30m
-                description: |-
-                  Timeout specifies the timeout for the upgrade operation
-                  Must be a valid duration string (e.g., "30m", "1h")
-                pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
-                type: string
               version:
                 description: |-
                   Version specifies the target Kubernetes version to upgrade to
@@ -125,7 +92,6 @@ spec:
                 pattern: ^[0-9]+\.[0-9]+\.[0-9]+$
                 type: string
             required:
-            - talosctl
             - version
             type: object
           status:
