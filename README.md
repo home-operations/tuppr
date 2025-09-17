@@ -8,6 +8,7 @@
 - [ ] Write a better README
 - [ ] Implement Metrics
 - [ ] Fix up Workflows
+- [ ] Determine best way for single node clusters to use this
 
 ## Example TalosPlan
 
