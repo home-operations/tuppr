@@ -3,8 +3,8 @@ apiVersion: v2
 name: talup
 description: A Helm chart for Talup - Talos Linux Upgrade Controller
 type: application
-version: 0.1.0
-appVersion: 0.1.0
+version: 0.0.0
+appVersion: 0.0.0
 home: https://github.com/home-operations/talup
 sources:
   - https://github.com/home-operations/talup
