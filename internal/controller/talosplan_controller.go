@@ -80,7 +80,6 @@ func (r *TalosPlanReconciler) processUpgrade(ctx context.Context, talosPlan *upg
 		"completedNodes", len(talosPlan.Status.CompletedNodes),
 		"failedNodes", len(talosPlan.Status.FailedNodes))
 
-	// FIRST: Check if we have failed nodes that should block progress
 	if len(talosPlan.Status.FailedNodes) > 0 {
 		logger.Info("Upgrade plan has failed nodes, blocking further progress",
 			"talosplan", talosPlan.Name,
@@ -93,7 +92,6 @@ func (r *TalosPlanReconciler) processUpgrade(ctx context.Context, talosPlan *upg
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
 
-	// SECOND: Check if there's any active job running for this plan
 	activeJob, activeNode, err := r.findActiveJob(ctx, talosPlan)
 	if err != nil {
 		logger.Error(err, "Failed to find active jobs", "talosplan", talosPlan.Name)
@@ -108,11 +106,9 @@ func (r *TalosPlanReconciler) processUpgrade(ctx context.Context, talosPlan *upg
 			"succeeded", activeJob.Status.Succeeded,
 			"failed", activeJob.Status.Failed)
 
-		// Monitor the active job - DO NOT CREATE NEW JOBS WHILE ONE IS ACTIVE
 		return r.handleJobStatus(ctx, talosPlan, activeNode, activeJob)
 	}
 
-	// THIRD: Only now look for next node to upgrade (no active jobs, no failed nodes)
 	nextNode, err := r.findNextNode(ctx, talosPlan)
 	if err != nil {
 		logger.Error(err, "Failed to find next node to upgrade", "talosplan", talosPlan.Name)
@@ -133,7 +129,6 @@ func (r *TalosPlanReconciler) processUpgrade(ctx context.Context, talosPlan *upg
 
 	logger.Info("Found next node to upgrade", "talosplan", talosPlan.Name, "node", nextNode)
 
-	// Create job for the next node
 	logger.Info("Creating new upgrade job", "node", nextNode)
 	if _, err := r.createJob(ctx, talosPlan, nextNode); err != nil {
 		logger.Error(err, "Failed to create upgrade job", "node", nextNode)
@@ -151,7 +146,6 @@ func (r *TalosPlanReconciler) processUpgrade(ctx context.Context, talosPlan *upg
 func (r *TalosPlanReconciler) findActiveJob(ctx context.Context, talosPlan *upgradev1alpha1.TalosPlan) (*batchv1.Job, string, error) {
 	logger := log.FromContext(ctx)
 
-	// List all jobs owned by this TalosPlan
 	jobList := &batchv1.JobList{}
 	if err := r.List(ctx, jobList,
 		client.InNamespace(talosPlan.Namespace),
@@ -295,7 +289,7 @@ func (r *TalosPlanReconciler) createJob(ctx context.Context, talosPlan *upgradev
 	if err := r.Create(ctx, job); err != nil {
 		if errors.IsAlreadyExists(err) {
 			logger.Info("Job already exists, this is expected in some cases", "job", job.Name)
-			// Return the existing job
+
 			existingJob := &batchv1.Job{}
 			if getErr := r.Get(ctx, types.NamespacedName{Name: job.Name, Namespace: job.Namespace}, existingJob); getErr != nil {
 				return nil, getErr
@@ -319,32 +313,23 @@ func (r *TalosPlanReconciler) buildJob(talosPlan *upgradev1alpha1.TalosPlan, nod
 		"talup.io/target-node":       nodeName,
 	}
 
-	// TESTING: Use dummy command instead of actual upgrade
+	talosctlImage := fmt.Sprintf("%s:%s", talosPlan.Spec.Talosctl.Repository, talosPlan.Spec.Talosctl.Tag)
+
 	args := []string{
-		"get",
+		"upgrade",
 		"--nodes", nodeIP,
-		"links",
+		"--image", fmt.Sprintf("%s:%s", talosPlan.Spec.Image.Repository, talosPlan.Spec.Image.Tag),
+		"--timeout=15m",
 	}
 
-	/* UNCOMMENT FOR REAL UPGRADES:
-	   args := []string{
-	       "upgrade",
-	       "--nodes", nodeIP,
-	       "--image", fmt.Sprintf("%s:%s", talosPlan.Spec.Image.Repository, talosPlan.Spec.Image.Tag),
-	       "--timeout=10m",
-	   }
-
-	   if talosPlan.Spec.Force {
-	       args = append(args, "--force")
-	       logger.Info("Force upgrade enabled", "node", nodeName)
-	   }
-	   if talosPlan.Spec.RebootMode == "powercycle" {
-	       args = append(args, "--reboot-mode", "powercycle")
-	       logger.Info("Powercycle reboot mode enabled", "node", nodeName)
-	   }
-	*/
-
-	talosctlImage := fmt.Sprintf("%s:%s", talosPlan.Spec.Talosctl.Repository, talosPlan.Spec.Talosctl.Tag)
+	if talosPlan.Spec.Force {
+		args = append(args, "--force")
+		logger.Info("Force upgrade enabled", "node", nodeName)
+	}
+	if talosPlan.Spec.RebootMode == "powercycle" {
+		args = append(args, "--reboot-mode", "powercycle")
+		logger.Info("Powercycle reboot mode enabled", "node", nodeName)
+	}
 
 	var pullPolicy corev1.PullPolicy
 	switch talosPlan.Spec.Talosctl.PullPolicy {
@@ -373,7 +358,7 @@ func (r *TalosPlanReconciler) buildJob(talosPlan *upgradev1alpha1.TalosPlan, nod
 			Completions:             ptr.To(int32(1)),
 			TTLSecondsAfterFinished: ptr.To(int32(900)), // 15 minutes
 			Parallelism:             ptr.To(int32(1)),
-			ActiveDeadlineSeconds:   ptr.To(int64(3600)), // 1 hour
+			ActiveDeadlineSeconds:   ptr.To(int64(4500)), // 1 hour 15 minutes
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
 					RestartPolicy: corev1.RestartPolicyNever,
