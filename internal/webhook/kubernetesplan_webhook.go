@@ -134,11 +134,6 @@ func (v *KubernetesPlanValidator) validateKubernetesPlanSpec(kubernetesPlan *upg
 		}
 	}
 
-	// Validate maxRetries
-	if kubernetesPlan.Spec.MaxRetries < 0 {
-		return fmt.Errorf("spec.maxRetries cannot be negative")
-	}
-
 	return nil
 }
 
