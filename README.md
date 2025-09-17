@@ -26,7 +26,7 @@ spec:
   talosctl:
     image:
       repository: ghcr.io/siderolabs/talosctl
-      tag: latest
+      tag: v1.11.1
       pullPolicy: IfNotPresent
   rebootMode: powercycle
 ```
