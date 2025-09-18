@@ -1,38 +1,79 @@
 ---
-# Default values for talup
+# Default values for talup - Talos Linux Upgrade Controller
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Number of controller replicas to run
+# Note: Only one replica will be active due to leader election
 replicaCount: 1
 
+# Container image configuration
 image:
+  # Container image repository
   repository: ghcr.io/home-operations/talup
+  # Image pull policy
+  # Options: Always, Never, IfNotPresent
   pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion
   tag: ""
 
-talosServiceAccount:
-  secretName: talup
+# Talos configuration
+talos:
+  # Talos ServiceAccount for node access
+  # This creates a Talos CRD ServiceAccount for authenticating with nodes
+  serviceAccount:
+    # Create Talos ServiceAccount for node operations
+    create: true
+    # Name of the Talos ServiceAccount (also used as the secret name for talosconfig)
+    # If empty, will use the release fullname
+    name: ""
+    # Annotations for the Talos ServiceAccount
+    annotations: {}
+    # Roles for Talos ServiceAccount - required for node operations
+    roles:
+      - "os:admin" # Required for node upgrades and operations
 
+# Image pull secrets for private registries
 imagePullSecrets: []
+# Example:
+# imagePullSecrets:
+#   - name: my-registry-secret
 
+# Override chart naming
 nameOverride: ""
 fullnameOverride: ""
 
+# Kubernetes ServiceAccount configuration
+# This is different from the Talos ServiceAccount above
 serviceAccount:
-  # Specifies whether a service account should be created
+  # Specifies whether a Kubernetes service account should be created
   create: true
   # Automatically mount a ServiceAccount's API credentials?
   automount: true
   # Annotations to add to the service account
   annotations: {}
+  # Example annotations for workload identity:
+  # annotations:
+  #   iam.gke.io/gcp-service-account: talup@project.iam.gserviceaccount.com
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
   name: ""
 
+# Pod annotations and labels
 podAnnotations: {}
+# Example:
+# podAnnotations:
+#   prometheus.io/scrape: "true"
+
 podLabels: {}
+
+# Pod security context
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 65532
   fsGroup: 65532
 
+# Container security context
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
@@ -42,11 +83,16 @@ securityContext:
   runAsNonRoot: true
   runAsUser: 65532
 
+# Service configuration
 service:
+  # Service type
   type: ClusterIP
+  # Service port for general access
   port: 8080
+  # Metrics port (deprecated - use controller.metrics.port)
   metricsPort: 8080
 
+# Resource limits and requests
 resources:
   limits:
     cpu: 500m
@@ -55,12 +101,15 @@ resources:
     cpu: 10m
     memory: 64Mi
 
+# Liveness probe configuration
 livenessProbe:
   httpGet:
     path: /healthz
     port: 8081
   initialDelaySeconds: 15
   periodSeconds: 20
+
+# Readiness probe configuration
 readinessProbe:
   httpGet:
     path: /readyz
@@ -68,53 +117,151 @@ readinessProbe:
   initialDelaySeconds: 5
   periodSeconds: 10
 
+# Horizontal Pod Autoscaler configuration
 autoscaling:
+  # Enable HPA (not recommended for controllers with leader election)
   enabled: false
+  # Annotations for the HPA resource
+  annotations: {}
+  # Minimum number of replicas
   minReplicas: 1
+  # Maximum number of replicas
   maxReplicas: 100
+  # Target CPU utilization percentage
   targetCPUUtilizationPercentage: 80
+  # Target memory utilization percentage (optional)
+  # targetMemoryUtilizationPercentage: 80
 
-# Additional volumes on the output Deployment definition.
+# Additional volumes on the deployment
 volumes: []
+# Example:
+# volumes:
+#   - name: custom-config
+#     configMap:
+#       name: my-config
 
-# Additional volumeMounts on the output Deployment definition.
+# Additional volume mounts on the container
 volumeMounts: []
-nodeSelector: {}
-tolerations: []
-affinity: {}
+# Example:
+# volumeMounts:
+#   - name: custom-config
+#     mountPath: /etc/config
 
-# Controller configuration
+# Node selector for pod assignment
+nodeSelector: {}
+# Example:
+# nodeSelector:
+#   kubernetes.io/os: linux
+
+# Tolerations for pod assignment
+tolerations: []
+# Example:
+# tolerations:
+#   - key: "node-role.kubernetes.io/control-plane"
+#     operator: "Exists"
+#     effect: "NoSchedule"
+
+# Affinity for pod assignment
+affinity: {}
+# Example:
+# affinity:
+#   nodeAffinity:
+#     requiredDuringSchedulingIgnoredDuringExecution:
+#       nodeSelectorTerms:
+#       - matchExpressions:
+#         - key: kubernetes.io/arch
+#           operator: In
+#           values:
+#           - amd64
+
+# Controller-specific configuration
 controller:
   # Leader election configuration
+  # Only one controller instance will be active at a time
   leaderElection:
+    # Enable leader election (recommended for production)
     enabled: false
+    # Leader lease duration
     leaseDuration: 60s
+    # Leader renew deadline
     renewDeadline: 40s
+    # Leader retry period
     retryPeriod: 10s
+
   # Metrics configuration
   metrics:
+    # Enable Prometheus metrics endpoint
     enabled: true
+    # Port for metrics endpoint
     port: 8080
+    # Annotations for the metrics service
+    annotations: {}
+    # Example:
+    # annotations:
+    #   prometheus.io/scrape: "true"
+    #   prometheus.io/port: "8080"
+
   # Health probe configuration
   health:
+    # Port for health probes (/healthz, /readyz)
     port: 8081
 
 # Webhook configuration
 webhook:
+  # Enable admission webhooks for validation
   enabled: true
+  # Webhook server port
   port: 9443
+  # Annotations for webhook service
+  annotations: {}
+  # Certificate management
   certManager:
+    # Use cert-manager for webhook certificates
+    # Requires cert-manager to be installed in the cluster
     enabled: true
 
 # RBAC configuration
 rbac:
+  # Create ClusterRole and ClusterRoleBinding
+  # Required for the controller to manage nodes and create jobs
   create: true
+  # Annotations for RBAC resources
+  annotations: {}
 
-# Monitoring
+# Monitoring configuration
 monitoring:
+  # Prometheus ServiceMonitor for metrics scraping
   serviceMonitor:
+    # Create ServiceMonitor resource
+    # Requires Prometheus Operator to be installed
     enabled: false
-    labels: {}
-    annotations: {}
+    # Scrape interval
     interval: 30s
+    # Scrape timeout
     scrapeTimeout: 10s
+    # Metrics path
+    path: /metrics
+    # Additional labels for ServiceMonitor
+    labels: {}
+    # Example:
+    # labels:
+    #   prometheus: kube-prometheus
+    # Annotations for ServiceMonitor
+    annotations: {}
+
+    # Advanced configuration (optional)
+    # Metric relabelings to apply to scraped metrics
+    metricRelabelings: []
+    # Example:
+    # metricRelabelings:
+    #   - sourceLabels: [__name__]
+    #     regex: 'talup_(.*)'
+    #     targetLabel: __name__
+    #     replacement: 'controller_${1}'
+
+    # Relabelings to apply before scraping
+    relabelings: []
+    # Target labels to copy from the service
+    targetLabels: []
+    # Pod target labels to copy from pods
+    podTargetLabels: []

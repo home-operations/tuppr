@@ -60,3 +60,49 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Create the name of the talos service account to use (also used as secret name)
+*/}}
+{{- define "talup.talosServiceAccountName" -}}
+{{- if and .Values.talos.serviceAccount .Values.talos.serviceAccount.name }}
+{{- .Values.talos.serviceAccount.name }}
+{{- else }}
+{{- include "talup.fullname" . }}
+{{- end }}
+{{- end }}
+
+{{/*
+Create the image name
+*/}}
+{{- define "talup.image" -}}
+{{- printf "%s:%s" .Values.image.repository (.Values.image.tag | default .Chart.AppVersion) }}
+{{- end }}
+
+{{/*
+Return the proper image pull policy
+*/}}
+{{- define "talup.imagePullPolicy" -}}
+{{- .Values.image.pullPolicy | default "IfNotPresent" }}
+{{- end }}
+
+{{/*
+Create webhook service name
+*/}}
+{{- define "talup.webhookServiceName" -}}
+{{- printf "%s-webhook-service" (include "talup.fullname" .) }}
+{{- end }}
+
+{{/*
+Create webhook certificate name
+*/}}
+{{- define "talup.webhookCertName" -}}
+{{- printf "%s-webhook-server-cert" (include "talup.fullname" .) }}
+{{- end }}
+
+{{/*
+Create metrics service name
+*/}}
+{{- define "talup.metricsServiceName" -}}
+{{- printf "%s-metrics-service" (include "talup.fullname" .) }}
+{{- end }}

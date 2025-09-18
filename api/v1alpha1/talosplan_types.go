@@ -4,6 +4,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// TalosImageSpec defines container image details
+type TalosImageSpec struct {
+	// Repository is the container image repository
+	// +kubebuilder:validation:Required
+	Repository string `json:"repository"`
+
+	// Tag is the container image tag
+	// +kubebuilder:validation:Required
+	Tag string `json:"tag"`
+}
+
 // TalosPlanSpec defines the desired state of TalosPlan
 type TalosPlanSpec struct {
 	// Image is the Talos installer image to upgrade to
