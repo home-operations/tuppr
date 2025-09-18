@@ -5,9 +5,18 @@ metadata:
   name: manager-role
 rules:
   - apiGroups:
-      - talup.home-operations.com
+      - ""
     resources:
-      - kubernetes
+      - nodes
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - batch
+    resources:
+      - jobs
     verbs:
       - create
       - delete
@@ -19,13 +28,25 @@ rules:
   - apiGroups:
       - talup.home-operations.com
     resources:
-      - kubernetes/finalizers
+      - talosupgrades
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - talup.home-operations.com
+    resources:
+      - talosupgrades/finalizers
     verbs:
       - update
   - apiGroups:
       - talup.home-operations.com
     resources:
-      - kubernetes/status
+      - talosupgrades/status
     verbs:
       - get
       - patch

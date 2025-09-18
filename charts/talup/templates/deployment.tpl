@@ -49,7 +49,7 @@ spec:
             {{- end }}
             - --metrics-bind-address=:{{ .Values.controller.metrics.port }}
             - --health-probe-bind-address=:{{ .Values.controller.health.port }}
-            - --talos-config-secret={{ include "talup.talosServiceAccountName" . }}
+            - --talosconfig-secret={{ include "talup.talosServiceAccountName" . }}
           ports:
             {{- if .Values.webhook.enabled }}
             - name: webhook-server

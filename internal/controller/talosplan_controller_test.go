@@ -24,13 +24,13 @@ var _ = Describe("Talos Controller", func() {
 			Name:      resourceName,
 			Namespace: "default", // TODO(user):Modify as needed
 		}
-		talos := &upgradev1alpha1.TalosPlan{}
+		talos := &upgradev1alpha1.TalosUpgrade{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Talos")
 			err := k8sClient.Get(ctx, typeNamespacedName, talos)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &upgradev1alpha1.TalosPlan{
+				resource := &upgradev1alpha1.TalosUpgrade{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
@@ -43,7 +43,7 @@ var _ = Describe("Talos Controller", func() {
 
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &upgradev1alpha1.TalosPlan{}
+			resource := &upgradev1alpha1.TalosUpgrade{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -52,7 +52,7 @@ var _ = Describe("Talos Controller", func() {
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			controllerReconciler := &TalosPlanReconciler{
+			controllerReconciler := &TalosUpgradeReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}

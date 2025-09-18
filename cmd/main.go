@@ -69,7 +69,7 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&talosConfigSecret, "talos-config-secret", "talup",
+	flag.StringVar(&talosConfigSecret, "talosconfig-secret", "talup",
 		"The name of the secret containing talos configuration")
 
 	opts := zap.Options{
@@ -82,7 +82,7 @@ func main() {
 
 	setupLog.Info("Starting talup controller manager",
 		"talosctl-image", talosctlImage,
-		"talos-config-secret", talosConfigSecret)
+		"talosconfig-secret", talosConfigSecret)
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -199,21 +199,12 @@ func main() {
 
 	setupLog.Info("Setting up controllers")
 
-	if err := (&controller.KubernetesPlanReconciler{
+	if err := (&controller.TalosUpgradeReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
 		TalosConfigSecret: talosConfigSecret,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "KubernetesPlan")
-		os.Exit(1)
-	}
-
-	if err := (&controller.TalosPlanReconciler{
-		Client:            mgr.GetClient(),
-		Scheme:            mgr.GetScheme(),
-		TalosConfigSecret: talosConfigSecret,
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "TalosPlan")
+		setupLog.Error(err, "unable to create controller", "controller", "TalosUpgrade")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
@@ -234,17 +225,10 @@ func main() {
 		}
 	}
 
-	if err = (&talupwebhook.TalosPlanValidator{
+	if err = (&talupwebhook.TalosUpgradeValidator{
 		Client: mgr.GetClient(),
 	}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "TalosPlan")
-		os.Exit(1)
-	}
-
-	if err = (&talupwebhook.KubernetesPlanValidator{
-		Client: mgr.GetClient(),
-	}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "KubernetesPlan")
+		setupLog.Error(err, "unable to create webhook", "webhook", "TalosUpgrade")
 		os.Exit(1)
 	}
 

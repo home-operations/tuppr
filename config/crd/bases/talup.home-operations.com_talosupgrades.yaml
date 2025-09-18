@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: talosplans.talup.home-operations.com
+  name: talosupgrades.talup.home-operations.com
 spec:
   group: talup.home-operations.com
   names:
-    kind: TalosPlan
-    listKind: TalosPlanList
-    plural: talosplans
-    singular: talosplan
+    kind: TalosUpgrade
+    listKind: TalosUpgradeList
+    plural: talosupgrades
+    singular: talosupgrade
   scope: Namespaced
   versions:
     - additionalPrinterColumns:
@@ -35,7 +35,7 @@ spec:
       name: v1alpha1
       schema:
         openAPIV3Schema:
-          description: TalosPlan is the Schema for the talosupgrades API
+          description: TalosUpgrade is the Schema for the talosupgrades API
           properties:
             apiVersion:
               description: |-
@@ -55,39 +55,8 @@ spec:
             metadata:
               type: object
             spec:
-              description: TalosPlanSpec defines the desired state of TalosPlan
+              description: TalosUpgradeSpec defines the desired state of TalosUpgrade
               properties:
-                force:
-                  default: false
-                  description: Force the upgrade (skip checks on etcd health and members)
-                  type: boolean
-                image:
-                  description: Image is the Talos installer image to upgrade to
-                  properties:
-                    repository:
-                      description: Repository is the container image repository
-                      type: string
-                    tag:
-                      description: Tag is the container image tag
-                      type: string
-                  required:
-                    - repository
-                    - tag
-                  type: object
-                nodeSelector:
-                  additionalProperties:
-                    type: string
-                  description: |-
-                    NodeSelector specifies which nodes to target for the upgrade
-                    If not specified, all nodes will be targeted
-                  type: object
-                rebootMode:
-                  default: default
-                  description: RebootMode select the reboot mode during upgrade
-                  enum:
-                    - default
-                    - powercycle
-                  type: string
                 talosctl:
                   description: Talosctl specifies the talosctl configuration for upgrade operations
                   properties:
@@ -96,12 +65,29 @@ spec:
                       properties:
                         pullPolicy:
                           default: IfNotPresent
-                          description: PullPolicy is the image pull policy
+                          description: PullPolicy describes a policy for if/when to pull a container image
                           enum:
                             - Always
                             - Never
                             - IfNotPresent
                           type: string
+                        repository:
+                          default: ghcr.io/siderolabs/talosctl
+                          description: Repository is the talosctl container image repository
+                          type: string
+                        tag:
+                          description: |-
+                            Tag is the talosctl container image tag
+                            If not specified, defaults to the osImage version from the target node
+                          type: string
+                      type: object
+                  type: object
+                target:
+                  description: Target defines the upgrade target configuration
+                  properties:
+                    image:
+                      description: Image is the Talos installer image to upgrade to
+                      properties:
                         repository:
                           description: Repository is the container image repository
                           type: string
@@ -112,12 +98,40 @@ spec:
                         - repository
                         - tag
                       type: object
+                    nodeSelector:
+                      additionalProperties:
+                        type: string
+                      description: |-
+                        NodeSelector specifies which nodes to target for the upgrade
+                        If not specified, all nodes will be targeted
+                      type: object
+                    options:
+                      description: Options configure upgrade behavior
+                      properties:
+                        debug:
+                          default: false
+                          description: Debug enables debug mode for the upgrade
+                          type: boolean
+                        force:
+                          default: false
+                          description: Force the upgrade (skip checks on etcd health and members)
+                          type: boolean
+                        rebootMode:
+                          default: default
+                          description: RebootMode select the reboot mode during upgrade
+                          enum:
+                            - default
+                            - powercycle
+                          type: string
+                      type: object
+                  required:
+                    - image
                   type: object
               required:
-                - image
+                - target
               type: object
             status:
-              description: TalosPlanStatus defines the observed state of TalosPlan
+              description: TalosUpgradeStatus defines the observed state of TalosUpgrade
               properties:
                 completedNodes:
                   description: CompletedNodes are nodes that have been successfully upgraded

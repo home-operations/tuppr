@@ -17,18 +17,7 @@ resources:
   controller: true
   domain: home-operations.com
   group: talup
-  kind: TalosPlan
-  path: github.com/home-operations/talup/api/v1alpha1
-  version: v1alpha1
-  webhooks:
-    validation: true
-- api:
-    crdVersion: v1
-    namespaced: true
-  controller: true
-  domain: home-operations.com
-  group: talup
-  kind: KubernetesPlan
+  kind: TalosUpgrade
   path: github.com/home-operations/talup/api/v1alpha1
   version: v1alpha1
   webhooks:

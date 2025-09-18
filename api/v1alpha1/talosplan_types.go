@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -15,15 +16,12 @@ type TalosImageSpec struct {
 	Tag string `json:"tag"`
 }
 
-// TalosPlanSpec defines the desired state of TalosPlan
-type TalosPlanSpec struct {
-	// Image is the Talos installer image to upgrade to
-	// +kubebuilder:validation:Required
-	Image TalosImageSpec `json:"image"`
-
-	// Talosctl specifies the talosctl configuration for upgrade operations
+// TalosTargetOptions defines upgrade options
+type TalosTargetOptions struct {
+	// Debug enables debug mode for the upgrade
+	// +kubebuilder:default=false
 	// +optional
-	Talosctl *TalosctlSpec `json:"talosctl,omitempty"`
+	Debug bool `json:"debug,omitempty"`
 
 	// Force the upgrade (skip checks on etcd health and members)
 	// +kubebuilder:default=false
@@ -35,6 +33,17 @@ type TalosPlanSpec struct {
 	// +kubebuilder:default="default"
 	// +optional
 	RebootMode string `json:"rebootMode,omitempty"`
+}
+
+// TalosTargetSpec defines the target configuration for upgrades
+type TalosTargetSpec struct {
+	// Image is the Talos installer image to upgrade to
+	// +kubebuilder:validation:Required
+	Image TalosImageSpec `json:"image"`
+
+	// Options configure upgrade behavior
+	// +optional
+	Options TalosTargetOptions `json:"options,omitempty"`
 
 	// NodeSelector specifies which nodes to target for the upgrade
 	// If not specified, all nodes will be targeted
@@ -42,8 +51,45 @@ type TalosPlanSpec struct {
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 }
 
-// TalosPlanStatus defines the observed state of TalosPlan
-type TalosPlanStatus struct {
+// TalosctlImageSpec defines talosctl container image details
+type TalosctlImageSpec struct {
+	// Repository is the talosctl container image repository
+	// +kubebuilder:default="ghcr.io/siderolabs/talosctl"
+	// +optional
+	Repository string `json:"repository,omitempty"`
+
+	// Tag is the talosctl container image tag
+	// If not specified, defaults to the osImage version from the target node
+	// +optional
+	Tag string `json:"tag,omitempty"`
+
+	// PullPolicy describes a policy for if/when to pull a container image
+	// +kubebuilder:validation:Enum=Always;Never;IfNotPresent
+	// +kubebuilder:default="IfNotPresent"
+	// +optional
+	PullPolicy corev1.PullPolicy `json:"pullPolicy,omitempty"`
+}
+
+// TalosctlSpec defines the talosctl configuration
+type TalosctlSpec struct {
+	// Image specifies the talosctl container image
+	// +optional
+	Image TalosctlImageSpec `json:"image,omitempty"`
+}
+
+// TalosUpgradeSpec defines the desired state of TalosUpgrade
+type TalosUpgradeSpec struct {
+	// Target defines the upgrade target configuration
+	// +kubebuilder:validation:Required
+	Target TalosTargetSpec `json:"target"`
+
+	// Talosctl specifies the talosctl configuration for upgrade operations
+	// +optional
+	Talosctl TalosctlSpec `json:"talosctl,omitempty"`
+}
+
+// TalosUpgradeStatus defines the observed state of TalosUpgrade
+type TalosUpgradeStatus struct {
 	// Phase represents the current phase of the upgrade
 	// +kubebuilder:validation:Enum=Pending;InProgress;Completed;Failed
 	// +optional
@@ -103,24 +149,24 @@ type NodeUpgradeStatus struct {
 //+kubebuilder:printcolumn:name="Failed",type="integer",JSONPath=".status.failedNodes",priority=1
 //+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
-// TalosPlan is the Schema for the talosupgrades API
-type TalosPlan struct {
+// TalosUpgrade is the Schema for the talosupgrades API
+type TalosUpgrade struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   TalosPlanSpec   `json:"spec,omitempty"`
-	Status TalosPlanStatus `json:"status,omitempty"`
+	Spec   TalosUpgradeSpec   `json:"spec,omitempty"`
+	Status TalosUpgradeStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// TalosPlanList contains a list of TalosPlan
-type TalosPlanList struct {
+// TalosUpgradeList contains a list of TalosUpgrade
+type TalosUpgradeList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []TalosPlan `json:"items"`
+	Items           []TalosUpgrade `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&TalosPlan{}, &TalosPlanList{})
+	SchemeBuilder.Register(&TalosUpgrade{}, &TalosUpgradeList{})
 }
