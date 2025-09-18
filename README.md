@@ -60,39 +60,42 @@ helm install talup oci://ghcr.io/home-operations/talup/charts/talup \
 
 ### 3. Initial State Check
 
-Create a TalosPlan matching your **current** cluster state:
+Create a TalosUpgrade matching your **current** cluster state:
 
 ```yaml
 apiVersion: talup.home-operations.com/v1alpha1
-kind: TalosPlan
+kind: TalosUpgrade
 metadata:
   name: cluster
   namespace: system-upgrade
 spec:
-  force: false
-  image:
-    repository: factory.talos.dev/installer/YOUR_CURRENT_SCHEMATIC
-    tag: &version v1.11.1 # Your current version
-  nodeSelector: {}
-  rebootMode: default
-  talosctl:
+  target:
     image:
-      repository: ghcr.io/siderolabs/talosctl
-      tag: *verison
-      pullPolicy: IfNotPresent
+      repository: factory.talos.dev/metal-installer/YOUR_CURRENT_SCHEMATIC_WITHOUT_TAG
+      tag: v1.11.1
+    options: # Optional
+      debug: false # Optional, default: false
+      force: false # Optional, default: false
+      rebootMode: default # Optional, default: default
+    nodeSelector: {} # Optional
+  talosctl: # Optional
+    image: # Optional
+      repository: ghcr.io/siderolabs/talosctl # Optional, default: ghcr.io/siderolabs/talosctl
+      tag: v1.11.1 # Optional, default: current installed Talos version
+      pullPolicy: IfNotPresent # Optional, default: IfNotPresent
 ```
 
 Check that the controller recognizes the current state:
 
 ```bash
-kubectl get talosplan cluster -n system-upgrade -o yaml
+kubectl get talosupgrade cluster -n system-upgrade -o yaml
 ```
 
 **Expected**: Status should show all nodes as already upgraded.
 
 ### 4. Test Downgrade
 
-Modify the TalosPlan to downgrade to a previous version:
+Modify the TalosUpgrade to downgrade to a previous version:
 
 ```yaml
 spec:
@@ -105,8 +108,8 @@ spec:
 Watch the upgrade progress:
 
 ```bash
-# Terminal 1: Watch TalosPlan status
-watch kubectl get talosplan cluster -n system-upgrade
+# Terminal 1: Watch TalosUpgrade status
+watch kubectl get talosupgrade cluster -n system-upgrade
 
 # Terminal 2: Watch jobs and pods
 watch kubectl get jobs,pods -n system-upgrade
@@ -120,22 +123,22 @@ stern -n system-upgrade "talup-talos-cluster"
 Once downgrade completes:
 
 - All nodes should be running v1.11.0
-- TalosPlan status should show `phase: Completed`
+- TalosUpgrade status should show `phase: Completed`
 - Jobs are cleaned up automatically
 
-**Test upgrade**: Change the TalosPlan back to v1.11.1 and repeat monitoring.
+**Test upgrade**: Change the TalosUpgrade back to v1.11.1 and repeat monitoring.
 
 ### 7. Cleanup
 
 ```bash
 # Remove test resources
-kubectl delete talosplan cluster -n system-upgrade
+kubectl delete talosupgrade cluster -n system-upgrade
 
 # Remove controller
 helm uninstall talup --namespace system-upgrade
 
 # Remove CRDs (if desired)
-kubectl delete crd kubernetesplans.talup.home-operations.com talosplans.talup.home-operations.com
+kubectl delete crd kubernetesplans.talup.home-operations.com talosupgrades.talup.home-operations.com
 ```
 
 ## 📖 How It Works
@@ -157,8 +160,8 @@ kubectl logs -f deployment/talup -n system-upgrade
 # Check upgrade job logs
 kubectl logs -f job/talup-talos-cluster-NODE_NAME -n system-upgrade
 
-# Check TalosPlan status
-kubectl describe talosplan cluster -n system-upgrade
+# Check TalosUpgrade status
+kubectl describe talosupgrade cluster -n system-upgrade
 
 # Check events
 kubectl get events -n system-upgrade --sort-by='.firstTimestamp'

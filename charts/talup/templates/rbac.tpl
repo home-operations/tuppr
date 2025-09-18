@@ -34,7 +34,7 @@ rules:
 - apiGroups:
   - talup.home-operations.com
   resources:
-  - talosplans
+  - talosupgrades
   - kubernetesplans
   verbs:
   - create
@@ -47,14 +47,14 @@ rules:
 - apiGroups:
   - talup.home-operations.com
   resources:
-  - talosplans/finalizers
+  - talosupgrades/finalizers
   - kubernetesplans/finalizers
   verbs:
   - update
 - apiGroups:
   - talup.home-operations.com
   resources:
-  - talosplans/status
+  - talosupgrades/status
   - kubernetesplans/status
   verbs:
   - get
