@@ -5,7 +5,7 @@ A Kubernetes controller for managing automated upgrades of Talos Linux nodes and
 ## ✨ Features
 
 - 🚀 **Automated Talos node upgrades** with safe orchestration
-- 🎯 **Kubernetes control plane upgrades** via Talos
+- 🎯 **Kubernetes control plane upgrades** via Talos *(coming soon)*
 - 🔒 **Safe upgrade execution** - upgrades run from healthy nodes (never self-upgrade)
 - 📊 **Built-in health checks** - validates cluster health before and during upgrades
 - 🎛️ **Flexible node targeting** with label selectors
@@ -25,7 +25,7 @@ Create the namespace:
 kubectl create namespace system-upgrade
 ```
 
-Create Talos configuration secret by applying talos with this config:
+Create Talos configuration secret by applying Talos with this config:
 
 ```yaml
 machine:
@@ -72,73 +72,70 @@ spec:
   force: false
   image:
     repository: factory.talos.dev/installer/YOUR_CURRENT_SCHEMATIC
-    tag: v1.11.1  # Your current version
+    tag: &version v1.11.1 # Your current version
   nodeSelector: {}
   rebootMode: default
   talosctl:
     image:
       repository: ghcr.io/siderolabs/talosctl
-      tag: v1.11.1
+      tag: *verison
       pullPolicy: IfNotPresent
 ```
 
 Check that the controller recognizes the current state:
+
 ```bash
 kubectl get talosplan cluster -n system-upgrade -o yaml
 ```
 
-Expected: Status should show all nodes as already upgraded.
+**Expected**: Status should show all nodes as already upgraded.
 
 ### 4. Test Downgrade
 
-Modify the TalosPlan to downgrade to a previous version (e.g., v1.11.0):
+Modify the TalosPlan to downgrade to a previous version:
 
 ```yaml
 spec:
   image:
-    tag: v1.11.0  # Previous version
+    tag: &version v1.11.0 # Previous version
 ```
 
 ### 5. Monitor the Upgrade
 
-Watch the upgrade progress with multiple terminals:
+Watch the upgrade progress:
 
 ```bash
 # Terminal 1: Watch TalosPlan status
-watch kubectl get talosplan cluster -n system-upgrade -o yaml
+watch kubectl get talosplan cluster -n system-upgrade
 
-# Terminal 2: Watch jobs
-watch kubectl get jobs -n system-upgrade
+# Terminal 2: Watch jobs and pods
+watch kubectl get jobs,pods -n system-upgrade
 
-# Terminal 3: Watch pods
-watch kubectl get pods -n system-upgrade
-
-# Terminal 4: Stream logs
+# Terminal 3: Stream logs
 stern -n system-upgrade "talup-talos-cluster"
 ```
 
-### 6. Verify Completion
+### 6. Verify and Test Back
 
 Once downgrade completes:
+
 - All nodes should be running v1.11.0
 - TalosPlan status should show `phase: Completed`
-- Jobs should be cleaned up automatically
+- Jobs are cleaned up automatically
 
-### 7. Test Upgrade
+**Test upgrade**: Change the TalosPlan back to v1.11.1 and repeat monitoring.
 
-Change the TalosPlan back to v1.11.1 and repeat monitoring.
-
-### 8. Cleanup
+### 7. Cleanup
 
 ```bash
+# Remove test resources
+kubectl delete talosplan cluster -n system-upgrade
+
 # Remove controller
 helm uninstall talup --namespace system-upgrade
 
-# Remove CRDs
+# Remove CRDs (if desired)
 kubectl delete crd kubernetesplans.talup.home-operations.com talosplans.talup.home-operations.com
-
-# Remove test resources
-kubectl delete talosplan cluster -n system-upgrade
 ```
 
 ## 📖 How It Works
@@ -149,8 +146,23 @@ kubectl delete talosplan cluster -n system-upgrade
 4. **Status Tracking**: Real-time progress updates via Kubernetes status fields
 5. **Automatic Cleanup**: Completed jobs are automatically cleaned up after 15 minutes
 
-
 ## 🔍 Troubleshooting
+
+### Debug Commands
+
+```bash
+# Check controller logs
+kubectl logs -f deployment/talup -n system-upgrade
+
+# Check upgrade job logs
+kubectl logs -f job/talup-talos-cluster-NODE_NAME -n system-upgrade
+
+# Check TalosPlan status
+kubectl describe talosplan cluster -n system-upgrade
+
+# Check events
+kubectl get events -n system-upgrade --sort-by='.firstTimestamp'
+```
 
 ### Common Issues
 
@@ -161,26 +173,10 @@ kubectl delete talosplan cluster -n system-upgrade
 | Permission denied | RBAC issues | Verify cluster-admin permissions |
 | Secret not found | Missing talosconfig | Create secret with correct name |
 
-### Debug Commands
-
-```bash
-# Check controller logs
-kubectl logs -f deployment/talup -n system-upgrade
-
-# Check upgrade job logs
-kubectl logs -f job/talup-talos-cluster-worker-01 -n system-upgrade
-
-# Check TalosPlan status
-kubectl describe talosplan cluster -n system-upgrade
-
-# Check events
-kubectl get events -n system-upgrade --sort-by='.firstTimestamp'
-```
-
 ### Known Limitations
 
 - **Single node clusters**: Not supported (upgrades require running from other nodes)
-- **Network policies**: May interfere with Talos API access (JJ'd)
+- **Network policies**: May interfere with Talos API access
 - **Resource constraints**: Upgrade jobs need sufficient CPU/memory
 
 ## 🚧 Current Status
@@ -193,7 +189,6 @@ This project is in active development. Current roadmap:
 - [ ] Production-ready Helm chart
 - [ ] Advanced metrics and alerting
 - [ ] CI/CD workflows
-- [ ] Single node cluster support evaluation
 
 ## 🤝 Contributing
 
