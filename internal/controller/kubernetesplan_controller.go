@@ -18,9 +18,9 @@ type KubernetesPlanReconciler struct {
 	TalosConfigSecret string
 }
 
-// +kubebuilder:rbac:groups=upgrade.home-operations.com,resources=kubernetes,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=upgrade.home-operations.com,resources=kubernetes/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=upgrade.home-operations.com,resources=kubernetes/finalizers,verbs=update
+// +kubebuilder:rbac:groups=talup.home-operations.com,resources=kubernetes,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=talup.home-operations.com,resources=kubernetes/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=talup.home-operations.com,resources=kubernetes/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

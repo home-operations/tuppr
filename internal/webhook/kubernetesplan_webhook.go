@@ -27,7 +27,7 @@ type KubernetesPlanValidator struct {
 	TalosConfigSecret string
 }
 
-//+kubebuilder:webhook:path=/validate-upgrade-home-operations-com-v1alpha1-kubernetes,mutating=false,failurePolicy=fail,sideEffects=None,groups=upgrade.home-operations.com,resources=kuberneteses,verbs=create;update,versions=v1alpha1,name=vkubernetes.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:path=/validate-upgrade-home-operations-com-v1alpha1-kubernetes,mutating=false,failurePolicy=fail,sideEffects=None,groups=talup.home-operations.com,resources=kuberneteses,verbs=create;update,versions=v1alpha1,name=vkubernetes.kb.io,admissionReviewVersions=v1
 
 var _ webhook.CustomValidator = &KubernetesPlanValidator{}
 
