@@ -358,7 +358,7 @@ func (r *TalosPlanReconciler) buildJob(talosPlan *upgradev1alpha1.TalosPlan, nod
 			Completions:             ptr.To(int32(1)),
 			TTLSecondsAfterFinished: ptr.To(int32(900)), // 15 minutes
 			Parallelism:             ptr.To(int32(1)),
-			ActiveDeadlineSeconds:   ptr.To(int64(4500)), // 1 hour 15 minutes, covers upgrade, health timeouts
+			ActiveDeadlineSeconds:   ptr.To(int64(4500)), // 1 hour 15 minutes, covers upgrade, health timeouts plus backoffLimit
 			PodReplacementPolicy:    ptr.To(batchv1.TerminatingOrFailed),
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
