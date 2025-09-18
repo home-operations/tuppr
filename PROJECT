@@ -16,7 +16,7 @@ resources:
     namespaced: true
   controller: true
   domain: home-operations.com
-  group: upgrade
+  group: talup
   kind: TalosPlan
   path: github.com/home-operations/talup/api/v1alpha1
   version: v1alpha1
@@ -27,7 +27,7 @@ resources:
     namespaced: true
   controller: true
   domain: home-operations.com
-  group: upgrade
+  group: talup
   kind: KubernetesPlan
   path: github.com/home-operations/talup/api/v1alpha1
   version: v1alpha1
