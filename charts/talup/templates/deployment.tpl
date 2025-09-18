@@ -42,11 +42,6 @@ spec:
             - /manager
           args:
             - --leader-elect={{ .Values.controller.leaderElection.enabled }}
-            {{- if .Values.controller.leaderElection.enabled }}
-            - --leader-elect-lease-duration={{ .Values.controller.leaderElection.leaseDuration }}
-            - --leader-elect-renew-deadline={{ .Values.controller.leaderElection.renewDeadline }}
-            - --leader-elect-retry-period={{ .Values.controller.leaderElection.retryPeriod }}
-            {{- end }}
             - --metrics-bind-address=:{{ .Values.controller.metrics.port }}
             - --health-probe-bind-address=:{{ .Values.controller.health.port }}
             - --talosconfig-secret={{ include "talup.talosServiceAccountName" . }}

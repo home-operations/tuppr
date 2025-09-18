@@ -48,7 +48,6 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
-	var talosctlImage string
 	var talosConfigSecret string
 	var tlsOpts []func(*tls.Config)
 
@@ -81,7 +80,6 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	setupLog.Info("Starting talup controller manager",
-		"talosctl-image", talosctlImage,
 		"talosconfig-secret", talosConfigSecret)
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled

@@ -117,21 +117,6 @@ readinessProbe:
   initialDelaySeconds: 5
   periodSeconds: 10
 
-# Horizontal Pod Autoscaler configuration
-autoscaling:
-  # Enable HPA (not recommended for controllers with leader election)
-  enabled: false
-  # Annotations for the HPA resource
-  annotations: {}
-  # Minimum number of replicas
-  minReplicas: 1
-  # Maximum number of replicas
-  maxReplicas: 100
-  # Target CPU utilization percentage
-  targetCPUUtilizationPercentage: 80
-  # Target memory utilization percentage (optional)
-  # targetMemoryUtilizationPercentage: 80
-
 # Additional volumes on the deployment
 volumes: []
 # Example:
@@ -180,13 +165,7 @@ controller:
   # Only one controller instance will be active at a time
   leaderElection:
     # Enable leader election (recommended for production)
-    enabled: false
-    # Leader lease duration
-    leaseDuration: 60s
-    # Leader renew deadline
-    renewDeadline: 40s
-    # Leader retry period
-    retryPeriod: 10s
+    enabled: true
 
   # Metrics configuration
   metrics:

@@ -46,7 +46,7 @@ Create your `values.yaml`:
 ```yaml
 image:
   repository: ghcr.io/home-operations/talup
-  tag: main-443f170 # Use latest sha from packages
+  tag: main-3d4eaf9 # Use latest sha from packages
 ```
 
 ### 2. Installation
@@ -100,7 +100,7 @@ Modify the TalosUpgrade to downgrade to a previous version:
 ```yaml
 spec:
   image:
-    tag: &version v1.11.0 # Previous version
+    tag: v1.11.0 # Previous version
 ```
 
 ### 5. Monitor the Upgrade
@@ -115,7 +115,7 @@ watch kubectl get talosupgrade cluster -n system-upgrade
 watch kubectl get jobs,pods -n system-upgrade
 
 # Terminal 3: Stream logs
-stern -n system-upgrade "talup-talos-cluster"
+stern -n system-upgrade cluster
 ```
 
 ### 6. Verify and Test Back
@@ -137,8 +137,8 @@ kubectl delete talosupgrade cluster -n system-upgrade
 # Remove controller
 helm uninstall talup --namespace system-upgrade
 
-# Remove CRDs (if desired)
-kubectl delete crd kubernetesplans.talup.home-operations.com talosupgrades.talup.home-operations.com
+# Remove CRDs
+kubectl delete crd talosupgrades.talup.home-operations.com
 ```
 
 ## 📖 How It Works
