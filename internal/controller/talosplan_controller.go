@@ -44,27 +44,28 @@ const (
 // TalosUpgradeReconciler reconciles a TalosUpgrade object
 type TalosUpgradeReconciler struct {
 	client.Client
-	Scheme            *runtime.Scheme
-	TalosConfigSecret string
+	Scheme              *runtime.Scheme
+	TalosConfigSecret   string
+	ControllerNamespace string
 }
 
 func (r *TalosUpgradeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Starting reconciliation", "talosupgrade", req.NamespacedName)
+	logger.Info("Starting reconciliation", "talosupgrade", req.Name) // No namespace for cluster-scoped
 
 	var talosPlan upgradev1alpha1.TalosUpgrade
-	if err := r.Get(ctx, req.NamespacedName, &talosPlan); err != nil {
+	// For cluster-scoped resources, use Name instead of NamespacedName
+	if err := r.Get(ctx, client.ObjectKey{Name: req.Name}, &talosPlan); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("TalosUpgrade resource not found, likely deleted", "talosupgrade", req.NamespacedName)
+			logger.Info("TalosUpgrade resource not found, likely deleted", "talosupgrade", req.Name)
 		} else {
-			logger.Error(err, "Failed to get TalosUpgrade resource", "talosupgrade", req.NamespacedName)
+			logger.Error(err, "Failed to get TalosUpgrade resource", "talosupgrade", req.Name)
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	logger.Info("Retrieved TalosUpgrade",
 		"name", talosPlan.Name,
-		"namespace", talosPlan.Namespace,
 		"phase", talosPlan.Status.Phase,
 		"generation", talosPlan.Generation,
 		"observedGeneration", talosPlan.Status.ObservedGeneration)
@@ -90,7 +91,6 @@ func (r *TalosUpgradeReconciler) Reconcile(ctx context.Context, req ctrl.Request
 func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosPlan *upgradev1alpha1.TalosUpgrade) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues(
 		"talosupgrade", talosPlan.Name,
-		"namespace", talosPlan.Namespace,
 		"generation", talosPlan.Generation,
 	)
 
@@ -104,7 +104,7 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosPlan *
 			"oldPhase", talosPlan.Status.Phase)
 
 		// Reset status to start fresh
-		namespacedName := client.ObjectKeyFromObject(talosPlan)
+		objectKey := client.ObjectKey{Name: talosPlan.Name} // No namespace for cluster-scoped
 		patch := map[string]interface{}{
 			"status": map[string]interface{}{
 				"phase":              PhasePending,
@@ -117,7 +117,7 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosPlan *
 			},
 		}
 
-		if err := r.patchStatus(ctx, namespacedName, patch); err != nil {
+		if err := r.patchStatus(ctx, objectKey, patch); err != nil {
 			logger.Error(err, "Failed to reset status after spec change")
 			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 		}
@@ -145,8 +145,8 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosPlan *
 		logger.Info("Waiting in upgrade queue", "position", queuePosition)
 
 		// Update status to show we're waiting
-		namespacedName := client.ObjectKeyFromObject(talosPlan)
-		if err := r.updatePhase(ctx, namespacedName, PhasePending, "",
+		objectKey := client.ObjectKey{Name: talosPlan.Name} // No namespace for cluster-scoped
+		if err := r.updatePhase(ctx, objectKey, PhasePending, "",
 			fmt.Sprintf("Waiting in queue (position %d)", queuePosition)); err != nil {
 			logger.Error(err, "Failed to update phase while waiting")
 		}
@@ -154,14 +154,14 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosPlan *
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
-	namespacedName := client.ObjectKeyFromObject(talosPlan)
+	objectKey := client.ObjectKey{Name: talosPlan.Name} // No namespace for cluster-scoped
 
 	if len(talosPlan.Status.FailedNodes) > 0 {
 		logger.Info("Upgrade plan has failed nodes, blocking further progress",
 			"talosupgrade", talosPlan.Name,
 			"failedNodes", len(talosPlan.Status.FailedNodes))
 
-		if err := r.updatePhase(ctx, namespacedName, PhaseFailed, "",
+		if err := r.updatePhase(ctx, objectKey, PhaseFailed, "",
 			fmt.Sprintf("Upgrade stopped due to %d failed nodes", len(talosPlan.Status.FailedNodes))); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -198,7 +198,7 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosPlan *
 			"failedNodes", len(talosPlan.Status.FailedNodes))
 
 		// Use the enhanced completion status update
-		if err := r.updateCompletionStatus(ctx, namespacedName, talosPlan); err != nil {
+		if err := r.updateCompletionStatus(ctx, objectKey, talosPlan); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
@@ -213,7 +213,7 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosPlan *
 	}
 
 	logger.Info("Successfully created upgrade job", "node", nextNode)
-	if err := r.updatePhase(ctx, namespacedName, PhaseInProgress, nextNode, fmt.Sprintf("Upgrading node %s", nextNode)); err != nil {
+	if err := r.updatePhase(ctx, objectKey, PhaseInProgress, nextNode, fmt.Sprintf("Upgrading node %s", nextNode)); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
@@ -228,16 +228,14 @@ func (r *TalosUpgradeReconciler) acquireUpgradeLock(ctx context.Context, talosPl
 		return false, 0, err
 	}
 
-	// Sort by creation timestamp, then by namespace/name for deterministic ordering
+	// Sort by creation timestamp, then by name for deterministic ordering
 	sort.Slice(upgradeList.Items, func(i, j int) bool {
 		iTime := upgradeList.Items[i].CreationTimestamp.Time
 		jTime := upgradeList.Items[j].CreationTimestamp.Time
 
-		// If timestamps are equal, sort by namespace/name for deterministic ordering
+		// If timestamps are equal, sort by name for deterministic ordering
 		if iTime.Equal(jTime) {
-			iName := upgradeList.Items[i].Namespace + "/" + upgradeList.Items[i].Name
-			jName := upgradeList.Items[j].Namespace + "/" + upgradeList.Items[j].Name
-			return iName < jName
+			return upgradeList.Items[i].Name < upgradeList.Items[j].Name
 		}
 
 		return iTime.Before(jTime)
@@ -254,7 +252,7 @@ func (r *TalosUpgradeReconciler) acquireUpgradeLock(ctx context.Context, talosPl
 		}
 
 		queuePosition++
-		if upgrade.Name == talosPlan.Name && upgrade.Namespace == talosPlan.Namespace {
+		if upgrade.Name == talosPlan.Name {
 			currentUpgrade = &upgrade
 			break
 		}
@@ -267,7 +265,7 @@ func (r *TalosUpgradeReconciler) acquireUpgradeLock(ctx context.Context, talosPl
 	// Check if any upgrade is currently running
 	for _, upgrade := range upgradeList.Items {
 		// Skip ourselves and completed/failed upgrades
-		if (upgrade.Name == talosPlan.Name && upgrade.Namespace == talosPlan.Namespace) ||
+		if upgrade.Name == talosPlan.Name ||
 			upgrade.Status.Phase == PhaseCompleted || upgrade.Status.Phase == PhaseFailed {
 			continue
 		}
@@ -276,7 +274,6 @@ func (r *TalosUpgradeReconciler) acquireUpgradeLock(ctx context.Context, talosPl
 		if upgrade.Status.Phase == PhaseInProgress {
 			logger.Info("Another upgrade is in progress, waiting",
 				"runningUpgrade", upgrade.Name,
-				"runningNamespace", upgrade.Namespace,
 				"queuePosition", queuePosition)
 			return false, queuePosition, nil
 		}
@@ -296,9 +293,7 @@ func (r *TalosUpgradeReconciler) acquireUpgradeLock(ctx context.Context, talosPl
 
 			var isEarlier bool
 			if upgradeTime.Equal(currentTime) {
-				upgradeName := upgrade.Namespace + "/" + upgrade.Name
-				currentName := currentUpgrade.Namespace + "/" + currentUpgrade.Name
-				isEarlier = upgradeName < currentName
+				isEarlier = upgrade.Name < currentUpgrade.Name
 			} else {
 				isEarlier = upgradeTime.Before(currentTime)
 			}
@@ -306,14 +301,13 @@ func (r *TalosUpgradeReconciler) acquireUpgradeLock(ctx context.Context, talosPl
 			if isEarlier {
 				logger.Info("Waiting for earlier upgrade to start",
 					"earlierUpgrade", upgrade.Name,
-					"earlierNamespace", upgrade.Namespace,
 					"queuePosition", queuePosition)
 				return false, queuePosition, nil
 			}
 		}
 
 		// If we reach ourselves, we're next
-		if upgrade.Name == talosPlan.Name && upgrade.Namespace == talosPlan.Namespace {
+		if upgrade.Name == talosPlan.Name {
 			break
 		}
 	}
@@ -328,9 +322,9 @@ func (r *TalosUpgradeReconciler) findActiveJob(ctx context.Context, talosPlan *u
 
 	jobList := &batchv1.JobList{}
 	if err := r.List(ctx, jobList,
-		client.InNamespace(talosPlan.Namespace),
+		client.InNamespace(r.ControllerNamespace),
 		client.MatchingLabels{
-			"app.kubernetes.io/name":     "talup-talos",
+			"app.kubernetes.io/name":     "talos-upgrade",
 			"app.kubernetes.io/instance": talosPlan.Name,
 		}); err != nil {
 		return nil, "", err
@@ -487,9 +481,12 @@ func (r *TalosUpgradeReconciler) createJob(ctx context.Context, talosPlan *upgra
 func (r *TalosUpgradeReconciler) buildJob(talosPlan *upgradev1alpha1.TalosUpgrade, nodeName, nodeIP string) *batchv1.Job {
 	logger := log.FromContext(context.Background())
 
+	jobName := GenerateSafeJobName(talosPlan.Name, nodeName)
+
 	labels := map[string]string{
-		"app.kubernetes.io/name":                "talup-talos",
+		"app.kubernetes.io/name":                "talos-upgrade",
 		"app.kubernetes.io/instance":            talosPlan.Name,
+		"app.kubernetes.io/part-of":             "talup",
 		"talup.home-operations.com/target-node": nodeName,
 	}
 
@@ -546,8 +543,8 @@ func (r *TalosUpgradeReconciler) buildJob(talosPlan *upgradev1alpha1.TalosUpgrad
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("talup-talos-%s-%s", talosPlan.Name, nodeName),
-			Namespace: talosPlan.Namespace,
+			Name:      jobName,
+			Namespace: r.ControllerNamespace,
 			Labels:    labels,
 		},
 		Spec: batchv1.JobSpec{
@@ -636,7 +633,7 @@ func (r *TalosUpgradeReconciler) buildJob(talosPlan *upgradev1alpha1.TalosUpgrad
 
 func (r *TalosUpgradeReconciler) handleJobStatus(ctx context.Context, talosPlan *upgradev1alpha1.TalosUpgrade, nodeName string, job *batchv1.Job) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	namespacedName := client.ObjectKeyFromObject(talosPlan)
+	objectKey := client.ObjectKey{Name: talosPlan.Name} // No namespace for cluster-scoped
 
 	logger.Info("Handling job status",
 		"job", job.Name,
@@ -658,10 +655,10 @@ func (r *TalosUpgradeReconciler) handleJobStatus(ctx context.Context, talosPlan 
 				NodeName:  nodeName,
 				LastError: fmt.Sprintf("Verification failed: unable to get node: %v", err),
 			}
-			if err := r.addFailedNode(ctx, namespacedName, nodeStatus); err != nil {
+			if err := r.addFailedNode(ctx, objectKey, nodeStatus); err != nil {
 				return ctrl.Result{}, err
 			}
-			if err := r.updatePhase(ctx, namespacedName, PhaseFailed, "",
+			if err := r.updatePhase(ctx, objectKey, PhaseFailed, "",
 				fmt.Sprintf("Node %s upgrade verification failed", nodeName)); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -675,10 +672,10 @@ func (r *TalosUpgradeReconciler) handleJobStatus(ctx context.Context, talosPlan 
 				NodeName:  nodeName,
 				LastError: fmt.Sprintf("Verification failed: %v", err),
 			}
-			if err := r.addFailedNode(ctx, namespacedName, nodeStatus); err != nil {
+			if err := r.addFailedNode(ctx, objectKey, nodeStatus); err != nil {
 				return ctrl.Result{}, err
 			}
-			if err := r.updatePhase(ctx, namespacedName, PhaseFailed, "",
+			if err := r.updatePhase(ctx, objectKey, PhaseFailed, "",
 				fmt.Sprintf("Node %s upgrade verification failed", nodeName)); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -689,17 +686,17 @@ func (r *TalosUpgradeReconciler) handleJobStatus(ctx context.Context, talosPlan 
 				NodeName:  nodeName,
 				LastError: "Job succeeded but node not upgraded",
 			}
-			if err := r.addFailedNode(ctx, namespacedName, nodeStatus); err != nil {
+			if err := r.addFailedNode(ctx, objectKey, nodeStatus); err != nil {
 				return ctrl.Result{}, err
 			}
-			if err := r.updatePhase(ctx, namespacedName, PhaseFailed, "",
+			if err := r.updatePhase(ctx, objectKey, PhaseFailed, "",
 				fmt.Sprintf("Node %s upgrade verification failed", nodeName)); err != nil {
 				return ctrl.Result{}, err
 			}
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 		}
 
-		if err := r.addCompletedNode(ctx, namespacedName, nodeName); err != nil {
+		if err := r.addCompletedNode(ctx, objectKey, nodeName); err != nil {
 			logger.Error(err, "Failed to add completed node", "node", nodeName)
 			return ctrl.Result{}, err
 		}
@@ -708,7 +705,7 @@ func (r *TalosUpgradeReconciler) handleJobStatus(ctx context.Context, talosPlan 
 		completedCount := len(talosPlan.Status.CompletedNodes) + 1 // +1 for the node we just completed
 		message := fmt.Sprintf("Node %s upgraded successfully (%d completed)", nodeName, completedCount)
 
-		if err := r.updatePhase(ctx, namespacedName, PhasePending, "", message); err != nil {
+		if err := r.updatePhase(ctx, objectKey, PhasePending, "", message); err != nil {
 			logger.Error(err, "Failed to update phase", "node", nodeName)
 			return ctrl.Result{}, err
 		}
@@ -723,7 +720,7 @@ func (r *TalosUpgradeReconciler) handleJobStatus(ctx context.Context, talosPlan 
 			NodeName:  nodeName,
 			LastError: "Job failed permanently",
 		}
-		if err := r.addFailedNode(ctx, namespacedName, nodeStatus); err != nil {
+		if err := r.addFailedNode(ctx, objectKey, nodeStatus); err != nil {
 			logger.Error(err, "Failed to add failed node", "node", nodeName)
 			return ctrl.Result{}, err
 		}
@@ -732,7 +729,7 @@ func (r *TalosUpgradeReconciler) handleJobStatus(ctx context.Context, talosPlan 
 		failedCount := len(talosPlan.Status.FailedNodes) + 1 // +1 for the node we just failed
 		message := fmt.Sprintf("Node %s upgrade failed (%d failed nodes) - stopping further upgrades", nodeName, failedCount)
 
-		if err := r.updatePhase(ctx, namespacedName, PhaseFailed, "", message); err != nil {
+		if err := r.updatePhase(ctx, objectKey, PhaseFailed, "", message); err != nil {
 			logger.Error(err, "Failed to update phase", "node", nodeName)
 			return ctrl.Result{}, err
 		}
@@ -743,7 +740,7 @@ func (r *TalosUpgradeReconciler) handleJobStatus(ctx context.Context, talosPlan 
 	default:
 		// Enhanced in-progress status
 		message := fmt.Sprintf("Upgrading node %s (job: %s)", nodeName, job.Name)
-		if err := r.updatePhase(ctx, namespacedName, PhaseInProgress, nodeName, message); err != nil {
+		if err := r.updatePhase(ctx, objectKey, PhaseInProgress, nodeName, message); err != nil {
 			logger.Error(err, "Failed to update in-progress phase", "node", nodeName)
 		}
 
@@ -753,10 +750,10 @@ func (r *TalosUpgradeReconciler) handleJobStatus(ctx context.Context, talosPlan 
 }
 
 // Enhanced status update function with progress information
-func (r *TalosUpgradeReconciler) updatePhase(ctx context.Context, namespacedName types.NamespacedName, phase string, currentNode, message string) error {
+func (r *TalosUpgradeReconciler) updatePhase(ctx context.Context, objectKey client.ObjectKey, phase string, currentNode, message string) error {
 	// Get current TalosUpgrade to calculate additional status fields
 	talosPlan := &upgradev1alpha1.TalosUpgrade{}
-	if err := r.Get(ctx, namespacedName, talosPlan); err != nil {
+	if err := r.Get(ctx, objectKey, talosPlan); err != nil {
 		return err
 	}
 
@@ -770,11 +767,11 @@ func (r *TalosUpgradeReconciler) updatePhase(ctx context.Context, namespacedName
 		},
 	}
 
-	return r.patchStatus(ctx, namespacedName, patch)
+	return r.patchStatus(ctx, objectKey, patch)
 }
 
 // Add a comprehensive status update when upgrades complete
-func (r *TalosUpgradeReconciler) updateCompletionStatus(ctx context.Context, namespacedName types.NamespacedName, talosPlan *upgradev1alpha1.TalosUpgrade) error {
+func (r *TalosUpgradeReconciler) updateCompletionStatus(ctx context.Context, objectKey client.ObjectKey, talosPlan *upgradev1alpha1.TalosUpgrade) error {
 	completedCount := len(talosPlan.Status.CompletedNodes)
 	failedCount := len(talosPlan.Status.FailedNodes)
 	totalCount := completedCount + failedCount
@@ -801,13 +798,13 @@ func (r *TalosUpgradeReconciler) updateCompletionStatus(ctx context.Context, nam
 		},
 	}
 
-	return r.patchStatus(ctx, namespacedName, patch)
+	return r.patchStatus(ctx, objectKey, patch)
 }
 
-func (r *TalosUpgradeReconciler) addCompletedNode(ctx context.Context, namespacedName types.NamespacedName, nodeName string) error {
+func (r *TalosUpgradeReconciler) addCompletedNode(ctx context.Context, objectKey client.ObjectKey, nodeName string) error {
 	// First check if node is already completed to avoid unnecessary patch
 	talosPlan := &upgradev1alpha1.TalosUpgrade{}
-	if err := r.Get(ctx, namespacedName, talosPlan); err != nil {
+	if err := r.Get(ctx, objectKey, talosPlan); err != nil {
 		return err
 	}
 
@@ -823,13 +820,13 @@ func (r *TalosUpgradeReconciler) addCompletedNode(ctx context.Context, namespace
 		},
 	}
 
-	return r.patchStatus(ctx, namespacedName, patch)
+	return r.patchStatus(ctx, objectKey, patch)
 }
 
-func (r *TalosUpgradeReconciler) addFailedNode(ctx context.Context, namespacedName types.NamespacedName, nodeStatus upgradev1alpha1.NodeUpgradeStatus) error {
+func (r *TalosUpgradeReconciler) addFailedNode(ctx context.Context, objectKey client.ObjectKey, nodeStatus upgradev1alpha1.NodeUpgradeStatus) error {
 	// First check if node is already failed to avoid unnecessary patch
 	talosPlan := &upgradev1alpha1.TalosUpgrade{}
-	if err := r.Get(ctx, namespacedName, talosPlan); err != nil {
+	if err := r.Get(ctx, objectKey, talosPlan); err != nil {
 		return err
 	}
 
@@ -845,11 +842,11 @@ func (r *TalosUpgradeReconciler) addFailedNode(ctx context.Context, namespacedNa
 		},
 	}
 
-	return r.patchStatus(ctx, namespacedName, patch)
+	return r.patchStatus(ctx, objectKey, patch)
 }
 
 // Helper function to apply status patches
-func (r *TalosUpgradeReconciler) patchStatus(ctx context.Context, namespacedName types.NamespacedName, patch map[string]interface{}) error {
+func (r *TalosUpgradeReconciler) patchStatus(ctx context.Context, objectKey client.ObjectKey, patch map[string]interface{}) error {
 	logger := log.FromContext(ctx)
 
 	patchBytes, err := json.Marshal(patch)
@@ -858,8 +855,8 @@ func (r *TalosUpgradeReconciler) patchStatus(ctx context.Context, namespacedName
 	}
 
 	talosPlan := &upgradev1alpha1.TalosUpgrade{}
-	talosPlan.Name = namespacedName.Name
-	talosPlan.Namespace = namespacedName.Namespace
+	talosPlan.Name = objectKey.Name
+	// No namespace for cluster-scoped resources
 
 	logger.V(1).Info("Applying status patch", "patch", string(patchBytes))
 

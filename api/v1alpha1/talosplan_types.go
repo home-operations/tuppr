@@ -142,7 +142,7 @@ type NodeUpgradeStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:resource:scope=Namespaced
+//+kubebuilder:resource:scope=Cluster
 //+kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
 //+kubebuilder:printcolumn:name="Current Node",type="string",JSONPath=".status.currentNode"
 //+kubebuilder:printcolumn:name="Completed",type="integer",JSONPath=".status.completedNodes",priority=1

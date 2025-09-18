@@ -13,7 +13,7 @@ repo: github.com/home-operations/talup
 resources:
 - api:
     crdVersion: v1
-    namespaced: true
+    namespaced: false
   controller: true
   domain: home-operations.com
   group: talup

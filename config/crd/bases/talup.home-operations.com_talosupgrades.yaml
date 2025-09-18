@@ -12,7 +12,7 @@ spec:
     listKind: TalosUpgradeList
     plural: talosupgrades
     singular: talosupgrade
-  scope: Namespaced
+  scope: Cluster
   versions:
     - additionalPrinterColumns:
         - jsonPath: .status.phase
