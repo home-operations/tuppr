@@ -11,7 +11,7 @@ glob = ["*.just", ".justfile"]
 stage_fixed = true
 
 [pre-commit.commands.format-go]
-run = "go fmt {staged_files}"
+run = "gofmt -s -w {staged_files}"
 glob = ["*.go"]
 stage_fixed = true
 

@@ -21,9 +21,9 @@ type TalosPlanSpec struct {
 	// +kubebuilder:validation:Required
 	Image TalosImageSpec `json:"image"`
 
-	// Talosctl specifies the talosctl image to use for upgrade operations
+	// Talosctl specifies the talosctl configuration for upgrade operations
 	// +optional
-	Talosctl *ImageSpec `json:"talosctl,omitempty"`
+	Talosctl *TalosctlSpec `json:"talosctl,omitempty"`
 
 	// Force the upgrade (skip checks on etcd health and members)
 	// +kubebuilder:default=false

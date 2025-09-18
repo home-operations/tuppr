@@ -16,3 +16,10 @@ type ImageSpec struct {
 	// +optional
 	PullPolicy string `json:"pullPolicy,omitempty"`
 }
+
+// TalosctlSpec defines the talosctl configuration
+type TalosctlSpec struct {
+	// Image specifies the talosctl container image
+	// +optional
+	Image *ImageSpec `json:"image,omitempty"`
+}

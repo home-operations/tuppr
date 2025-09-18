@@ -313,7 +313,7 @@ func (r *TalosPlanReconciler) buildJob(talosPlan *upgradev1alpha1.TalosPlan, nod
 		"talup.io/target-node":       nodeName,
 	}
 
-	talosctlImage := fmt.Sprintf("%s:%s", talosPlan.Spec.Talosctl.Repository, talosPlan.Spec.Talosctl.Tag)
+	talosctlImage := fmt.Sprintf("%s:%s", talosPlan.Spec.Talosctl.Image.Repository, talosPlan.Spec.Talosctl.Image.Tag)
 
 	args := []string{
 		"upgrade",
@@ -332,7 +332,7 @@ func (r *TalosPlanReconciler) buildJob(talosPlan *upgradev1alpha1.TalosPlan, nod
 	}
 
 	var pullPolicy corev1.PullPolicy
-	switch talosPlan.Spec.Talosctl.PullPolicy {
+	switch talosPlan.Spec.Talosctl.Image.PullPolicy {
 	case "Always":
 		pullPolicy = corev1.PullAlways
 	case "Never":
