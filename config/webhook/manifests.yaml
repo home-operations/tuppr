@@ -15,7 +15,7 @@ webhooks:
     name: vkubernetes.kb.io
     rules:
       - apiGroups:
-          - upgrade.home-operations.com
+          - talup.home-operations.com
         apiVersions:
           - v1alpha1
         operations:
@@ -35,7 +35,7 @@ webhooks:
     name: vtalosplan.kb.io
     rules:
       - apiGroups:
-          - upgrade.home-operations.com
+          - talup.home-operations.com
         apiVersions:
           - v1alpha1
         operations:

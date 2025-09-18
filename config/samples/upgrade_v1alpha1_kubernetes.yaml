@@ -1,5 +1,5 @@
 ---
-apiVersion: upgrade.home-operations.com/v1alpha1
+apiVersion: talup.home-operations.com/v1alpha1
 kind: Kubernetes
 metadata:
   labels:

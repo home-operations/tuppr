@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: kubernetesplans.upgrade.home-operations.com
+  name: kubernetesplans.talup.home-operations.com
 spec:
-  group: upgrade.home-operations.com
+  group: talup.home-operations.com
   names:
     kind: KubernetesPlan
     listKind: KubernetesPlanList

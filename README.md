@@ -14,7 +14,7 @@
 
 ```yaml
 ---
-apiVersion: upgrade.home-operations.com/v1alpha1
+apiVersion: talup.home-operations.com/v1alpha1
 kind: TalosPlan
 metadata:
   name: talos
@@ -37,9 +37,9 @@ spec:
 
 ```yaml
 ---
-# helm install talup oci://ghcr.io/home-operations/charts/talup --version 0.0.0 --values values.yaml --namespace=system-upgrade
+# helm install talup oci://ghcr.io/home-operations/talup/charts/talup --version 0.0.0 --values values.yaml --namespace=system-upgrade
 # helm uninstall talup --namespace=system-upgrade
-# kubectl delete crd kubernetesplans.upgrade.home-operations.com talosplans.upgrade.home-operations.com
+# kubectl delete crd kubernetesplans.talup.home-operations.com talosplans.talup.home-operations.com
 image:
   repository: ghcr.io/home-operations/talup
   tag: main-xxxxxx

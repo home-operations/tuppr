@@ -2,7 +2,7 @@
 # This rule is not used by the project talup itself.
 # It is provided to allow the cluster admin to help manage permissions for users.
 #
-# Grants full permissions ('*') over upgrade.home-operations.com.
+# Grants full permissions ('*') over talup.home-operations.com.
 # This role is intended for users authorized to modify roles and bindings within the cluster,
 # enabling them to delegate specific permissions to other users or groups as needed.
 
@@ -15,13 +15,13 @@ metadata:
   name: talos-admin-role
 rules:
   - apiGroups:
-      - upgrade.home-operations.com
+      - talup.home-operations.com
     resources:
       - talos
     verbs:
       - '*'
   - apiGroups:
-      - upgrade.home-operations.com
+      - talup.home-operations.com
     resources:
       - talos/status
     verbs:

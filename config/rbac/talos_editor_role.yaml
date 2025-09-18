@@ -2,7 +2,7 @@
 # This rule is not used by the project talup itself.
 # It is provided to allow the cluster admin to help manage permissions for users.
 #
-# Grants permissions to create, update, and delete resources within the upgrade.home-operations.com.
+# Grants permissions to create, update, and delete resources within the talup.home-operations.com.
 # This role is intended for users who need to manage these resources
 # but should not control RBAC or manage permissions for others.
 
@@ -15,7 +15,7 @@ metadata:
   name: talos-editor-role
 rules:
   - apiGroups:
-      - upgrade.home-operations.com
+      - talup.home-operations.com
     resources:
       - talos
     verbs:
@@ -27,7 +27,7 @@ rules:
       - update
       - watch
   - apiGroups:
-      - upgrade.home-operations.com
+      - talup.home-operations.com
     resources:
       - talos/status
     verbs:

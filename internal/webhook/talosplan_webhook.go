@@ -28,7 +28,7 @@ type TalosPlanValidator struct {
 	TalosConfigSecret string
 }
 
-//+kubebuilder:webhook:path=/validate-upgrade-home-operations-com-v1alpha1-talosplan,mutating=false,failurePolicy=fail,sideEffects=None,groups=upgrade.home-operations.com,resources=talosplans,verbs=create;update,versions=v1alpha1,name=vtalosplan.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:path=/validate-upgrade-home-operations-com-v1alpha1-talosplan,mutating=false,failurePolicy=fail,sideEffects=None,groups=talup.home-operations.com,resources=talosplans,verbs=create;update,versions=v1alpha1,name=vtalosplan.kb.io,admissionReviewVersions=v1
 
 var _ webhook.CustomValidator = &TalosPlanValidator{}
 

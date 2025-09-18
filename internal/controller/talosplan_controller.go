@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	TalosPlanFinalizer = "upgrade.home-operations.com/talos-finalizer"
+	TalosPlanFinalizer = "talup.home-operations.com/talos-finalizer"
 )
 
 type TalosPlanReconciler struct {
@@ -150,7 +150,7 @@ func (r *TalosPlanReconciler) findActiveJob(ctx context.Context, talosPlan *upgr
 	if err := r.List(ctx, jobList,
 		client.InNamespace(talosPlan.Namespace),
 		client.MatchingLabels{
-			"app.kubernetes.io/name":     "talos-upgrade",
+			"app.kubernetes.io/name":     "talup-talos",
 			"app.kubernetes.io/instance": talosPlan.Name,
 		}); err != nil {
 		return nil, "", err
@@ -159,7 +159,7 @@ func (r *TalosPlanReconciler) findActiveJob(ctx context.Context, talosPlan *upgr
 	logger.Info("Found jobs for TalosPlan", "count", len(jobList.Items))
 
 	for _, job := range jobList.Items {
-		nodeName := job.Labels["talup.io/target-node"]
+		nodeName := job.Labels["talup.home-operations.com/target-node"]
 
 		// Skip jobs for nodes that are already completed
 		if ContainsNode(nodeName, talosPlan.Status.CompletedNodes) {
@@ -308,9 +308,9 @@ func (r *TalosPlanReconciler) buildJob(talosPlan *upgradev1alpha1.TalosPlan, nod
 	logger := log.FromContext(context.Background())
 
 	labels := map[string]string{
-		"app.kubernetes.io/name":     "talos-upgrade",
-		"app.kubernetes.io/instance": talosPlan.Name,
-		"talup.io/target-node":       nodeName,
+		"app.kubernetes.io/name":                "talup-talos",
+		"app.kubernetes.io/instance":            talosPlan.Name,
+		"talup.home-operations.com/target-node": nodeName,
 	}
 
 	talosctlImage := fmt.Sprintf("%s:%s", talosPlan.Spec.Talosctl.Image.Repository, talosPlan.Spec.Talosctl.Image.Tag)
@@ -349,7 +349,7 @@ func (r *TalosPlanReconciler) buildJob(talosPlan *upgradev1alpha1.TalosPlan, nod
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("talos-upgrade-%s-%s", talosPlan.Name, nodeName),
+			Name:      fmt.Sprintf("talup-talos-%s-%s", talosPlan.Name, nodeName),
 			Namespace: talosPlan.Namespace,
 			Labels:    labels,
 		},

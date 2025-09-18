@@ -32,7 +32,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - upgrade.home-operations.com
+  - talup.home-operations.com
   resources:
   - talosplans
   - kubernetesplans
@@ -45,14 +45,14 @@ rules:
   - update
   - watch
 - apiGroups:
-  - upgrade.home-operations.com
+  - talup.home-operations.com
   resources:
   - talosplans/finalizers
   - kubernetesplans/finalizers
   verbs:
   - update
 - apiGroups:
-  - upgrade.home-operations.com
+  - talup.home-operations.com
   resources:
   - talosplans/status
   - kubernetesplans/status
