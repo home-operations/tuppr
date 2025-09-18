@@ -24,13 +24,14 @@ spec:
   image:
     repository: factory.talos.dev/metal-installer/05b4a47a70bc97786ed83d200567dcc8a13f731b164537ba59d5397d668851fa
     tag: v1.11.1
+  nodeSelector: {}
+    # kubernetes.io/hostname: k8s-0
+  rebootMode: powercycle
   talosctl:
     image:
       repository: ghcr.io/siderolabs/talosctl
       tag: v1.11.1
       pullPolicy: IfNotPresent
-  rebootMode: powercycle
-
 ```
 
 ## Test with Helm
