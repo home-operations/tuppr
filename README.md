@@ -46,7 +46,7 @@ Create your `values.yaml`:
 ```yaml
 image:
   repository: ghcr.io/home-operations/talup
-  tag: main-3d4eaf9 # Use latest sha from packages
+  tag: main-382f108 # Use latest sha from packages
 ```
 
 ### 2. Installation
@@ -99,8 +99,9 @@ Modify the TalosUpgrade to downgrade to a previous version:
 
 ```yaml
 spec:
-  image:
-    tag: v1.11.0 # Previous version
+  target:
+    image:
+      tag: v1.11.0 # Previous version
 ```
 
 ### 5. Monitor the Upgrade
