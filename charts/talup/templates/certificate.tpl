@@ -14,6 +14,10 @@ spec:
     kind: Issuer
     name: {{ include "talup.fullname" . }}-selfsigned-issuer
   secretName: {{ include "talup.webhookCertName" . }}
+  privateKey:
+    rotationPolicy: {{ .Values.webhook.certManager.rotationPolicy | default "Always" }}
+  duration: {{ .Values.webhook.certManager.duration | default "8760h" }}  # 1 year
+  renewBefore: {{ .Values.webhook.certManager.renewBefore | default "720h" }}  # 30 days
 ---
 apiVersion: cert-manager.io/v1
 kind: Issuer
