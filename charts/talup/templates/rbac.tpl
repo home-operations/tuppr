@@ -5,11 +5,16 @@ metadata:
   name: {{ include "talup.fullname" . }}-manager-role
   labels:
     {{- include "talup.labels" . | nindent 4 }}
+  {{- with .Values.rbac.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 rules:
 - apiGroups:
   - ""
   resources:
   - nodes
+  - secrets
   verbs:
   - get
   - list
@@ -30,31 +35,6 @@ rules:
   - upgrade.home-operations.com
   resources:
   - talosplans
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - upgrade.home-operations.com
-  resources:
-  - talosplans/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - upgrade.home-operations.com
-  resources:
-  - talosplans/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - upgrade.home-operations.com
-  resources:
   - kubernetesplans
   verbs:
   - create
@@ -67,12 +47,14 @@ rules:
 - apiGroups:
   - upgrade.home-operations.com
   resources:
+  - talosplans/finalizers
   - kubernetesplans/finalizers
   verbs:
   - update
 - apiGroups:
   - upgrade.home-operations.com
   resources:
+  - talosplans/status
   - kubernetesplans/status
   verbs:
   - get
@@ -85,6 +67,10 @@ metadata:
   name: {{ include "talup.fullname" . }}-manager-rolebinding
   labels:
     {{- include "talup.labels" . | nindent 4 }}
+  {{- with .Values.rbac.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -94,6 +80,7 @@ subjects:
   name: {{ include "talup.serviceAccountName" . }}
   namespace: {{ .Release.Namespace }}
 ---
+{{- if .Values.controller.leaderElection.enabled }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -101,6 +88,10 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "talup.labels" . | nindent 4 }}
+  {{- with .Values.rbac.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 rules:
 - apiGroups:
   - ""
@@ -141,6 +132,10 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "talup.labels" . | nindent 4 }}
+  {{- with .Values.rbac.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -149,4 +144,5 @@ subjects:
 - kind: ServiceAccount
   name: {{ include "talup.serviceAccountName" . }}
   namespace: {{ .Release.Namespace }}
+{{- end }}
 {{- end }}

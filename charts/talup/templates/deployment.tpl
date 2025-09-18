@@ -3,6 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "talup.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "talup.labels" . | nindent 4 }}
 spec:
@@ -35,8 +36,8 @@ spec:
         - name: manager
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ include "talup.image" . }}
+          imagePullPolicy: {{ include "talup.imagePullPolicy" . }}
           command:
             - /manager
           args:
@@ -48,11 +49,13 @@ spec:
             {{- end }}
             - --metrics-bind-address=:{{ .Values.controller.metrics.port }}
             - --health-probe-bind-address=:{{ .Values.controller.health.port }}
-            - --talos-config-secret={{ .Values.talosServiceAccount.secretName }}
+            - --talos-config-secret={{ include "talup.talosServiceAccountName" . }}
           ports:
+            {{- if .Values.webhook.enabled }}
             - name: webhook-server
               containerPort: {{ .Values.webhook.port }}
               protocol: TCP
+            {{- end }}
             {{- if .Values.controller.metrics.enabled }}
             - name: metrics
               containerPort: {{ .Values.controller.metrics.port }}
@@ -68,17 +71,21 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
+            {{- if .Values.webhook.enabled }}
             - mountPath: /tmp/k8s-webhook-server/serving-certs
               name: cert
               readOnly: true
+            {{- end }}
             {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
+        {{- if .Values.webhook.enabled }}
         - name: cert
           secret:
             defaultMode: 420
-            secretName: {{ include "talup.fullname" . }}-webhook-server-cert
+            secretName: {{ include "talup.webhookCertName" . }}
+        {{- end }}
         {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
