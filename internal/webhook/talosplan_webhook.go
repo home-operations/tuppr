@@ -165,18 +165,18 @@ func (v *TalosPlanValidator) validateTalosSpec(talos *upgradev1alpha1.TalosPlan)
 
 	// Validate talosctl image if specified
 	if talos.Spec.Talosctl != nil {
-		if talos.Spec.Talosctl.Repository == "" {
+		if talos.Spec.Talosctl.Image.Repository == "" {
 			return fmt.Errorf("spec.talosctl.repository cannot be empty when talosctl is specified")
 		}
-		if talos.Spec.Talosctl.Tag == "" {
+		if talos.Spec.Talosctl.Image.Tag == "" {
 			return fmt.Errorf("spec.talosctl.tag cannot be empty when talosctl is specified")
 		}
 
 		// Validate pull policy if specified
-		if talos.Spec.Talosctl.PullPolicy != "" {
+		if talos.Spec.Talosctl.Image.PullPolicy != "" {
 			validPolicies := []string{"Always", "Never", "IfNotPresent"}
-			if !slices.Contains(validPolicies, talos.Spec.Talosctl.PullPolicy) {
-				return fmt.Errorf("spec.talosctl.pullPolicy '%s' is invalid. Valid values are: %v", talos.Spec.Talosctl.PullPolicy, validPolicies)
+			if !slices.Contains(validPolicies, talos.Spec.Talosctl.Image.PullPolicy) {
+				return fmt.Errorf("spec.talosctl.pullPolicy '%s' is invalid. Valid values are: %v", talos.Spec.Talosctl.Image.PullPolicy, validPolicies)
 			}
 		}
 	}

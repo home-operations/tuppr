@@ -89,25 +89,29 @@ spec:
                     - powercycle
                   type: string
                 talosctl:
-                  description: Talosctl specifies the talosctl image to use for upgrade operations
+                  description: Talosctl specifies the talosctl configuration for upgrade operations
                   properties:
-                    pullPolicy:
-                      default: IfNotPresent
-                      description: PullPolicy is the image pull policy
-                      enum:
-                        - Always
-                        - Never
-                        - IfNotPresent
-                      type: string
-                    repository:
-                      description: Repository is the container image repository
-                      type: string
-                    tag:
-                      description: Tag is the container image tag
-                      type: string
-                  required:
-                    - repository
-                    - tag
+                    image:
+                      description: Image specifies the talosctl container image
+                      properties:
+                        pullPolicy:
+                          default: IfNotPresent
+                          description: PullPolicy is the image pull policy
+                          enum:
+                            - Always
+                            - Never
+                            - IfNotPresent
+                          type: string
+                        repository:
+                          description: Repository is the container image repository
+                          type: string
+                        tag:
+                          description: Tag is the container image tag
+                          type: string
+                      required:
+                        - repository
+                        - tag
+                      type: object
                   type: object
               required:
                 - image
