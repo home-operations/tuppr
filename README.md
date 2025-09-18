@@ -67,7 +67,6 @@ apiVersion: talup.home-operations.com/v1alpha1
 kind: TalosUpgrade
 metadata:
   name: cluster
-  namespace: system-upgrade
 spec:
   target:
     image:
@@ -77,7 +76,11 @@ spec:
       debug: false # Optional, default: false
       force: false # Optional, default: false
       rebootMode: default # Optional, default: default
+    # You can create a TalosUpgrade per node
+    #   Just make sure update the TalosUpgrade name to the node name (or whatever)
+    #   and set the nodeSelector to the node name
     nodeSelector: {} # Optional
+      # kubernetes.io/hostname: k8s-0
   talosctl: # Optional
     image: # Optional
       repository: ghcr.io/siderolabs/talosctl # Optional, default: ghcr.io/siderolabs/talosctl
@@ -88,7 +91,7 @@ spec:
 Check that the controller recognizes the current state:
 
 ```bash
-kubectl get talosupgrade cluster -n system-upgrade -o yaml
+kubectl get talosupgrade cluster -o yaml
 ```
 
 **Expected**: Status should show all nodes as already upgraded.
@@ -110,7 +113,7 @@ Watch the upgrade progress:
 
 ```bash
 # Terminal 1: Watch TalosUpgrade status
-watch kubectl get talosupgrade cluster -n system-upgrade
+watch kubectl get talosupgrade cluster
 
 # Terminal 2: Watch jobs and pods
 watch kubectl get jobs,pods -n system-upgrade
@@ -133,7 +136,7 @@ Once downgrade completes:
 
 ```bash
 # Remove test resources
-kubectl delete talosupgrade cluster -n system-upgrade
+kubectl delete talosupgrade cluster
 
 # Remove controller
 helm uninstall talup --namespace system-upgrade
@@ -149,33 +152,6 @@ kubectl delete crd talosupgrades.talup.home-operations.com
 3. **Sequential Upgrades**: Nodes are upgraded one at a time to maintain availability
 4. **Status Tracking**: Real-time progress updates via Kubernetes status fields
 5. **Automatic Cleanup**: Completed jobs are automatically cleaned up after 15 minutes
-
-## 🔍 Troubleshooting
-
-### Debug Commands
-
-```bash
-# Check controller logs
-kubectl logs -f deployment/talup -n system-upgrade
-
-# Check upgrade job logs
-kubectl logs -f job/talup-talos-cluster-NODE_NAME -n system-upgrade
-
-# Check TalosUpgrade status
-kubectl describe talosupgrade cluster -n system-upgrade
-
-# Check events
-kubectl get events -n system-upgrade --sort-by='.firstTimestamp'
-```
-
-### Common Issues
-
-| Issue | Cause | Solution |
-|-------|--------|----------|
-| Job pods stuck pending | No available nodes | Check node selectors and taints |
-| Upgrade timeouts | Network issues | Check cluster connectivity |
-| Permission denied | RBAC issues | Verify cluster-admin permissions |
-| Secret not found | Missing talosconfig | Create secret with correct name |
 
 ### Known Limitations
 

@@ -23,6 +23,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      enableServiceLinks: false
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -43,6 +44,11 @@ spec:
             - --metrics-bind-address=:{{ .Values.controller.metrics.port }}
             - --health-probe-bind-address=:{{ .Values.controller.health.port }}
             - --talosconfig-secret={{ include "talup.talosServiceAccountName" . }}
+          env:
+            - name: CONTROLLER_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           ports:
             {{- if .Values.webhook.enabled }}
             - name: webhook-server
