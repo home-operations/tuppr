@@ -7,9 +7,7 @@ metadata:
   labels:
     {{- include "talup.labels" . | nindent 4 }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
-  {{- end }}
   selector:
     matchLabels:
       {{- include "talup.selectorLabels" . | nindent 6 }}
