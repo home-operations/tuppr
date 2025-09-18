@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -22,6 +23,14 @@ import (
 )
 
 const (
+	// Phase constants
+	PhasePending    = "Pending"
+	PhaseInProgress = "InProgress"
+	PhaseCompleted  = "Completed"
+	PhaseFailed     = "Failed"
+
+	// Annotation from Talos
+	SchematicAnnotation   = "extensions.talos.dev/schematic"
 	TalosUpgradeFinalizer = "talup.home-operations.com/talos-finalizer"
 )
 
@@ -87,6 +96,64 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosPlan *
 
 	logger.Info("Starting upgrade processing")
 
+	// Check if spec has changed (generation mismatch) - if so, reset status and restart
+	if talosPlan.Status.ObservedGeneration != 0 && talosPlan.Status.ObservedGeneration < talosPlan.Generation {
+		logger.Info("Spec has changed, resetting status and restarting upgrade",
+			"currentGeneration", talosPlan.Generation,
+			"observedGeneration", talosPlan.Status.ObservedGeneration,
+			"oldPhase", talosPlan.Status.Phase)
+
+		// Reset status to start fresh
+		namespacedName := client.ObjectKeyFromObject(talosPlan)
+		patch := map[string]interface{}{
+			"status": map[string]interface{}{
+				"phase":              PhasePending,
+				"currentNode":        "",
+				"message":            "Spec updated, restarting upgrade process",
+				"lastUpdated":        metav1.Now(),
+				"observedGeneration": talosPlan.Generation,
+				"completedNodes":     []string{},
+				"failedNodes":        []upgradev1alpha1.NodeUpgradeStatus{},
+			},
+		}
+
+		if err := r.patchStatus(ctx, namespacedName, patch); err != nil {
+			logger.Error(err, "Failed to reset status after spec change")
+			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+		}
+
+		logger.Info("Status reset, proceeding with new upgrade")
+		// Continue processing with reset status
+	} else {
+		// Skip lock acquisition for completed/failed upgrades (only if generation matches)
+		if talosPlan.Status.Phase == PhaseCompleted || talosPlan.Status.Phase == PhaseFailed {
+			logger.Info("Upgrade already completed or failed, skipping lock acquisition",
+				"phase", talosPlan.Status.Phase)
+			// Just requeue less frequently for completed/failed upgrades
+			return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+		}
+	}
+
+	// Check if we can acquire the upgrade lock
+	canProceed, queuePosition, err := r.acquireUpgradeLock(ctx, talosPlan)
+	if err != nil {
+		logger.Error(err, "Failed to check upgrade lock")
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
+
+	if !canProceed {
+		logger.Info("Waiting in upgrade queue", "position", queuePosition)
+
+		// Update status to show we're waiting
+		namespacedName := client.ObjectKeyFromObject(talosPlan)
+		if err := r.updatePhase(ctx, namespacedName, PhasePending, "",
+			fmt.Sprintf("Waiting in queue (position %d)", queuePosition)); err != nil {
+			logger.Error(err, "Failed to update phase while waiting")
+		}
+
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
+
 	namespacedName := client.ObjectKeyFromObject(talosPlan)
 
 	if len(talosPlan.Status.FailedNodes) > 0 {
@@ -130,7 +197,8 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosPlan *
 			"completedNodes", talosPlan.Status.CompletedNodes,
 			"failedNodes", len(talosPlan.Status.FailedNodes))
 
-		if err := r.updatePhase(ctx, namespacedName, PhaseCompleted, "", "All nodes upgraded successfully"); err != nil {
+		// Use the enhanced completion status update
+		if err := r.updateCompletionStatus(ctx, namespacedName, talosPlan); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
@@ -149,6 +217,109 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosPlan *
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+}
+
+func (r *TalosUpgradeReconciler) acquireUpgradeLock(ctx context.Context, talosPlan *upgradev1alpha1.TalosUpgrade) (bool, int, error) {
+	logger := log.FromContext(ctx)
+
+	// Get all TalosUpgrade resources in the cluster
+	upgradeList := &upgradev1alpha1.TalosUpgradeList{}
+	if err := r.List(ctx, upgradeList); err != nil {
+		return false, 0, err
+	}
+
+	// Sort by creation timestamp, then by namespace/name for deterministic ordering
+	sort.Slice(upgradeList.Items, func(i, j int) bool {
+		iTime := upgradeList.Items[i].CreationTimestamp.Time
+		jTime := upgradeList.Items[j].CreationTimestamp.Time
+
+		// If timestamps are equal, sort by namespace/name for deterministic ordering
+		if iTime.Equal(jTime) {
+			iName := upgradeList.Items[i].Namespace + "/" + upgradeList.Items[i].Name
+			jName := upgradeList.Items[j].Namespace + "/" + upgradeList.Items[j].Name
+			return iName < jName
+		}
+
+		return iTime.Before(jTime)
+	})
+
+	// Find our position in the queue
+	var queuePosition int
+	var currentUpgrade *upgradev1alpha1.TalosUpgrade
+
+	for _, upgrade := range upgradeList.Items {
+		// Skip completed/failed upgrades
+		if upgrade.Status.Phase == PhaseCompleted || upgrade.Status.Phase == PhaseFailed {
+			continue
+		}
+
+		queuePosition++
+		if upgrade.Name == talosPlan.Name && upgrade.Namespace == talosPlan.Namespace {
+			currentUpgrade = &upgrade
+			break
+		}
+	}
+
+	if currentUpgrade == nil {
+		return false, 0, fmt.Errorf("could not find current upgrade in list")
+	}
+
+	// Check if any upgrade is currently running
+	for _, upgrade := range upgradeList.Items {
+		// Skip ourselves and completed/failed upgrades
+		if (upgrade.Name == talosPlan.Name && upgrade.Namespace == talosPlan.Namespace) ||
+			upgrade.Status.Phase == PhaseCompleted || upgrade.Status.Phase == PhaseFailed {
+			continue
+		}
+
+		// If someone else is running, we need to wait
+		if upgrade.Status.Phase == PhaseInProgress {
+			logger.Info("Another upgrade is in progress, waiting",
+				"runningUpgrade", upgrade.Name,
+				"runningNamespace", upgrade.Namespace,
+				"queuePosition", queuePosition)
+			return false, queuePosition, nil
+		}
+	}
+
+	// Check if we're next in line by comparing our sorted position
+	for _, upgrade := range upgradeList.Items {
+		if upgrade.Status.Phase == PhaseCompleted || upgrade.Status.Phase == PhaseFailed {
+			continue
+		}
+
+		// If someone comes before us in the sorted order and is still pending, they go first
+		if upgrade.Status.Phase == PhasePending {
+			// Compare using the same logic as our sort function
+			upgradeTime := upgrade.CreationTimestamp.Time
+			currentTime := currentUpgrade.CreationTimestamp.Time
+
+			var isEarlier bool
+			if upgradeTime.Equal(currentTime) {
+				upgradeName := upgrade.Namespace + "/" + upgrade.Name
+				currentName := currentUpgrade.Namespace + "/" + currentUpgrade.Name
+				isEarlier = upgradeName < currentName
+			} else {
+				isEarlier = upgradeTime.Before(currentTime)
+			}
+
+			if isEarlier {
+				logger.Info("Waiting for earlier upgrade to start",
+					"earlierUpgrade", upgrade.Name,
+					"earlierNamespace", upgrade.Namespace,
+					"queuePosition", queuePosition)
+				return false, queuePosition, nil
+			}
+		}
+
+		// If we reach ourselves, we're next
+		if upgrade.Name == talosPlan.Name && upgrade.Namespace == talosPlan.Namespace {
+			break
+		}
+	}
+
+	logger.Info("Acquired upgrade lock", "upgrade", talosPlan.Name, "queuePosition", queuePosition)
+	return true, queuePosition, nil
 }
 
 // findActiveJob looks for any currently running job for this TalosUpgrade
@@ -533,7 +704,11 @@ func (r *TalosUpgradeReconciler) handleJobStatus(ctx context.Context, talosPlan 
 			return ctrl.Result{}, err
 		}
 
-		if err := r.updatePhase(ctx, namespacedName, PhasePending, "", fmt.Sprintf("Node %s upgraded successfully", nodeName)); err != nil {
+		// Enhanced status message with progress
+		completedCount := len(talosPlan.Status.CompletedNodes) + 1 // +1 for the node we just completed
+		message := fmt.Sprintf("Node %s upgraded successfully (%d completed)", nodeName, completedCount)
+
+		if err := r.updatePhase(ctx, namespacedName, PhasePending, "", message); err != nil {
 			logger.Error(err, "Failed to update phase", "node", nodeName)
 			return ctrl.Result{}, err
 		}
@@ -553,7 +728,11 @@ func (r *TalosUpgradeReconciler) handleJobStatus(ctx context.Context, talosPlan 
 			return ctrl.Result{}, err
 		}
 
-		if err := r.updatePhase(ctx, namespacedName, PhaseFailed, "", fmt.Sprintf("Node %s upgrade failed - stopping further upgrades", nodeName)); err != nil {
+		// Enhanced failure message
+		failedCount := len(talosPlan.Status.FailedNodes) + 1 // +1 for the node we just failed
+		message := fmt.Sprintf("Node %s upgrade failed (%d failed nodes) - stopping further upgrades", nodeName, failedCount)
+
+		if err := r.updatePhase(ctx, namespacedName, PhaseFailed, "", message); err != nil {
 			logger.Error(err, "Failed to update phase", "node", nodeName)
 			return ctrl.Result{}, err
 		}
@@ -562,19 +741,63 @@ func (r *TalosUpgradeReconciler) handleJobStatus(ctx context.Context, talosPlan 
 		return ctrl.Result{RequeueAfter: time.Minute * 10}, nil
 
 	default:
+		// Enhanced in-progress status
+		message := fmt.Sprintf("Upgrading node %s (job: %s)", nodeName, job.Name)
+		if err := r.updatePhase(ctx, namespacedName, PhaseInProgress, nodeName, message); err != nil {
+			logger.Error(err, "Failed to update in-progress phase", "node", nodeName)
+		}
+
 		logger.Info("Job is still active", "job", job.Name, "node", nodeName)
 		return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 	}
 }
 
-// Separate functions for different status updates using patches
+// Enhanced status update function with progress information
 func (r *TalosUpgradeReconciler) updatePhase(ctx context.Context, namespacedName types.NamespacedName, phase string, currentNode, message string) error {
+	// Get current TalosUpgrade to calculate additional status fields
+	talosPlan := &upgradev1alpha1.TalosUpgrade{}
+	if err := r.Get(ctx, namespacedName, talosPlan); err != nil {
+		return err
+	}
+
 	patch := map[string]interface{}{
 		"status": map[string]interface{}{
-			"phase":       phase,
-			"currentNode": currentNode,
-			"message":     message,
-			"lastUpdated": metav1.Now(),
+			"phase":              phase,
+			"currentNode":        currentNode,
+			"message":            message,
+			"lastUpdated":        metav1.Now(),
+			"observedGeneration": talosPlan.Generation,
+		},
+	}
+
+	return r.patchStatus(ctx, namespacedName, patch)
+}
+
+// Add a comprehensive status update when upgrades complete
+func (r *TalosUpgradeReconciler) updateCompletionStatus(ctx context.Context, namespacedName types.NamespacedName, talosPlan *upgradev1alpha1.TalosUpgrade) error {
+	completedCount := len(talosPlan.Status.CompletedNodes)
+	failedCount := len(talosPlan.Status.FailedNodes)
+	totalCount := completedCount + failedCount
+
+	var message string
+	var phase string
+
+	if failedCount > 0 {
+		phase = PhaseFailed
+		message = fmt.Sprintf("Upgrade completed with failures: %d successful, %d failed out of %d nodes",
+			completedCount, failedCount, totalCount)
+	} else {
+		phase = PhaseCompleted
+		message = fmt.Sprintf("Successfully upgraded %d nodes", completedCount)
+	}
+
+	patch := map[string]interface{}{
+		"status": map[string]interface{}{
+			"phase":              phase,
+			"currentNode":        "",
+			"message":            message,
+			"lastUpdated":        metav1.Now(),
+			"observedGeneration": talosPlan.Generation,
 		},
 	}
 

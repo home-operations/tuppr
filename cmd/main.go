@@ -23,7 +23,6 @@ import (
 
 	upgradev1alpha1 "github.com/home-operations/talup/api/v1alpha1"
 	"github.com/home-operations/talup/internal/controller"
-	talupwebhook "github.com/home-operations/talup/internal/webhook"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -223,12 +222,12 @@ func main() {
 		}
 	}
 
-	if err = (&talupwebhook.TalosUpgradeValidator{
-		Client: mgr.GetClient(),
-	}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "TalosUpgrade")
-		os.Exit(1)
-	}
+	// if err = (&talupwebhook.TalosUpgradeValidator{
+	// 	Client: mgr.GetClient(),
+	// }).SetupWebhookWithManager(mgr); err != nil {
+	// 	setupLog.Error(err, "unable to create webhook", "webhook", "TalosUpgrade")
+	// 	os.Exit(1)
+	// }
 
 	// +kubebuilder:scaffold:builder
 
