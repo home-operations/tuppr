@@ -2,10 +2,10 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ include "talup.serviceAccountName" . }}
+  name: {{ include "tuppr.serviceAccountName" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "talup.labels" . | nindent 4 }}
+    {{- include "tuppr.labels" . | nindent 4 }}
   {{- with .Values.serviceAccount.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}

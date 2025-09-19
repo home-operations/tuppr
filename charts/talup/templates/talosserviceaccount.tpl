@@ -2,9 +2,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "talup.fullname" . }}-talos
+  name: {{ include "tuppr.fullname" . }}-talos
   labels:
-    {{- include "talup.labels" . | nindent 4 }}
+    {{- include "tuppr.labels" . | nindent 4 }}
   {{- with .Values.talos.serviceAccount.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -15,16 +15,16 @@ roleRef:
   name: cluster-admin
 subjects:
   - kind: ServiceAccount
-    name: {{ include "talup.serviceAccountName" . }}
+    name: {{ include "tuppr.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
 ---
 apiVersion: talos.dev/v1alpha1
 kind: ServiceAccount
 metadata:
-  name: {{ include "talup.talosServiceAccountName" . }}
+  name: {{ include "tuppr.talosServiceAccountName" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "talup.labels" . | nindent 4 }}
+    {{- include "tuppr.labels" . | nindent 4 }}
   {{- with .Values.talos.serviceAccount.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}

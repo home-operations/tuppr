@@ -23,7 +23,7 @@ jobs:
       - name: Log in to Container Registry
         uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -31,7 +31,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5.8.0
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ghcr.io/${{ github.repository }}
           tags: |
             type=semver,pattern={{version}}
 
@@ -61,10 +61,10 @@ jobs:
 
       - name: Package Helm chart
         run: |
-          helm package charts/talup \
+          helm package charts/tuppr \
             --version ${{ steps.meta.outputs.tags }} \
             --app-version ${{ steps.meta.outputs.tags }}
 
       - name: Publish Helm chart to GHCR
         run: |-
-          helm push talup-${{ steps.meta.outputs.tags }}.tgz oci://${{ env.REGISTRY }}/${{ github.repository }}/charts
+          helm push tuppr-${{ steps.meta.outputs.tags }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts

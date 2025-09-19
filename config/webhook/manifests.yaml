@@ -15,7 +15,7 @@ webhooks:
     name: vtalosupgrade.kb.io
     rules:
       - apiGroups:
-          - talup.home-operations.com
+          - tuppr.home-operations.com
         apiVersions:
           - v1alpha1
         operations:

@@ -1,13 +1,13 @@
 ---
 apiVersion: v2
-name: talup
-description: A Helm chart for Talup - Talos Linux Upgrade Controller
+name: tuppr
+description: A Helm chart for tuppr - Talos Linux Upgrade Controller
 type: application
 version: 0.0.0
 appVersion: 0.0.0
-home: https://github.com/home-operations/talup
+home: https://github.com/home-operations/tuppr
 sources:
-  - https://github.com/home-operations/talup
+  - https://github.com/home-operations/tuppr
 maintainers:
   - name: home-operations
     email: contact@home-operations.com

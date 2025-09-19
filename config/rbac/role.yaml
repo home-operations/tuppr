@@ -26,7 +26,7 @@ rules:
       - update
       - watch
   - apiGroups:
-      - talup.home-operations.com
+      - tuppr.home-operations.com
     resources:
       - talosupgrades
     verbs:
@@ -38,13 +38,13 @@ rules:
       - update
       - watch
   - apiGroups:
-      - talup.home-operations.com
+      - tuppr.home-operations.com
     resources:
       - talosupgrades/finalizers
     verbs:
       - update
   - apiGroups:
-      - talup.home-operations.com
+      - tuppr.home-operations.com
     resources:
       - talosupgrades/status
     verbs:

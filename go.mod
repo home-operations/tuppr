@@ -1,4 +1,4 @@
-module github.com/home-operations/talup
+module github.com/home-operations/tuppr
 
 go 1.24.0
 

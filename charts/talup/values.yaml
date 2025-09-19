@@ -1,5 +1,5 @@
 ---
-# Default values for talup - Talos Linux Upgrade Controller
+# Default values for tuppr - Talos Linux Upgrade Controller
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
@@ -10,7 +10,7 @@ replicaCount: 1
 # Container image configuration
 image:
   # Container image repository
-  repository: ghcr.io/home-operations/talup
+  repository: ghcr.io/home-operations/tuppr
   # Image pull policy
   # Options: Always, Never, IfNotPresent
   pullPolicy: IfNotPresent
@@ -54,7 +54,7 @@ serviceAccount:
   annotations: {}
   # Example annotations for workload identity:
   # annotations:
-  #   iam.gke.io/gcp-service-account: talup@project.iam.gserviceaccount.com
+  #   iam.gke.io/gcp-service-account: tuppr@project.iam.gserviceaccount.com
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
   name: ""
@@ -240,7 +240,7 @@ monitoring:
     # Example:
     # metricRelabelings:
     #   - sourceLabels: [__name__]
-    #     regex: 'talup_(.*)'
+    #     regex: 'tuppr_(.*)'
     #     targetLabel: __name__
     #     replacement: 'controller_${1}'
 

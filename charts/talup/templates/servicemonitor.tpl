@@ -2,10 +2,10 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "talup.fullname" . }}
+  name: {{ include "tuppr.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "talup.labels" . | nindent 4 }}
+    {{- include "tuppr.labels" . | nindent 4 }}
     {{- with .Values.monitoring.serviceMonitor.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
@@ -16,7 +16,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      {{- include "talup.selectorLabels" . | nindent 6 }}
+      {{- include "tuppr.selectorLabels" . | nindent 6 }}
   endpoints:
     - port: metrics
       interval: {{ .Values.monitoring.serviceMonitor.interval | default "30s" }}

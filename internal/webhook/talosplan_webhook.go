@@ -16,7 +16,7 @@ import (
 
 	talosclientconfig "github.com/siderolabs/talos/pkg/machinery/client/config"
 
-	upgradev1alpha1 "github.com/home-operations/talup/api/v1alpha1"
+	upgradev1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 )
 
 // log is for logging in this package.
@@ -28,7 +28,7 @@ type TalosUpgradeValidator struct {
 	TalosConfigSecret string
 }
 
-//+kubebuilder:webhook:path=/validate-upgrade-home-operations-com-v1alpha1-talosupgrade,mutating=false,failurePolicy=fail,sideEffects=None,groups=talup.home-operations.com,resources=talosupgrades,verbs=create;update,versions=v1alpha1,name=vtalosupgrade.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:path=/validate-upgrade-home-operations-com-v1alpha1-talosupgrade,mutating=false,failurePolicy=fail,sideEffects=None,groups=tuppr.home-operations.com,resources=talosupgrades,verbs=create;update,versions=v1alpha1,name=vtalosupgrade.kb.io,admissionReviewVersions=v1
 
 var _ webhook.CustomValidator = &TalosUpgradeValidator{}
 

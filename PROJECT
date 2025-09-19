@@ -8,17 +8,17 @@ layout:
 plugins:
   manifests.sdk.operatorframework.io/v2: {}
   scorecard.sdk.operatorframework.io/v2: {}
-projectName: talup
-repo: github.com/home-operations/talup
+projectName: tuppr
+repo: github.com/home-operations/tuppr
 resources:
 - api:
     crdVersion: v1
     namespaced: false
   controller: true
   domain: home-operations.com
-  group: talup
+  group: tuppr
   kind: TalosUpgrade
-  path: github.com/home-operations/talup/api/v1alpha1
+  path: github.com/home-operations/tuppr/api/v1alpha1
   version: v1alpha1
   webhooks:
     validation: true

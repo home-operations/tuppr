@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: talosupgrades.talup.home-operations.com
+  name: talosupgrades.tuppr.home-operations.com
 spec:
-  group: talup.home-operations.com
+  group: tuppr.home-operations.com
   names:
     kind: TalosUpgrade
     listKind: TalosUpgradeList

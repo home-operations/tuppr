@@ -4,7 +4,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   labels:
-    app.kubernetes.io/name: talup
+    app.kubernetes.io/name: tuppr
     app.kubernetes.io/managed-by: kustomize
   name: leader-election-role
 rules:

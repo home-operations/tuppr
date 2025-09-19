@@ -1,9 +1,9 @@
 ---
-apiVersion: talup.home-operations.com/v1alpha1
+apiVersion: tuppr.home-operations.com/v1alpha1
 kind: Kubernetes
 metadata:
   labels:
-    app.kubernetes.io/name: talup
+    app.kubernetes.io/name: tuppr
     app.kubernetes.io/managed-by: kustomize
   name: kubernetes-sample
 spec:

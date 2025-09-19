@@ -1,8 +1,8 @@
 ---
-# This rule is not used by the project talup itself.
+# This rule is not used by the project tuppr itself.
 # It is provided to allow the cluster admin to help manage permissions for users.
 #
-# Grants read-only access to talup.home-operations.com resources.
+# Grants read-only access to tuppr.home-operations.com resources.
 # This role is intended for users who need visibility into these resources
 # without permissions to modify them. It is ideal for monitoring purposes and limited-access viewing.
 
@@ -10,12 +10,12 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    app.kubernetes.io/name: talup
+    app.kubernetes.io/name: tuppr
     app.kubernetes.io/managed-by: kustomize
   name: kubernetes-viewer-role
 rules:
   - apiGroups:
-      - talup.home-operations.com
+      - tuppr.home-operations.com
     resources:
       - kubernetes
     verbs:
@@ -23,7 +23,7 @@ rules:
       - list
       - watch
   - apiGroups:
-      - talup.home-operations.com
+      - tuppr.home-operations.com
     resources:
       - kubernetes/status
     verbs:

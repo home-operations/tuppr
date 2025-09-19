@@ -2,15 +2,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "talup.fullname" . }}
+  name: {{ include "tuppr.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "talup.labels" . | nindent 4 }}
+    {{- include "tuppr.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "talup.selectorLabels" . | nindent 6 }}
+      {{- include "tuppr.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -18,7 +18,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "talup.labels" . | nindent 8 }}
+        {{- include "tuppr.labels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -28,22 +28,22 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "talup.serviceAccountName" . }}
+      serviceAccountName: {{ include "tuppr.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: manager
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: {{ include "talup.image" . }}
-          imagePullPolicy: {{ include "talup.imagePullPolicy" . }}
+          image: {{ include "tuppr.image" . }}
+          imagePullPolicy: {{ include "tuppr.imagePullPolicy" . }}
           command:
             - /manager
           args:
             - --leader-elect={{ .Values.controller.leaderElection.enabled }}
             - --metrics-bind-address=:{{ .Values.controller.metrics.port }}
             - --health-probe-bind-address=:{{ .Values.controller.health.port }}
-            - --talosconfig-secret={{ include "talup.talosServiceAccountName" . }}
+            - --talosconfig-secret={{ include "tuppr.talosServiceAccountName" . }}
           env:
             - name: CONTROLLER_NAMESPACE
               valueFrom:
@@ -83,7 +83,7 @@ spec:
         - name: cert
           secret:
             defaultMode: 420
-            secretName: {{ include "talup.webhookCertName" . }}
+            secretName: {{ include "tuppr.webhookCertName" . }}
         {{- end }}
         {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}

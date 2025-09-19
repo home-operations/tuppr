@@ -11,7 +11,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	upgradev1alpha1 "github.com/home-operations/talup/api/v1alpha1"
+	upgradev1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 )
 
 var _ = Describe("Talos Controller", func() {

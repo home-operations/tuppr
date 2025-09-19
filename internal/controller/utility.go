@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	upgradev1alpha1 "github.com/home-operations/talup/api/v1alpha1"
+	upgradev1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -70,7 +70,7 @@ func GenerateSafeJobName(upgradeName, nodeName string) string {
 
 	// Use strings.Builder for efficient string construction
 	var nameBuilder strings.Builder
-	nameBuilder.WriteString("talup-")
+	nameBuilder.WriteString("tuppr-")
 
 	// Calculate remaining space after prefix and suffix
 	fixedLength := nameBuilder.Len() + 1 + len(jobID) // +1 for final dash
@@ -100,7 +100,7 @@ func GenerateSafeJobName(upgradeName, nodeName string) string {
 	// Final safety check
 	if len(result) > maxJobNameLength {
 		// Emergency fallback
-		return fmt.Sprintf("talup-%s", jobID)
+		return fmt.Sprintf("tuppr-%s", jobID)
 	}
 
 	return result
