@@ -46,7 +46,7 @@ Create your `values.yaml`:
 ```yaml
 image:
   repository: ghcr.io/home-operations/tuppr
-  tag: main-382f108 # Use latest sha from packages
+  tag: main-xxxxxxx # Use latest sha from packages
 ```
 
 ### 2. Installation
