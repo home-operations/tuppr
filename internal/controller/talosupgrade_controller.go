@@ -126,7 +126,10 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	} else if !canProceed {
 		logger.Info("Waiting in upgrade queue", "position", pos)
-		r.setPhase(ctx, talosUpgrade, PhasePending, "", fmt.Sprintf("Waiting in queue (position %d)", pos))
+		if err := r.setPhase(ctx, talosUpgrade, PhasePending, "", fmt.Sprintf("Waiting in queue (position %d)", pos)); err != nil {
+			logger.Error(err, "Failed to update phase while waiting in queue")
+			return ctrl.Result{RequeueAfter: time.Minute}, err
+		}
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
@@ -135,7 +138,10 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 		logger.Info("Upgrade plan has failed nodes, blocking further progress",
 			"failedNodes", len(talosUpgrade.Status.FailedNodes))
 		message := fmt.Sprintf("Upgrade stopped due to %d failed nodes", len(talosUpgrade.Status.FailedNodes))
-		r.setPhase(ctx, talosUpgrade, PhaseFailed, "", message)
+		if err := r.setPhase(ctx, talosUpgrade, PhaseFailed, "", message); err != nil {
+			logger.Error(err, "Failed to update phase for failed nodes")
+			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
+		}
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
 
@@ -191,7 +197,10 @@ func (r *TalosUpgradeReconciler) processNextNode(ctx context.Context, talosUpgra
 	}
 
 	logger.Info("Successfully created upgrade job", "node", nextNode)
-	r.setPhase(ctx, talosUpgrade, PhaseInProgress, nextNode, fmt.Sprintf("Upgrading node %s", nextNode))
+	if err := r.setPhase(ctx, talosUpgrade, PhaseInProgress, nextNode, fmt.Sprintf("Upgrading node %s", nextNode)); err != nil {
+		logger.Error(err, "Failed to update phase for node upgrade", "node", nextNode)
+		return ctrl.Result{RequeueAfter: time.Second * 30}, err
+	}
 	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 }
 
@@ -212,7 +221,10 @@ func (r *TalosUpgradeReconciler) completeUpgrade(ctx context.Context, talosUpgra
 		logger.Info("Upgrade completed successfully", "nodes", completedCount)
 	}
 
-	r.setPhase(ctx, talosUpgrade, phase, "", message)
+	if err := r.setPhase(ctx, talosUpgrade, phase, "", message); err != nil {
+		logger.Error(err, "Failed to update completion phase")
+		return ctrl.Result{RequeueAfter: time.Minute * 5}, err
+	}
 	return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 }
 
@@ -286,7 +298,10 @@ func (r *TalosUpgradeReconciler) handleJobStatus(ctx context.Context, talosUpgra
 	// Job still running
 	if job.Status.Succeeded == 0 && (job.Status.Failed == 0 || job.Status.Failed < *job.Spec.BackoffLimit) {
 		message := fmt.Sprintf("Upgrading node %s (job: %s)", nodeName, job.Name)
-		r.setPhase(ctx, talosUpgrade, PhaseInProgress, nodeName, message)
+		if err := r.setPhase(ctx, talosUpgrade, PhaseInProgress, nodeName, message); err != nil {
+			logger.Error(err, "Failed to update phase for active job", "job", job.Name, "node", nodeName)
+			return ctrl.Result{RequeueAfter: time.Second * 30}, err
+		}
 		logger.V(1).Info("Job is still active", "job", job.Name, "node", nodeName)
 		return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 	}
