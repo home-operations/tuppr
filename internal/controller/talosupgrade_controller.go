@@ -35,6 +35,7 @@ const (
 
 	// Finalizer for TalosUpgrade resources
 	TalosUpgradeFinalizer = "tuppr.home-operations.com/talos-finalizer"
+	ResetAnnotation       = "tuppr.home-operations.com/reset"
 
 	// Job constants
 	JobBackoffLimit        = 3    // Retry up to 3 times on failure
@@ -108,6 +109,11 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 
 	logger.V(1).Info("Starting upgrade processing")
 
+	// Check for reset annotation first
+	if resetRequested, err := r.handleResetAnnotation(ctx, talosUpgrade); err != nil || resetRequested {
+		return ctrl.Result{RequeueAfter: time.Second * 30}, err
+	}
+
 	// Handle generation changes
 	if reset, err := r.handleGenerationChange(ctx, talosUpgrade); err != nil || reset {
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
@@ -157,6 +163,49 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 	return r.processNextNode(ctx, talosUpgrade)
 }
 
+func (r *TalosUpgradeReconciler) handleResetAnnotation(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade) (bool, error) {
+	if talosUpgrade.Annotations == nil {
+		return false, nil
+	}
+
+	resetValue, hasReset := talosUpgrade.Annotations[ResetAnnotation]
+	if !hasReset {
+		return false, nil
+	}
+
+	logger := log.FromContext(ctx)
+	logger.Info("Reset annotation found, clearing upgrade state", "resetValue", resetValue)
+
+	// Remove the reset annotation and reset status
+	newAnnotations := make(map[string]string)
+	for k, v := range talosUpgrade.Annotations {
+		if k != ResetAnnotation {
+			newAnnotations[k] = v
+		}
+	}
+
+	// Update both annotations and status
+	talosUpgrade.Annotations = newAnnotations
+	if err := r.Update(ctx, talosUpgrade); err != nil {
+		logger.Error(err, "Failed to remove reset annotation")
+		return false, err
+	}
+
+	// Reset the status
+	if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
+		"phase":          PhasePending,
+		"currentNode":    "",
+		"message":        "Reset requested via annotation",
+		"completedNodes": []string{},
+		"failedNodes":    []upgradev1alpha1.NodeUpgradeStatus{},
+	}); err != nil {
+		logger.Error(err, "Failed to reset status after annotation")
+		return false, err
+	}
+
+	return true, nil
+}
+
 func (r *TalosUpgradeReconciler) handleGenerationChange(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade) (bool, error) {
 	if talosUpgrade.Status.ObservedGeneration == 0 || talosUpgrade.Status.ObservedGeneration >= talosUpgrade.Generation {
 		return false, nil // No change needed
@@ -167,7 +216,7 @@ func (r *TalosUpgradeReconciler) handleGenerationChange(ctx context.Context, tal
 		"generation", talosUpgrade.Generation,
 		"observed", talosUpgrade.Status.ObservedGeneration)
 
-	return true, r.updateStatus(ctx, talosUpgrade, map[string]interface{}{
+	return true, r.updateStatus(ctx, talosUpgrade, map[string]any{
 		"phase":          PhasePending,
 		"currentNode":    "",
 		"message":        "Spec updated, restarting upgrade process",
@@ -229,14 +278,14 @@ func (r *TalosUpgradeReconciler) completeUpgrade(ctx context.Context, talosUpgra
 }
 
 // Consolidated status update function
-func (r *TalosUpgradeReconciler) updateStatus(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade, updates map[string]interface{}) error {
+func (r *TalosUpgradeReconciler) updateStatus(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade, updates map[string]any) error {
 	logger := log.FromContext(ctx)
 
 	// Always include generation and timestamp
 	updates["observedGeneration"] = talosUpgrade.Generation
 	updates["lastUpdated"] = metav1.Now()
 
-	patch := map[string]interface{}{
+	patch := map[string]any{
 		"status": updates,
 	}
 
@@ -255,7 +304,7 @@ func (r *TalosUpgradeReconciler) updateStatus(ctx context.Context, talosUpgrade 
 
 // Simplified wrapper functions
 func (r *TalosUpgradeReconciler) setPhase(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade, phase, currentNode, message string) error {
-	return r.updateStatus(ctx, talosUpgrade, map[string]interface{}{
+	return r.updateStatus(ctx, talosUpgrade, map[string]any{
 		"phase":       phase,
 		"currentNode": currentNode,
 		"message":     message,
@@ -268,7 +317,7 @@ func (r *TalosUpgradeReconciler) addCompletedNode(ctx context.Context, talosUpgr
 	}
 
 	newCompleted := append(talosUpgrade.Status.CompletedNodes, nodeName)
-	return r.updateStatus(ctx, talosUpgrade, map[string]interface{}{
+	return r.updateStatus(ctx, talosUpgrade, map[string]any{
 		"completedNodes": newCompleted,
 	})
 }
@@ -279,7 +328,7 @@ func (r *TalosUpgradeReconciler) addFailedNode(ctx context.Context, talosUpgrade
 	}
 
 	newFailed := append(talosUpgrade.Status.FailedNodes, nodeStatus)
-	return r.updateStatus(ctx, talosUpgrade, map[string]interface{}{
+	return r.updateStatus(ctx, talosUpgrade, map[string]any{
 		"failedNodes": newFailed,
 	})
 }
@@ -731,6 +780,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 						RunAsNonRoot: ptr.To(true),
 						RunAsUser:    ptr.To(int64(65534)),
 						RunAsGroup:   ptr.To(int64(65534)),
+						FSGroup:      ptr.To(int64(65534)),
 						SeccompProfile: &corev1.SeccompProfile{
 							Type: corev1.SeccompProfileTypeRuntimeDefault,
 						},
@@ -821,7 +871,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
 								SecretName:  r.TalosConfigSecret,
-								DefaultMode: ptr.To(int32(0444)),
+								DefaultMode: ptr.To(int32(0400)),
 							},
 						},
 					}},
