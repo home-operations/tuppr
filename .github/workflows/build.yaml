@@ -20,7 +20,7 @@ jobs:
       group: ${{ github.workflow }}-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - name: Checkout
