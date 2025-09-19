@@ -594,7 +594,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 							},
 						},
 						VolumeMounts: []corev1.VolumeMount{{
-							Name:      "talos",
+							Name:      "talosconfig",
 							MountPath: "/var/run/secrets/talos.dev",
 							ReadOnly:  true,
 						}},
@@ -612,13 +612,13 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 							},
 						},
 						VolumeMounts: []corev1.VolumeMount{{
-							Name:      "talos",
+							Name:      "talosconfig",
 							MountPath: "/var/run/secrets/talos.dev",
 							ReadOnly:  true,
 						}},
 					}},
 					Volumes: []corev1.Volume{{
-						Name: "talos",
+						Name: "talosconfig",
 						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
 								SecretName: r.TalosConfigSecret,
