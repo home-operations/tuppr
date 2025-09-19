@@ -1,4 +1,4 @@
-# Talup - Talos Linux Upgrade Controller
+# tuppr - Talos Linux Upgrade Controller
 
 A Kubernetes controller for managing automated upgrades of Talos Linux nodes and Kubernetes control plane components.
 
@@ -45,14 +45,14 @@ Create your `values.yaml`:
 
 ```yaml
 image:
-  repository: ghcr.io/home-operations/talup
+  repository: ghcr.io/home-operations/tuppr
   tag: main-382f108 # Use latest sha from packages
 ```
 
 ### 2. Installation
 
 ```bash
-helm install talup oci://ghcr.io/home-operations/talup/charts/talup \
+helm install tuppr oci://ghcr.io/home-operations/charts/tuppr \
   --version 0.0.0 \
   --values values.yaml \
   --namespace system-upgrade
@@ -63,7 +63,7 @@ helm install talup oci://ghcr.io/home-operations/talup/charts/talup \
 Create a TalosUpgrade matching your **current** cluster state:
 
 ```yaml
-apiVersion: talup.home-operations.com/v1alpha1
+apiVersion: tuppr.home-operations.com/v1alpha1
 kind: TalosUpgrade
 metadata:
   name: cluster
@@ -139,10 +139,10 @@ Once downgrade completes:
 kubectl delete talosupgrade cluster
 
 # Remove controller
-helm uninstall talup --namespace system-upgrade
+helm uninstall tuppr --namespace system-upgrade
 
 # Remove CRDs
-kubectl delete crd talosupgrades.talup.home-operations.com
+kubectl delete crd talosupgrades.tuppr.home-operations.com
 ```
 
 ## 📖 How It Works

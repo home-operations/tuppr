@@ -21,9 +21,9 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	upgradev1alpha1 "github.com/home-operations/talup/api/v1alpha1"
-	"github.com/home-operations/talup/internal/controller"
-	talupwebhook "github.com/home-operations/talup/internal/webhook"
+	upgradev1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/controller"
+	tupprwebhook "github.com/home-operations/tuppr/internal/webhook"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -68,7 +68,7 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&talosConfigSecret, "talosconfig-secret", "talup",
+	flag.StringVar(&talosConfigSecret, "talosconfig-secret", "tuppr",
 		"The name of the secret containing talos configuration")
 
 	opts := zap.Options{
@@ -82,10 +82,10 @@ func main() {
 	// Get controller namespace from environment
 	controllerNamespace := os.Getenv("CONTROLLER_NAMESPACE")
 	if controllerNamespace == "" {
-		controllerNamespace = "talup-system" // Default namespace
+		controllerNamespace = "tuppr-system" // Default namespace
 	}
 
-	setupLog.Info("Starting talup controller manager",
+	setupLog.Info("Starting tuppr controller manager",
 		"talosconfig-secret", talosConfigSecret,
 		"controller-namespace", controllerNamespace)
 
@@ -231,7 +231,7 @@ func main() {
 		}
 	}
 
-	if err = (&talupwebhook.TalosUpgradeValidator{
+	if err = (&tupprwebhook.TalosUpgradeValidator{
 		Client: mgr.GetClient(),
 	}).SetupWebhookWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "TalosUpgrade")

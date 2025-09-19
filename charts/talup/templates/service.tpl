@@ -2,10 +2,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "talup.metricsServiceName" . }}
+  name: {{ include "tuppr.metricsServiceName" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "talup.labels" . | nindent 4 }}
+    {{- include "tuppr.labels" . | nindent 4 }}
   {{- with .Values.controller.metrics.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -18,5 +18,5 @@ spec:
       protocol: TCP
       name: metrics
   selector:
-    {{- include "talup.selectorLabels" . | nindent 4 }}
+    {{- include "tuppr.selectorLabels" . | nindent 4 }}
 {{- end }}

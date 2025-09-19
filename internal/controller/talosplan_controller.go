@@ -19,7 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	upgradev1alpha1 "github.com/home-operations/talup/api/v1alpha1"
+	upgradev1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 )
 
 const (
@@ -31,12 +31,12 @@ const (
 
 	// Annotation from Talos
 	SchematicAnnotation   = "extensions.talos.dev/schematic"
-	TalosUpgradeFinalizer = "talup.home-operations.com/talos-finalizer"
+	TalosUpgradeFinalizer = "tuppr.home-operations.com/talos-finalizer"
 )
 
-//+kubebuilder:rbac:groups=talup.home-operations.com,resources=talosupgrades,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=talup.home-operations.com,resources=talosupgrades/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=talup.home-operations.com,resources=talosupgrades/finalizers,verbs=update
+//+kubebuilder:rbac:groups=tuppr.home-operations.com,resources=talosupgrades,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=tuppr.home-operations.com,resources=talosupgrades/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=tuppr.home-operations.com,resources=talosupgrades/finalizers,verbs=update
 //+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
@@ -333,7 +333,7 @@ func (r *TalosUpgradeReconciler) findActiveJob(ctx context.Context, talosPlan *u
 	logger.Info("Found jobs for TalosUpgrade", "count", len(jobList.Items))
 
 	for _, job := range jobList.Items {
-		nodeName := job.Labels["talup.home-operations.com/target-node"]
+		nodeName := job.Labels["tuppr.home-operations.com/target-node"]
 
 		// Skip jobs for nodes that are already completed
 		if ContainsNode(nodeName, talosPlan.Status.CompletedNodes) {
@@ -486,8 +486,8 @@ func (r *TalosUpgradeReconciler) buildJob(talosPlan *upgradev1alpha1.TalosUpgrad
 	labels := map[string]string{
 		"app.kubernetes.io/name":                "talos-upgrade",
 		"app.kubernetes.io/instance":            talosPlan.Name,
-		"app.kubernetes.io/part-of":             "talup",
-		"talup.home-operations.com/target-node": nodeName,
+		"app.kubernetes.io/part-of":             "tuppr",
+		"tuppr.home-operations.com/target-node": nodeName,
 	}
 
 	// Get talosctl image with defaults
