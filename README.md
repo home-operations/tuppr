@@ -41,21 +41,20 @@ machine:
 # ...
 ```
 
-Create your `values.yaml`:
-
-```yaml
-image:
-  repository: ghcr.io/home-operations/tuppr
-  tag: main-xxxxxxx # Use latest sha from packages
-```
-
 ### 2. Installation
 
 ```bash
 helm install tuppr oci://ghcr.io/home-operations/charts/tuppr \
-  --version 0.0.0 \
-  --values values.yaml \
+  --version 0.0.x \
+  --set replicas=2 \
   --namespace system-upgrade
+
+# Or upgrade
+helm upgrade tuppr oci://ghcr.io/home-operations/charts/tuppr \
+  --version 0.0.x \
+  --reuse-values \
+  --namespace system-upgrade
+
 ```
 
 ### 3. Initial State Check
@@ -66,7 +65,7 @@ Create a TalosUpgrade matching your **current** cluster state:
 apiVersion: tuppr.home-operations.com/v1alpha1
 kind: TalosUpgrade
 metadata:
-  name: cluster
+  name: cluster # choose a name that best describes the spec values you have
 spec:
   target:
     image:
@@ -77,7 +76,7 @@ spec:
       force: false # Optional, default: false
       rebootMode: default # Optional, default: default
     # You can create a TalosUpgrade per node
-    #   Just make sure update the TalosUpgrade name to the node name (or whatever)
+    #   Just make sure update the TalosUpgrade metadata.name to the node name (or whatever)
     #   and set the nodeSelector to the node name
     nodeSelector: {} # Optional
       # kubernetes.io/hostname: k8s-0
