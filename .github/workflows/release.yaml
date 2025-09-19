@@ -1,9 +1,9 @@
 ---
 name: Build
 on:
-  push:
-    branches:
-      - main
+  release:
+    types:
+      - published
 
 jobs:
   build:
@@ -72,6 +72,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
     steps:
       - name: Download digests
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
@@ -96,7 +98,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |-
-            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
@@ -136,8 +138,8 @@ jobs:
       - name: Package Helm chart
         run: |
           helm package charts/tuppr \
-            --version 0.0.0 \
-            --app-version 0.0.0
+            --version ${{ needs.merge.outputs.version }} \
+            --app-version ${{ needs.merge.outputs.version }}
 
       - name: Log in to Container Registry
         uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
@@ -148,4 +150,4 @@ jobs:
 
       - name: Publish Helm chart to GHCR
         run: |-
-          helm push tuppr-0.0.0.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+          helm push tuppr-${{ needs.merge.outputs.version }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts

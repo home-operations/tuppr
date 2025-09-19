@@ -10,6 +10,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,8 +31,19 @@ const (
 	PhaseFailed     = "Failed"
 
 	// Annotation from Talos
-	SchematicAnnotation   = "extensions.talos.dev/schematic"
+	SchematicAnnotation = "extensions.talos.dev/schematic"
+
+	// Finalizer for TalosUpgrade resources
 	TalosUpgradeFinalizer = "tuppr.home-operations.com/talos-finalizer"
+
+	// Job constants
+	JobBackoffLimit        = 3    // Retry up to 3 times on failure
+	JobActiveDeadline      = 4500 // 75 minutes
+	JobGracePeriod         = 300  // 5 minutes
+	JobTTLAfterFinished    = 900  // 15 minutes
+	JobTalosSecretName     = "talosconfig"
+	JobTalosHealthTimeout  = "5m"
+	JobTalosUpgradeTimeout = "15m"
 )
 
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=talosupgrades,verbs=get;list;watch;create;update;patch;delete
@@ -96,127 +108,263 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 
 	logger.V(1).Info("Starting upgrade processing")
 
-	// Check if spec has changed (generation mismatch) - if so, reset status and restart
-	if talosUpgrade.Status.ObservedGeneration != 0 && talosUpgrade.Status.ObservedGeneration < talosUpgrade.Generation {
-		logger.Info("Spec has changed, resetting status and restarting upgrade",
-			"currentGeneration", talosUpgrade.Generation,
-			"observedGeneration", talosUpgrade.Status.ObservedGeneration,
-			"oldPhase", talosUpgrade.Status.Phase)
-
-		// Reset status to start fresh
-		objectKey := client.ObjectKey{Name: talosUpgrade.Name} // No namespace for cluster-scoped
-		patch := map[string]interface{}{
-			"status": map[string]interface{}{
-				"phase":              PhasePending,
-				"currentNode":        "",
-				"message":            "Spec updated, restarting upgrade process",
-				"lastUpdated":        metav1.Now(),
-				"observedGeneration": talosUpgrade.Generation,
-				"completedNodes":     []string{},
-				"failedNodes":        []upgradev1alpha1.NodeUpgradeStatus{},
-			},
-		}
-
-		if err := r.patchStatus(ctx, objectKey, patch); err != nil {
-			logger.Error(err, "Failed to reset status after spec change")
-			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
-		}
-
-		logger.V(1).Info("Status reset, proceeding with new upgrade")
-		// Continue processing with reset status
-	} else {
-		// Skip lock acquisition for completed/failed upgrades (only if generation matches)
-		if talosUpgrade.Status.Phase == PhaseCompleted || talosUpgrade.Status.Phase == PhaseFailed {
-			logger.V(1).Info("Upgrade already completed or failed, skipping lock acquisition",
-				"phase", talosUpgrade.Status.Phase)
-			// Just requeue less frequently for completed/failed upgrades
-			return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
-		}
+	// Handle generation changes
+	if reset, err := r.handleGenerationChange(ctx, talosUpgrade); err != nil || reset {
+		return ctrl.Result{RequeueAfter: time.Second * 30}, err
 	}
 
-	// Check if we can acquire the upgrade lock
-	canProceed, queuePosition, err := r.acquireUpgradeLock(ctx, talosUpgrade)
-	if err != nil {
-		logger.Error(err, "Failed to check upgrade lock")
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
-	}
-
-	if !canProceed {
-		logger.Info("Waiting in upgrade queue", "position", queuePosition)
-
-		// Update status to show we're waiting
-		objectKey := client.ObjectKey{Name: talosUpgrade.Name} // No namespace for cluster-scoped
-		if err := r.updatePhase(ctx, objectKey, PhasePending, "",
-			fmt.Sprintf("Waiting in queue (position %d)", queuePosition)); err != nil {
-			logger.Error(err, "Failed to update phase while waiting")
-		}
-
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
-	}
-
-	objectKey := client.ObjectKey{Name: talosUpgrade.Name} // No namespace for cluster-scoped
-
-	if len(talosUpgrade.Status.FailedNodes) > 0 {
-		logger.Info("Upgrade plan has failed nodes, blocking further progress",
-			"talosupgrade", talosUpgrade.Name,
-			"failedNodes", len(talosUpgrade.Status.FailedNodes))
-
-		if err := r.updatePhase(ctx, objectKey, PhaseFailed, "",
-			fmt.Sprintf("Upgrade stopped due to %d failed nodes", len(talosUpgrade.Status.FailedNodes))); err != nil {
-			return ctrl.Result{}, err
-		}
+	// Skip if already completed/failed (and generation matches)
+	if talosUpgrade.Status.Phase == PhaseCompleted || talosUpgrade.Status.Phase == PhaseFailed {
+		logger.V(1).Info("Upgrade already completed or failed, skipping lock acquisition",
+			"phase", talosUpgrade.Status.Phase)
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
 
-	activeJob, activeNode, err := r.findActiveJob(ctx, talosUpgrade)
-	if err != nil {
-		logger.Error(err, "Failed to find active jobs", "talosupgrade", talosUpgrade.Name)
+	// Check upgrade queue
+	if canProceed, pos, err := r.acquireUpgradeLock(ctx, talosUpgrade); err != nil {
+		logger.Error(err, "Failed to check upgrade lock")
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	} else if !canProceed {
+		logger.Info("Waiting in upgrade queue", "position", pos)
+		r.setPhase(ctx, talosUpgrade, PhasePending, "", fmt.Sprintf("Waiting in queue (position %d)", pos))
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
-	if activeJob != nil {
-		logger.V(1).Info("Found active job, monitoring status",
-			"job", activeJob.Name,
-			"node", activeNode,
-			"active", activeJob.Status.Active,
-			"succeeded", activeJob.Status.Succeeded,
-			"failed", activeJob.Status.Failed)
+	// Check for failed nodes
+	if len(talosUpgrade.Status.FailedNodes) > 0 {
+		logger.Info("Upgrade plan has failed nodes, blocking further progress",
+			"failedNodes", len(talosUpgrade.Status.FailedNodes))
+		message := fmt.Sprintf("Upgrade stopped due to %d failed nodes", len(talosUpgrade.Status.FailedNodes))
+		r.setPhase(ctx, talosUpgrade, PhaseFailed, "", message)
+		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+	}
 
+	// Handle active job
+	if activeJob, activeNode, err := r.findActiveJob(ctx, talosUpgrade); err != nil {
+		logger.Error(err, "Failed to find active jobs")
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	} else if activeJob != nil {
 		return r.handleJobStatus(ctx, talosUpgrade, activeNode, activeJob)
 	}
 
+	// Find next node or complete
+	return r.processNextNode(ctx, talosUpgrade)
+}
+
+func (r *TalosUpgradeReconciler) handleGenerationChange(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade) (bool, error) {
+	if talosUpgrade.Status.ObservedGeneration == 0 || talosUpgrade.Status.ObservedGeneration >= talosUpgrade.Generation {
+		return false, nil // No change needed
+	}
+
+	logger := log.FromContext(ctx)
+	logger.Info("Spec changed, resetting upgrade",
+		"generation", talosUpgrade.Generation,
+		"observed", talosUpgrade.Status.ObservedGeneration)
+
+	return true, r.updateStatus(ctx, talosUpgrade, map[string]interface{}{
+		"phase":          PhasePending,
+		"currentNode":    "",
+		"message":        "Spec updated, restarting upgrade process",
+		"completedNodes": []string{},
+		"failedNodes":    []upgradev1alpha1.NodeUpgradeStatus{},
+	})
+}
+
+func (r *TalosUpgradeReconciler) processNextNode(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
 	nextNode, err := r.findNextNode(ctx, talosUpgrade)
 	if err != nil {
-		logger.Error(err, "Failed to find next node to upgrade", "talosupgrade", talosUpgrade.Name)
+		logger.Error(err, "Failed to find next node to upgrade")
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
 	if nextNode == "" {
-		logger.Info("No more nodes to upgrade, marking plan as completed",
-			"talosupgrade", talosUpgrade.Name,
-			"completedNodes", talosUpgrade.Status.CompletedNodes,
-			"failedNodes", len(talosUpgrade.Status.FailedNodes))
-
-		// Use the enhanced completion status update
-		if err := r.updateCompletionStatus(ctx, objectKey, talosUpgrade); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+		return r.completeUpgrade(ctx, talosUpgrade)
 	}
 
-	logger.Info("Found next node to upgrade", "talosupgrade", talosUpgrade.Name, "node", nextNode)
+	logger.Info("Found next node to upgrade", "node", nextNode)
 
-	logger.V(1).Info("Creating new upgrade job", "node", nextNode)
 	if _, err := r.createJob(ctx, talosUpgrade, nextNode); err != nil {
 		logger.Error(err, "Failed to create upgrade job", "node", nextNode)
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
 	logger.Info("Successfully created upgrade job", "node", nextNode)
-	if err := r.updatePhase(ctx, objectKey, PhaseInProgress, nextNode, fmt.Sprintf("Upgrading node %s", nextNode)); err != nil {
+	r.setPhase(ctx, talosUpgrade, PhaseInProgress, nextNode, fmt.Sprintf("Upgrading node %s", nextNode))
+	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+}
+
+func (r *TalosUpgradeReconciler) completeUpgrade(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	completedCount := len(talosUpgrade.Status.CompletedNodes)
+	failedCount := len(talosUpgrade.Status.FailedNodes)
+
+	var phase, message string
+	if failedCount > 0 {
+		phase = PhaseFailed
+		message = fmt.Sprintf("Completed with failures: %d successful, %d failed", completedCount, failedCount)
+		logger.Info("Upgrade completed with failures", "completed", completedCount, "failed", failedCount)
+	} else {
+		phase = PhaseCompleted
+		message = fmt.Sprintf("Successfully upgraded %d nodes", completedCount)
+		logger.Info("Upgrade completed successfully", "nodes", completedCount)
+	}
+
+	r.setPhase(ctx, talosUpgrade, phase, "", message)
+	return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+}
+
+// Consolidated status update function
+func (r *TalosUpgradeReconciler) updateStatus(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade, updates map[string]interface{}) error {
+	logger := log.FromContext(ctx)
+
+	// Always include generation and timestamp
+	updates["observedGeneration"] = talosUpgrade.Generation
+	updates["lastUpdated"] = metav1.Now()
+
+	patch := map[string]interface{}{
+		"status": updates,
+	}
+
+	patchBytes, err := json.Marshal(patch)
+	if err != nil {
+		return fmt.Errorf("failed to marshal patch: %w", err)
+	}
+
+	logger.V(1).Info("Applying status patch", "patch", string(patchBytes))
+
+	statusObj := &upgradev1alpha1.TalosUpgrade{}
+	statusObj.Name = talosUpgrade.Name
+
+	return r.Status().Patch(ctx, statusObj, client.RawPatch(types.MergePatchType, patchBytes))
+}
+
+// Simplified wrapper functions
+func (r *TalosUpgradeReconciler) setPhase(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade, phase, currentNode, message string) error {
+	return r.updateStatus(ctx, talosUpgrade, map[string]interface{}{
+		"phase":       phase,
+		"currentNode": currentNode,
+		"message":     message,
+	})
+}
+
+func (r *TalosUpgradeReconciler) addCompletedNode(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade, nodeName string) error {
+	if ContainsNode(nodeName, talosUpgrade.Status.CompletedNodes) {
+		return nil
+	}
+
+	newCompleted := append(talosUpgrade.Status.CompletedNodes, nodeName)
+	return r.updateStatus(ctx, talosUpgrade, map[string]interface{}{
+		"completedNodes": newCompleted,
+	})
+}
+
+func (r *TalosUpgradeReconciler) addFailedNode(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade, nodeStatus upgradev1alpha1.NodeUpgradeStatus) error {
+	if ContainsFailedNode(nodeStatus.NodeName, talosUpgrade.Status.FailedNodes) {
+		return nil
+	}
+
+	newFailed := append(talosUpgrade.Status.FailedNodes, nodeStatus)
+	return r.updateStatus(ctx, talosUpgrade, map[string]interface{}{
+		"failedNodes": newFailed,
+	})
+}
+
+func (r *TalosUpgradeReconciler) handleJobStatus(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade, nodeName string, job *batchv1.Job) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	logger.V(1).Info("Handling job status",
+		"job", job.Name,
+		"node", nodeName,
+		"active", job.Status.Active,
+		"succeeded", job.Status.Succeeded,
+		"failed", job.Status.Failed,
+		"backoffLimit", *job.Spec.BackoffLimit)
+
+	// Job still running
+	if job.Status.Succeeded == 0 && (job.Status.Failed == 0 || job.Status.Failed < *job.Spec.BackoffLimit) {
+		message := fmt.Sprintf("Upgrading node %s (job: %s)", nodeName, job.Name)
+		r.setPhase(ctx, talosUpgrade, PhaseInProgress, nodeName, message)
+		logger.V(1).Info("Job is still active", "job", job.Name, "node", nodeName)
+		return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+	}
+
+	// Job succeeded - verify upgrade
+	if job.Status.Succeeded > 0 {
+		return r.handleJobSuccess(ctx, talosUpgrade, nodeName)
+	}
+
+	// Job failed permanently
+	return r.handleJobFailure(ctx, talosUpgrade, nodeName)
+}
+
+func (r *TalosUpgradeReconciler) handleJobSuccess(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade, nodeName string) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("Job completed successfully", "node", nodeName)
+
+	// Verify the upgrade actually worked
+	if err := r.verifyNodeUpgrade(ctx, talosUpgrade, nodeName); err != nil {
+		logger.Error(err, "Node upgrade verification failed", "node", nodeName)
+		return r.handleJobFailure(ctx, talosUpgrade, nodeName)
+	}
+
+	if err := r.addCompletedNode(ctx, talosUpgrade, nodeName); err != nil {
+		logger.Error(err, "Failed to add completed node", "node", nodeName)
 		return ctrl.Result{}, err
 	}
-	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+
+	completedCount := len(talosUpgrade.Status.CompletedNodes) + 1
+	message := fmt.Sprintf("Node %s upgraded successfully (%d completed)", nodeName, completedCount)
+
+	if err := r.setPhase(ctx, talosUpgrade, PhasePending, "", message); err != nil {
+		logger.Error(err, "Failed to update phase", "node", nodeName)
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("Successfully marked node as completed", "node", nodeName)
+	return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+}
+
+func (r *TalosUpgradeReconciler) handleJobFailure(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade, nodeName string) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("Job failed permanently", "node", nodeName)
+
+	nodeStatus := upgradev1alpha1.NodeUpgradeStatus{
+		NodeName:  nodeName,
+		LastError: "Job failed permanently",
+	}
+
+	if err := r.addFailedNode(ctx, talosUpgrade, nodeStatus); err != nil {
+		logger.Error(err, "Failed to add failed node", "node", nodeName)
+		return ctrl.Result{}, err
+	}
+
+	failedCount := len(talosUpgrade.Status.FailedNodes) + 1
+	message := fmt.Sprintf("Node %s upgrade failed (%d failed) - stopping", nodeName, failedCount)
+
+	if err := r.setPhase(ctx, talosUpgrade, PhaseFailed, "", message); err != nil {
+		logger.Error(err, "Failed to update phase", "node", nodeName)
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("Successfully marked node as failed", "node", nodeName)
+	return ctrl.Result{RequeueAfter: time.Minute * 10}, nil
+}
+
+func (r *TalosUpgradeReconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade, nodeName string) error {
+	node := &corev1.Node{}
+	if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
+		return fmt.Errorf("failed to get node: %w", err)
+	}
+
+	targetImage := fmt.Sprintf("%s:%s", talosUpgrade.Spec.Target.Image.Repository, talosUpgrade.Spec.Target.Image.Tag)
+	if r.nodeNeedsUpgrade(ctx, node, targetImage) {
+		return fmt.Errorf("node still needs upgrade after job completion")
+	}
+
+	return nil
 }
 
 func (r *TalosUpgradeReconciler) acquireUpgradeLock(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade) (bool, int, error) {
@@ -371,6 +519,11 @@ func (r *TalosUpgradeReconciler) findNextNode(ctx context.Context, talosUpgrade 
 		return "", err
 	}
 
+	// Sort nodes by name for consistent ordering
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].Name < nodes[j].Name
+	})
+
 	logger.V(1).Info("Retrieved target nodes", "count", len(nodes))
 
 	targetImage := fmt.Sprintf("%s:%s", talosUpgrade.Spec.Target.Image.Repository, talosUpgrade.Spec.Target.Image.Tag)
@@ -452,7 +605,7 @@ func (r *TalosUpgradeReconciler) createJob(ctx context.Context, talosUpgrade *up
 
 	logger.V(1).Info("Node details", "node", nodeName, "ip", nodeIP)
 
-	job := r.buildJob(ctx, talosUpgrade, nodeName, nodeIP) // Pass ctx instead of creating new one
+	job := r.buildJob(ctx, talosUpgrade, nodeName, nodeIP)
 	if err := controllerutil.SetControllerReference(talosUpgrade, job, r.Scheme); err != nil {
 		logger.Error(err, "Failed to set controller reference", "job", job.Name)
 		return nil, err
@@ -466,6 +619,7 @@ func (r *TalosUpgradeReconciler) createJob(ctx context.Context, talosUpgrade *up
 
 			existingJob := &batchv1.Job{}
 			if getErr := r.Get(ctx, types.NamespacedName{Name: job.Name, Namespace: job.Namespace}, existingJob); getErr != nil {
+				logger.Error(getErr, "Failed to get existing job", "job", job.Name)
 				return nil, getErr
 			}
 			return existingJob, nil
@@ -498,7 +652,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 
 	talosctlTag := talosUpgrade.Spec.Talosctl.Image.Tag
 	if talosctlTag == "" {
-		talosctlTag = r.getTalosctlTagFromNode(ctx, nodeName) // Use passed context
+		talosctlTag = r.getTalosctlTagFromNode(ctx, nodeName)
 		if talosctlTag == "" {
 			logger.V(1).Info("Could not determine talosctl version from node, using latest", "node", nodeName)
 			talosctlTag = "latest"
@@ -513,7 +667,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 		"upgrade",
 		"--nodes", nodeIP,
 		"--image", fmt.Sprintf("%s:%s", talosUpgrade.Spec.Target.Image.Repository, talosUpgrade.Spec.Target.Image.Tag),
-		"--timeout=15m",
+		"--timeout=" + JobTalosUpgradeTimeout,
 	}
 
 	if talosUpgrade.Spec.Target.Options.Debug {
@@ -548,20 +702,23 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 			Labels:    labels,
 		},
 		Spec: batchv1.JobSpec{
-			BackoffLimit:            ptr.To(int32(3)),
+			BackoffLimit:            ptr.To(int32(JobBackoffLimit)),
 			Completions:             ptr.To(int32(1)),
-			TTLSecondsAfterFinished: ptr.To(int32(900)), // 15 minutes
+			TTLSecondsAfterFinished: ptr.To(int32(JobTTLAfterFinished)),
 			Parallelism:             ptr.To(int32(1)),
-			ActiveDeadlineSeconds:   ptr.To(int64(4500)), // 1 hour 15 minutes, covers upgrade, health timeouts plus backoffLimit
-			PodReplacementPolicy:    ptr.To(batchv1.TerminatingOrFailed),
+			ActiveDeadlineSeconds:   ptr.To(int64(JobActiveDeadline)),
+			PodReplacementPolicy:    ptr.To(batchv1.Failed),
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
-					RestartPolicy: corev1.RestartPolicyNever,
+					RestartPolicy:                 corev1.RestartPolicyNever,
+					TerminationGracePeriodSeconds: ptr.To(int64(JobGracePeriod)),
 					SecurityContext: &corev1.PodSecurityContext{
 						RunAsNonRoot: ptr.To(true),
 						RunAsUser:    ptr.To(int64(65534)),
 						RunAsGroup:   ptr.To(int64(65534)),
-						FSGroup:      ptr.To(int64(65534)),
+						SeccompProfile: &corev1.SeccompProfile{
+							Type: corev1.SeccompProfileTypeRuntimeDefault,
+						},
 					},
 					Affinity: &corev1.Affinity{
 						NodeAffinity: &corev1.NodeAffinity{
@@ -576,15 +733,22 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 							},
 						},
 					},
-					Tolerations: []corev1.Toleration{{
-						Key:      "node-role.kubernetes.io/control-plane",
-						Operator: corev1.TolerationOpExists,
-						Effect:   corev1.TaintEffectNoSchedule,
-					}},
+					Tolerations: []corev1.Toleration{
+						{
+							Key:      "node-role.kubernetes.io/control-plane",
+							Operator: corev1.TolerationOpExists,
+							Effect:   corev1.TaintEffectNoSchedule,
+						},
+						{
+							Key:      "node-role.kubernetes.io/master",
+							Operator: corev1.TolerationOpExists,
+							Effect:   corev1.TaintEffectNoSchedule,
+						},
+					},
 					InitContainers: []corev1.Container{{
 						Name:            "health",
 						Image:           talosctlImage,
-						Args:            []string{"health", "--nodes", nodeIP, "--wait-timeout=5m"},
+						Args:            []string{"health", "--nodes", nodeIP, "--wait-timeout=" + JobTalosHealthTimeout},
 						ImagePullPolicy: pullPolicy,
 						SecurityContext: &corev1.SecurityContext{
 							AllowPrivilegeEscalation: ptr.To(false),
@@ -593,8 +757,18 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 								Drop: []corev1.Capability{"ALL"},
 							},
 						},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("10m"),
+								corev1.ResourceMemory: resource.MustParse("32Mi"),
+							},
+							Limits: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("100m"),
+								corev1.ResourceMemory: resource.MustParse("128Mi"),
+							},
+						},
 						VolumeMounts: []corev1.VolumeMount{{
-							Name:      "talosconfig",
+							Name:      JobTalosSecretName,
 							MountPath: "/var/run/secrets/talos.dev",
 							ReadOnly:  true,
 						}},
@@ -611,17 +785,28 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 								Drop: []corev1.Capability{"ALL"},
 							},
 						},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("10m"),
+								corev1.ResourceMemory: resource.MustParse("32Mi"),
+							},
+							Limits: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("100m"),
+								corev1.ResourceMemory: resource.MustParse("128Mi"),
+							},
+						},
 						VolumeMounts: []corev1.VolumeMount{{
-							Name:      "talosconfig",
+							Name:      JobTalosSecretName,
 							MountPath: "/var/run/secrets/talos.dev",
 							ReadOnly:  true,
 						}},
 					}},
 					Volumes: []corev1.Volume{{
-						Name: "talosconfig",
+						Name: JobTalosSecretName,
 						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
-								SecretName: r.TalosConfigSecret,
+								SecretName:  r.TalosConfigSecret,
+								DefaultMode: ptr.To(int32(0400)),
 							},
 						},
 					}},
@@ -629,224 +814,6 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 			},
 		},
 	}
-}
-
-func (r *TalosUpgradeReconciler) handleJobStatus(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade, nodeName string, job *batchv1.Job) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-	objectKey := client.ObjectKey{Name: talosUpgrade.Name} // No namespace for cluster-scoped
-
-	logger.V(1).Info("Handling job status",
-		"job", job.Name,
-		"node", nodeName,
-		"active", job.Status.Active,
-		"succeeded", job.Status.Succeeded,
-		"failed", job.Status.Failed,
-		"backoffLimit", *job.Spec.BackoffLimit)
-
-	switch {
-	case job.Status.Succeeded > 0:
-		logger.Info("Job completed successfully", "job", job.Name, "node", nodeName)
-
-		targetNode := &corev1.Node{}
-		if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, targetNode); err != nil {
-			logger.Error(err, "Failed to get node for verification", "node", nodeName)
-			// Treat verification failure as upgrade failure
-			nodeStatus := upgradev1alpha1.NodeUpgradeStatus{
-				NodeName:  nodeName,
-				LastError: fmt.Sprintf("Verification failed: unable to get node: %v", err),
-			}
-			if err := r.addFailedNode(ctx, objectKey, nodeStatus); err != nil {
-				return ctrl.Result{}, err
-			}
-			if err := r.updatePhase(ctx, objectKey, PhaseFailed, "",
-				fmt.Sprintf("Node %s upgrade verification failed", nodeName)); err != nil {
-				return ctrl.Result{}, err
-			}
-			return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
-		}
-
-		targetImage := fmt.Sprintf("%s:%s", talosUpgrade.Spec.Target.Image.Repository, talosUpgrade.Spec.Target.Image.Tag)
-		if r.nodeNeedsUpgrade(ctx, targetNode, targetImage) {
-			logger.Error(nil, "Job succeeded but node still needs upgrade", "node", nodeName)
-			nodeStatus := upgradev1alpha1.NodeUpgradeStatus{
-				NodeName:  nodeName,
-				LastError: "Job succeeded but node not upgraded",
-			}
-			if err := r.addFailedNode(ctx, objectKey, nodeStatus); err != nil {
-				return ctrl.Result{}, err
-			}
-			if err := r.updatePhase(ctx, objectKey, PhaseFailed, "",
-				fmt.Sprintf("Node %s upgrade verification failed", nodeName)); err != nil {
-				return ctrl.Result{}, err
-			}
-			return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
-		}
-
-		if err := r.addCompletedNode(ctx, objectKey, nodeName); err != nil {
-			logger.Error(err, "Failed to add completed node", "node", nodeName)
-			return ctrl.Result{}, err
-		}
-
-		// Enhanced status message with progress
-		completedCount := len(talosUpgrade.Status.CompletedNodes) + 1 // +1 for the node we just completed
-		message := fmt.Sprintf("Node %s upgraded successfully (%d completed)", nodeName, completedCount)
-
-		if err := r.updatePhase(ctx, objectKey, PhasePending, "", message); err != nil {
-			logger.Error(err, "Failed to update phase", "node", nodeName)
-			return ctrl.Result{}, err
-		}
-
-		logger.Info("Successfully marked node as completed", "node", nodeName)
-		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
-
-	case job.Status.Failed > 0 && job.Status.Failed >= *job.Spec.BackoffLimit:
-		logger.Info("Job failed permanently", "job", job.Name, "node", nodeName)
-
-		nodeStatus := upgradev1alpha1.NodeUpgradeStatus{
-			NodeName:  nodeName,
-			LastError: "Job failed permanently",
-		}
-		if err := r.addFailedNode(ctx, objectKey, nodeStatus); err != nil {
-			logger.Error(err, "Failed to add failed node", "node", nodeName)
-			return ctrl.Result{}, err
-		}
-
-		// Enhanced failure message
-		failedCount := len(talosUpgrade.Status.FailedNodes) + 1 // +1 for the node we just failed
-		message := fmt.Sprintf("Node %s upgrade failed (%d failed nodes) - stopping further upgrades", nodeName, failedCount)
-
-		if err := r.updatePhase(ctx, objectKey, PhaseFailed, "", message); err != nil {
-			logger.Error(err, "Failed to update phase", "node", nodeName)
-			return ctrl.Result{}, err
-		}
-
-		logger.Info("Successfully marked node as failed", "node", nodeName)
-		return ctrl.Result{RequeueAfter: time.Minute * 10}, nil
-
-	default:
-		// Enhanced in-progress status
-		message := fmt.Sprintf("Upgrading node %s (job: %s)", nodeName, job.Name)
-		if err := r.updatePhase(ctx, objectKey, PhaseInProgress, nodeName, message); err != nil {
-			logger.Error(err, "Failed to update in-progress phase", "node", nodeName)
-		}
-
-		logger.V(1).Info("Job is still active", "job", job.Name, "node", nodeName)
-		return ctrl.Result{RequeueAfter: time.Second * 30}, nil
-	}
-}
-
-// Enhanced status update function with progress information
-func (r *TalosUpgradeReconciler) updatePhase(ctx context.Context, objectKey client.ObjectKey, phase string, currentNode, message string) error {
-	// Get current TalosUpgrade to calculate additional status fields
-	talosUpgrade := &upgradev1alpha1.TalosUpgrade{}
-	if err := r.Get(ctx, objectKey, talosUpgrade); err != nil {
-		return err
-	}
-
-	patch := map[string]interface{}{
-		"status": map[string]interface{}{
-			"phase":              phase,
-			"currentNode":        currentNode,
-			"message":            message,
-			"lastUpdated":        metav1.Now(),
-			"observedGeneration": talosUpgrade.Generation,
-		},
-	}
-
-	return r.patchStatus(ctx, objectKey, patch)
-}
-
-// Add a comprehensive status update when upgrades complete
-func (r *TalosUpgradeReconciler) updateCompletionStatus(ctx context.Context, objectKey client.ObjectKey, talosUpgrade *upgradev1alpha1.TalosUpgrade) error {
-	completedCount := len(talosUpgrade.Status.CompletedNodes)
-	failedCount := len(talosUpgrade.Status.FailedNodes)
-	totalCount := completedCount + failedCount
-
-	var message string
-	var phase string
-
-	if failedCount > 0 {
-		phase = PhaseFailed
-		message = fmt.Sprintf("Upgrade completed with failures: %d successful, %d failed out of %d nodes",
-			completedCount, failedCount, totalCount)
-	} else {
-		phase = PhaseCompleted
-		message = fmt.Sprintf("Successfully upgraded %d nodes", completedCount)
-	}
-
-	patch := map[string]interface{}{
-		"status": map[string]interface{}{
-			"phase":              phase,
-			"currentNode":        "",
-			"message":            message,
-			"lastUpdated":        metav1.Now(),
-			"observedGeneration": talosUpgrade.Generation,
-		},
-	}
-
-	return r.patchStatus(ctx, objectKey, patch)
-}
-
-func (r *TalosUpgradeReconciler) addCompletedNode(ctx context.Context, objectKey client.ObjectKey, nodeName string) error {
-	// First check if node is already completed to avoid unnecessary patch
-	talosUpgrade := &upgradev1alpha1.TalosUpgrade{}
-	if err := r.Get(ctx, objectKey, talosUpgrade); err != nil {
-		return err
-	}
-
-	if ContainsNode(nodeName, talosUpgrade.Status.CompletedNodes) {
-		return nil // Already completed
-	}
-
-	newCompletedNodes := append(talosUpgrade.Status.CompletedNodes, nodeName)
-	patch := map[string]interface{}{
-		"status": map[string]interface{}{
-			"completedNodes": newCompletedNodes,
-			"lastUpdated":    metav1.Now(),
-		},
-	}
-
-	return r.patchStatus(ctx, objectKey, patch)
-}
-
-func (r *TalosUpgradeReconciler) addFailedNode(ctx context.Context, objectKey client.ObjectKey, nodeStatus upgradev1alpha1.NodeUpgradeStatus) error {
-	// First check if node is already failed to avoid unnecessary patch
-	talosUpgrade := &upgradev1alpha1.TalosUpgrade{}
-	if err := r.Get(ctx, objectKey, talosUpgrade); err != nil {
-		return err
-	}
-
-	if ContainsFailedNode(nodeStatus.NodeName, talosUpgrade.Status.FailedNodes) {
-		return nil // Already failed
-	}
-
-	newFailedNodes := append(talosUpgrade.Status.FailedNodes, nodeStatus)
-	patch := map[string]interface{}{
-		"status": map[string]interface{}{
-			"failedNodes": newFailedNodes,
-			"lastUpdated": metav1.Now(),
-		},
-	}
-
-	return r.patchStatus(ctx, objectKey, patch)
-}
-
-// Helper function to apply status patches
-func (r *TalosUpgradeReconciler) patchStatus(ctx context.Context, objectKey client.ObjectKey, patch map[string]interface{}) error {
-	logger := log.FromContext(ctx)
-
-	patchBytes, err := json.Marshal(patch)
-	if err != nil {
-		return fmt.Errorf("failed to marshal patch: %w", err)
-	}
-
-	talosUpgrade := &upgradev1alpha1.TalosUpgrade{}
-	talosUpgrade.Name = objectKey.Name
-	// No namespace for cluster-scoped resources
-
-	logger.V(1).Info("Applying status patch", "patch", string(patchBytes))
-
-	return r.Status().Patch(ctx, talosUpgrade, client.RawPatch(types.MergePatchType, patchBytes))
 }
 
 func (r *TalosUpgradeReconciler) cleanup(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade) (ctrl.Result, error) {
