@@ -821,7 +821,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
 								SecretName:  r.TalosConfigSecret,
-								DefaultMode: ptr.To(int32(0400)),
+								DefaultMode: ptr.To(int32(0444)),
 							},
 						},
 					}},
