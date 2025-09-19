@@ -140,14 +140,14 @@ type NodeUpgradeStatus struct {
 	JobName string `json:"jobName,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:resource:scope=Cluster
-//+kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
-//+kubebuilder:printcolumn:name="Current Node",type="string",JSONPath=".status.currentNode"
-//+kubebuilder:printcolumn:name="Completed",type="integer",JSONPath=".status.completedNodes",priority=1
-//+kubebuilder:printcolumn:name="Failed",type="integer",JSONPath=".status.failedNodes",priority=1
-//+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Current Node",type="string",JSONPath=".status.currentNode"
+// +kubebuilder:printcolumn:name="Completed",type="integer",JSONPath=".status.completedNodes",priority=1
+// +kubebuilder:printcolumn:name="Failed",type="integer",JSONPath=".status.failedNodes",priority=1
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // TalosUpgrade is the Schema for the talosupgrades API
 type TalosUpgrade struct {
@@ -158,7 +158,7 @@ type TalosUpgrade struct {
 	Status TalosUpgradeStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // TalosUpgradeList contains a list of TalosUpgrade
 type TalosUpgradeList struct {
