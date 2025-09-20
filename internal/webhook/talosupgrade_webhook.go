@@ -17,7 +17,6 @@ import (
 	talosclientconfig "github.com/siderolabs/talos/pkg/machinery/client/config"
 
 	upgradev1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
-	nodeselection "github.com/home-operations/tuppr/internal/nodeselection"
 )
 
 // log is for logging in this package.
@@ -27,7 +26,6 @@ var taloslog = logf.Log.WithName("talos-resource")
 type TalosUpgradeValidator struct {
 	Client            client.Client
 	TalosConfigSecret string
-	NodeMatcher       *nodeselection.Matcher
 }
 
 // +kubebuilder:webhook:path=/validate-upgrade-home-operations-com-v1alpha1-talosupgrade,mutating=false,failurePolicy=fail,sideEffects=None,groups=tuppr.home-operations.com,resources=talosupgrades,verbs=create;update,versions=v1alpha1,name=vtalosupgrade.kb.io,admissionReviewVersions=v1
@@ -55,7 +53,8 @@ func (v *TalosUpgradeValidator) ValidateUpdate(ctx context.Context, oldObj, newO
 			return nil, fmt.Errorf("cannot update spec.image while upgrade is in progress (current phase: %s)", oldTalos.Status.Phase)
 		}
 
-		if !compareNodeSelectorExprs(talos.Spec.Target.NodeSelectorExprs, oldTalos.Spec.Target.NodeSelectorExprs) {
+		// Simplified comparison using a more direct approach
+		if !nodeSelectorsEqual(talos.Spec.Target.NodeSelectorExprs, oldTalos.Spec.Target.NodeSelectorExprs) {
 			return nil, fmt.Errorf("cannot update spec.NodeSelectorExprs while upgrade is in progress (current phase: %s)", oldTalos.Status.Phase)
 		}
 	}
@@ -121,20 +120,6 @@ func (v *TalosUpgradeValidator) validateTalos(ctx context.Context, talos *upgrad
 		return warnings, fmt.Errorf("talosconfig has no contexts defined")
 	}
 
-	// Check if we can find target nodes with the selector
-	if nodeCount, err := v.validateNodeSelector(ctx, talos); err != nil {
-		return warnings, fmt.Errorf("node selector validation failed: %w", err)
-	} else if nodeCount == 0 {
-		warnings = append(warnings, "No nodes match the specified node selector. The upgrade plan will not target any nodes.")
-	}
-
-	// Check for node overlap with other TalosUpgrades
-	if overlaps, err := v.checkNodeOverlap(ctx, talos); err != nil {
-		return warnings, fmt.Errorf("overlap validation failed: %w", err)
-	} else if len(overlaps) > 0 {
-		return warnings, fmt.Errorf("node selection overlaps with active TalosUpgrade resources: %v. Please wait for them to complete or adjust node selectors to avoid conflicts", overlaps)
-	}
-
 	// Validate spec fields
 	if err := v.validateTalosSpec(talos); err != nil {
 		return warnings, fmt.Errorf("spec validation failed: %w", err)
@@ -145,138 +130,6 @@ func (v *TalosUpgradeValidator) validateTalos(ctx context.Context, talos *upgrad
 
 	taloslog.Info("talos plan validation successful", "name", talos.Name)
 	return warnings, nil
-}
-
-func (v *TalosUpgradeValidator) validateNodeSelector(ctx context.Context, talos *upgradev1alpha1.TalosUpgrade) (int, error) {
-	nodeList := &corev1.NodeList{}
-
-	if err := v.Client.List(ctx, nodeList); err != nil {
-		return 0, fmt.Errorf("failed to list nodes: %w", err)
-	}
-
-	matchingNodes := v.getMatchingNodes(nodeList.Items, talos)
-	return len(matchingNodes), nil
-}
-
-func (v *TalosUpgradeValidator) checkNodeOverlap(ctx context.Context, currentTalos *upgradev1alpha1.TalosUpgrade) ([]string, error) {
-	// Get all TalosUpgrade resources
-	upgradeList := &upgradev1alpha1.TalosUpgradeList{}
-	if err := v.Client.List(ctx, upgradeList); err != nil {
-		return nil, fmt.Errorf("failed to list TalosUpgrade resources: %w", err)
-	}
-
-	// Get all nodes
-	nodeList := &corev1.NodeList{}
-	if err := v.Client.List(ctx, nodeList); err != nil {
-		return nil, fmt.Errorf("failed to list nodes: %w", err)
-	}
-
-	// Get nodes that would match the current TalosUpgrade
-	currentNodes := v.getMatchingNodes(nodeList.Items, currentTalos)
-	currentNodeSet := make(map[string]bool)
-	for _, node := range currentNodes {
-		currentNodeSet[node.Name] = true
-	}
-
-	var overlappingUpgrades []string
-
-	for _, upgrade := range upgradeList.Items {
-		// Skip self and completed/failed upgrades
-		if upgrade.Name == currentTalos.Name ||
-			upgrade.Status.Phase == "Completed" ||
-			upgrade.Status.Phase == "Failed" {
-			continue
-		}
-
-		// Get nodes that match this upgrade
-		upgradeNodes := v.getMatchingNodes(nodeList.Items, &upgrade)
-
-		// Check for overlap
-		for _, node := range upgradeNodes {
-			if currentNodeSet[node.Name] {
-				overlappingUpgrades = append(overlappingUpgrades, upgrade.Name)
-				break
-			}
-		}
-	}
-
-	slices.Sort(overlappingUpgrades)
-	return slices.Compact(overlappingUpgrades), nil
-}
-
-func (v *TalosUpgradeValidator) getMatchingNodes(allNodes []corev1.Node, talos *upgradev1alpha1.TalosUpgrade) []corev1.Node {
-	return v.NodeMatcher.GetMatchingNodes(allNodes, talos)
-}
-
-func compareNodeSelectorExprs(a, b []corev1.NodeSelectorRequirement) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	// Create maps for easier comparison
-	aMap := make(map[string]corev1.NodeSelectorRequirement)
-	bMap := make(map[string]corev1.NodeSelectorRequirement)
-
-	// Build map for slice a
-	for _, expr := range a {
-		// Create a unique key for each expression
-		key := fmt.Sprintf("%s-%s", expr.Key, expr.Operator)
-		aMap[key] = expr
-	}
-
-	// Build map for slice b
-	for _, expr := range b {
-		key := fmt.Sprintf("%s-%s", expr.Key, expr.Operator)
-		bMap[key] = expr
-	}
-
-	// Compare maps
-	if len(aMap) != len(bMap) {
-		return false
-	}
-
-	for key, exprA := range aMap {
-		exprB, exists := bMap[key]
-		if !exists {
-			return false
-		}
-
-		// Compare the expressions
-		if !compareNodeSelectorRequirement(exprA, exprB) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// compareNodeSelectorRequirement compares two NodeSelectorRequirement for equality
-func compareNodeSelectorRequirement(a, b corev1.NodeSelectorRequirement) bool {
-	if a.Key != b.Key || a.Operator != b.Operator {
-		return false
-	}
-
-	// Compare values - they must be in the same order and have the same content
-	if len(a.Values) != len(b.Values) {
-		return false
-	}
-
-	// Sort both slices to ensure consistent comparison
-	aSorted := make([]string, len(a.Values))
-	bSorted := make([]string, len(b.Values))
-	copy(aSorted, a.Values)
-	copy(bSorted, b.Values)
-
-	slices.Sort(aSorted)
-	slices.Sort(bSorted)
-
-	for i := range aSorted {
-		if aSorted[i] != bSorted[i] {
-			return false
-		}
-	}
-
-	return true
 }
 
 func (v *TalosUpgradeValidator) validateTalosSpec(talos *upgradev1alpha1.TalosUpgrade) error {
@@ -304,15 +157,8 @@ func (v *TalosUpgradeValidator) validateTalosSpec(talos *upgradev1alpha1.TalosUp
 			corev1.NodeSelectorOpLt,
 		}
 
-		validOp := false
-		for _, op := range validOps {
-			if expr.Operator == op {
-				validOp = true
-				break
-			}
-		}
-
-		if !validOp {
+		// Validate operator is valid
+		if !slices.Contains(validOps, expr.Operator) {
 			return fmt.Errorf("spec.target.nodeSelectorExprs[%d].operator '%s' is invalid", i, expr.Operator)
 		}
 
@@ -357,6 +203,35 @@ func (v *TalosUpgradeValidator) validateTalosSpec(talos *upgradev1alpha1.TalosUp
 	}
 
 	return nil
+}
+
+func nodeSelectorsEqual(a, b []corev1.NodeSelectorRequirement) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	// Convert to comparable format and sort for consistent comparison
+	aStr := make([]string, len(a))
+	bStr := make([]string, len(b))
+
+	for i, expr := range a {
+		values := make([]string, len(expr.Values))
+		copy(values, expr.Values)
+		slices.Sort(values)
+		aStr[i] = fmt.Sprintf("%s:%s:%v", expr.Key, expr.Operator, values)
+	}
+
+	for i, expr := range b {
+		values := make([]string, len(expr.Values))
+		copy(values, expr.Values)
+		slices.Sort(values)
+		bStr[i] = fmt.Sprintf("%s:%s:%v", expr.Key, expr.Operator, values)
+	}
+
+	slices.Sort(aStr)
+	slices.Sort(bStr)
+
+	return slices.Equal(aStr, bStr)
 }
 
 func (v *TalosUpgradeValidator) generateWarnings(talos *upgradev1alpha1.TalosUpgrade) []string {

@@ -23,7 +23,6 @@ import (
 
 	upgradev1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/controller"
-	nodeselection "github.com/home-operations/tuppr/internal/nodeselection"
 	tupprwebhook "github.com/home-operations/tuppr/internal/webhook"
 	// +kubebuilder:scaffold:imports
 )
@@ -205,14 +204,11 @@ func main() {
 
 	setupLog.Info("Setting up controllers")
 
-	NodeMatcher := nodeselection.NewMatcher()
-
 	if err := (&controller.TalosUpgradeReconciler{
 		Client:              mgr.GetClient(),
 		Scheme:              mgr.GetScheme(),
 		TalosConfigSecret:   talosConfigSecret,
 		ControllerNamespace: controllerNamespace,
-		NodeMatcher:         NodeMatcher,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TalosUpgrade")
 		os.Exit(1)
@@ -236,8 +232,7 @@ func main() {
 	}
 
 	if err = (&tupprwebhook.TalosUpgradeValidator{
-		Client:      mgr.GetClient(),
-		NodeMatcher: NodeMatcher,
+		Client: mgr.GetClient(),
 	}).SetupWebhookWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "TalosUpgrade")
 		os.Exit(1)
