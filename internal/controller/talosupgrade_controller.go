@@ -1127,13 +1127,13 @@ func nodeMatchesSelector(node *corev1.Node, selector *corev1.NodeSelector) bool 
 
 // getMatchingNodes returns nodes that match the TalosUpgrade's node selector
 func getMatchingNodes(allNodes []corev1.Node, talos *upgradev1alpha1.TalosUpgrade) []corev1.Node {
-	if len(talos.Spec.Target.NodeSelectorExprs) == 0 {
+	if len(talos.Spec.Target.NodeSelectorTerms) == 0 {
 		return allNodes // No selector means all nodes
 	}
 
 	selector := &corev1.NodeSelector{
 		NodeSelectorTerms: []corev1.NodeSelectorTerm{{
-			MatchExpressions: talos.Spec.Target.NodeSelectorExprs,
+			MatchExpressions: talos.Spec.Target.NodeSelectorTerms,
 		}},
 	}
 
