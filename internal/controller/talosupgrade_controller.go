@@ -1163,15 +1163,18 @@ func getTalosSchematic(node *corev1.Node) string {
 // getTalosVersion extracts the Talos version from the OS image string
 func getTalosVersion(osImage string) string {
 	// osImage format: "Talos (v1.11.1)"
-	// Extract the version part between parentheses
-	start := strings.Index(osImage, "(v")
-	end := strings.Index(osImage, ")")
-
-	if start == -1 || end == -1 || start >= end {
+	// Find the opening parenthesis and extract everything after it
+	_, after, found := strings.Cut(osImage, "(")
+	if !found {
 		return ""
 	}
 
-	version := osImage[start+2 : end] // Remove "(v" prefix
+	// Now extract everything before the closing parenthesis
+	version, _, found := strings.Cut(after, ")")
+	if !found {
+		return ""
+	}
+
 	return strings.TrimSpace(version)
 }
 
