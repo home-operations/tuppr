@@ -69,8 +69,8 @@ metadata:
 spec:
   target:
     image:
-      repository: factory.talos.dev/metal-installer/YOUR_CURRENT_SCHEMATIC_WITHOUT_TAG
-      tag: v1.11.1
+      repository: # Optional, default: factory.talos.dev/metal-installer (no schmatic ID, it is auto-detected)
+      tag: v1.11.1 # Required
     options: # Optional
       debug: false # Optional, default: false
       force: false # Optional, default: false
