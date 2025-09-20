@@ -77,11 +77,16 @@ spec:
       rebootMode: default # Optional, default: default
     # You can create a TalosUpgrade per node
     #   Just make sure update the TalosUpgrade metadata.name to the node name (or whatever)
-    #   and set the nodeSelectorExprs to the node name
-    nodeSelectorExprs: [] # Optional
+    #   and set the nodeSelectorTerms to the node name
+    nodeSelectorTerms: [] # Optional
       # - key: kubernetes.io/hostname
       #   operator: In
       #   values: ["k8s-0"]
+  # Healthchecks to be evaluated before the upgrade happens on any node written in (CEL)
+  healthCheckExprs: [] # Optional
+    # - apiVersion: ceph.rook.io/v1
+    #   kind: CephCluster
+    #   wait: status.ceph.health in ['HEALTH_OK', 'HEALTH_WARN']
   talosctl: # Optional
     image: # Optional
       repository: ghcr.io/siderolabs/talosctl # Optional, default: ghcr.io/siderolabs/talosctl

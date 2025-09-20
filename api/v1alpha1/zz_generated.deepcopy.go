@@ -96,8 +96,8 @@ func (in *TalosTargetSpec) DeepCopyInto(out *TalosTargetSpec) {
 	*out = *in
 	out.Image = in.Image
 	out.Options = in.Options
-	if in.NodeSelectorExprs != nil {
-		in, out := &in.NodeSelectorExprs, &out.NodeSelectorExprs
+	if in.NodeSelectorTerms != nil {
+		in, out := &in.NodeSelectorTerms, &out.NodeSelectorTerms
 		*out = make([]v1.NodeSelectorRequirement, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
