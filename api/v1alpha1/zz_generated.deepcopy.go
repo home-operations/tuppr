@@ -21,6 +21,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"k8s.io/api/core/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -74,11 +75,11 @@ func (in *TalosTargetSpec) DeepCopyInto(out *TalosTargetSpec) {
 	*out = *in
 	out.Image = in.Image
 	out.Options = in.Options
-	if in.NodeSelector != nil {
-		in, out := &in.NodeSelector, &out.NodeSelector
-		*out = make(map[string]string, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
+	if in.NodeSelectorExprs != nil {
+		in, out := &in.NodeSelectorExprs, &out.NodeSelectorExprs
+		*out = make([]v1.NodeSelectorRequirement, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
 }

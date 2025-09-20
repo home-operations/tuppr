@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	upgradev1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	nodeselection "github.com/home-operations/tuppr/internal/nodeselection"
 )
 
 const (
@@ -65,6 +66,7 @@ type TalosUpgradeReconciler struct {
 	Scheme              *runtime.Scheme
 	TalosConfigSecret   string
 	ControllerNamespace string
+	NodeMatcher         *nodeselection.Matcher
 }
 
 func (r *TalosUpgradeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -122,6 +124,15 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 	// Handle generation changes
 	if reset, err := r.handleGenerationChange(ctx, talosUpgrade); err != nil || reset {
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
+	}
+
+	// Check for overlapping upgrades
+	if err := r.checkOverlappingUpgrades(ctx, talosUpgrade); err != nil {
+		logger.Info("Upgrade blocked due to overlapping resources", "error", err.Error())
+		if setErr := r.setPhase(ctx, talosUpgrade, PhasePending, "", err.Error()); setErr != nil {
+			logger.Error(setErr, "Failed to update phase for overlap")
+		}
+		return ctrl.Result{RequeueAfter: time.Minute * 2}, nil
 	}
 
 	// Check for potential changes that need confirmation
@@ -1141,34 +1152,27 @@ func (r *TalosUpgradeReconciler) cleanup(ctx context.Context, talosUpgrade *upgr
 
 func (r *TalosUpgradeReconciler) getTargetNodes(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade) ([]corev1.Node, error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Getting target nodes", "talosupgrade", talosUpgrade.Name, "nodeSelector", talosUpgrade.Spec.Target.NodeSelector)
+	logger.V(1).Info("Getting target nodes", "talosupgrade", talosUpgrade.Name)
 
 	nodeList := &corev1.NodeList{}
-	listOpts := []client.ListOption{}
-
-	if talosUpgrade.Spec.Target.NodeSelector != nil {
-		listOpts = append(listOpts, client.MatchingLabels(talosUpgrade.Spec.Target.NodeSelector))
-		logger.V(1).Info("Using node selector", "selector", talosUpgrade.Spec.Target.NodeSelector)
-	} else {
-		logger.V(1).Info("No node selector specified, selecting all nodes")
-	}
-
-	if err := r.List(ctx, nodeList, listOpts...); err != nil {
-		logger.Error(err, "Failed to list nodes", "talosupgrade", talosUpgrade.Name)
+	if err := r.List(ctx, nodeList); err != nil {
+		logger.Error(err, "Failed to list all nodes", "talosupgrade", talosUpgrade.Name)
 		return nil, err
 	}
 
-	nodeNames := make([]string, len(nodeList.Items))
-	for i, node := range nodeList.Items {
+	filteredNodes := r.NodeMatcher.GetMatchingNodes(nodeList.Items, talosUpgrade)
+
+	nodeNames := make([]string, len(filteredNodes))
+	for i, node := range filteredNodes {
 		nodeNames[i] = node.Name
 	}
 
 	logger.V(1).Info("Found target nodes",
 		"talosupgrade", talosUpgrade.Name,
-		"count", len(nodeList.Items),
+		"count", len(filteredNodes),
 		"nodes", nodeNames)
 
-	return nodeList.Items, nil
+	return filteredNodes, nil
 }
 
 // getTalosctlTagFromNode extracts the Talos version from the node's osImage to use as talosctl tag
@@ -1193,6 +1197,58 @@ func (r *TalosUpgradeReconciler) getTalosctlTagFromNode(ctx context.Context, nod
 		"extractedVersion", version)
 
 	return version
+}
+
+func (r *TalosUpgradeReconciler) checkOverlappingUpgrades(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade) error {
+	logger := log.FromContext(ctx)
+
+	// Get all TalosUpgrade resources
+	upgradeList := &upgradev1alpha1.TalosUpgradeList{}
+	if err := r.List(ctx, upgradeList); err != nil {
+		return fmt.Errorf("failed to list TalosUpgrade resources: %w", err)
+	}
+
+	// Get nodes that would match the current TalosUpgrade
+	currentNodes := make(map[string]bool)
+	targetNodes, err := r.getTargetNodes(ctx, talosUpgrade)
+	if err != nil {
+		return err
+	}
+	for _, node := range targetNodes {
+		currentNodes[node.Name] = true
+	}
+
+	var overlappingUpgrades []string
+
+	for _, upgrade := range upgradeList.Items {
+		// Skip self and completed/failed upgrades
+		if upgrade.Name == talosUpgrade.Name ||
+			upgrade.Status.Phase == PhaseCompleted ||
+			upgrade.Status.Phase == PhaseFailed {
+			continue
+		}
+
+		// Get nodes that match this upgrade using getTargetNodes
+		upgradeNodes, err := r.getTargetNodes(ctx, &upgrade)
+		if err != nil {
+			logger.Error(err, "Failed to get nodes for upgrade", "upgrade", upgrade.Name)
+			continue
+		}
+
+		// Check for overlap
+		for _, node := range upgradeNodes {
+			if currentNodes[node.Name] {
+				overlappingUpgrades = append(overlappingUpgrades, upgrade.Name)
+				break
+			}
+		}
+	}
+
+	if len(overlappingUpgrades) > 0 {
+		return fmt.Errorf("upgrade would overlap with active upgrades: %v. Please wait for them to complete or adjust node selectors to avoid conflicts", overlappingUpgrades)
+	}
+
+	return nil
 }
 
 func (r *TalosUpgradeReconciler) SetupWithManager(mgr ctrl.Manager) error {
