@@ -7,9 +7,10 @@ import (
 
 // TalosImageSpec defines container image details
 type TalosImageSpec struct {
-	// Repository is the container image repository
-	// +kubebuilder:validation:Required
-	Repository string `json:"repository"`
+	// Repository is the container image repository (without schematic ID)
+	// +kubebuilder:default="factory.talos.dev/metal-installer"
+	// +optional
+	Repository string `json:"repository,omitempty"`
 
 	// Tag is the container image tag
 	// +kubebuilder:validation:Required
@@ -87,6 +88,42 @@ type TalosUpgradeSpec struct {
 	// Talosctl specifies the talosctl configuration for upgrade operations
 	// +optional
 	Talosctl TalosctlSpec `json:"talosctl,omitempty"`
+
+	// HealthCheckExprs defines a list of CEL-based health checks to perform before and after each node upgrade
+	// +optional
+	HealthCheckExprs []HealthCheckExpr `json:"healthCheckExprs,omitempty"`
+}
+
+// HealthCheckExpr defines a CEL-based health check
+type HealthCheckExpr struct {
+	// APIVersion of the resource to check
+	// +kubebuilder:validation:Required
+	APIVersion string `json:"apiVersion"`
+
+	// Kind of the resource to check
+	// +kubebuilder:validation:Required
+	Kind string `json:"kind"`
+
+	// Name of the specific resource (optional, if empty checks all resources of this kind)
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// Namespace of the resource (optional, for namespaced resources)
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+
+	// CEL expression that must evaluate to true for the check to pass
+	// The resource object is available as the root context
+	// +kubebuilder:validation:Required
+	Wait string `json:"wait"`
+
+	// Timeout for this health check (optional, defaults to 5 minutes)
+	// +optional
+	Timeout *metav1.Duration `json:"timeout,omitempty"`
+
+	// Description of what this check validates (for status/logging)
+	// +optional
+	Description string `json:"description,omitempty"`
 }
 
 // TalosUpgradeStatus defines the observed state of TalosUpgrade

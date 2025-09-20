@@ -133,11 +133,7 @@ func (v *TalosUpgradeValidator) validateTalos(ctx context.Context, talos *upgrad
 }
 
 func (v *TalosUpgradeValidator) validateTalosSpec(talos *upgradev1alpha1.TalosUpgrade) error {
-	// Validate image repository and tag are not empty
-	if talos.Spec.Target.Image.Repository == "" {
-		return fmt.Errorf("spec.target.image.repository cannot be empty")
-	}
-
+	// Validate tag is not empty (repository is optional with default)
 	if talos.Spec.Target.Image.Tag == "" {
 		return fmt.Errorf("spec.target.image.tag cannot be empty")
 	}

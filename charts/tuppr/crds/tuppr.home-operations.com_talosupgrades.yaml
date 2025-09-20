@@ -57,6 +57,40 @@ spec:
             spec:
               description: TalosUpgradeSpec defines the desired state of TalosUpgrade
               properties:
+                healthCheckExprs:
+                  description: HealthCheckExprs defines a list of CEL-based health checks to perform before and after each node upgrade
+                  items:
+                    description: HealthCheckExpr defines a CEL-based health check
+                    properties:
+                      apiVersion:
+                        description: APIVersion of the resource to check
+                        type: string
+                      description:
+                        description: Description of what this check validates (for status/logging)
+                        type: string
+                      kind:
+                        description: Kind of the resource to check
+                        type: string
+                      name:
+                        description: Name of the specific resource (optional, if empty checks all resources of this kind)
+                        type: string
+                      namespace:
+                        description: Namespace of the resource (optional, for namespaced resources)
+                        type: string
+                      timeout:
+                        description: Timeout for this health check (optional, defaults to 5 minutes)
+                        type: string
+                      wait:
+                        description: |-
+                          CEL expression that must evaluate to true for the check to pass
+                          The resource object is available as the root context
+                        type: string
+                    required:
+                      - apiVersion
+                      - kind
+                      - wait
+                    type: object
+                  type: array
                 talosctl:
                   description: Talosctl specifies the talosctl configuration for upgrade operations
                   properties:
@@ -89,13 +123,13 @@ spec:
                       description: Image is the Talos installer image to upgrade to
                       properties:
                         repository:
-                          description: Repository is the container image repository
+                          default: factory.talos.dev/metal-installer
+                          description: Repository is the container image repository (without schematic ID)
                           type: string
                         tag:
                           description: Tag is the container image tag
                           type: string
                       required:
-                        - repository
                         - tag
                       type: object
                     nodeSelectorExprs:
