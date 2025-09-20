@@ -45,10 +45,11 @@ type TalosTargetSpec struct {
 	// +optional
 	Options TalosTargetOptions `json:"options,omitempty"`
 
-	// NodeSelector specifies which nodes to target for the upgrade
-	// If not specified, all nodes will be targeted
+	// NodeSelectorExprs specifies node selector requirements to target nodes for the upgrade
+	// This follows the same pattern as Pod nodeAffinity but simplified to only support
+	// requiredDuringSchedulingIgnoredDuringExecution with a single nodeSelectorTerm
 	// +optional
-	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	NodeSelectorExprs []corev1.NodeSelectorRequirement `json:"nodeSelectorExprs,omitempty"`
 }
 
 // TalosctlImageSpec defines talosctl container image details
