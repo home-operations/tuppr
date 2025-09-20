@@ -78,8 +78,10 @@ spec:
     # You can create a TalosUpgrade per node
     #   Just make sure update the TalosUpgrade metadata.name to the node name (or whatever)
     #   and set the nodeSelector to the node name
-    nodeSelector: {} # Optional
-      # kubernetes.io/hostname: k8s-0
+    nodeSelectorExprs: [] # Optional
+      # - key: kubernetes.io/hostname
+      #   operator: In
+      #   values: ["k8s-0"]
   talosctl: # Optional
     image: # Optional
       repository: ghcr.io/siderolabs/talosctl # Optional, default: ghcr.io/siderolabs/talosctl
