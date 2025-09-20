@@ -80,8 +80,11 @@ func (hc *HealthChecker) evaluateHealthCheck(ctx context.Context, check upgradev
 	timeoutCtx, cancel := context.WithTimeoutCause(ctx, timeout, timeoutCause)
 	defer cancel()
 
-	// Compile CEL expression
-	env, err := cel.NewEnv(cel.Variable("status", cel.DynType))
+	// Compile CEL expression - provide both 'object' for full resource and 'status' for convenience
+	env, err := cel.NewEnv(
+		cel.Variable("object", cel.DynType), // Full Kubernetes resource object
+		cel.Variable("status", cel.DynType), // Just the status field for convenience
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create CEL environment: %w", err)
 	}
@@ -186,8 +189,17 @@ func (hc *HealthChecker) runCELExpression(program cel.Program, resourceData map[
 	// Clone the resource data to avoid mutations
 	safeData := maps.Clone(resourceData)
 
+	// Extract status field for convenience, default to empty map if missing
+	statusData := make(map[string]any)
+	if status, exists := safeData["status"]; exists {
+		if statusMap, ok := status.(map[string]any); ok {
+			statusData = statusMap
+		}
+	}
+
 	out, _, err := program.Eval(map[string]any{
-		"status": safeData,
+		"object": safeData,   // Full Kubernetes resource object
+		"status": statusData, // Just the status field for convenience
 	})
 
 	if err != nil {
@@ -201,7 +213,7 @@ func (hc *HealthChecker) runCELExpression(program cel.Program, resourceData map[
 	return out.Value().(bool), nil
 }
 
-// Add helper function to validate health checks before execution
+// validateHealthChecks validates health check expressions before execution
 func (hc *HealthChecker) validateHealthChecks(healthChecks []upgradev1alpha1.HealthCheckExpr) error {
 	var validationErrors []error
 
@@ -217,8 +229,11 @@ func (hc *HealthChecker) validateHealthChecks(healthChecks []upgradev1alpha1.Hea
 			validationErrors = append(validationErrors, fmt.Errorf("health check %d: wait expression is required", i))
 		}
 
-		// Validate CEL expression syntax early
-		env, err := cel.NewEnv(cel.Variable("status", cel.DynType))
+		// Validate CEL expression syntax early - provide both variables
+		env, err := cel.NewEnv(
+			cel.Variable("object", cel.DynType),
+			cel.Variable("status", cel.DynType),
+		)
 		if err == nil {
 			if _, issues := env.Compile(check.Wait); issues != nil && issues.Err() != nil {
 				validationErrors = append(validationErrors, fmt.Errorf("health check %d: invalid CEL expression '%s': %w", i, check.Wait, issues.Err()))
