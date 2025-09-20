@@ -1042,8 +1042,14 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 					InitContainers: []corev1.Container{{
 						Name:            "health",
 						Image:           talosctlImage,
-						Args:            []string{"health", "--nodes", nodeIP, "--wait-timeout=" + JobTalosHealthTimeout},
 						ImagePullPolicy: pullPolicy,
+						Args:            []string{"health", "--nodes", nodeIP, "--wait-timeout=" + JobTalosHealthTimeout},
+						Env: []corev1.EnvVar{
+							{
+								Name:  "TALOSCONFIG",
+								Value: "/var/run/secrets/talos.dev/config",
+							},
+						},
 						SecurityContext: &corev1.SecurityContext{
 							AllowPrivilegeEscalation: ptr.To(false),
 							ReadOnlyRootFilesystem:   ptr.To(true),
@@ -1070,8 +1076,14 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 					Containers: []corev1.Container{{
 						Name:            "upgrade",
 						Image:           talosctlImage,
-						Args:            args,
 						ImagePullPolicy: pullPolicy,
+						Args:            args,
+						Env: []corev1.EnvVar{
+							{
+								Name:  "TALOSCONFIG",
+								Value: "/var/run/secrets/talos.dev/config",
+							},
+						},
 						SecurityContext: &corev1.SecurityContext{
 							AllowPrivilegeEscalation: ptr.To(false),
 							ReadOnlyRootFilesystem:   ptr.To(true),
