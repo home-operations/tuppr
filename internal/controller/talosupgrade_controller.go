@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -34,8 +38,9 @@ const (
 	SchematicAnnotation = "extensions.talos.dev/schematic"
 
 	// Finalizer for TalosUpgrade resources
-	TalosUpgradeFinalizer = "tuppr.home-operations.com/talos-finalizer"
-	ResetAnnotation       = "tuppr.home-operations.com/reset"
+	TalosUpgradeFinalizer   = "tuppr.home-operations.com/talos-finalizer"
+	ResetAnnotation         = "tuppr.home-operations.com/reset"
+	ConfirmChangeAnnotation = "tuppr.home-operations.com/confirm-change"
 
 	// Job constants
 	JobBackoffLimit        = 3    // Retry up to 3 times on failure
@@ -119,11 +124,24 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
 	}
 
+	// Check for potential changes that need confirmation
+	if needsConfirmation, err := r.checkForPotentialChanges(ctx, talosUpgrade); err != nil {
+		return ctrl.Result{RequeueAfter: time.Minute}, err
+	} else if needsConfirmation {
+		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil // Wait for user confirmation
+	}
+
 	// Skip if already completed/failed (and generation matches)
 	if talosUpgrade.Status.Phase == PhaseCompleted || talosUpgrade.Status.Phase == PhaseFailed {
 		logger.V(1).Info("Upgrade already completed or failed, skipping lock acquisition",
 			"phase", talosUpgrade.Status.Phase)
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+	}
+
+	// Analyze cluster state for status reporting
+	if err := r.analyzeClusterState(ctx, talosUpgrade); err != nil {
+		logger.Error(err, "Failed to analyze cluster state")
+		// Don't fail the reconciliation for analysis errors
 	}
 
 	// Check upgrade queue
@@ -163,6 +181,198 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 	return r.processNextNode(ctx, talosUpgrade)
 }
 
+func (r *TalosUpgradeReconciler) checkForPotentialChanges(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	nodes, err := r.getTargetNodes(ctx, talosUpgrade)
+	if err != nil {
+		return false, err
+	}
+
+	targetImage := fmt.Sprintf("%s:%s", talosUpgrade.Spec.Target.Image.Repository, talosUpgrade.Spec.Target.Image.Tag)
+	targetVersion, targetSchematic := GetTalosSchematicAndVersion(targetImage)
+
+	var nodesNeedingChanges []string
+	var changeCauses []string
+
+	for _, node := range nodes {
+		currentVersion := GetTalosVersion(node.Status.NodeInfo.OSImage)
+		currentSchematic := GetTalosSchematic(&node)
+
+		// Check for version downgrade
+		if isNewer, err := r.isVersionNewer(currentVersion, targetVersion); err != nil {
+			logger.Error(err, "Failed to compare versions", "current", currentVersion, "target", targetVersion, "node", node.Name)
+			continue
+		} else if isNewer {
+			nodesNeedingChanges = append(nodesNeedingChanges, node.Name)
+			changeCauses = append(changeCauses, fmt.Sprintf("version downgrade %s→%s", currentVersion, targetVersion))
+		}
+
+		// Check for schematic change (treat as potential issue)
+		if currentSchematic != "" && targetSchematic != "" && currentSchematic != targetSchematic {
+			nodesNeedingChanges = append(nodesNeedingChanges, node.Name)
+			changeCauses = append(changeCauses, fmt.Sprintf("schematic change %s→%s", currentSchematic, targetSchematic))
+		}
+	}
+
+	if len(nodesNeedingChanges) == 0 {
+		return false, nil // No potential changes requiring confirmation
+	}
+
+	// Check if user has confirmed the changes
+	if talosUpgrade.Annotations != nil {
+		if confirmed := talosUpgrade.Annotations[ConfirmChangeAnnotation]; confirmed == "true" {
+			logger.Info("Changes confirmed by user, proceeding", "nodes", nodesNeedingChanges)
+			return false, nil // Proceed with the changes
+		}
+	}
+
+	// User hasn't confirmed, block and update status
+	slices.Sort(changeCauses)
+	causes := strings.Join(slices.Compact(changeCauses), ", ")
+	message := fmt.Sprintf("Potentially destructive changes detected for nodes %v (%s). Current cluster state differs from target. Add annotation %s=true to confirm, or update the spec to match current state.",
+		nodesNeedingChanges, causes, ConfirmChangeAnnotation)
+
+	if err := r.setPhase(ctx, talosUpgrade, PhasePending, "", message); err != nil {
+		logger.Error(err, "Failed to update status for change confirmation")
+		return true, err
+	}
+
+	logger.Info("Waiting for user confirmation for potentially destructive changes",
+		"nodes", nodesNeedingChanges,
+		"causes", causes,
+		"annotation", ConfirmChangeAnnotation)
+
+	return true, nil // Block until confirmed
+}
+
+func (r *TalosUpgradeReconciler) analyzeClusterState(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade) error {
+	nodes, err := r.getTargetNodes(ctx, talosUpgrade)
+	if err != nil {
+		return err
+	}
+
+	targetImage := fmt.Sprintf("%s:%s", talosUpgrade.Spec.Target.Image.Repository, talosUpgrade.Spec.Target.Image.Tag)
+	targetVersion, targetSchematic := GetTalosSchematicAndVersion(targetImage)
+
+	analysis := struct {
+		NodesAtTarget    []string            `json:"nodesAtTarget"`
+		NodesNeedUpgrade []string            `json:"nodesNeedUpgrade"`
+		NodesAhead       []string            `json:"nodesAhead"`
+		SchemaMismatches []string            `json:"schemaMismatches"`
+		Recommendations  []string            `json:"recommendations"`
+		VersionSummary   map[string][]string `json:"versionSummary"`
+		SchematicSummary map[string][]string `json:"schematicSummary"`
+	}{
+		NodesAtTarget:    []string{},
+		NodesNeedUpgrade: []string{},
+		NodesAhead:       []string{},
+		SchemaMismatches: []string{},
+		Recommendations:  []string{},
+		VersionSummary:   make(map[string][]string),
+		SchematicSummary: make(map[string][]string),
+	}
+
+	for _, node := range nodes {
+		currentVersion := GetTalosVersion(node.Status.NodeInfo.OSImage)
+		currentSchematic := GetTalosSchematic(&node)
+
+		// Version analysis
+		if analysis.VersionSummary[currentVersion] == nil {
+			analysis.VersionSummary[currentVersion] = []string{}
+		}
+		analysis.VersionSummary[currentVersion] = append(analysis.VersionSummary[currentVersion], node.Name)
+
+		// Schematic analysis
+		schematicKey := currentSchematic
+		if schematicKey == "" {
+			schematicKey = "none"
+		}
+		if analysis.SchematicSummary[schematicKey] == nil {
+			analysis.SchematicSummary[schematicKey] = []string{}
+		}
+		analysis.SchematicSummary[schematicKey] = append(analysis.SchematicSummary[schematicKey], node.Name)
+
+		// Node categorization
+		if currentVersion == targetVersion &&
+			(targetSchematic == "" || currentSchematic == targetSchematic) {
+			analysis.NodesAtTarget = append(analysis.NodesAtTarget, node.Name)
+		} else if isNewer, err := r.isVersionNewer(currentVersion, targetVersion); err != nil {
+			// Skip nodes with unparseable versions
+			continue
+		} else if isNewer {
+			analysis.NodesAhead = append(analysis.NodesAhead, node.Name)
+		} else if currentVersion != targetVersion {
+			analysis.NodesNeedUpgrade = append(analysis.NodesNeedUpgrade, node.Name)
+		}
+
+		if targetSchematic != "" && currentSchematic != "" && currentSchematic != targetSchematic {
+			analysis.SchemaMismatches = append(analysis.SchemaMismatches, node.Name)
+		}
+	}
+
+	// Generate recommendations
+	if len(analysis.NodesAhead) > 0 {
+		// Find the most common "ahead" version
+		mostCommonVersion := ""
+		maxCount := 0
+		for version, nodeList := range analysis.VersionSummary {
+			if isNewer, err := r.isVersionNewer(version, targetVersion); err == nil && isNewer && len(nodeList) > maxCount {
+				mostCommonVersion = version
+				maxCount = len(nodeList)
+			}
+		}
+
+		if mostCommonVersion != "" {
+			analysis.Recommendations = append(analysis.Recommendations,
+				fmt.Sprintf("Consider updating spec target version to %s (used by %d nodes)",
+					mostCommonVersion, maxCount))
+		}
+		analysis.Recommendations = append(analysis.Recommendations,
+			fmt.Sprintf("Use annotation %s=true to confirm changes if intentional", ConfirmChangeAnnotation))
+	}
+
+	if len(analysis.SchemaMismatches) > 0 {
+		analysis.Recommendations = append(analysis.Recommendations,
+			"Schematic mismatches detected - verify extension configuration compatibility")
+		analysis.Recommendations = append(analysis.Recommendations,
+			fmt.Sprintf("Use annotation %s=true to confirm schematic changes", ConfirmChangeAnnotation))
+	}
+
+	if len(analysis.VersionSummary) > 1 {
+		analysis.Recommendations = append(analysis.Recommendations,
+			fmt.Sprintf("Cluster has mixed Talos versions (%d different versions) - consider standardizing", len(analysis.VersionSummary)))
+	}
+
+	if len(analysis.SchematicSummary) > 1 {
+		analysis.Recommendations = append(analysis.Recommendations,
+			fmt.Sprintf("Cluster has mixed schematics (%d different configurations) - verify this is intentional", len(analysis.SchematicSummary)))
+	}
+
+	// Update status with analysis
+	return r.updateStatus(ctx, talosUpgrade, map[string]any{
+		"analysis": analysis,
+	})
+}
+
+func (r *TalosUpgradeReconciler) isVersionNewer(current, target string) (bool, error) {
+	// Clean up versions - remove 'v' prefix if present
+	currentClean := strings.TrimPrefix(current, "v")
+	targetClean := strings.TrimPrefix(target, "v")
+
+	currentVer, err := semver.NewVersion(currentClean)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse current version %s: %w", current, err)
+	}
+
+	targetVer, err := semver.NewVersion(targetClean)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse target version %s: %w", target, err)
+	}
+
+	return currentVer.GreaterThan(targetVer), nil
+}
+
 func (r *TalosUpgradeReconciler) handleResetAnnotation(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade) (bool, error) {
 	if talosUpgrade.Annotations == nil {
 		return false, nil
@@ -177,12 +387,10 @@ func (r *TalosUpgradeReconciler) handleResetAnnotation(ctx context.Context, talo
 	logger.Info("Reset annotation found, clearing upgrade state", "resetValue", resetValue)
 
 	// Remove the reset annotation and reset status
-	newAnnotations := make(map[string]string)
-	for k, v := range talosUpgrade.Annotations {
-		if k != ResetAnnotation {
-			newAnnotations[k] = v
-		}
-	}
+	newAnnotations := maps.Clone(talosUpgrade.Annotations)
+	maps.DeleteFunc(newAnnotations, func(k, v string) bool {
+		return k == ResetAnnotation
+	})
 
 	// Update both annotations and status
 	talosUpgrade.Annotations = newAnnotations
@@ -584,8 +792,8 @@ func (r *TalosUpgradeReconciler) findNextNode(ctx context.Context, talosUpgrade 
 	}
 
 	// Sort nodes by name for consistent ordering
-	sort.Slice(nodes, func(i, j int) bool {
-		return nodes[i].Name < nodes[j].Name
+	slices.SortFunc(nodes, func(a, b corev1.Node) int {
+		return strings.Compare(a.Name, b.Name)
 	})
 
 	logger.V(1).Info("Retrieved target nodes", "count", len(nodes))
@@ -594,12 +802,14 @@ func (r *TalosUpgradeReconciler) findNextNode(ctx context.Context, talosUpgrade 
 	logger.V(1).Info("Target image for upgrade", "image", targetImage)
 
 	for _, node := range nodes {
-		if ContainsNode(node.Name, talosUpgrade.Status.CompletedNodes) {
+		if slices.Contains(talosUpgrade.Status.CompletedNodes, node.Name) {
 			logger.V(1).Info("Skipping already completed node", "node", node.Name)
 			continue
 		}
 
-		if ContainsFailedNode(node.Name, talosUpgrade.Status.FailedNodes) {
+		if slices.ContainsFunc(talosUpgrade.Status.FailedNodes, func(fn upgradev1alpha1.NodeUpgradeStatus) bool {
+			return fn.NodeName == node.Name
+		}) {
 			logger.V(1).Info("Skipping failed node", "node", node.Name)
 			continue
 		}
@@ -638,7 +848,26 @@ func (r *TalosUpgradeReconciler) nodeNeedsUpgrade(ctx context.Context, node *cor
 		return true
 	}
 
-	versionMismatch := currentVersion != targetVersion
+	// Check for version mismatch using semver
+	versionMismatch := false
+	if currentVersion != targetVersion {
+		// Use semver for proper comparison
+		if isNewer, err := r.isVersionNewer(currentVersion, targetVersion); err != nil {
+			logger.Error(err, "Failed to compare versions, assuming upgrade needed",
+				"current", currentVersion, "target", targetVersion, "node", node.Name)
+			versionMismatch = true
+		} else if isNewer {
+			// Current version is newer - this would be a downgrade
+			// Let the downgrade detection handle this case
+			logger.V(1).Info("Current version is newer than target",
+				"node", node.Name, "current", currentVersion, "target", targetVersion)
+			versionMismatch = true
+		} else {
+			// Current version is older - genuine upgrade needed
+			versionMismatch = true
+		}
+	}
+
 	schematicMismatch := targetSchematic != "" && currentSchematic != targetSchematic
 	needsUpgrade := versionMismatch || schematicMismatch
 
@@ -871,7 +1100,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
 								SecretName:  r.TalosConfigSecret,
-								DefaultMode: ptr.To(int32(0400)),
+								DefaultMode: ptr.To(int32(0440)),
 							},
 						},
 					}},

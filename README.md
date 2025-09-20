@@ -131,7 +131,15 @@ Once downgrade completes:
 
 **Test upgrade**: Change the TalosUpgrade back to v1.11.1 and repeat monitoring.
 
-### 7. Cleanup
+### 7. Reset failed upgrade
+
+If an upgrade is failed you can either update the `TalosCluster` resource to have it kick off a new job, or use the command below to reset it.
+
+```bash
+kubectl annotate talosupgrade cluster tuppr.home-operations.com/reset="$(date)"
+```
+
+### 8. Cleanup
 
 ```bash
 # Remove test resources
