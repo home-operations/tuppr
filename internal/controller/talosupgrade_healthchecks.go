@@ -89,9 +89,9 @@ func (hc *HealthChecker) evaluateHealthCheck(ctx context.Context, check upgradev
 		return fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	ast, issues := env.Compile(check.Wait)
+	ast, issues := env.Compile(check.Expr)
 	if issues != nil && issues.Err() != nil {
-		return fmt.Errorf("failed to compile CEL expression '%s': %w", check.Wait, issues.Err())
+		return fmt.Errorf("failed to compile CEL expression '%s': %w", check.Expr, issues.Err())
 	}
 
 	program, err := env.Program(ast)
@@ -225,8 +225,8 @@ func (hc *HealthChecker) validateHealthChecks(healthChecks []upgradev1alpha1.Hea
 		if check.Kind == "" {
 			validationErrors = append(validationErrors, fmt.Errorf("health check %d: kind is required", i))
 		}
-		if check.Wait == "" {
-			validationErrors = append(validationErrors, fmt.Errorf("health check %d: wait expression is required", i))
+		if check.Expr == "" {
+			validationErrors = append(validationErrors, fmt.Errorf("health check %d: expr expression is required", i))
 		}
 
 		// Validate CEL expression syntax early - provide both variables
@@ -235,8 +235,8 @@ func (hc *HealthChecker) validateHealthChecks(healthChecks []upgradev1alpha1.Hea
 			cel.Variable("status", cel.DynType),
 		)
 		if err == nil {
-			if _, issues := env.Compile(check.Wait); issues != nil && issues.Err() != nil {
-				validationErrors = append(validationErrors, fmt.Errorf("health check %d: invalid CEL expression '%s': %w", i, check.Wait, issues.Err()))
+			if _, issues := env.Compile(check.Expr); issues != nil && issues.Err() != nil {
+				validationErrors = append(validationErrors, fmt.Errorf("health check %d: invalid CEL expression '%s': %w", i, check.Expr, issues.Err()))
 			}
 		}
 	}
