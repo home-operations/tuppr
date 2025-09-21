@@ -58,7 +58,7 @@ spec:
               description: TalosUpgradeSpec defines the desired state of TalosUpgrade
               properties:
                 healthChecks:
-                  description: HealthChecks defines a list of CEL-based health checks to perform before and after each node upgrade
+                  description: HealthChecks defines a list of CEL-based health checks to perform before each node upgrade
                   items:
                     description: HealthCheckExpr defines a CEL-based health check
                     properties:
@@ -71,7 +71,7 @@ spec:
                       expr:
                         description: |-
                           CEL expression that must evaluate to true for the check to pass
-                          The resource object is available as the root context
+                          The resource object is available as 'object' and status as 'status'
                         type: string
                       kind:
                         description: Kind of the resource to check
@@ -91,6 +91,63 @@ spec:
                       - kind
                     type: object
                   type: array
+                image:
+                  description: Image is the Talos installer image to upgrade to
+                  properties:
+                    repository:
+                      default: factory.talos.dev/metal-installer
+                      description: Repository is the container image repository (without schematic ID)
+                      type: string
+                    tag:
+                      description: Tag is the container image tag
+                      type: string
+                  required:
+                    - tag
+                  type: object
+                nodeLabelSelector:
+                  description: |-
+                    NodeLabelSelector specifies which nodes to target for the upgrade
+                    If empty, all nodes will be targeted
+                  properties:
+                    matchExpressions:
+                      description: MatchExpressions is a list of label selector requirements. The requirements are ANDed.
+                      items:
+                        description: |-
+                          A label selector requirement is a selector that contains values, a key, and an operator that
+                          relates the key and values.
+                        properties:
+                          key:
+                            description: key is the label key that the selector applies to.
+                            type: string
+                          operator:
+                            description: |-
+                              operator represents a key's relationship to a set of values.
+                              Valid operators are In, NotIn, Exists and DoesNotExist.
+                            type: string
+                          values:
+                            description: |-
+                              values is an array of string values. If the operator is In or NotIn,
+                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                              the values array must be empty. This array is replaced during a strategic
+                              merge patch.
+                            items:
+                              type: string
+                            type: array
+                            x-kubernetes-list-type: atomic
+                        required:
+                          - key
+                          - operator
+                        type: object
+                      type: array
+                    matchLabels:
+                      additionalProperties:
+                        type: string
+                      description: |-
+                        MatchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                        map is equivalent to an element of matchExpressions, whose key field is "key", the
+                        operator is "In", and the values array contains only "value".
+                      type: object
+                  type: object
                 talosctl:
                   description: Talosctl specifies the talosctl configuration for upgrade operations
                   properties:
@@ -116,80 +173,27 @@ spec:
                           type: string
                       type: object
                   type: object
-                target:
-                  description: Target defines the upgrade target configuration
+                upgradePolicy:
+                  description: UpgradePolicy configures upgrade behavior
                   properties:
-                    image:
-                      description: Image is the Talos installer image to upgrade to
-                      properties:
-                        repository:
-                          default: factory.talos.dev/metal-installer
-                          description: Repository is the container image repository (without schematic ID)
-                          type: string
-                        tag:
-                          description: Tag is the container image tag
-                          type: string
-                      required:
-                        - tag
-                      type: object
-                    matchNodes:
-                      description: |-
-                        MatchNodes specifies node selector requirements to target nodes for the upgrade
-                        This follows the same pattern as Pod nodeAffinity but simplified to only support
-                        requiredDuringSchedulingIgnoredDuringExecution with a single nodeSelectorTerm
-                      items:
-                        description: |-
-                          A node selector requirement is a selector that contains values, a key, and an operator
-                          that relates the key and values.
-                        properties:
-                          key:
-                            description: The label key that the selector applies to.
-                            type: string
-                          operator:
-                            description: |-
-                              Represents a key's relationship to a set of values.
-                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
-                            type: string
-                          values:
-                            description: |-
-                              An array of string values. If the operator is In or NotIn,
-                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
-                              the values array must be empty. If the operator is Gt or Lt, the values
-                              array must have a single element, which will be interpreted as an integer.
-                              This array is replaced during a strategic merge patch.
-                            items:
-                              type: string
-                            type: array
-                            x-kubernetes-list-type: atomic
-                        required:
-                          - key
-                          - operator
-                        type: object
-                      type: array
-                    options:
-                      description: Options configure upgrade behavior
-                      properties:
-                        debug:
-                          default: false
-                          description: Debug enables debug mode for the upgrade
-                          type: boolean
-                        force:
-                          default: false
-                          description: Force the upgrade (skip checks on etcd health and members)
-                          type: boolean
-                        rebootMode:
-                          default: default
-                          description: RebootMode select the reboot mode during upgrade
-                          enum:
-                            - default
-                            - powercycle
-                          type: string
-                      type: object
-                  required:
-                    - image
+                    debug:
+                      default: false
+                      description: Debug enables debug mode for the upgrade
+                      type: boolean
+                    force:
+                      default: false
+                      description: Force the upgrade (skip checks on etcd health and members)
+                      type: boolean
+                    rebootMode:
+                      default: default
+                      description: RebootMode select the reboot mode during upgrade
+                      enum:
+                        - default
+                        - powercycle
+                      type: string
                   type: object
               required:
-                - target
+                - image
               type: object
             status:
               description: TalosUpgradeStatus defines the observed state of TalosUpgrade

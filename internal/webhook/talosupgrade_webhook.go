@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -28,7 +29,7 @@ type TalosUpgradeValidator struct {
 	TalosConfigSecret string
 }
 
-// +kubebuilder:webhook:path=/validate-upgrade-home-operations-com-v1alpha1-talosupgrade,mutating=false,failurePolicy=fail,sideEffects=None,groups=tuppr.home-operations.com,resources=talosupgrades,verbs=create;update,versions=v1alpha1,name=vtalosupgrade.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-tuppr-home-operations-com-v1alpha1-talosupgrade,mutating=false,failurePolicy=fail,sideEffects=None,groups=tuppr.home-operations.com,resources=talosupgrades,verbs=create;update,versions=v1alpha1,name=vtalosupgrade.kb.io,admissionReviewVersions=v1
 
 var _ webhook.CustomValidator = &TalosUpgradeValidator{}
 
@@ -48,14 +49,14 @@ func (v *TalosUpgradeValidator) ValidateUpdate(ctx context.Context, oldObj, newO
 
 	// Prevent updates to certain fields if upgrade is in progress
 	if oldTalos.Status.Phase == "InProgress" {
-		if talos.Spec.Target.Image.Repository != oldTalos.Spec.Target.Image.Repository ||
-			talos.Spec.Target.Image.Tag != oldTalos.Spec.Target.Image.Tag {
+		if talos.Spec.Image.Repository != oldTalos.Spec.Image.Repository ||
+			talos.Spec.Image.Tag != oldTalos.Spec.Image.Tag {
 			return nil, fmt.Errorf("cannot update spec.image while upgrade is in progress (current phase: %s)", oldTalos.Status.Phase)
 		}
 
-		// Simplified comparison using a more direct approach
-		if !nodeSelectorsEqual(talos.Spec.Target.MatchNodes, oldTalos.Spec.Target.MatchNodes) {
-			return nil, fmt.Errorf("cannot update spec.MatchNodes while upgrade is in progress (current phase: %s)", oldTalos.Status.Phase)
+		// Check if node label selector has changed
+		if !nodeLabelSelectorsEqual(talos.Spec.NodeLabelSelector, oldTalos.Spec.NodeLabelSelector) {
+			return nil, fmt.Errorf("cannot update spec.nodeLabelSelector while upgrade is in progress (current phase: %s)", oldTalos.Status.Phase)
 		}
 	}
 
@@ -134,42 +135,19 @@ func (v *TalosUpgradeValidator) validateTalos(ctx context.Context, talos *upgrad
 
 func (v *TalosUpgradeValidator) validateTalosSpec(talos *upgradev1alpha1.TalosUpgrade) error {
 	// Validate tag is not empty (repository is optional with default)
-	if talos.Spec.Target.Image.Tag == "" {
-		return fmt.Errorf("spec.target.image.tag cannot be empty")
+	if talos.Spec.Image.Tag == "" {
+		return fmt.Errorf("spec.image.tag cannot be empty")
 	}
 
-	// Validate node selector expressions
-	for i, expr := range talos.Spec.Target.MatchNodes {
-		if expr.Key == "" {
-			return fmt.Errorf("spec.target.matchNodes[%d].key cannot be empty", i)
-		}
+	// Validate node label selector
+	if err := v.validateNodeLabelSelector(talos.Spec.NodeLabelSelector); err != nil {
+		return fmt.Errorf("spec.nodeLabelSelector validation failed: %w", err)
+	}
 
-		validOps := []corev1.NodeSelectorOperator{
-			corev1.NodeSelectorOpIn,
-			corev1.NodeSelectorOpNotIn,
-			corev1.NodeSelectorOpExists,
-			corev1.NodeSelectorOpDoesNotExist,
-			corev1.NodeSelectorOpGt,
-			corev1.NodeSelectorOpLt,
-		}
-
-		// Validate operator is valid
-		if !slices.Contains(validOps, expr.Operator) {
-			return fmt.Errorf("spec.target.matchNodes[%d].operator '%s' is invalid", i, expr.Operator)
-		}
-
-		// Validate that value-requiring operators have values
-		if (expr.Operator == corev1.NodeSelectorOpIn ||
-			expr.Operator == corev1.NodeSelectorOpNotIn ||
-			expr.Operator == corev1.NodeSelectorOpGt ||
-			expr.Operator == corev1.NodeSelectorOpLt) && len(expr.Values) == 0 {
-			return fmt.Errorf("spec.target.matchNodes[%d] with operator '%s' requires at least one value", i, expr.Operator)
-		}
-
-		// Validate that non-value operators don't have values
-		if (expr.Operator == corev1.NodeSelectorOpExists ||
-			expr.Operator == corev1.NodeSelectorOpDoesNotExist) && len(expr.Values) > 0 {
-			return fmt.Errorf("spec.target.matchNodes[%d] with operator '%s' must not have values", i, expr.Operator)
+	// Validate health checks
+	for i, check := range talos.Spec.HealthChecks {
+		if err := v.validateHealthCheck(check); err != nil {
+			return fmt.Errorf("spec.healthChecks[%d] validation failed: %w", i, err)
 		}
 	}
 
@@ -183,41 +161,116 @@ func (v *TalosUpgradeValidator) validateTalosSpec(talos *upgradev1alpha1.TalosUp
 
 	// Validate pull policy if specified
 	if talos.Spec.Talosctl.Image.PullPolicy != "" {
-		validPolicies := []string{"Always", "Never", "IfNotPresent"}
-		if !slices.Contains(validPolicies, string(talos.Spec.Talosctl.Image.PullPolicy)) {
-			return fmt.Errorf("spec.talosctl.pullPolicy '%s' is invalid. Valid values are: %v", talos.Spec.Talosctl.Image.PullPolicy, validPolicies)
+		validPolicies := []corev1.PullPolicy{corev1.PullAlways, corev1.PullNever, corev1.PullIfNotPresent}
+		if !slices.Contains(validPolicies, talos.Spec.Talosctl.Image.PullPolicy) {
+			return fmt.Errorf("spec.talosctl.image.pullPolicy '%s' is invalid. Valid values are: %v", talos.Spec.Talosctl.Image.PullPolicy, validPolicies)
 		}
 	}
 
 	// Validate reboot mode if provided
-	if talos.Spec.Target.Options.RebootMode != "" {
+	if talos.Spec.UpgradePolicy.RebootMode != "" {
 		validModes := []string{"default", "powercycle"}
-		if !slices.Contains(validModes, talos.Spec.Target.Options.RebootMode) {
-			return fmt.Errorf("spec.target.options.rebootMode '%s' is invalid. Valid values are: %v",
-				talos.Spec.Target.Options.RebootMode, validModes)
+		if !slices.Contains(validModes, talos.Spec.UpgradePolicy.RebootMode) {
+			return fmt.Errorf("spec.upgradePolicy.rebootMode '%s' is invalid. Valid values are: %v",
+				talos.Spec.UpgradePolicy.RebootMode, validModes)
 		}
 	}
 
 	return nil
 }
 
-func nodeSelectorsEqual(a, b []corev1.NodeSelectorRequirement) bool {
-	if len(a) != len(b) {
+func (v *TalosUpgradeValidator) validateNodeLabelSelector(selector upgradev1alpha1.NodeLabelSelector) error {
+	// Validate matchLabels
+	for key, value := range selector.MatchLabels {
+		if key == "" {
+			return fmt.Errorf("matchLabels key cannot be empty")
+		}
+		if value == "" {
+			return fmt.Errorf("matchLabels value for key '%s' cannot be empty", key)
+		}
+	}
+
+	// Validate matchExpressions
+	for i, expr := range selector.MatchExpressions {
+		if expr.Key == "" {
+			return fmt.Errorf("matchExpressions[%d].key cannot be empty", i)
+		}
+
+		validOps := []metav1.LabelSelectorOperator{
+			metav1.LabelSelectorOpIn,
+			metav1.LabelSelectorOpNotIn,
+			metav1.LabelSelectorOpExists,
+			metav1.LabelSelectorOpDoesNotExist,
+		}
+
+		// Validate operator is valid
+		if !slices.Contains(validOps, expr.Operator) {
+			return fmt.Errorf("matchExpressions[%d].operator '%s' is invalid", i, expr.Operator)
+		}
+
+		// Validate that value-requiring operators have values
+		if (expr.Operator == metav1.LabelSelectorOpIn ||
+			expr.Operator == metav1.LabelSelectorOpNotIn) && len(expr.Values) == 0 {
+			return fmt.Errorf("matchExpressions[%d] with operator '%s' requires at least one value", i, expr.Operator)
+		}
+
+		// Validate that non-value operators don't have values
+		if (expr.Operator == metav1.LabelSelectorOpExists ||
+			expr.Operator == metav1.LabelSelectorOpDoesNotExist) && len(expr.Values) > 0 {
+			return fmt.Errorf("matchExpressions[%d] with operator '%s' must not have values", i, expr.Operator)
+		}
+	}
+
+	return nil
+}
+
+func (v *TalosUpgradeValidator) validateHealthCheck(check upgradev1alpha1.HealthCheckExpr) error {
+	if check.APIVersion == "" {
+		return fmt.Errorf("apiVersion cannot be empty")
+	}
+	if check.Kind == "" {
+		return fmt.Errorf("kind cannot be empty")
+	}
+	if check.Expr == "" {
+		return fmt.Errorf("expr cannot be empty")
+	}
+
+	// Validate timeout if specified
+	if check.Timeout != nil && check.Timeout.Duration <= 0 {
+		return fmt.Errorf("timeout must be positive")
+	}
+
+	return nil
+}
+
+func nodeLabelSelectorsEqual(a, b upgradev1alpha1.NodeLabelSelector) bool {
+	// Compare matchLabels
+	if len(a.MatchLabels) != len(b.MatchLabels) {
+		return false
+	}
+	for k, v := range a.MatchLabels {
+		if b.MatchLabels[k] != v {
+			return false
+		}
+	}
+
+	// Compare matchExpressions
+	if len(a.MatchExpressions) != len(b.MatchExpressions) {
 		return false
 	}
 
 	// Convert to comparable format and sort for consistent comparison
-	aStr := make([]string, len(a))
-	bStr := make([]string, len(b))
+	aStr := make([]string, len(a.MatchExpressions))
+	bStr := make([]string, len(b.MatchExpressions))
 
-	for i, expr := range a {
+	for i, expr := range a.MatchExpressions {
 		values := make([]string, len(expr.Values))
 		copy(values, expr.Values)
 		slices.Sort(values)
 		aStr[i] = fmt.Sprintf("%s:%s:%v", expr.Key, expr.Operator, values)
 	}
 
-	for i, expr := range b {
+	for i, expr := range b.MatchExpressions {
 		values := make([]string, len(expr.Values))
 		copy(values, expr.Values)
 		slices.Sort(values)
@@ -234,23 +287,30 @@ func (v *TalosUpgradeValidator) generateWarnings(talos *upgradev1alpha1.TalosUpg
 	var warnings []string
 
 	// Warn about force upgrades
-	if talos.Spec.Target.Options.Force {
+	if talos.Spec.UpgradePolicy.Force {
 		warnings = append(warnings, "Force upgrade enabled. This will skip etcd health checks and may cause data loss in unhealthy clusters.")
 	}
 
 	// Warn about powercycle reboot mode
-	if talos.Spec.Target.Options.RebootMode == "powercycle" {
+	if talos.Spec.UpgradePolicy.RebootMode == "powercycle" {
 		warnings = append(warnings, "Powercycle reboot mode selected. This performs a hard power cycle and may cause data loss if nodes don't shutdown cleanly.")
 	}
 
 	// Warn about upgrading all nodes (no selector)
-	if len(talos.Spec.Target.MatchNodes) == 0 {
+	if len(talos.Spec.NodeLabelSelector.MatchLabels) == 0 && len(talos.Spec.NodeLabelSelector.MatchExpressions) == 0 {
 		warnings = append(warnings, "No node selector specified. This will upgrade ALL nodes in the cluster.")
 	}
 
 	// Add warning for debug mode
-	if talos.Spec.Target.Options.Debug {
+	if talos.Spec.UpgradePolicy.Debug {
 		warnings = append(warnings, "Debug mode enabled. This will produce verbose output in upgrade jobs.")
+	}
+
+	// Warn about health checks without timeouts
+	for i, check := range talos.Spec.HealthChecks {
+		if check.Timeout == nil {
+			warnings = append(warnings, fmt.Sprintf("Health check %d has no timeout specified, will use default 5 minutes", i))
+		}
 	}
 
 	return warnings

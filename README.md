@@ -67,31 +67,30 @@ kind: TalosUpgrade
 metadata:
   name: cluster # choose a name that best describes the spec values you have
 spec:
-  target:
-    image:
-      repository: # Optional, default: factory.talos.dev/metal-installer (no schmatic ID, it is auto-detected)
-      tag: v1.11.1 # Required
-    options: # Optional
-      debug: false # Optional, default: false
-      force: false # Optional, default: false
-      rebootMode: default # Optional, default: default
-    # You can create a TalosUpgrade per node
-    #   Just make sure update the TalosUpgrade metadata.name to the node name (or whatever)
-    #   and set the matchNodes to the node name
-    matchNodes: [] # Optional
+  image:
+    repository: # Optional, default: factory.talos.dev/metal-installer
+    tag: v1.11.1 # Required
+  upgradePolicy:
+    debug: # Optional, default: false
+    force: # Optional, default: false
+    rebootMode: # Optional, default: default, options: default,powercycle
+  nodeLabelSelector: {} # Optional (matches nodes by labels)
+    matchLabels: {}
+      # kubevirt.io/first-label: "true"
+      # kubevirt.io/second-label: "true"
+    matchExpressions: []
       # - key: kubernetes.io/hostname
       #   operator: In
       #   values: ["k8s-0"]
-  # Healthchecks to be evaluated before the upgrade happens on any node written in (CEL)
-  healthChecks: [] # Optional
+  healthChecks: [] # Optional (evaluated before upgrade, in CEL)
     # - apiVersion: ceph.rook.io/v1
     #   kind: CephCluster
     #   expr: status.ceph.health in ['HEALTH_OK', 'HEALTH_WARN']
-  talosctl: # Optional
-    image: # Optional
-      repository: ghcr.io/siderolabs/talosctl # Optional, default: ghcr.io/siderolabs/talosctl
-      tag: v1.11.1 # Optional, default: current installed Talos version
-      pullPolicy: IfNotPresent # Optional, default: IfNotPresent
+  talosctl:
+    image:
+      repository: # Optional, default: ghcr.io/siderolabs/talosctl
+      tag: # Optional, default: current installed Talos version
+      pullPolicy: # Optional, default: IfNotPresent
 ```
 
 Check that the controller recognizes the current state:
