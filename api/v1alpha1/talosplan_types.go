@@ -89,9 +89,9 @@ type TalosUpgradeSpec struct {
 	// +optional
 	Talosctl TalosctlSpec `json:"talosctl,omitempty"`
 
-	// HealthCheckExprs defines a list of CEL-based health checks to perform before and after each node upgrade
+	// HealthChecks defines a list of CEL-based health checks to perform before and after each node upgrade
 	// +optional
-	HealthCheckExprs []HealthCheckExpr `json:"healthCheckExprs,omitempty"`
+	HealthChecks []HealthCheckExpr `json:"healthChecks,omitempty"`
 }
 
 // HealthCheckExpr defines a CEL-based health check
@@ -115,7 +115,7 @@ type HealthCheckExpr struct {
 	// CEL expression that must evaluate to true for the check to pass
 	// The resource object is available as the root context
 	// +kubebuilder:validation:Required
-	Wait string `json:"wait"`
+	Expr string `json:"expr"`
 
 	// Timeout for this health check (optional, defaults to 5 minutes)
 	// +optional

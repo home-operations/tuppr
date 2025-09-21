@@ -179,8 +179,8 @@ func (in *TalosUpgradeSpec) DeepCopyInto(out *TalosUpgradeSpec) {
 	*out = *in
 	in.Target.DeepCopyInto(&out.Target)
 	out.Talosctl = in.Talosctl
-	if in.HealthCheckExprs != nil {
-		in, out := &in.HealthCheckExprs, &out.HealthCheckExprs
+	if in.HealthChecks != nil {
+		in, out := &in.HealthChecks, &out.HealthChecks
 		*out = make([]HealthCheckExpr, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])

@@ -57,8 +57,8 @@ spec:
             spec:
               description: TalosUpgradeSpec defines the desired state of TalosUpgrade
               properties:
-                healthCheckExprs:
-                  description: HealthCheckExprs defines a list of CEL-based health checks to perform before and after each node upgrade
+                healthChecks:
+                  description: HealthChecks defines a list of CEL-based health checks to perform before and after each node upgrade
                   items:
                     description: HealthCheckExpr defines a CEL-based health check
                     properties:
@@ -67,6 +67,11 @@ spec:
                         type: string
                       description:
                         description: Description of what this check validates (for status/logging)
+                        type: string
+                      expr:
+                        description: |-
+                          CEL expression that must evaluate to true for the check to pass
+                          The resource object is available as the root context
                         type: string
                       kind:
                         description: Kind of the resource to check
@@ -80,15 +85,10 @@ spec:
                       timeout:
                         description: Timeout for this health check (optional, defaults to 5 minutes)
                         type: string
-                      wait:
-                        description: |-
-                          CEL expression that must evaluate to true for the check to pass
-                          The resource object is available as the root context
-                        type: string
                     required:
                       - apiVersion
+                      - expr
                       - kind
-                      - wait
                     type: object
                   type: array
                 talosctl:

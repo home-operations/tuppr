@@ -244,7 +244,7 @@ func (r *TalosUpgradeReconciler) processNextNode(ctx context.Context, talosUpgra
 	logger := log.FromContext(ctx)
 
 	// Perform health checks before finding next node
-	if err := r.HealthChecker.CheckHealth(ctx, talosUpgrade.Spec.HealthCheckExprs); err != nil {
+	if err := r.HealthChecker.CheckHealth(ctx, talosUpgrade.Spec.HealthChecks); err != nil {
 		logger.Info("Health checks failed, will retry", "error", err.Error())
 		if setErr := r.setPhase(ctx, talosUpgrade, PhasePending, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); setErr != nil {
 			logger.Error(setErr, "Failed to update phase for health check")

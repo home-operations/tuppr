@@ -83,10 +83,10 @@ spec:
       #   operator: In
       #   values: ["k8s-0"]
   # Healthchecks to be evaluated before the upgrade happens on any node written in (CEL)
-  healthCheckExprs: [] # Optional
+  healthChecks: [] # Optional
     # - apiVersion: ceph.rook.io/v1
     #   kind: CephCluster
-    #   wait: status.ceph.health in ['HEALTH_OK', 'HEALTH_WARN']
+    #   expr: status.ceph.health in ['HEALTH_OK', 'HEALTH_WARN']
   talosctl: # Optional
     image: # Optional
       repository: ghcr.io/siderolabs/talosctl # Optional, default: ghcr.io/siderolabs/talosctl
