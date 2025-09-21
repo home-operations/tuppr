@@ -152,7 +152,7 @@ affinity: {}
 # affinity:
 #   nodeAffinity:
 #     requiredDuringSchedulingIgnoredDuringExecution:
-#       nodeSelectorTerms:
+#       matchNodes:
 #       - matchExpressions:
 #         - key: kubernetes.io/arch
 #           operator: In

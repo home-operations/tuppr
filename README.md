@@ -77,8 +77,8 @@ spec:
       rebootMode: default # Optional, default: default
     # You can create a TalosUpgrade per node
     #   Just make sure update the TalosUpgrade metadata.name to the node name (or whatever)
-    #   and set the nodeSelectorTerms to the node name
-    nodeSelectorTerms: [] # Optional
+    #   and set the matchNodes to the node name
+    matchNodes: [] # Optional
       # - key: kubernetes.io/hostname
       #   operator: In
       #   values: ["k8s-0"]
