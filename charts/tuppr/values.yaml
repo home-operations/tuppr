@@ -139,12 +139,12 @@ nodeSelector: {}
 #   kubernetes.io/os: linux
 
 # Tolerations for pod assignment
-tolerations: []
-# Example:
-# tolerations:
-#   - key: "node-role.kubernetes.io/control-plane"
-#     operator: "Exists"
-#     effect: "NoSchedule"
+tolerations:
+  - key: CriticalAddonsOnly
+    operator: Exists
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
 
 # Affinity for pod assignment
 affinity: {}
