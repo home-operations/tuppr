@@ -1,203 +1,231 @@
 # tuppr - Talos Linux Upgrade Controller
 
-A Kubernetes controller for managing automated upgrades of Talos Linux nodes and Kubernetes control plane components.
+A Kubernetes controller for managing automated upgrades of Talos Linux and Kubernetes verisons.
 
 ## ✨ Features
 
-- 🚀 **Automated Talos node upgrades** with safe orchestration
-- 🎯 **Kubernetes control plane upgrades** via Talos *(coming soon)*
-- 🔒 **Safe upgrade execution** - upgrades run from healthy nodes (never self-upgrade)
-- 📊 **Built-in health checks** - validates cluster health before and during upgrades
-- 🎛️ **Flexible node targeting** with label selectors
-- 🔄 **Configurable reboot modes** - default or powercycle
-- 📋 **Comprehensive status tracking** with detailed progress reporting
+### Core Capabilities
+
+- 🚀 **Automated Talos node upgrades** with intelligent orchestration
+- 🎯 **Kubernetes upgrades** - upgrade Kubernetes to newer versions *(coming soon)*
+- 🔒 **Safe upgrade execution** - upgrades always run from healthy nodes (never self-upgrade)
+- 📊 **Built-in health checks** - CEL-based expressions for custom cluster validation
+- 🎛️ **Flexible node targeting** with advanced label selectors
+- 🔄 **Configurable reboot modes** - default or powercycle options
+- 📋 **Comprehensive status tracking** with real-time progress reporting
 - ⚡ **Resilient job execution** with automatic retry and pod replacement
 
-## 🧪 Testing Guide
+## 🚀 Quick Start
 
-> **⚠️ Important**: Pause System Upgrade Controller (SUC) before testing to avoid conflicts.
+### Prerequisites
 
-### 1. Preparation
+1. **Talos cluster** with API access configured
+2. **Namespace** for the controller (e.g., `system-upgrade`)
 
-Create the namespace:
+### Installation
 
-```bash
-kubectl create namespace system-upgrade
-```
-
-Create Talos configuration secret by applying Talos with this config:
+Allow Talos API access to the desired namespace by applying this config to all of you nodes:
 
 ```yaml
 machine:
-  # ...
   features:
-    # ...
     kubernetesTalosAPIAccess:
       allowedKubernetesNamespaces:
         - system-upgrade
       allowedRoles:
         - os:admin
       enabled: true
-# ...
 ```
 
-### 2. Installation
+Install the Helm chart:
 
 ```bash
+# Install via Helm
 helm install tuppr oci://ghcr.io/home-operations/charts/tuppr \
-  --version 0.0.x \
-  --set replicas=2 \
+  --version 0.1.0 \
   --namespace system-upgrade
-
-# Or upgrade
-helm upgrade tuppr oci://ghcr.io/home-operations/charts/tuppr \
-  --version 0.0.x \
-  --reuse-values \
-  --namespace system-upgrade
-
 ```
 
-### 3. Initial State Check
+### Basic Usage
 
-Create a TalosUpgrade matching your **current** cluster state:
+Create a `TalosUpgrade` resource:
 
 ```yaml
 apiVersion: tuppr.home-operations.com/v1alpha1
 kind: TalosUpgrade
 metadata:
-  name: cluster # choose a name that best describes the spec values you have
+  name: cluster-upgrade
 spec:
   image:
-    repository: # Optional, default: factory.talos.dev/metal-installer
-    tag: v1.11.1 # Required
+    repository: factory.talos.dev/metal-installer  # Optional, default
+    tag: v1.11.0  # Required - target Talos version
+
   upgradePolicy:
-    debug: # Optional, default: false
-    force: # Optional, default: false
-    rebootMode: # Optional, default: default, options: default,powercycle
-  nodeLabelSelector: {} # Optional (matches nodes by labels)
-    matchLabels: {}
-      # kubevirt.io/first-label: "true"
-      # kubevirt.io/second-label: "true"
-    matchExpressions: []
-      # - key: kubernetes.io/hostname
-      #   operator: In
-      #   values: ["k8s-0"]
-  healthChecks: [] # Optional (evaluated before upgrade, in CEL)
-    # - apiVersion: ceph.rook.io/v1
-    #   kind: CephCluster
-    #   expr: status.ceph.health in ['HEALTH_OK', 'HEALTH_WARN']
+    debug: false         # Optional, verbose logging
+    force: false         # Optional, skip etcd health checks
+    rebootMode: default  # Optional, default|powercycle
+
+  # Target specific nodes (optional - defaults to all nodes)
+  nodeLabelSelector:
+    matchLabels:
+      node-role.kubernetes.io/control-plane: ""
+    matchExpressions:
+      - key: kubernetes.io/hostname
+        operator: NotIn
+        values: ["maintenance-node"]
+
+  # Custom health checks (optional)
+  healthChecks:
+    - apiVersion: v1
+      kind: Node
+      expr: status.conditions.exists(c, c.type == "Ready" && c.status == "True")
+
+    - apiVersion: ceph.rook.io/v1
+      kind: CephCluster
+      name: rook-ceph
+      namespace: rook-ceph
+      expr: status.ceph.health in ["HEALTH_OK", "HEALTH_WARN"]
+
+  # Talosctl configuration (optional)
   talosctl:
     image:
-      repository: # Optional, default: ghcr.io/siderolabs/talosctl
-      tag: # Optional, default: current installed Talos version
-      pullPolicy: # Optional, default: IfNotPresent
+      repository: ghcr.io/siderolabs/talosctl  # Optional, default
+      tag: v1.11.0                             # Optional, auto-detected
+      pullPolicy: IfNotPresent                 # Optional, default
 ```
 
-Check that the controller recognizes the current state:
+## 🎯 Advanced Configuration
 
-```bash
-kubectl get talosupgrade cluster -o yaml
-```
+### Health Checks
 
-**Expected**: Status should show all nodes as already upgraded.
-
-### 4. Test Downgrade
-
-Modify the TalosUpgrade to downgrade to a previous version:
+Define custom health checks using [CEL expressions](https://cel.dev/):
 
 ```yaml
-spec:
-  target:
-    image:
-      tag: v1.11.0 # Previous version
+healthChecks:
+  # Check all nodes are ready
+  - apiVersion: v1
+    kind: Node
+    expr: |
+      status.conditions.filter(c, c.type == "Ready").all(c, c.status == "True")
+
+  # Check specific deployment replicas
+  - apiVersion: apps/v1
+    kind: Deployment
+    name: critical-app
+    namespace: production
+    expr: status.readyReplicas == status.replicas
+
+  # Check custom resources
+  - apiVersion: argoproj.io/v1alpha1
+    kind: Application
+    namespace: argocd
+    expr: |
+      status.health.status == "Healthy" &&
+      status.sync.status == "Synced"
 ```
 
-### 5. Monitor the Upgrade
+### Node Targeting
 
-Watch the upgrade progress:
+Precise control over which nodes to upgrade:
+
+```yaml
+nodeLabelSelector:
+  matchLabels:
+    environment: production
+    node-role.kubernetes.io/worker: ""
+
+  matchExpressions:
+    # Exclude specific nodes
+    - key: kubernetes.io/hostname
+      operator: NotIn
+      values: ["node-1", "node-2"]
+
+    # Target nodes with specific zones
+    - key: topology.kubernetes.io/zone
+      operator: In
+      values: ["us-west-2a", "us-west-2b"]
+
+    # Exclude maintenance windows
+    - key: maintenance
+      operator: DoesNotExist
+```
+
+### Upgrade Policies
+
+Fine-tune upgrade behavior:
+
+```yaml
+upgradePolicy:
+  # Enable debug logging for troubleshooting
+  debug: true
+
+  # Force upgrade even if etcd is unhealthy (dangerous!)
+  force: false
+
+  # Use powercycle reboot for problematic nodes
+  rebootMode: powercycle  # or "default"
+```
+
+## 🔧 Operations
+
+### Monitoring Upgrades
 
 ```bash
-# Terminal 1: Watch TalosUpgrade status
-watch kubectl get talosupgrade cluster
+# Watch upgrade progress
+kubectl get talosupgrade -w
 
-# Terminal 2: Watch jobs and pods
-watch kubectl get jobs,pods -n system-upgrade
+# Check detailed status
+kubectl describe talosupgrade cluster-upgrade
 
-# Terminal 3: Stream logs
-stern -n system-upgrade cluster
+# View upgrade logs
+kubectl logs -f deployment/tuppr -n system-upgrade
 ```
 
-### 6. Verify and Test Back
-
-Once downgrade completes:
-
-- All nodes should be running v1.11.0
-- TalosUpgrade status should show `phase: Completed`
-- Jobs are cleaned up automatically
-
-**Test upgrade**: Change the TalosUpgrade back to v1.11.1 and repeat monitoring.
-
-### 7. Reset failed upgrade
-
-If an upgrade is failed you can either update the `TalosCluster` resource to have it kick off a new job, or use the command below to reset it.
+### Troubleshooting
 
 ```bash
-kubectl annotate talosupgrade cluster tuppr.home-operations.com/reset="$(date)"
+# Reset failed upgrade
+kubectl annotate talosupgrade cluster-upgrade tuppr.home-operations.com/reset="$(date)"
+
+# Check job logs
+kubectl logs job/tuppr-xyz -n system-upgrade
+
+# Check controller health
+kubectl get pods -n system-upgrade -l app.kubernetes.io/name=tuppr
 ```
 
-### 8. Cleanup
+### Emergency Procedures
 
 ```bash
-# Remove test resources
-kubectl delete talosupgrade cluster
+# Pause all upgrades (scale down controller)
+kubectl scale deployment tuppr --replicas=0 -n system-upgrade
 
-# Remove controller
-helm uninstall tuppr --namespace system-upgrade
+# Emergency cleanup
+kubectl delete talosupgrade --all
+kubectl delete jobs -l app.kubernetes.io/name=talos-upgrade -n system-upgrade
 
-# Remove CRDs
-kubectl delete crd talosupgrades.tuppr.home-operations.com
+# Resume operations
+kubectl scale deployment tuppr --replicas=1 -n system-upgrade
 ```
-
-## 📖 How It Works
-
-1. **Safety First**: Upgrade jobs always run on nodes different from the target node
-2. **Health Checks**: Pre-upgrade validation ensures cluster health
-3. **Sequential Upgrades**: Nodes are upgraded one at a time to maintain availability
-4. **Status Tracking**: Real-time progress updates via Kubernetes status fields
-5. **Automatic Cleanup**: Completed jobs are automatically cleaned up after 15 minutes
-
-### Known Limitations
-
-- **Single node clusters**: Not supported (upgrades require running from other nodes)
-- **Network policies**: May interfere with Talos API access
-- **Resource constraints**: Upgrade jobs need sufficient CPU/memory
-
-## 🚧 Current Status
-
-This project is in active development. Current roadmap:
-
-- [x] Talos node upgrade controller
-- [ ] Kubernetes control plane upgrade controller
-- [ ] Comprehensive test suite
-- [ ] Production-ready Helm chart
-- [ ] Advanced metrics and alerting
-- [ ] CI/CD workflows
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Make your changes and add tests
-4. Commit your changes: `git commit -m 'Add amazing feature'`
-5. Push to the branch: `git push origin feature/amazing-feature`
-6. Open a Pull Request
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
 ## 📄 License
 
-This project is licensed under the GNU Affero General Public License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **GNU Affero General Public License v3.0** - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
-- [Talos Linux](https://www.talos.dev/) - The modern OS for Kubernetes
-- [System Upgrade Controller](https://github.com/rancher/system-upgrade-controller) - Inspiration for upgrade orchestration
-- [Kubebuilder](https://book.kubebuilder.io/) - Framework for building Kubernetes controllers
+- **[Talos Linux](https://www.talos.dev/)** - The modern OS for Kubernetes that inspired this project
+- **[System Upgrade Controller](https://github.com/rancher/system-upgrade-controller)** - Inspiration for upgrade orchestration patterns
+- **[Kubebuilder](https://book.kubebuilder.io/)** - Excellent framework for building Kubernetes controllers
+- **[Controller Runtime](https://github.com/kubernetes-sigs/controller-runtime)** - Powerful runtime for Kubernetes controllers
+- **[CEL](https://cel.dev/)** - Common Expression Language for flexible health checks
+
+---
+
+**⭐ If this project helps you, please consider giving it a star!**
+
+For questions, issues, or feature requests, please visit our [GitHub Issues](https://github.com/home-operations/tuppr/issues).
