@@ -29,6 +29,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "tuppr.serviceAccountName" . }}
+      priorityClassName: system-node-critical
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -98,5 +99,14 @@ spec:
       {{- end }}
       {{- with .Values.tolerations }}
       tolerations:
+        - key: CriticalAddonsOnly
+          operator: Exists
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        {{- with .Values.tolerations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}

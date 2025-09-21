@@ -821,6 +821,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 				Spec: corev1.PodSpec{
 					RestartPolicy:                 corev1.RestartPolicyNever,
 					TerminationGracePeriodSeconds: ptr.To(int64(JobGracePeriod)),
+					PriorityClassName:             "system-node-critical",
 					SecurityContext: &corev1.PodSecurityContext{
 						RunAsNonRoot: ptr.To(true),
 						RunAsUser:    ptr.To(int64(65534)),
@@ -832,27 +833,21 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 					},
 					Affinity: &corev1.Affinity{
 						NodeAffinity: &corev1.NodeAffinity{
-							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-								NodeSelectorTerms: []corev1.NodeSelectorTerm{{
+							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{{
+								Weight: 100,
+								Preference: corev1.NodeSelectorTerm{
 									MatchExpressions: []corev1.NodeSelectorRequirement{{
 										Key:      "kubernetes.io/hostname",
 										Operator: corev1.NodeSelectorOpNotIn,
 										Values:   []string{nodeName},
 									}},
-								}},
-							},
+								},
+							}},
 						},
 					},
 					Tolerations: []corev1.Toleration{
 						{
-							Key:      "node-role.kubernetes.io/control-plane",
 							Operator: corev1.TolerationOpExists,
-							Effect:   corev1.TaintEffectNoSchedule,
-						},
-						{
-							Key:      "node-role.kubernetes.io/master",
-							Operator: corev1.TolerationOpExists,
-							Effect:   corev1.TaintEffectNoSchedule,
 						},
 					},
 					InitContainers: []corev1.Container{{
