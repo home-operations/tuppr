@@ -10,7 +10,7 @@ webhooks:
       service:
         name: webhook-service
         namespace: system
-        path: /validate-upgrade-home-operations-com-v1alpha1-talosupgrade
+        path: /validate-tuppr-home-operations-com-v1alpha1-talosupgrade
     failurePolicy: Fail
     name: vtalosupgrade.kb.io
     rules:

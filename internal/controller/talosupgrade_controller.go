@@ -458,7 +458,7 @@ func (r *TalosUpgradeReconciler) verifyNodeUpgrade(ctx context.Context, talosUpg
 	}
 
 	currentVersion := getTalosVersion(node.Status.NodeInfo.OSImage)
-	targetVersion := talosUpgrade.Spec.Target.Image.Tag
+	targetVersion := talosUpgrade.Spec.Image.Tag
 
 	if currentVersion != targetVersion {
 		return fmt.Errorf("node %s version mismatch: current=%s, target=%s",
@@ -630,7 +630,7 @@ func (r *TalosUpgradeReconciler) findNextNode(ctx context.Context, talosUpgrade 
 		return strings.Compare(a.Name, b.Name)
 	})
 
-	targetTag := talosUpgrade.Spec.Target.Image.Tag
+	targetTag := talosUpgrade.Spec.Image.Tag
 
 	// Use slices.IndexFunc to find first node needing upgrade
 	idx := slices.IndexFunc(nodes, func(node corev1.Node) bool {
@@ -763,11 +763,11 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 	if err != nil {
 		logger.Error(err, "Failed to build target image, using fallback", "node", nodeName)
 		// Fallback to basic image without schematic
-		repository := talosUpgrade.Spec.Target.Image.Repository
+		repository := talosUpgrade.Spec.Image.Repository
 		if repository == "" {
 			repository = DefaultFactoryRepository
 		}
-		targetImage = fmt.Sprintf("%s:%s", repository, talosUpgrade.Spec.Target.Image.Tag)
+		targetImage = fmt.Sprintf("%s:%s", repository, talosUpgrade.Spec.Image.Tag)
 	}
 
 	args := []string{
@@ -777,17 +777,17 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 		"--timeout=" + JobTalosUpgradeTimeout,
 	}
 
-	if talosUpgrade.Spec.Target.Options.Debug {
+	if talosUpgrade.Spec.UpgradePolicy.Debug {
 		args = append(args, "--debug")
 		logger.V(1).Info("Debug upgrade enabled", "node", nodeName)
 	}
 
-	if talosUpgrade.Spec.Target.Options.Force {
+	if talosUpgrade.Spec.UpgradePolicy.Force {
 		args = append(args, "--force")
 		logger.V(1).Info("Force upgrade enabled", "node", nodeName)
 	}
 
-	if talosUpgrade.Spec.Target.Options.RebootMode == "powercycle" {
+	if talosUpgrade.Spec.UpgradePolicy.RebootMode == "powercycle" {
 		args = append(args, "--reboot-mode", "powercycle")
 		logger.V(1).Info("Powercycle reboot mode enabled", "node", nodeName)
 	}
@@ -1011,7 +1011,7 @@ func (r *TalosUpgradeReconciler) buildTalosUpgradeImage(ctx context.Context, tal
 	logger := log.FromContext(ctx)
 
 	// Get repository (use default if not specified)
-	repository := talosUpgrade.Spec.Target.Image.Repository
+	repository := talosUpgrade.Spec.Image.Repository
 	if repository == "" {
 		repository = DefaultFactoryRepository
 	}
@@ -1026,12 +1026,12 @@ func (r *TalosUpgradeReconciler) buildTalosUpgradeImage(ctx context.Context, tal
 	schematic := getTalosSchematic(node)
 	if schematic == "" {
 		logger.Info("No schematic found in node annotations, using repository without schematic", "node", nodeName)
-		return fmt.Sprintf("%s:%s", repository, talosUpgrade.Spec.Target.Image.Tag), nil
+		return fmt.Sprintf("%s:%s", repository, talosUpgrade.Spec.Image.Tag), nil
 	}
 
 	// Construct full image with schematic
 	fullRepository := fmt.Sprintf("%s/%s", repository, schematic)
-	targetImage := fmt.Sprintf("%s:%s", fullRepository, talosUpgrade.Spec.Target.Image.Tag)
+	targetImage := fmt.Sprintf("%s:%s", fullRepository, talosUpgrade.Spec.Image.Tag)
 
 	logger.V(1).Info("Built target image",
 		"node", nodeName,
@@ -1041,105 +1041,66 @@ func (r *TalosUpgradeReconciler) buildTalosUpgradeImage(ctx context.Context, tal
 	return targetImage, nil
 }
 
-// matchesStringValue checks if a string value matches the requirements
-func matchesStringValue(value string, expr *corev1.NodeSelectorRequirement) bool {
-	switch expr.Operator {
-	case corev1.NodeSelectorOpIn:
-		return slices.Contains(expr.Values, value)
+// getMatchingNodes returns nodes that match the TalosUpgrade's node selector
+func getMatchingNodes(allNodes []corev1.Node, talos *upgradev1alpha1.TalosUpgrade) []corev1.Node {
+	selector := talos.Spec.NodeLabelSelector
 
-	case corev1.NodeSelectorOpNotIn:
-		return !slices.Contains(expr.Values, value)
-
-	case corev1.NodeSelectorOpExists:
-		return true
-
-	case corev1.NodeSelectorOpDoesNotExist:
-		return false
-
-	default:
-		return false
+	// If no selector is specified, return all nodes
+	if len(selector.MatchLabels) == 0 && len(selector.MatchExpressions) == 0 {
+		return allNodes
 	}
+
+	// Filter nodes that match the selector
+	var matchingNodes []corev1.Node
+	for _, node := range allNodes {
+		if nodeMatchesLabelSelector(&node, selector) {
+			matchingNodes = append(matchingNodes, node)
+		}
+	}
+
+	return matchingNodes
 }
 
-// nodeMatchesFieldExpression checks if a node matches a field selector requirement
-func nodeMatchesFieldExpression(node *corev1.Node, expr *corev1.NodeSelectorRequirement) bool {
-	fieldMap := map[string]string{
-		"metadata.name":      node.Name,
-		"metadata.namespace": node.Namespace,
+// nodeMatchesLabelSelector checks if a node matches the label selector (both matchLabels and matchExpressions)
+func nodeMatchesLabelSelector(node *corev1.Node, selector upgradev1alpha1.NodeLabelSelector) bool {
+	// Check matchLabels (all must match - AND logic)
+	for key, value := range selector.MatchLabels {
+		nodeValue, exists := node.Labels[key]
+		if !exists || nodeValue != value {
+			return false
+		}
 	}
 
-	nodeValue, exists := fieldMap[expr.Key]
-	if !exists {
-		return expr.Operator == corev1.NodeSelectorOpDoesNotExist
+	// Check matchExpressions (all must match - AND logic)
+	for _, expr := range selector.MatchExpressions {
+		if !nodeMatchesLabelExpression(node, expr) {
+			return false
+		}
 	}
 
-	return matchesStringValue(nodeValue, expr)
+	return true
 }
 
-// nodeMatchesExpression checks if a node matches a single node selector requirement
-func nodeMatchesExpression(node *corev1.Node, expr *corev1.NodeSelectorRequirement) bool {
+// nodeMatchesLabelExpression checks if a node matches a single label selector requirement
+func nodeMatchesLabelExpression(node *corev1.Node, expr metav1.LabelSelectorRequirement) bool {
 	nodeValue, exists := node.Labels[expr.Key]
 
 	switch expr.Operator {
-	case corev1.NodeSelectorOpIn:
+	case metav1.LabelSelectorOpIn:
 		return exists && slices.Contains(expr.Values, nodeValue)
 
-	case corev1.NodeSelectorOpNotIn:
+	case metav1.LabelSelectorOpNotIn:
 		return !exists || !slices.Contains(expr.Values, nodeValue)
 
-	case corev1.NodeSelectorOpExists:
+	case metav1.LabelSelectorOpExists:
 		return exists
 
-	case corev1.NodeSelectorOpDoesNotExist:
+	case metav1.LabelSelectorOpDoesNotExist:
 		return !exists
-
-	case corev1.NodeSelectorOpGt:
-		return exists && len(expr.Values) > 0 && nodeValue > expr.Values[0]
-
-	case corev1.NodeSelectorOpLt:
-		return exists && len(expr.Values) > 0 && nodeValue < expr.Values[0]
 
 	default:
 		return false
 	}
-}
-
-// nodeMatchesTerm checks if a node matches all requirements in a term
-func nodeMatchesTerm(node *corev1.Node, term *corev1.NodeSelectorTerm) bool {
-	matchesAllExpressions := !slices.ContainsFunc(term.MatchExpressions, func(expr corev1.NodeSelectorRequirement) bool {
-		return !nodeMatchesExpression(node, &expr)
-	})
-
-	matchesAllFields := !slices.ContainsFunc(term.MatchFields, func(field corev1.NodeSelectorRequirement) bool {
-		return !nodeMatchesFieldExpression(node, &field)
-	})
-
-	return matchesAllExpressions && matchesAllFields
-}
-
-// nodeMatchesSelector checks if a node matches the given node selector
-func nodeMatchesSelector(node *corev1.Node, selector *corev1.NodeSelector) bool {
-	return len(selector.NodeSelectorTerms) == 0 || // Empty selector matches all
-		slices.ContainsFunc(selector.NodeSelectorTerms, func(term corev1.NodeSelectorTerm) bool {
-			return nodeMatchesTerm(node, &term)
-		})
-}
-
-// getMatchingNodes returns nodes that match the TalosUpgrade's node selector
-func getMatchingNodes(allNodes []corev1.Node, talos *upgradev1alpha1.TalosUpgrade) []corev1.Node {
-	if len(talos.Spec.Target.MatchNodes) == 0 {
-		return allNodes // No selector means all nodes
-	}
-
-	selector := &corev1.NodeSelector{
-		NodeSelectorTerms: []corev1.NodeSelectorTerm{{
-			MatchExpressions: talos.Spec.Target.MatchNodes,
-		}},
-	}
-
-	return slices.DeleteFunc(slices.Clone(allNodes), func(node corev1.Node) bool {
-		return !nodeMatchesSelector(&node, selector)
-	})
 }
 
 // getNodeInternalIP retrieves the InternalIP of a Kubernetes node
@@ -1182,47 +1143,28 @@ func getTalosVersion(osImage string) string {
 // both Job names and generated Pod names stay under the 63-character limit
 func generateSafeJobName(upgradeName, nodeName string) string {
 	jobID := uuid.New().String()[:8]
+	const maxLength = 57 // 63 - 6 for Pod suffix
 
-	// Kubernetes generates Pod names as: {job-name}-{5-char-suffix}
-	// Reserve 6 characters for Pod suffix
-	const maxJobNameLength = 63 - 6 // 57 characters max for Job name
+	// Calculate available space for upgrade and node names
+	prefixLen := len("tuppr-") + len(jobID) + 2 // +2 for dashes
+	available := maxLength - prefixLen
 
-	// Use strings.Builder for efficient string construction
-	var nameBuilder strings.Builder
-	nameBuilder.WriteString("tuppr-")
-
-	// Calculate remaining space after prefix and suffix
-	fixedLength := nameBuilder.Len() + 1 + len(jobID) // +1 for final dash
-	availableLength := maxJobNameLength - fixedLength
-
-	// Use min() from Go 1.21+
-	nodeLen := min(len(nodeName), availableLength*2/3)             // Prioritize node name
-	upgradeLen := min(len(upgradeName), availableLength-nodeLen-1) // -1 for dash
-
-	// Handle edge cases with max()
-	upgradeLen = max(0, upgradeLen)
-	if upgradeLen == 0 {
-		nodeLen = min(len(nodeName), availableLength)
+	if available <= 0 {
+		return fmt.Sprintf("tuppr-%s", jobID) // Emergency fallback
 	}
 
-	// Build name efficiently
+	// Allocate 2/3 to node name, 1/3 to upgrade name
+	nodeLen := min(len(nodeName), available*2/3)
+	upgradeLen := min(len(upgradeName), available-nodeLen)
+
+	// Build the name
+	parts := []string{"tuppr"}
 	if upgradeLen > 0 {
-		nameBuilder.WriteString(upgradeName[:upgradeLen])
-		nameBuilder.WriteString("-")
+		parts = append(parts, upgradeName[:upgradeLen])
 	}
-	nameBuilder.WriteString(nodeName[:nodeLen])
-	nameBuilder.WriteString("-")
-	nameBuilder.WriteString(jobID)
+	parts = append(parts, nodeName[:nodeLen], jobID)
 
-	result := nameBuilder.String()
-
-	// Final safety check
-	if len(result) > maxJobNameLength {
-		// Emergency fallback
-		return fmt.Sprintf("tuppr-%s", jobID)
-	}
-
-	return result
+	return strings.Join(parts, "-")
 }
 
 // containsNode checks if a node name is in the list of nodes

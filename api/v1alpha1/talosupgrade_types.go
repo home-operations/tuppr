@@ -17,8 +17,8 @@ type TalosImageSpec struct {
 	Tag string `json:"tag"`
 }
 
-// TalosTargetOptions defines upgrade options
-type TalosTargetOptions struct {
+// TalosUpgradePolicy defines upgrade behavior options
+type TalosUpgradePolicy struct {
 	// Debug enables debug mode for the upgrade
 	// +kubebuilder:default=false
 	// +optional
@@ -36,21 +36,17 @@ type TalosTargetOptions struct {
 	RebootMode string `json:"rebootMode,omitempty"`
 }
 
-// TalosTargetSpec defines the target configuration for upgrades
-type TalosTargetSpec struct {
-	// Image is the Talos installer image to upgrade to
-	// +kubebuilder:validation:Required
-	Image TalosImageSpec `json:"image"`
-
-	// Options configure upgrade behavior
+// NodeLabelSelector defines how to select nodes for upgrade
+type NodeLabelSelector struct {
+	// MatchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+	// map is equivalent to an element of matchExpressions, whose key field is "key", the
+	// operator is "In", and the values array contains only "value".
 	// +optional
-	Options TalosTargetOptions `json:"options,omitempty"`
+	MatchLabels map[string]string `json:"matchLabels,omitempty"`
 
-	// MatchNodes specifies node selector requirements to target nodes for the upgrade
-	// This follows the same pattern as Pod nodeAffinity but simplified to only support
-	// requiredDuringSchedulingIgnoredDuringExecution with a single nodeSelectorTerm
+	// MatchExpressions is a list of label selector requirements. The requirements are ANDed.
 	// +optional
-	MatchNodes []corev1.NodeSelectorRequirement `json:"matchNodes,omitempty"`
+	MatchExpressions []metav1.LabelSelectorRequirement `json:"matchExpressions,omitempty"`
 }
 
 // TalosctlImageSpec defines talosctl container image details
@@ -81,17 +77,26 @@ type TalosctlSpec struct {
 
 // TalosUpgradeSpec defines the desired state of TalosUpgrade
 type TalosUpgradeSpec struct {
-	// Target defines the upgrade target configuration
+	// Image is the Talos installer image to upgrade to
 	// +kubebuilder:validation:Required
-	Target TalosTargetSpec `json:"target"`
+	Image TalosImageSpec `json:"image"`
+
+	// UpgradePolicy configures upgrade behavior
+	// +optional
+	UpgradePolicy TalosUpgradePolicy `json:"upgradePolicy,omitempty"`
+
+	// NodeLabelSelector specifies which nodes to target for the upgrade
+	// If empty, all nodes will be targeted
+	// +optional
+	NodeLabelSelector NodeLabelSelector `json:"nodeLabelSelector,omitempty"`
+
+	// HealthChecks defines a list of CEL-based health checks to perform before each node upgrade
+	// +optional
+	HealthChecks []HealthCheckExpr `json:"healthChecks,omitempty"`
 
 	// Talosctl specifies the talosctl configuration for upgrade operations
 	// +optional
 	Talosctl TalosctlSpec `json:"talosctl,omitempty"`
-
-	// HealthChecks defines a list of CEL-based health checks to perform before and after each node upgrade
-	// +optional
-	HealthChecks []HealthCheckExpr `json:"healthChecks,omitempty"`
 }
 
 // HealthCheckExpr defines a CEL-based health check
@@ -113,7 +118,7 @@ type HealthCheckExpr struct {
 	Namespace string `json:"namespace,omitempty"`
 
 	// CEL expression that must evaluate to true for the check to pass
-	// The resource object is available as the root context
+	// The resource object is available as 'object' and status as 'status'
 	// +kubebuilder:validation:Required
 	Expr string `json:"expr"`
 
