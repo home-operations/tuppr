@@ -132,9 +132,9 @@ spec:
                       required:
                         - tag
                       type: object
-                    nodeSelectorTerms:
+                    matchNodes:
                       description: |-
-                        NodeSelectorTerms specifies node selector requirements to target nodes for the upgrade
+                        MatchNodes specifies node selector requirements to target nodes for the upgrade
                         This follows the same pattern as Pod nodeAffinity but simplified to only support
                         requiredDuringSchedulingIgnoredDuringExecution with a single nodeSelectorTerm
                       items:

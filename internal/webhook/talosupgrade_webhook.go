@@ -54,8 +54,8 @@ func (v *TalosUpgradeValidator) ValidateUpdate(ctx context.Context, oldObj, newO
 		}
 
 		// Simplified comparison using a more direct approach
-		if !nodeSelectorsEqual(talos.Spec.Target.NodeSelectorTerms, oldTalos.Spec.Target.NodeSelectorTerms) {
-			return nil, fmt.Errorf("cannot update spec.NodeSelectorTerms while upgrade is in progress (current phase: %s)", oldTalos.Status.Phase)
+		if !nodeSelectorsEqual(talos.Spec.Target.MatchNodes, oldTalos.Spec.Target.MatchNodes) {
+			return nil, fmt.Errorf("cannot update spec.MatchNodes while upgrade is in progress (current phase: %s)", oldTalos.Status.Phase)
 		}
 	}
 
@@ -139,9 +139,9 @@ func (v *TalosUpgradeValidator) validateTalosSpec(talos *upgradev1alpha1.TalosUp
 	}
 
 	// Validate node selector expressions
-	for i, expr := range talos.Spec.Target.NodeSelectorTerms {
+	for i, expr := range talos.Spec.Target.MatchNodes {
 		if expr.Key == "" {
-			return fmt.Errorf("spec.target.nodeSelectorTerms[%d].key cannot be empty", i)
+			return fmt.Errorf("spec.target.matchNodes[%d].key cannot be empty", i)
 		}
 
 		validOps := []corev1.NodeSelectorOperator{
@@ -155,7 +155,7 @@ func (v *TalosUpgradeValidator) validateTalosSpec(talos *upgradev1alpha1.TalosUp
 
 		// Validate operator is valid
 		if !slices.Contains(validOps, expr.Operator) {
-			return fmt.Errorf("spec.target.nodeSelectorTerms[%d].operator '%s' is invalid", i, expr.Operator)
+			return fmt.Errorf("spec.target.matchNodes[%d].operator '%s' is invalid", i, expr.Operator)
 		}
 
 		// Validate that value-requiring operators have values
@@ -163,13 +163,13 @@ func (v *TalosUpgradeValidator) validateTalosSpec(talos *upgradev1alpha1.TalosUp
 			expr.Operator == corev1.NodeSelectorOpNotIn ||
 			expr.Operator == corev1.NodeSelectorOpGt ||
 			expr.Operator == corev1.NodeSelectorOpLt) && len(expr.Values) == 0 {
-			return fmt.Errorf("spec.target.nodeSelectorTerms[%d] with operator '%s' requires at least one value", i, expr.Operator)
+			return fmt.Errorf("spec.target.matchNodes[%d] with operator '%s' requires at least one value", i, expr.Operator)
 		}
 
 		// Validate that non-value operators don't have values
 		if (expr.Operator == corev1.NodeSelectorOpExists ||
 			expr.Operator == corev1.NodeSelectorOpDoesNotExist) && len(expr.Values) > 0 {
-			return fmt.Errorf("spec.target.nodeSelectorTerms[%d] with operator '%s' must not have values", i, expr.Operator)
+			return fmt.Errorf("spec.target.matchNodes[%d] with operator '%s' must not have values", i, expr.Operator)
 		}
 	}
 
@@ -244,7 +244,7 @@ func (v *TalosUpgradeValidator) generateWarnings(talos *upgradev1alpha1.TalosUpg
 	}
 
 	// Warn about upgrading all nodes (no selector)
-	if len(talos.Spec.Target.NodeSelectorTerms) == 0 {
+	if len(talos.Spec.Target.MatchNodes) == 0 {
 		warnings = append(warnings, "No node selector specified. This will upgrade ALL nodes in the cluster.")
 	}
 
