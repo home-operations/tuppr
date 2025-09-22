@@ -85,6 +85,7 @@ spec:
       name: rook-ceph
       namespace: rook-ceph
       expr: status.ceph.health in ["HEALTH_OK", "HEALTH_WARN"]
+      timeout: 5m
 
   # Talosctl configuration (optional)
   talosctl:
@@ -98,7 +99,7 @@ spec:
 
 ### Health Checks
 
-Define custom health checks using [CEL expressions](https://cel.dev/):
+Define custom health checks using [CEL expressions](https://cel.dev/). These health checks are evaluated before each node upgrade and ran concurrently.
 
 ```yaml
 healthChecks:
@@ -107,6 +108,7 @@ healthChecks:
     kind: Node
     expr: |
       status.conditions.filter(c, c.type == "Ready").all(c, c.status == "True")
+    timeout: 10m
 
   # Check specific deployment replicas
   - apiVersion: apps/v1
