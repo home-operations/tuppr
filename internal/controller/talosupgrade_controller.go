@@ -42,13 +42,13 @@ const (
 	ResetAnnotation       = "tuppr.home-operations.com/reset"
 
 	// Job constants
-	JobBackoffLimit        = 3    // Retry up to 3 times on failure
-	JobActiveDeadline      = 5400 // 90 minutes
-	JobGracePeriod         = 300  // 5 minutes
-	JobTTLAfterFinished    = 1800 // 30 minutes
+	JobBackoffLimit        = 2     // Retry up to 2 times on failure
+	JobActiveDeadline      = 6000  // 100 minutes (3 [attempts] × 30 [talosctl timeouts] + 10 [buffer])
+	JobGracePeriod         = 300   // 5 minutes
+	JobTTLAfterFinished    = 300   // 5 minutes (fallback if the controller misses cleanup)
+	JobTalosHealthTimeout  = "10m" // Affects JobActiveDeadline
+	JobTalosUpgradeTimeout = "20m" // Affects JobActiveDeadline
 	JobTalosSecretName     = "talosconfig"
-	JobTalosHealthTimeout  = "10m"
-	JobTalosUpgradeTimeout = "20m"
 
 	// Default image repository for Talos installer
 	DefaultFactoryRepository = "factory.talos.dev/metal-installer"
@@ -222,18 +222,20 @@ func (r *TalosUpgradeReconciler) handleResetAnnotation(ctx context.Context, talo
 // handleGenerationChange resets the upgrade if the spec generation has changed
 func (r *TalosUpgradeReconciler) handleGenerationChange(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade) (bool, error) {
 	if talosUpgrade.Status.ObservedGeneration == 0 || talosUpgrade.Status.ObservedGeneration >= talosUpgrade.Generation {
-		return false, nil // No change needed
+		return false, nil
 	}
 
 	logger := log.FromContext(ctx)
-	logger.Info("Spec changed, resetting upgrade",
+	logger.Info("Spec generation changed, resetting upgrade process",
 		"generation", talosUpgrade.Generation,
-		"observed", talosUpgrade.Status.ObservedGeneration)
+		"observed", talosUpgrade.Status.ObservedGeneration,
+		"newVersion", talosUpgrade.Spec.Image.Tag)
 
+	// Reset status for new generation
 	return true, r.updateStatus(ctx, talosUpgrade, map[string]any{
 		"phase":          PhasePending,
 		"currentNode":    "",
-		"message":        "Spec updated, restarting upgrade process",
+		"message":        fmt.Sprintf("Spec updated to %s, restarting upgrade process", talosUpgrade.Spec.Image.Tag),
 		"completedNodes": []string{},
 		"failedNodes":    []upgradev1alpha1.NodeUpgradeStatus{},
 	})
@@ -403,6 +405,12 @@ func (r *TalosUpgradeReconciler) handleJobSuccess(ctx context.Context, talosUpgr
 		return r.handleJobFailure(ctx, talosUpgrade, nodeName)
 	}
 
+	// Clean up the successful job immediately
+	if err := r.cleanupJobForNode(ctx, talosUpgrade, nodeName); err != nil {
+		logger.Error(err, "Failed to cleanup job, but continuing", "node", nodeName)
+		// Don't fail the entire process if cleanup fails
+	}
+
 	if err := r.addCompletedNode(ctx, talosUpgrade, nodeName); err != nil {
 		logger.Error(err, "Failed to add completed node", "node", nodeName)
 		return ctrl.Result{}, err
@@ -416,8 +424,39 @@ func (r *TalosUpgradeReconciler) handleJobSuccess(ctx context.Context, talosUpgr
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Successfully completed node upgrade", "node", nodeName)
+	logger.Info("Successfully completed node upgrade and cleaned up job", "node", nodeName)
 	return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+}
+
+// cleanupJobForNode removes the job for a specific node after successful completion
+func (r *TalosUpgradeReconciler) cleanupJobForNode(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade, nodeName string) error {
+	logger := log.FromContext(ctx)
+
+	jobList := &batchv1.JobList{}
+	if err := r.List(ctx, jobList,
+		client.InNamespace(r.ControllerNamespace),
+		client.MatchingLabels{
+			"app.kubernetes.io/name":                "talos-upgrade",
+			"app.kubernetes.io/instance":            talosUpgrade.Name,
+			"tuppr.home-operations.com/target-node": nodeName,
+		}); err != nil {
+		return fmt.Errorf("failed to list jobs for node %s: %w", nodeName, err)
+	}
+
+	for _, job := range jobList.Items {
+		// Only delete successfully completed jobs
+		if job.Status.Succeeded > 0 {
+			logger.Info("Deleting successful job after node upgrade completion",
+				"job", job.Name, "node", nodeName)
+
+			if err := r.Delete(ctx, &job); err != nil && !errors.IsNotFound(err) {
+				logger.Error(err, "Failed to delete successful job", "job", job.Name, "node", nodeName)
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // handleJobFailure marks the node as failed and stops the upgrade process
@@ -709,14 +748,24 @@ func (r *TalosUpgradeReconciler) createJob(ctx context.Context, talosUpgrade *up
 
 	if err := r.Create(ctx, job); err != nil {
 		if errors.IsAlreadyExists(err) {
-			logger.V(1).Info("Job already exists, this is expected in some cases", "job", job.Name)
-
+			// Check if existing job belongs to our generation
 			existingJob := &batchv1.Job{}
 			if getErr := r.Get(ctx, types.NamespacedName{Name: job.Name, Namespace: job.Namespace}, existingJob); getErr != nil {
 				logger.Error(getErr, "Failed to get existing job", "job", job.Name)
 				return nil, getErr
 			}
-			return existingJob, nil
+
+			existingGen := existingJob.Labels["tuppr.home-operations.com/generation"]
+			currentGen := fmt.Sprintf("%d", talosUpgrade.Generation)
+
+			if existingGen == currentGen {
+				logger.V(1).Info("Job already exists for current generation, reusing", "job", job.Name)
+				return existingJob, nil
+			} else {
+				logger.Error(fmt.Errorf("job generation mismatch"), "Existing job has different generation",
+					"job", job.Name, "existing", existingGen, "current", currentGen)
+				return nil, fmt.Errorf("job generation conflict: %s", job.Name)
+			}
 		}
 		logger.Error(err, "Failed to create job", "job", job.Name, "node", nodeName)
 		return nil, err
@@ -737,6 +786,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 		"app.kubernetes.io/instance":            talosUpgrade.Name,
 		"app.kubernetes.io/part-of":             "tuppr",
 		"tuppr.home-operations.com/target-node": nodeName,
+		"tuppr.home-operations.com/generation":  fmt.Sprintf("%d", talosUpgrade.Generation),
 	}
 
 	// Configure node affinity based on PlacementPreset
@@ -1007,7 +1057,11 @@ func (r *TalosUpgradeReconciler) getTalosctlTagFromNode(ctx context.Context, nod
 
 // getTargetNodes retrieves nodes matching the TalosUpgrade's node selector
 func (r *TalosUpgradeReconciler) getTargetNodes(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade) ([]corev1.Node, error) {
-	logger := log.FromContext(ctx)
+	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	logger := log.FromContext(timeoutCtx)
+
 	logger.V(1).Info("Getting target nodes", "talosupgrade", talosUpgrade.Name)
 
 	nodeList := &corev1.NodeList{}
