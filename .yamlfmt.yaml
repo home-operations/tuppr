@@ -1,5 +1,7 @@
 ---
 doublestar: true
+exclude:
+  - config/**
 formatter:
   type: basic
   disable_alias_key_correction: true

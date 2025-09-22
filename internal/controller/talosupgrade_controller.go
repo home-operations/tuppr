@@ -446,10 +446,14 @@ func (r *TalosUpgradeReconciler) cleanupJobForNode(ctx context.Context, talosUpg
 	for _, job := range jobList.Items {
 		// Only delete successfully completed jobs
 		if job.Status.Succeeded > 0 {
-			logger.Info("Deleting successful job after node upgrade completion",
+			logger.Info("Deleting successful job and its pods after node upgrade completion",
 				"job", job.Name, "node", nodeName)
 
-			if err := r.Delete(ctx, &job); err != nil && !errors.IsNotFound(err) {
+			// Use foreground deletion to ensure pods are cleaned up
+			deletePolicy := metav1.DeletePropagationForeground
+			if err := r.Delete(ctx, &job, &client.DeleteOptions{
+				PropagationPolicy: &deletePolicy,
+			}); err != nil && !errors.IsNotFound(err) {
 				logger.Error(err, "Failed to delete successful job", "job", job.Name, "node", nodeName)
 				return err
 			}
