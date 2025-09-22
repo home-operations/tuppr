@@ -176,6 +176,15 @@ func (v *TalosUpgradeValidator) validateTalosSpec(talos *upgradev1alpha1.TalosUp
 		}
 	}
 
+	// Validate placement preset if provided
+	if talos.Spec.UpgradePolicy.PlacementPreset != "" {
+		validPresets := []string{"hard", "soft"}
+		if !slices.Contains(validPresets, talos.Spec.UpgradePolicy.PlacementPreset) {
+			return fmt.Errorf("spec.upgradePolicy.placementPreset '%s' is invalid. Valid values are: %v",
+				talos.Spec.UpgradePolicy.PlacementPreset, validPresets)
+		}
+	}
+
 	return nil
 }
 
@@ -304,6 +313,11 @@ func (v *TalosUpgradeValidator) generateWarnings(talos *upgradev1alpha1.TalosUpg
 	// Add warning for debug mode
 	if talos.Spec.UpgradePolicy.Debug {
 		warnings = append(warnings, "Debug mode enabled. This will produce verbose output in upgrade jobs.")
+	}
+
+	// Warn about placement preset implications
+	if talos.Spec.UpgradePolicy.PlacementPreset == "soft" {
+		warnings = append(warnings, "Soft placement preset allows upgrade jobs to run on the target node if no other nodes are available. This may cause upgrade failures if the target node becomes unavailable during upgrade.")
 	}
 
 	// Warn about health checks without timeouts

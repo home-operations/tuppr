@@ -186,6 +186,16 @@ spec:
                       default: false
                       description: Force the upgrade (skip checks on etcd health and members)
                       type: boolean
+                    placementPreset:
+                      default: soft
+                      description: |-
+                        PlacementPreset controls how strictly upgrade jobs avoid the target node
+                        hard: required avoidance (job will fail if can't avoid target node)
+                        soft: preferred avoidance (job prefers to avoid but can run on target node)
+                      enum:
+                        - hard
+                        - soft
+                      type: string
                     rebootMode:
                       default: default
                       description: RebootMode select the reboot mode during upgrade

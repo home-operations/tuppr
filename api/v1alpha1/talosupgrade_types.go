@@ -29,6 +29,14 @@ type TalosUpgradePolicy struct {
 	// +optional
 	Force bool `json:"force,omitempty"`
 
+	// PlacementPreset controls how strictly upgrade jobs avoid the target node
+	// hard: required avoidance (job will fail if can't avoid target node)
+	// soft: preferred avoidance (job prefers to avoid but can run on target node)
+	// +kubebuilder:validation:Enum=hard;soft
+	// +kubebuilder:default="soft"
+	// +optional
+	PlacementPreset string `json:"placementPreset,omitempty"`
+
 	// RebootMode select the reboot mode during upgrade
 	// +kubebuilder:validation:Enum=default;powercycle
 	// +kubebuilder:default="default"
