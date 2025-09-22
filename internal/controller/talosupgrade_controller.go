@@ -43,12 +43,12 @@ const (
 
 	// Job constants
 	JobBackoffLimit        = 3    // Retry up to 3 times on failure
-	JobActiveDeadline      = 4500 // 75 minutes
+	JobActiveDeadline      = 5400 // 90 minutes
 	JobGracePeriod         = 300  // 5 minutes
-	JobTTLAfterFinished    = 900  // 15 minutes
+	JobTTLAfterFinished    = 1800 // 30 minutes
 	JobTalosSecretName     = "talosconfig"
-	JobTalosHealthTimeout  = "5m"
-	JobTalosUpgradeTimeout = "15m"
+	JobTalosHealthTimeout  = "10m"
+	JobTalosUpgradeTimeout = "20m"
 
 	// Default image repository for Talos installer
 	DefaultFactoryRepository = "factory.talos.dev/metal-installer"

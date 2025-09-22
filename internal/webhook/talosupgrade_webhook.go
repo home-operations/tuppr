@@ -323,7 +323,7 @@ func (v *TalosUpgradeValidator) generateWarnings(talos *upgradev1alpha1.TalosUpg
 	// Warn about health checks without timeouts
 	for i, check := range talos.Spec.HealthChecks {
 		if check.Timeout == nil {
-			warnings = append(warnings, fmt.Sprintf("Health check %d has no timeout specified, will use default 5 minutes", i))
+			warnings = append(warnings, fmt.Sprintf("Health check %d has no timeout specified, will use default 10 minutes", i))
 		}
 	}
 

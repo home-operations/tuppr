@@ -295,7 +295,7 @@ var _ = Describe("HealthChecker", func() {
 		})
 
 		Context("with default timeout", func() {
-			It("should use 5 minute default when no timeout specified", func() {
+			It("should use 10 minute default when no timeout specified", func() {
 				healthCheck := upgradev1alpha1.HealthCheckExpr{
 					APIVersion: "v1",
 					Kind:       "Pod",
@@ -304,7 +304,7 @@ var _ = Describe("HealthChecker", func() {
 					// No timeout specified
 				}
 
-				// We can't wait 5 minutes in a test, so just verify the structure
+				// We can't wait 10 minutes in a test, so just verify the structure
 				Expect(healthCheck.Timeout).To(BeNil())
 			})
 		})

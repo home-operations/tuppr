@@ -85,8 +85,8 @@ spec:
       kind: CephCluster
       name: rook-ceph
       namespace: rook-ceph
-      expr: status.ceph.health in ["HEALTH_OK", "HEALTH_WARN"]
-      timeout: 5m
+      expr: status.ceph.health in ["HEALTH_OK"]
+      timeout: 10m  # Optional, default
 
   # Talosctl configuration (optional)
   talosctl:
@@ -165,11 +165,11 @@ upgradePolicy:
   # Force upgrade even if etcd is unhealthy (dangerous!)
   force: false
 
-  # Use powercycle reboot for problematic nodes
-  rebootMode: powercycle  # or "default"
-
   # Controls how strictly upgrade jobs avoid the target node
   placementPreset: hard  # or "soft"
+
+  # Use powercycle reboot for problematic nodes
+  rebootMode: powercycle  # or "default"
 ```
 
 ## 🔧 Operations
