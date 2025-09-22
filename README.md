@@ -174,6 +174,18 @@ upgradePolicy:
 
 ## 🔧 Operations
 
+### Suspending Upgrades
+
+Suspending upgrades can be useful if you want to upgrade Talos from the command-line and not have the controller interfere with your changes.
+
+```bash
+# Suspend with "true" value
+kubectl annotate talosupgrade cluster-upgrade tuppr.home-operations.com/suspend="true"
+
+# Remove the suspend annotation to resume
+kubectl annotate talosupgrade cluster-upgrade tuppr.home-operations.com/suspend-
+```
+
 ### Monitoring Upgrades
 
 ```bash

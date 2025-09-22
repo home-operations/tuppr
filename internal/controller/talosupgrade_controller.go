@@ -40,6 +40,7 @@ const (
 	// Finalizer for TalosUpgrade resources
 	TalosUpgradeFinalizer = "tuppr.home-operations.com/talos-finalizer"
 	ResetAnnotation       = "tuppr.home-operations.com/reset"
+	SuspendAnnotation     = "tuppr.home-operations.com/suspend"
 
 	// Job constants
 	JobBackoffLimit        = 2     // Retry up to 2 times on failure
@@ -123,7 +124,12 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 
 	logger.V(1).Info("Starting upgrade processing")
 
-	// Check for reset annotation first
+	// Check for suspend annotation first (before any other processing)
+	if suspended, err := r.handleSuspendAnnotation(ctx, talosUpgrade); err != nil || suspended {
+		return ctrl.Result{RequeueAfter: time.Minute * 30}, err
+	}
+
+	// Check for reset annotation
 	if resetRequested, err := r.handleResetAnnotation(ctx, talosUpgrade); err != nil || resetRequested {
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
 	}
@@ -217,6 +223,36 @@ func (r *TalosUpgradeReconciler) handleResetAnnotation(ctx context.Context, talo
 	}
 
 	return true, nil
+}
+
+// handleSuspendAnnotation checks for the suspend annotation and pauses the controller if found
+func (r *TalosUpgradeReconciler) handleSuspendAnnotation(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade) (bool, error) {
+	if talosUpgrade.Annotations == nil {
+		return false, nil
+	}
+
+	suspendValue, isSuspended := talosUpgrade.Annotations[SuspendAnnotation]
+	if !isSuspended {
+		return false, nil
+	}
+
+	logger := log.FromContext(ctx)
+	logger.Info("Suspend annotation found, controller is suspended",
+		"suspendValue", suspendValue,
+		"talosupgrade", talosUpgrade.Name)
+
+	// Update status to indicate suspension
+	message := fmt.Sprintf("Controller suspended via annotation (value: %s) - remove annotation to resume", suspendValue)
+	if err := r.setPhase(ctx, talosUpgrade, PhasePending, "", message); err != nil {
+		logger.Error(err, "Failed to update phase for suspension")
+		return true, err
+	}
+
+	logger.V(1).Info("Controller suspended, no further processing will occur",
+		"talosupgrade", talosUpgrade.Name,
+		"suspendValue", suspendValue)
+
+	return true, nil // Return true to indicate we should stop processing
 }
 
 // handleGenerationChange resets the upgrade if the spec generation has changed
