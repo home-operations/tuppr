@@ -812,24 +812,24 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 
 	args := []string{
 		"upgrade",
-		"--nodes", nodeIP,
-		"--image", targetImage,
-		"--timeout", JobTalosUpgradeTimeout,
-		"--wait",
+		"--nodes=" + nodeIP,
+		"--image=" + targetImage,
+		"--timeout=" + JobTalosUpgradeTimeout,
+		"--wait=true",
 	}
 
 	if talosUpgrade.Spec.UpgradePolicy.Debug {
-		args = append(args, "--debug")
+		args = append(args, "--debug=true")
 		logger.V(1).Info("Debug upgrade enabled", "node", nodeName)
 	}
 
 	if talosUpgrade.Spec.UpgradePolicy.Force {
-		args = append(args, "--force")
+		args = append(args, "--force=true")
 		logger.V(1).Info("Force upgrade enabled", "node", nodeName)
 	}
 
 	if talosUpgrade.Spec.UpgradePolicy.RebootMode == "powercycle" {
-		args = append(args, "--reboot-mode", "powercycle")
+		args = append(args, "--reboot-mode=powercycle")
 		logger.V(1).Info("Powercycle reboot mode enabled", "node", nodeName)
 	}
 
@@ -884,7 +884,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 						Name:            "health",
 						Image:           talosctlImage,
 						ImagePullPolicy: pullPolicy,
-						Args:            []string{"health", "--nodes", nodeIP, "--wait-timeout=" + JobTalosHealthTimeout},
+						Args:            []string{"health", "--nodes=" + nodeIP, "--wait-timeout=" + JobTalosHealthTimeout},
 						Env: []corev1.EnvVar{
 							{
 								Name:  "TALOSCONFIG",
