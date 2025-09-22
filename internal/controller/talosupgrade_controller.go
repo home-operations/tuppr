@@ -833,16 +833,27 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 					},
 					Affinity: &corev1.Affinity{
 						NodeAffinity: &corev1.NodeAffinity{
-							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{{
-								Weight: 100,
-								Preference: corev1.NodeSelectorTerm{
-									MatchExpressions: []corev1.NodeSelectorRequirement{{
-										Key:      "kubernetes.io/hostname",
-										Operator: corev1.NodeSelectorOpNotIn,
-										Values:   []string{nodeName},
-									}},
+							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{
+								{
+									Weight: 1000, // Strongest: avoid target node
+									Preference: corev1.NodeSelectorTerm{
+										MatchExpressions: []corev1.NodeSelectorRequirement{{
+											Key:      "kubernetes.io/hostname",
+											Operator: corev1.NodeSelectorOpNotIn,
+											Values:   []string{nodeName},
+										}},
+									},
 								},
-							}},
+								{
+									Weight: 500, // Strong: prefer control plane nodes
+									Preference: corev1.NodeSelectorTerm{
+										MatchExpressions: []corev1.NodeSelectorRequirement{{
+											Key:      "node-role.kubernetes.io/control-plane",
+											Operator: corev1.NodeSelectorOpExists,
+										}},
+									},
+								},
+							},
 						},
 					},
 					Tolerations: []corev1.Toleration{
@@ -870,12 +881,12 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 						},
 						Resources: corev1.ResourceRequirements{
 							Requests: corev1.ResourceList{
-								corev1.ResourceCPU:    resource.MustParse("10m"),
-								corev1.ResourceMemory: resource.MustParse("32Mi"),
+								corev1.ResourceCPU:    resource.MustParse("1m"),
+								corev1.ResourceMemory: resource.MustParse("8Mi"),
 							},
 							Limits: corev1.ResourceList{
 								corev1.ResourceCPU:    resource.MustParse("100m"),
-								corev1.ResourceMemory: resource.MustParse("128Mi"),
+								corev1.ResourceMemory: resource.MustParse("256Mi"),
 							},
 						},
 						VolumeMounts: []corev1.VolumeMount{{
