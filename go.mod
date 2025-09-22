@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/google/cel-go v0.26.1
 	github.com/google/uuid v1.6.0
-	github.com/onsi/ginkgo/v2 v2.25.1
+	github.com/onsi/ginkgo/v2 v2.25.3
 	github.com/onsi/gomega v1.38.2
 	github.com/siderolabs/talos/pkg/machinery v1.11.1
 	k8s.io/api v0.34.0
