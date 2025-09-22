@@ -3,7 +3,7 @@ module github.com/home-operations/tuppr
 go 1.24.0
 
 require (
-	github.com/google/cel-go v0.26.0
+	github.com/google/cel-go v0.26.1
 	github.com/google/uuid v1.6.0
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1
