@@ -739,6 +739,46 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 		"tuppr.home-operations.com/target-node": nodeName,
 	}
 
+	// Configure node affinity based on PlacementPreset
+	placementPreset := talosUpgrade.Spec.UpgradePolicy.PlacementPreset
+	if placementPreset == "" {
+		placementPreset = "soft" // Default value from kubebuilder annotation
+	}
+
+	nodeSelector := corev1.NodeSelectorRequirement{
+		Key:      "kubernetes.io/hostname",
+		Operator: corev1.NodeSelectorOpNotIn,
+		Values:   []string{nodeName},
+	}
+
+	var nodeAffinity *corev1.NodeAffinity
+	if placementPreset == "hard" {
+		// Required avoidance - job will fail if it can't avoid the target node
+		nodeAffinity = &corev1.NodeAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+				NodeSelectorTerms: []corev1.NodeSelectorTerm{{
+					MatchExpressions: []corev1.NodeSelectorRequirement{nodeSelector},
+				}},
+			},
+		}
+		logger.V(1).Info("Using hard placement preset - required node avoidance", "node", nodeName)
+	} else {
+		// Preferred avoidance - job prefers to avoid but can run on target node if needed
+		nodeAffinity = &corev1.NodeAffinity{
+			PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{{
+				Weight: 100,
+				Preference: corev1.NodeSelectorTerm{
+					MatchExpressions: []corev1.NodeSelectorRequirement{nodeSelector},
+				},
+			}},
+		}
+		if placementPreset != "soft" {
+			logger.V(1).Info("Unknown placement preset, using soft placement as fallback", "preset", placementPreset, "node", nodeName)
+		} else {
+			logger.V(1).Info("Using soft placement preset - preferred node avoidance", "node", nodeName)
+		}
+	}
+
 	// Get talosctl image with defaults
 	talosctlRepo := DefaultTalosctlImage
 	if talosUpgrade.Spec.Talosctl.Image.Repository != "" {
@@ -774,7 +814,8 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 		"upgrade",
 		"--nodes", nodeIP,
 		"--image", targetImage,
-		"--timeout=" + JobTalosUpgradeTimeout,
+		"--timeout", JobTalosUpgradeTimeout,
+		"--wait",
 	}
 
 	if talosUpgrade.Spec.UpgradePolicy.Debug {
@@ -832,20 +873,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 						},
 					},
 					Affinity: &corev1.Affinity{
-						NodeAffinity: &corev1.NodeAffinity{
-							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{
-								{
-									Weight: 100,
-									Preference: corev1.NodeSelectorTerm{
-										MatchExpressions: []corev1.NodeSelectorRequirement{{
-											Key:      "kubernetes.io/hostname",
-											Operator: corev1.NodeSelectorOpNotIn,
-											Values:   []string{nodeName},
-										}},
-									},
-								},
-							},
-						},
+						NodeAffinity: nodeAffinity,
 					},
 					Tolerations: []corev1.Toleration{
 						{

@@ -61,9 +61,10 @@ spec:
     tag: v1.11.0  # Required - target Talos version
 
   upgradePolicy:
-    debug: false         # Optional, verbose logging
-    force: false         # Optional, skip etcd health checks
-    rebootMode: default  # Optional, default|powercycle
+    debug: false           # Optional, verbose logging
+    force: false           # Optional, skip etcd health checks
+    rebootMode: default    # Optional, default|powercycle
+    placementPreset: soft  # Optional, hard|soft
 
   # Target specific nodes (optional - defaults to all nodes)
   nodeLabelSelector:
@@ -166,6 +167,9 @@ upgradePolicy:
 
   # Use powercycle reboot for problematic nodes
   rebootMode: powercycle  # or "default"
+
+  # Controls how strictly upgrade jobs avoid the target node
+  placementPreset: hard  # or "soft"
 ```
 
 ## 🔧 Operations
