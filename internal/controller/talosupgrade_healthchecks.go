@@ -18,6 +18,11 @@ import (
 	upgradev1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 )
 
+const (
+	// DefaultHealthCheckTimeout is the default timeout for health checks if not specified
+	DefaultHealthCheckTimeout = 10 * time.Minute
+)
+
 // HealthChecker evaluates CEL-based health checks
 type HealthChecker struct {
 	client.Client
@@ -91,7 +96,7 @@ func (hc *HealthChecker) evaluateHealthCheck(ctx context.Context, check upgradev
 	)
 
 	// Set default timeout
-	timeout := 5 * time.Minute
+	timeout := DefaultHealthCheckTimeout
 	if check.Timeout != nil {
 		timeout = check.Timeout.Duration
 	}
