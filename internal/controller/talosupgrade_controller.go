@@ -835,21 +835,12 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 						NodeAffinity: &corev1.NodeAffinity{
 							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{
 								{
-									Weight: 1000, // Strongest: avoid target node
+									Weight: 1000,
 									Preference: corev1.NodeSelectorTerm{
 										MatchExpressions: []corev1.NodeSelectorRequirement{{
 											Key:      "kubernetes.io/hostname",
 											Operator: corev1.NodeSelectorOpNotIn,
 											Values:   []string{nodeName},
-										}},
-									},
-								},
-								{
-									Weight: 500, // Strong: prefer control plane nodes
-									Preference: corev1.NodeSelectorTerm{
-										MatchExpressions: []corev1.NodeSelectorRequirement{{
-											Key:      "node-role.kubernetes.io/control-plane",
-											Operator: corev1.NodeSelectorOpExists,
 										}},
 									},
 								},
