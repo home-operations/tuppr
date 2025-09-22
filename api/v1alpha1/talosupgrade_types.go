@@ -17,8 +17,8 @@ type TalosImageSpec struct {
 	Tag string `json:"tag"`
 }
 
-// TalosTargetOptions defines upgrade options
-type TalosTargetOptions struct {
+// TalosUpgradePolicy defines upgrade behavior options
+type TalosUpgradePolicy struct {
 	// Debug enables debug mode for the upgrade
 	// +kubebuilder:default=false
 	// +optional
@@ -29,6 +29,14 @@ type TalosTargetOptions struct {
 	// +optional
 	Force bool `json:"force,omitempty"`
 
+	// PlacementPreset controls how strictly upgrade jobs avoid the target node
+	// hard: required avoidance (job will fail if can't avoid target node)
+	// soft: preferred avoidance (job prefers to avoid but can run on target node)
+	// +kubebuilder:validation:Enum=hard;soft
+	// +kubebuilder:default="soft"
+	// +optional
+	PlacementPreset string `json:"placementPreset,omitempty"`
+
 	// RebootMode select the reboot mode during upgrade
 	// +kubebuilder:validation:Enum=default;powercycle
 	// +kubebuilder:default="default"
@@ -36,21 +44,17 @@ type TalosTargetOptions struct {
 	RebootMode string `json:"rebootMode,omitempty"`
 }
 
-// TalosTargetSpec defines the target configuration for upgrades
-type TalosTargetSpec struct {
-	// Image is the Talos installer image to upgrade to
-	// +kubebuilder:validation:Required
-	Image TalosImageSpec `json:"image"`
-
-	// Options configure upgrade behavior
+// NodeLabelSelector defines how to select nodes for upgrade
+type NodeLabelSelector struct {
+	// MatchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+	// map is equivalent to an element of matchExpressions, whose key field is "key", the
+	// operator is "In", and the values array contains only "value".
 	// +optional
-	Options TalosTargetOptions `json:"options,omitempty"`
+	MatchLabels map[string]string `json:"matchLabels,omitempty"`
 
-	// NodeSelectorTerms specifies node selector requirements to target nodes for the upgrade
-	// This follows the same pattern as Pod nodeAffinity but simplified to only support
-	// requiredDuringSchedulingIgnoredDuringExecution with a single nodeSelectorTerm
+	// MatchExpressions is a list of label selector requirements. The requirements are ANDed.
 	// +optional
-	NodeSelectorTerms []corev1.NodeSelectorRequirement `json:"nodeSelectorTerms,omitempty"`
+	MatchExpressions []metav1.LabelSelectorRequirement `json:"matchExpressions,omitempty"`
 }
 
 // TalosctlImageSpec defines talosctl container image details
@@ -81,17 +85,26 @@ type TalosctlSpec struct {
 
 // TalosUpgradeSpec defines the desired state of TalosUpgrade
 type TalosUpgradeSpec struct {
-	// Target defines the upgrade target configuration
+	// Image is the Talos installer image to upgrade to
 	// +kubebuilder:validation:Required
-	Target TalosTargetSpec `json:"target"`
+	Image TalosImageSpec `json:"image"`
+
+	// UpgradePolicy configures upgrade behavior
+	// +optional
+	UpgradePolicy TalosUpgradePolicy `json:"upgradePolicy,omitempty"`
+
+	// NodeLabelSelector specifies which nodes to target for the upgrade
+	// If empty, all nodes will be targeted
+	// +optional
+	NodeLabelSelector NodeLabelSelector `json:"nodeLabelSelector,omitempty"`
+
+	// HealthChecks defines a list of CEL-based health checks to perform before each node upgrade
+	// +optional
+	HealthChecks []HealthCheckExpr `json:"healthChecks,omitempty"`
 
 	// Talosctl specifies the talosctl configuration for upgrade operations
 	// +optional
 	Talosctl TalosctlSpec `json:"talosctl,omitempty"`
-
-	// HealthCheckExprs defines a list of CEL-based health checks to perform before and after each node upgrade
-	// +optional
-	HealthCheckExprs []HealthCheckExpr `json:"healthCheckExprs,omitempty"`
 }
 
 // HealthCheckExpr defines a CEL-based health check
@@ -113,11 +126,14 @@ type HealthCheckExpr struct {
 	Namespace string `json:"namespace,omitempty"`
 
 	// CEL expression that must evaluate to true for the check to pass
-	// The resource object is available as the root context
+	// The resource object is available as 'object' and status as 'status'
 	// +kubebuilder:validation:Required
-	Wait string `json:"wait"`
+	Expr string `json:"expr"`
 
-	// Timeout for this health check (optional, defaults to 5 minutes)
+	// Timeout for this health check
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern="^([0-9]+[smh])+$"
+	// +kubebuilder:validation:MinLength=2
 	// +optional
 	Timeout *metav1.Duration `json:"timeout,omitempty"`
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"sync"
 	"time"
 
 	"github.com/google/cel-go/cel"
@@ -22,6 +23,12 @@ type HealthChecker struct {
 	client.Client
 }
 
+// healthCheckResult represents the result of a single health check
+type healthCheckResult struct {
+	index int
+	err   error
+}
+
 // CheckHealth performs the health checks defined in the TalosUpgrade resource
 func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []upgradev1alpha1.HealthCheckExpr) error {
 	logger := log.FromContext(ctx)
@@ -37,10 +44,31 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []upgrade
 
 	logger.Info("Performing health checks", "count", len(healthChecks))
 
+	// Run health checks concurrently
+	resultChan := make(chan healthCheckResult, len(healthChecks))
+	var wg sync.WaitGroup
+
+	// Start all health checks concurrently
+	for i, check := range healthChecks {
+		wg.Add(1)
+		go func(check upgradev1alpha1.HealthCheckExpr, index int) {
+			defer wg.Done()
+			err := hc.evaluateHealthCheck(ctx, check, index)
+			resultChan <- healthCheckResult{index: index, err: err}
+		}(check, i)
+	}
+
+	// Close the result channel when all goroutines are done
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	// Collect results
 	var healthErrors []error
-	for i := range len(healthChecks) {
-		if err := hc.evaluateHealthCheck(ctx, healthChecks[i], i); err != nil {
-			healthErrors = append(healthErrors, fmt.Errorf("health check %d failed: %w", i, err))
+	for result := range resultChan {
+		if result.err != nil {
+			healthErrors = append(healthErrors, fmt.Errorf("health check %d failed: %w", result.index, result.err))
 		}
 	}
 
@@ -89,9 +117,9 @@ func (hc *HealthChecker) evaluateHealthCheck(ctx context.Context, check upgradev
 		return fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	ast, issues := env.Compile(check.Wait)
+	ast, issues := env.Compile(check.Expr)
 	if issues != nil && issues.Err() != nil {
-		return fmt.Errorf("failed to compile CEL expression '%s': %w", check.Wait, issues.Err())
+		return fmt.Errorf("failed to compile CEL expression '%s': %w", check.Expr, issues.Err())
 	}
 
 	program, err := env.Program(ast)
@@ -225,8 +253,8 @@ func (hc *HealthChecker) validateHealthChecks(healthChecks []upgradev1alpha1.Hea
 		if check.Kind == "" {
 			validationErrors = append(validationErrors, fmt.Errorf("health check %d: kind is required", i))
 		}
-		if check.Wait == "" {
-			validationErrors = append(validationErrors, fmt.Errorf("health check %d: wait expression is required", i))
+		if check.Expr == "" {
+			validationErrors = append(validationErrors, fmt.Errorf("health check %d: expr expression is required", i))
 		}
 
 		// Validate CEL expression syntax early - provide both variables
@@ -235,8 +263,8 @@ func (hc *HealthChecker) validateHealthChecks(healthChecks []upgradev1alpha1.Hea
 			cel.Variable("status", cel.DynType),
 		)
 		if err == nil {
-			if _, issues := env.Compile(check.Wait); issues != nil && issues.Err() != nil {
-				validationErrors = append(validationErrors, fmt.Errorf("health check %d: invalid CEL expression '%s': %w", i, check.Wait, issues.Err()))
+			if _, issues := env.Compile(check.Expr); issues != nil && issues.Err() != nil {
+				validationErrors = append(validationErrors, fmt.Errorf("health check %d: invalid CEL expression '%s': %w", i, check.Expr, issues.Err()))
 			}
 		}
 	}
