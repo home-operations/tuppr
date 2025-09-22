@@ -4,50 +4,50 @@ kind: ClusterRole
 metadata:
   name: manager-role
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - nodes
-      - secrets
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - batch
-    resources:
-      - jobs
-    verbs:
-      - create
-      - delete
-      - get
-      - list
-      - patch
-      - update
-      - watch
-  - apiGroups:
-      - tuppr.home-operations.com
-    resources:
-      - talosupgrades
-    verbs:
-      - create
-      - delete
-      - get
-      - list
-      - patch
-      - update
-      - watch
-  - apiGroups:
-      - tuppr.home-operations.com
-    resources:
-      - talosupgrades/finalizers
-    verbs:
-      - update
-  - apiGroups:
-      - tuppr.home-operations.com
-    resources:
-      - talosupgrades/status
-    verbs:
-      - get
-      - patch
-      - update
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - tuppr.home-operations.com
+  resources:
+  - talosupgrades
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - tuppr.home-operations.com
+  resources:
+  - talosupgrades/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - tuppr.home-operations.com
+  resources:
+  - talosupgrades/status
+  verbs:
+  - get
+  - patch
+  - update

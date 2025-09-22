@@ -14,254 +14,267 @@ spec:
     singular: talosupgrade
   scope: Cluster
   versions:
-    - additionalPrinterColumns:
-        - jsonPath: .status.phase
-          name: Phase
-          type: string
-        - jsonPath: .status.currentNode
-          name: Current Node
-          type: string
-        - jsonPath: .status.completedNodes
-          name: Completed
-          priority: 1
-          type: integer
-        - jsonPath: .status.failedNodes
-          name: Failed
-          priority: 1
-          type: integer
-        - jsonPath: .metadata.creationTimestamp
-          name: Age
-          type: date
-      name: v1alpha1
-      schema:
-        openAPIV3Schema:
-          description: TalosUpgrade is the Schema for the talosupgrades API
-          properties:
-            apiVersion:
-              description: |-
-                APIVersion defines the versioned schema of this representation of an object.
-                Servers should convert recognized schemas to the latest internal value, and
-                may reject unrecognized values.
-                More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
-              type: string
-            kind:
-              description: |-
-                Kind is a string value representing the REST resource this object represents.
-                Servers may infer this from the endpoint the client submits requests to.
-                Cannot be updated.
-                In CamelCase.
-                More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
-              type: string
-            metadata:
-              type: object
-            spec:
-              description: TalosUpgradeSpec defines the desired state of TalosUpgrade
-              properties:
-                healthChecks:
-                  description: HealthChecks defines a list of CEL-based health checks to perform before each node upgrade
-                  items:
-                    description: HealthCheckExpr defines a CEL-based health check
-                    properties:
-                      apiVersion:
-                        description: APIVersion of the resource to check
-                        type: string
-                      description:
-                        description: Description of what this check validates (for status/logging)
-                        type: string
-                      expr:
-                        description: |-
-                          CEL expression that must evaluate to true for the check to pass
-                          The resource object is available as 'object' and status as 'status'
-                        type: string
-                      kind:
-                        description: Kind of the resource to check
-                        type: string
-                      name:
-                        description: Name of the specific resource (optional, if empty checks all resources of this kind)
-                        type: string
-                      namespace:
-                        description: Namespace of the resource (optional, for namespaced resources)
-                        type: string
-                      timeout:
-                        description: Timeout for this health check
-                        minLength: 2
-                        pattern: ^([0-9]+[smh])+$
-                        type: string
-                    required:
-                      - apiVersion
-                      - expr
-                      - kind
-                    type: object
-                  type: array
-                image:
-                  description: Image is the Talos installer image to upgrade to
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.currentNode
+      name: Current Node
+      type: string
+    - jsonPath: .status.completedNodes
+      name: Completed
+      priority: 1
+      type: integer
+    - jsonPath: .status.failedNodes
+      name: Failed
+      priority: 1
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: TalosUpgrade is the Schema for the talosupgrades API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: TalosUpgradeSpec defines the desired state of TalosUpgrade
+            properties:
+              healthChecks:
+                description: HealthChecks defines a list of CEL-based health checks
+                  to perform before each node upgrade
+                items:
+                  description: HealthCheckExpr defines a CEL-based health check
                   properties:
-                    repository:
-                      default: factory.talos.dev/metal-installer
-                      description: Repository is the container image repository (without schematic ID)
+                    apiVersion:
+                      description: APIVersion of the resource to check
                       type: string
-                    tag:
-                      description: Tag is the container image tag
+                    description:
+                      description: Description of what this check validates (for status/logging)
+                      type: string
+                    expr:
+                      description: |-
+                        CEL expression that must evaluate to true for the check to pass
+                        The resource object is available as 'object' and status as 'status'
+                      type: string
+                    kind:
+                      description: Kind of the resource to check
+                      type: string
+                    name:
+                      description: Name of the specific resource (optional, if empty
+                        checks all resources of this kind)
+                      type: string
+                    namespace:
+                      description: Namespace of the resource (optional, for namespaced
+                        resources)
+                      type: string
+                    timeout:
+                      description: Timeout for this health check
+                      minLength: 2
+                      pattern: ^([0-9]+[smh])+$
                       type: string
                   required:
-                    - tag
+                  - apiVersion
+                  - expr
+                  - kind
                   type: object
-                nodeLabelSelector:
-                  description: |-
-                    NodeLabelSelector specifies which nodes to target for the upgrade
-                    If empty, all nodes will be targeted
-                  properties:
-                    matchExpressions:
-                      description: MatchExpressions is a list of label selector requirements. The requirements are ANDed.
-                      items:
-                        description: |-
-                          A label selector requirement is a selector that contains values, a key, and an operator that
-                          relates the key and values.
-                        properties:
-                          key:
-                            description: key is the label key that the selector applies to.
-                            type: string
-                          operator:
-                            description: |-
-                              operator represents a key's relationship to a set of values.
-                              Valid operators are In, NotIn, Exists and DoesNotExist.
-                            type: string
-                          values:
-                            description: |-
-                              values is an array of string values. If the operator is In or NotIn,
-                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
-                              the values array must be empty. This array is replaced during a strategic
-                              merge patch.
-                            items:
-                              type: string
-                            type: array
-                            x-kubernetes-list-type: atomic
-                        required:
-                          - key
-                          - operator
-                        type: object
-                      type: array
-                    matchLabels:
-                      additionalProperties:
-                        type: string
-                      description: |-
-                        MatchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
-                        map is equivalent to an element of matchExpressions, whose key field is "key", the
-                        operator is "In", and the values array contains only "value".
-                      type: object
-                  type: object
-                talosctl:
-                  description: Talosctl specifies the talosctl configuration for upgrade operations
-                  properties:
-                    image:
-                      description: Image specifies the talosctl container image
-                      properties:
-                        pullPolicy:
-                          default: IfNotPresent
-                          description: PullPolicy describes a policy for if/when to pull a container image
-                          enum:
-                            - Always
-                            - Never
-                            - IfNotPresent
-                          type: string
-                        repository:
-                          default: ghcr.io/siderolabs/talosctl
-                          description: Repository is the talosctl container image repository
-                          type: string
-                        tag:
-                          description: |-
-                            Tag is the talosctl container image tag
-                            If not specified, defaults to the osImage version from the target node
-                          type: string
-                      type: object
-                  type: object
-                upgradePolicy:
-                  description: UpgradePolicy configures upgrade behavior
-                  properties:
-                    debug:
-                      default: false
-                      description: Debug enables debug mode for the upgrade
-                      type: boolean
-                    force:
-                      default: false
-                      description: Force the upgrade (skip checks on etcd health and members)
-                      type: boolean
-                    placementPreset:
-                      default: soft
-                      description: |-
-                        PlacementPreset controls how strictly upgrade jobs avoid the target node
-                        hard: required avoidance (job will fail if can't avoid target node)
-                        soft: preferred avoidance (job prefers to avoid but can run on target node)
-                      enum:
-                        - hard
-                        - soft
-                      type: string
-                    rebootMode:
-                      default: default
-                      description: RebootMode select the reboot mode during upgrade
-                      enum:
-                        - default
-                        - powercycle
-                      type: string
-                  type: object
-              required:
-                - image
-              type: object
-            status:
-              description: TalosUpgradeStatus defines the observed state of TalosUpgrade
-              properties:
-                completedNodes:
-                  description: CompletedNodes are nodes that have been successfully upgraded
-                  items:
+                type: array
+              image:
+                description: Image is the Talos installer image to upgrade to
+                properties:
+                  repository:
+                    default: factory.talos.dev/metal-installer
+                    description: Repository is the container image repository (without
+                      schematic ID)
                     type: string
-                  type: array
-                currentNode:
-                  description: CurrentNode is the node currently being upgraded
-                  type: string
-                failedNodes:
-                  description: FailedNodes are nodes that failed to upgrade
-                  items:
-                    description: NodeUpgradeStatus tracks the upgrade status of individual nodes
-                    properties:
-                      jobName:
-                        description: JobName is the name of the job handling this node's upgrade
-                        type: string
-                      lastError:
-                        description: LastError contains the last error message
-                        type: string
-                      nodeName:
-                        description: NodeName is the name of the node
-                        type: string
-                      retries:
-                        description: Retries is the number of times upgrade was attempted
-                        minimum: 0
-                        type: integer
-                    required:
-                      - nodeName
+                  tag:
+                    description: Tag is the container image tag
+                    type: string
+                required:
+                - tag
+                type: object
+              nodeLabelSelector:
+                description: |-
+                  NodeLabelSelector specifies which nodes to target for the upgrade
+                  If empty, all nodes will be targeted
+                properties:
+                  matchExpressions:
+                    description: MatchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      MatchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value".
                     type: object
-                  type: array
-                lastUpdated:
-                  description: LastUpdated timestamp of last status update
-                  format: date-time
+                type: object
+              talosctl:
+                description: Talosctl specifies the talosctl configuration for upgrade
+                  operations
+                properties:
+                  image:
+                    description: Image specifies the talosctl container image
+                    properties:
+                      pullPolicy:
+                        default: IfNotPresent
+                        description: PullPolicy describes a policy for if/when to
+                          pull a container image
+                        enum:
+                        - Always
+                        - Never
+                        - IfNotPresent
+                        type: string
+                      repository:
+                        default: ghcr.io/siderolabs/talosctl
+                        description: Repository is the talosctl container image repository
+                        type: string
+                      tag:
+                        description: |-
+                          Tag is the talosctl container image tag
+                          If not specified, defaults to the osImage version from the target node
+                        type: string
+                    type: object
+                type: object
+              upgradePolicy:
+                description: UpgradePolicy configures upgrade behavior
+                properties:
+                  debug:
+                    default: false
+                    description: Debug enables debug mode for the upgrade
+                    type: boolean
+                  force:
+                    default: false
+                    description: Force the upgrade (skip checks on etcd health and
+                      members)
+                    type: boolean
+                  placementPreset:
+                    default: soft
+                    description: |-
+                      PlacementPreset controls how strictly upgrade jobs avoid the target node
+                      hard: required avoidance (job will fail if can't avoid target node)
+                      soft: preferred avoidance (job prefers to avoid but can run on target node)
+                    enum:
+                    - hard
+                    - soft
+                    type: string
+                  rebootMode:
+                    default: default
+                    description: RebootMode select the reboot mode during upgrade
+                    enum:
+                    - default
+                    - powercycle
+                    type: string
+                type: object
+            required:
+            - image
+            type: object
+          status:
+            description: TalosUpgradeStatus defines the observed state of TalosUpgrade
+            properties:
+              completedNodes:
+                description: CompletedNodes are nodes that have been successfully
+                  upgraded
+                items:
                   type: string
-                message:
-                  description: Message provides details about the current state
-                  type: string
-                observedGeneration:
-                  description: ObservedGeneration reflects the generation of the most recently observed spec
-                  format: int64
-                  type: integer
-                phase:
-                  description: Phase represents the current phase of the upgrade
-                  enum:
-                    - Pending
-                    - InProgress
-                    - Completed
-                    - Failed
-                  type: string
-              type: object
-          type: object
-      served: true
-      storage: true
-      subresources:
-        status: {}
+                type: array
+              currentNode:
+                description: CurrentNode is the node currently being upgraded
+                type: string
+              failedNodes:
+                description: FailedNodes are nodes that failed to upgrade
+                items:
+                  description: NodeUpgradeStatus tracks the upgrade status of individual
+                    nodes
+                  properties:
+                    jobName:
+                      description: JobName is the name of the job handling this node's
+                        upgrade
+                      type: string
+                    lastError:
+                      description: LastError contains the last error message
+                      type: string
+                    nodeName:
+                      description: NodeName is the name of the node
+                      type: string
+                    retries:
+                      description: Retries is the number of times upgrade was attempted
+                      minimum: 0
+                      type: integer
+                  required:
+                  - nodeName
+                  type: object
+                type: array
+              lastUpdated:
+                description: LastUpdated timestamp of last status update
+                format: date-time
+                type: string
+              message:
+                description: Message provides details about the current state
+                type: string
+              observedGeneration:
+                description: ObservedGeneration reflects the generation of the most
+                  recently observed spec
+                format: int64
+                type: integer
+              phase:
+                description: Phase represents the current phase of the upgrade
+                enum:
+                - Pending
+                - InProgress
+                - Completed
+                - Failed
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

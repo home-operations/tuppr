@@ -4,23 +4,23 @@ kind: ValidatingWebhookConfiguration
 metadata:
   name: validating-webhook-configuration
 webhooks:
-  - admissionReviewVersions:
-      - v1
-    clientConfig:
-      service:
-        name: webhook-service
-        namespace: system
-        path: /validate-tuppr-home-operations-com-v1alpha1-talosupgrade
-    failurePolicy: Fail
-    name: vtalosupgrade.kb.io
-    rules:
-      - apiGroups:
-          - tuppr.home-operations.com
-        apiVersions:
-          - v1alpha1
-        operations:
-          - CREATE
-          - UPDATE
-        resources:
-          - talosupgrades
-    sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-tuppr-home-operations-com-v1alpha1-talosupgrade
+  failurePolicy: Fail
+  name: vtalosupgrade.kb.io
+  rules:
+  - apiGroups:
+    - tuppr.home-operations.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - talosupgrades
+  sideEffects: None
