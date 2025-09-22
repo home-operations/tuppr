@@ -29,6 +29,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "tuppr.serviceAccountName" . }}
+      priorityClassName: system-node-critical
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
