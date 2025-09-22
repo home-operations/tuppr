@@ -122,7 +122,10 @@ type HealthCheckExpr struct {
 	// +kubebuilder:validation:Required
 	Expr string `json:"expr"`
 
-	// Timeout for this health check (optional, defaults to 5 minutes)
+	// Timeout for this health check
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern="^([0-9]+[smh])+$"
+	// +kubebuilder:validation:MinLength=2
 	// +optional
 	Timeout *metav1.Duration `json:"timeout,omitempty"`
 

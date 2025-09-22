@@ -83,7 +83,9 @@ spec:
                         description: Namespace of the resource (optional, for namespaced resources)
                         type: string
                       timeout:
-                        description: Timeout for this health check (optional, defaults to 5 minutes)
+                        description: Timeout for this health check
+                        minLength: 2
+                        pattern: ^([0-9]+[smh])+$
                         type: string
                     required:
                       - apiVersion
