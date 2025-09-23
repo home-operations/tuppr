@@ -93,13 +93,15 @@ service:
   metricsPort: 8080
 
 # Resource limits and requests
-resources:
-  limits:
-    cpu: 500m
-    memory: 128Mi
-  requests:
-    cpu: 10m
-    memory: 64Mi
+resources: {}
+# Example:
+# resources:
+#   limits:
+#     cpu: 500m
+#     memory: 128Mi
+#   requests:
+#     cpu: 10m
+#     memory: 64Mi
 
 # Liveness probe configuration
 livenessProbe:
