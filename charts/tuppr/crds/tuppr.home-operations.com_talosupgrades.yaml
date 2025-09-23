@@ -60,7 +60,7 @@ spec:
                 healthChecks:
                   description: HealthChecks defines a list of CEL-based health checks to perform before each node upgrade
                   items:
-                    description: HealthCheckExpr defines a CEL-based health check
+                    description: HealthCheck defines a CEL-based health check
                     properties:
                       apiVersion:
                         description: APIVersion of the resource to check
@@ -93,9 +93,9 @@ spec:
                       - kind
                     type: object
                   type: array
-                nodeLabelSelector:
+                nodeSelector:
                   description: |-
-                    NodeLabelSelector specifies which nodes to target for the upgrade
+                    NodeSelector specifies which nodes to target for the upgrade
                     If empty, all nodes will be targeted
                   properties:
                     matchExpressions:
@@ -137,6 +137,45 @@ spec:
                         operator is "In", and the values array contains only "value".
                       type: object
                   type: object
+                policy:
+                  description: Policy configures upgrade behavior
+                  properties:
+                    debug:
+                      default: true
+                      description: Debug enables debug mode for the upgrade
+                      type: boolean
+                    force:
+                      default: false
+                      description: Force the upgrade (skip checks on etcd health and members)
+                      type: boolean
+                    placementPreset:
+                      default: soft
+                      description: |-
+                        Placement controls how strictly upgrade jobs avoid the target node
+                        hard: required avoidance (job will fail if can't avoid target node)
+                        soft: preferred avoidance (job prefers to avoid but can run on target node)
+                      enum:
+                        - hard
+                        - soft
+                      type: string
+                    rebootMode:
+                      default: default
+                      description: RebootMode select the reboot mode during upgrade
+                      enum:
+                        - default
+                        - powercycle
+                      type: string
+                  type: object
+                talos:
+                  description: Talosctl specifies the talosctl configuration for upgrade operations
+                  properties:
+                    version:
+                      description: Version is the target Talos version to upgrade to (e.g., "v1.11.0")
+                      pattern: ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\-\.]+)?$
+                      type: string
+                  required:
+                    - version
+                  type: object
                 talosctl:
                   description: Talosctl specifies the talosctl configuration for upgrade operations
                   properties:
@@ -162,41 +201,6 @@ spec:
                           type: string
                       type: object
                   type: object
-                upgradePolicy:
-                  description: UpgradePolicy configures upgrade behavior
-                  properties:
-                    debug:
-                      default: false
-                      description: Debug enables debug mode for the upgrade
-                      type: boolean
-                    force:
-                      default: false
-                      description: Force the upgrade (skip checks on etcd health and members)
-                      type: boolean
-                    placementPreset:
-                      default: soft
-                      description: |-
-                        PlacementPreset controls how strictly upgrade jobs avoid the target node
-                        hard: required avoidance (job will fail if can't avoid target node)
-                        soft: preferred avoidance (job prefers to avoid but can run on target node)
-                      enum:
-                        - hard
-                        - soft
-                      type: string
-                    rebootMode:
-                      default: default
-                      description: RebootMode select the reboot mode during upgrade
-                      enum:
-                        - default
-                        - powercycle
-                      type: string
-                  type: object
-                version:
-                  description: Version is the target Talos version to upgrade to (e.g., "v1.11.0")
-                  pattern: ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\-\.]+)?$
-                  type: string
-              required:
-                - version
               type: object
             status:
               description: TalosUpgradeStatus defines the observed state of TalosUpgrade

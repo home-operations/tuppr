@@ -54,19 +54,20 @@ Create a `TalosUpgrade` resource:
 apiVersion: tuppr.home-operations.com/v1alpha1
 kind: TalosUpgrade
 metadata:
-  name: cluster-upgrade
+  name: cluster
 spec:
-  # renovate: datasource=docker depName=ghcr.io/siderolabs/installer
-  version: v1.11.0  # Required - target Talos version
+  talos:
+    # renovate: datasource=docker depName=ghcr.io/siderolabs/installer
+    version: v1.11.0  # Required - target Talos version
 
-  upgradePolicy:
-    debug: false           # Optional, verbose logging
-    force: false           # Optional, skip etcd health checks
-    rebootMode: default    # Optional, default|powercycle
-    placementPreset: soft  # Optional, hard|soft
+  policy:
+    debug: true          # Optional, verbose logging
+    force: false         # Optional, skip etcd health checks
+    rebootMode: default  # Optional, default|powercycle
+    placement: soft      # Optional, hard|soft
 
   # Target specific nodes (optional - defaults to all nodes)
-  nodeLabelSelector:
+  nodeSelector:
     matchLabels:
       node-role.kubernetes.io/control-plane: ""
     matchExpressions:
@@ -79,13 +80,6 @@ spec:
     - apiVersion: v1
       kind: Node
       expr: status.conditions.exists(c, c.type == "Ready" && c.status == "True")
-
-    - apiVersion: ceph.rook.io/v1
-      kind: CephCluster
-      name: rook-ceph
-      namespace: rook-ceph
-      expr: status.ceph.health in ["HEALTH_OK"]
-      timeout: 10m  # Optional, default
 
   # Talosctl configuration (optional)
   talosctl:
@@ -118,12 +112,11 @@ healthChecks:
     expr: status.readyReplicas == status.replicas
 
   # Check custom resources
-  - apiVersion: argoproj.io/v1alpha1
-    kind: Application
-    namespace: argocd
-    expr: |
-      status.health.status == "Healthy" &&
-      status.sync.status == "Synced"
+  - apiVersion: ceph.rook.io/v1
+    kind: CephCluster
+    name: rook-ceph
+    namespace: rook-ceph
+    expr: status.ceph.health in ["HEALTH_OK"]
 ```
 
 ### Node Targeting
@@ -131,7 +124,7 @@ healthChecks:
 Precise control over which nodes to upgrade:
 
 ```yaml
-nodeLabelSelector:
+nodeSelector:
   matchLabels:
     environment: production
     node-role.kubernetes.io/worker: ""
@@ -157,7 +150,7 @@ nodeLabelSelector:
 Fine-tune upgrade behavior:
 
 ```yaml
-upgradePolicy:
+policy:
   # Enable debug logging for troubleshooting
   debug: true
 
@@ -165,7 +158,7 @@ upgradePolicy:
   force: false
 
   # Controls how strictly upgrade jobs avoid the target node
-  placementPreset: hard  # or "soft"
+  placement: hard  # or "soft"
 
   # Use powercycle reboot for problematic nodes
   rebootMode: powercycle  # or "default"

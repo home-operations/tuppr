@@ -266,13 +266,13 @@ func (r *TalosUpgradeReconciler) handleGenerationChange(ctx context.Context, tal
 	logger.Info("Spec generation changed, resetting upgrade process",
 		"generation", talosUpgrade.Generation,
 		"observed", talosUpgrade.Status.ObservedGeneration,
-		"newVersion", talosUpgrade.Spec.Version)
+		"newVersion", talosUpgrade.Spec.Talos.Version)
 
 	// Reset status for new generation
 	return true, r.updateStatus(ctx, talosUpgrade, map[string]any{
 		"phase":          PhasePending,
 		"currentNode":    "",
-		"message":        fmt.Sprintf("Spec updated to %s, restarting upgrade process", talosUpgrade.Spec.Version),
+		"message":        fmt.Sprintf("Spec updated to %s, restarting upgrade process", talosUpgrade.Spec.Talos.Version),
 		"completedNodes": []string{},
 		"failedNodes":    []upgradev1alpha1.NodeUpgradeStatus{},
 	})
@@ -548,7 +548,7 @@ func (r *TalosUpgradeReconciler) verifyNodeUpgrade(ctx context.Context, talosUpg
 		return fmt.Errorf("failed to get node info from Talos for %s: %w", nodeName, err)
 	}
 
-	targetVersion := talosUpgrade.Spec.Version
+	targetVersion := talosUpgrade.Spec.Talos.Version
 
 	if nodeInfo.TalosVersion != targetVersion {
 		return fmt.Errorf("node %s version mismatch: current=%s, target=%s",
@@ -721,7 +721,7 @@ func (r *TalosUpgradeReconciler) findNextNode(ctx context.Context, talosUpgrade 
 		return strings.Compare(a.Name, b.Name)
 	})
 
-	targetVersion := talosUpgrade.Spec.Version
+	targetVersion := talosUpgrade.Spec.Talos.Version
 
 	// Use slices.IndexFunc to find first node needing upgrade
 	idx := slices.IndexFunc(nodes, func(node corev1.Node) bool {
@@ -850,7 +850,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 	}
 
 	// Configure node affinity based on PlacementPreset
-	placementPreset := talosUpgrade.Spec.UpgradePolicy.PlacementPreset
+	placementPreset := talosUpgrade.Spec.Policy.Placement
 	if placementPreset == "" {
 		placementPreset = "soft" // Default value from kubebuilder annotation
 	}
@@ -898,7 +898,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 	talosctlTag := talosUpgrade.Spec.Talosctl.Image.Tag
 	if talosctlTag == "" {
 		// Default to the target version for talosctl
-		talosctlTag = talosUpgrade.Spec.Version
+		talosctlTag = talosUpgrade.Spec.Talos.Version
 		logger.V(1).Info("Using target version for talosctl", "node", nodeName, "version", talosctlTag)
 	}
 
@@ -908,7 +908,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 	targetImage, err := r.buildTalosUpgradeImage(ctx, talosUpgrade, nodeName)
 	if err != nil {
 		// This should never happen
-		targetImage = fmt.Sprintf("factory.talos.dev/metal-installer:%s", talosUpgrade.Spec.Version)
+		targetImage = fmt.Sprintf("factory.talos.dev/metal-installer:%s", talosUpgrade.Spec.Talos.Version)
 		logger.Error(err, "Using fallback image", "node", nodeName, "fallbackImage", targetImage)
 	}
 
@@ -920,17 +920,17 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 		"--wait=true",
 	}
 
-	if talosUpgrade.Spec.UpgradePolicy.Debug {
+	if talosUpgrade.Spec.Policy.Debug {
 		args = append(args, "--debug=true")
 		logger.V(1).Info("Debug upgrade enabled", "node", nodeName)
 	}
 
-	if talosUpgrade.Spec.UpgradePolicy.Force {
+	if talosUpgrade.Spec.Policy.Force {
 		args = append(args, "--force=true")
 		logger.V(1).Info("Force upgrade enabled", "node", nodeName)
 	}
 
-	if talosUpgrade.Spec.UpgradePolicy.RebootMode == "powercycle" {
+	if talosUpgrade.Spec.Policy.RebootMode == "powercycle" {
 		args = append(args, "--reboot-mode=powercycle")
 		logger.V(1).Info("Powercycle reboot mode enabled", "node", nodeName)
 	}
@@ -1146,7 +1146,7 @@ func (r *TalosUpgradeReconciler) buildTalosUpgradeImage(ctx context.Context, tal
 	}
 
 	// Build new image with same repository/schematic but new version
-	targetImage := fmt.Sprintf("%s:%s", parts[0], talosUpgrade.Spec.Version)
+	targetImage := fmt.Sprintf("%s:%s", parts[0], talosUpgrade.Spec.Talos.Version)
 
 	logger.Info("Built target image from current node image",
 		"node", nodeName,
@@ -1158,7 +1158,7 @@ func (r *TalosUpgradeReconciler) buildTalosUpgradeImage(ctx context.Context, tal
 
 // getMatchingNodes returns nodes that match the TalosUpgrade's node selector
 func getMatchingNodes(allNodes []corev1.Node, talos *upgradev1alpha1.TalosUpgrade) []corev1.Node {
-	selector := talos.Spec.NodeLabelSelector
+	selector := talos.Spec.NodeSelector
 
 	// If no selector is specified, return all nodes
 	if len(selector.MatchLabels) == 0 && len(selector.MatchExpressions) == 0 {
@@ -1177,7 +1177,7 @@ func getMatchingNodes(allNodes []corev1.Node, talos *upgradev1alpha1.TalosUpgrad
 }
 
 // nodeMatchesLabelSelector checks if a node matches the label selector (both matchLabels and matchExpressions)
-func nodeMatchesLabelSelector(node *corev1.Node, selector upgradev1alpha1.NodeLabelSelector) bool {
+func nodeMatchesLabelSelector(node *corev1.Node, selector upgradev1alpha1.NodeSelectorSpec) bool {
 	// Check matchLabels (all must match - AND logic)
 	for key, value := range selector.MatchLabels {
 		nodeValue, exists := node.Labels[key]

@@ -37,7 +37,7 @@ var _ webhook.CustomValidator = &TalosUpgradeValidator{}
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type
 func (v *TalosUpgradeValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	talos := obj.(*upgradev1alpha1.TalosUpgrade)
-	taloslog.Info("validate create", "name", talos.Name, "version", talos.Spec.Version, "talosConfigSecret", v.TalosConfigSecret)
+	taloslog.Info("validate create", "name", talos.Name, "version", talos.Spec.Talos.Version, "talosConfigSecret", v.TalosConfigSecret)
 
 	return v.validateTalos(ctx, talos)
 }
@@ -46,17 +46,17 @@ func (v *TalosUpgradeValidator) ValidateCreate(ctx context.Context, obj runtime.
 func (v *TalosUpgradeValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
 	talos := newObj.(*upgradev1alpha1.TalosUpgrade)
 	oldTalos := oldObj.(*upgradev1alpha1.TalosUpgrade)
-	taloslog.Info("validate update", "name", talos.Name, "version", talos.Spec.Version, "talosConfigSecret", v.TalosConfigSecret)
+	taloslog.Info("validate update", "name", talos.Name, "version", talos.Spec.Talos.Version, "talosConfigSecret", v.TalosConfigSecret)
 
 	// Prevent updates to certain fields if upgrade is in progress
 	if oldTalos.Status.Phase == "InProgress" {
-		if talos.Spec.Version != oldTalos.Spec.Version {
+		if talos.Spec.Talos.Version != oldTalos.Spec.Talos.Version {
 			return nil, fmt.Errorf("cannot update spec.version while upgrade is in progress (current phase: %s)", oldTalos.Status.Phase)
 		}
 
 		// Check if node label selector has changed
-		if !nodeLabelSelectorsEqual(talos.Spec.NodeLabelSelector, oldTalos.Spec.NodeLabelSelector) {
-			return nil, fmt.Errorf("cannot update spec.nodeLabelSelector while upgrade is in progress (current phase: %s)", oldTalos.Status.Phase)
+		if !nodeSelectorsEqual(talos.Spec.NodeSelector, oldTalos.Spec.NodeSelector) {
+			return nil, fmt.Errorf("cannot update spec.nodeSelector while upgrade is in progress (current phase: %s)", oldTalos.Status.Phase)
 		}
 	}
 
@@ -83,7 +83,7 @@ func (v *TalosUpgradeValidator) validateTalos(ctx context.Context, talos *upgrad
 	taloslog.Info("validating talos plan",
 		"name", talos.Name,
 		"namespace", talos.Namespace,
-		"version", talos.Spec.Version,
+		"version", talos.Spec.Talos.Version,
 		"secretName", v.TalosConfigSecret)
 
 	// Validate that the Talos config secret exists
@@ -130,29 +130,29 @@ func (v *TalosUpgradeValidator) validateTalos(ctx context.Context, talos *upgrad
 	// Add warnings for risky configurations
 	warnings = append(warnings, v.generateWarnings(talos)...)
 
-	taloslog.Info("talos plan validation successful", "name", talos.Name, "version", talos.Spec.Version)
+	taloslog.Info("talos plan validation successful", "name", talos.Name, "version", talos.Spec.Talos.Version)
 	return warnings, nil
 }
 
 func (v *TalosUpgradeValidator) validateTalosSpec(talos *upgradev1alpha1.TalosUpgrade) error {
 	// Validate version is not empty and follows semantic versioning pattern
-	if talos.Spec.Version == "" {
+	if talos.Spec.Talos.Version == "" {
 		return fmt.Errorf("spec.version cannot be empty")
 	}
 
 	// Validate version format (should match the kubebuilder validation pattern)
 	versionPattern := `^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\-\.]+)?$`
-	matched, err := regexp.MatchString(versionPattern, talos.Spec.Version)
+	matched, err := regexp.MatchString(versionPattern, talos.Spec.Talos.Version)
 	if err != nil {
 		return fmt.Errorf("error validating version pattern: %w", err)
 	}
 	if !matched {
-		return fmt.Errorf("spec.version '%s' does not match required pattern. Must be in format 'vX.Y.Z' or 'vX.Y.Z-suffix' (e.g., 'v1.11.0', 'v1.11.0-alpha.1')", talos.Spec.Version)
+		return fmt.Errorf("spec.version '%s' does not match required pattern. Must be in format 'vX.Y.Z' or 'vX.Y.Z-suffix' (e.g., 'v1.11.0', 'v1.11.0-alpha.1')", talos.Spec.Talos.Version)
 	}
 
 	// Validate node label selector
-	if err := v.validateNodeLabelSelector(talos.Spec.NodeLabelSelector); err != nil {
-		return fmt.Errorf("spec.nodeLabelSelector validation failed: %w", err)
+	if err := v.validateNodeSelector(talos.Spec.NodeSelector); err != nil {
+		return fmt.Errorf("spec.nodeSelector validation failed: %w", err)
 	}
 
 	// Validate health checks
@@ -179,27 +179,27 @@ func (v *TalosUpgradeValidator) validateTalosSpec(talos *upgradev1alpha1.TalosUp
 	}
 
 	// Validate reboot mode if provided
-	if talos.Spec.UpgradePolicy.RebootMode != "" {
+	if talos.Spec.Policy.RebootMode != "" {
 		validModes := []string{"default", "powercycle"}
-		if !slices.Contains(validModes, talos.Spec.UpgradePolicy.RebootMode) {
-			return fmt.Errorf("spec.upgradePolicy.rebootMode '%s' is invalid. Valid values are: %v",
-				talos.Spec.UpgradePolicy.RebootMode, validModes)
+		if !slices.Contains(validModes, talos.Spec.Policy.RebootMode) {
+			return fmt.Errorf("spec.policy.rebootMode '%s' is invalid. Valid values are: %v",
+				talos.Spec.Policy.RebootMode, validModes)
 		}
 	}
 
 	// Validate placement preset if provided
-	if talos.Spec.UpgradePolicy.PlacementPreset != "" {
+	if talos.Spec.Policy.Placement != "" {
 		validPresets := []string{"hard", "soft"}
-		if !slices.Contains(validPresets, talos.Spec.UpgradePolicy.PlacementPreset) {
-			return fmt.Errorf("spec.upgradePolicy.placementPreset '%s' is invalid. Valid values are: %v",
-				talos.Spec.UpgradePolicy.PlacementPreset, validPresets)
+		if !slices.Contains(validPresets, talos.Spec.Policy.Placement) {
+			return fmt.Errorf("spec.policy.placementPreset '%s' is invalid. Valid values are: %v",
+				talos.Spec.Policy.Placement, validPresets)
 		}
 	}
 
 	return nil
 }
 
-func (v *TalosUpgradeValidator) validateNodeLabelSelector(selector upgradev1alpha1.NodeLabelSelector) error {
+func (v *TalosUpgradeValidator) validateNodeSelector(selector upgradev1alpha1.NodeSelectorSpec) error {
 	// Validate matchLabels
 	for key, value := range selector.MatchLabels {
 		if key == "" {
@@ -244,7 +244,7 @@ func (v *TalosUpgradeValidator) validateNodeLabelSelector(selector upgradev1alph
 	return nil
 }
 
-func (v *TalosUpgradeValidator) validateHealthCheck(check upgradev1alpha1.HealthCheckExpr) error {
+func (v *TalosUpgradeValidator) validateHealthCheck(check upgradev1alpha1.HealthCheckSpec) error {
 	if check.APIVersion == "" {
 		return fmt.Errorf("apiVersion cannot be empty")
 	}
@@ -263,7 +263,7 @@ func (v *TalosUpgradeValidator) validateHealthCheck(check upgradev1alpha1.Health
 	return nil
 }
 
-func nodeLabelSelectorsEqual(a, b upgradev1alpha1.NodeLabelSelector) bool {
+func nodeSelectorsEqual(a, b upgradev1alpha1.NodeSelectorSpec) bool {
 	// Compare matchLabels
 	if len(a.MatchLabels) != len(b.MatchLabels) {
 		return false
@@ -307,27 +307,27 @@ func (v *TalosUpgradeValidator) generateWarnings(talos *upgradev1alpha1.TalosUpg
 	var warnings []string
 
 	// Warn about force upgrades
-	if talos.Spec.UpgradePolicy.Force {
+	if talos.Spec.Policy.Force {
 		warnings = append(warnings, "Force upgrade enabled. This will skip etcd health checks and may cause data loss in unhealthy clusters.")
 	}
 
 	// Warn about powercycle reboot mode
-	if talos.Spec.UpgradePolicy.RebootMode == "powercycle" {
+	if talos.Spec.Policy.RebootMode == "powercycle" {
 		warnings = append(warnings, "Powercycle reboot mode selected. This performs a hard power cycle and may cause data loss if nodes don't shutdown cleanly.")
 	}
 
 	// Warn about upgrading all nodes (no selector)
-	if len(talos.Spec.NodeLabelSelector.MatchLabels) == 0 && len(talos.Spec.NodeLabelSelector.MatchExpressions) == 0 {
+	if len(talos.Spec.NodeSelector.MatchLabels) == 0 && len(talos.Spec.NodeSelector.MatchExpressions) == 0 {
 		warnings = append(warnings, "No node selector specified. This will upgrade ALL nodes in the cluster.")
 	}
 
 	// Add warning for debug mode
-	if talos.Spec.UpgradePolicy.Debug {
+	if talos.Spec.Policy.Debug {
 		warnings = append(warnings, "Debug mode enabled. This will produce verbose output in upgrade jobs.")
 	}
 
 	// Warn about placement preset implications
-	if talos.Spec.UpgradePolicy.PlacementPreset == "soft" {
+	if talos.Spec.Policy.Placement == "soft" {
 		warnings = append(warnings, "Soft placement preset allows upgrade jobs to run on the target node if no other nodes are available. This may cause upgrade failures if the target node becomes unavailable during upgrade.")
 	}
 
@@ -339,13 +339,13 @@ func (v *TalosUpgradeValidator) generateWarnings(talos *upgradev1alpha1.TalosUpg
 	}
 
 	// Warn about pre-release versions
-	if matched, _ := regexp.MatchString(`-[a-zA-Z]`, talos.Spec.Version); matched {
-		warnings = append(warnings, fmt.Sprintf("Target version '%s' appears to be a pre-release. Ensure this version is stable and tested in your environment.", talos.Spec.Version))
+	if matched, _ := regexp.MatchString(`-[a-zA-Z]`, talos.Spec.Talos.Version); matched {
+		warnings = append(warnings, fmt.Sprintf("Target version '%s' appears to be a pre-release. Ensure this version is stable and tested in your environment.", talos.Spec.Talos.Version))
 	}
 
 	// Warn if talosctl version is not specified (will default to target version)
 	if talos.Spec.Talosctl.Image.Tag == "" {
-		warnings = append(warnings, fmt.Sprintf("No talosctl version specified, will default to target version '%s'. Ensure talosctl version compatibility with your cluster.", talos.Spec.Version))
+		warnings = append(warnings, fmt.Sprintf("No talosctl version specified, will default to target version '%s'. Ensure talosctl version compatibility with your cluster.", talos.Spec.Talos.Version))
 	}
 
 	return warnings
