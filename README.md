@@ -56,6 +56,7 @@ kind: TalosUpgrade
 metadata:
   name: cluster-upgrade
 spec:
+  # renovate: datasource=docker depName=ghcr.io/siderolabs/installer
   version: v1.11.0  # Required - target Talos version
 
   upgradePolicy:
