@@ -36,12 +36,14 @@ var _ = Describe("Talos Controller", func() {
 						// No namespace - TalosUpgrade is cluster-scoped
 					},
 					Spec: upgradev1alpha1.TalosUpgradeSpec{
-						Version: "v1.11.0", // Required field with valid format
-						UpgradePolicy: upgradev1alpha1.TalosUpgradePolicy{
-							Debug:           false,
-							Force:           false,
-							PlacementPreset: "soft",
-							RebootMode:      "default",
+						Talos: upgradev1alpha1.TalosSpec{
+							Version: "v1.11.0", // Required field with valid format
+						},
+						Policy: upgradev1alpha1.PolicySpec{
+							Debug:      false,
+							Force:      false,
+							Placement:  "soft",
+							RebootMode: "default",
 						},
 					},
 				}

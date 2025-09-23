@@ -5,99 +5,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// TalosUpgradePolicy defines upgrade behavior options
-type TalosUpgradePolicy struct {
-	// Debug enables debug mode for the upgrade
-	// +kubebuilder:default=false
-	// +optional
-	Debug bool `json:"debug,omitempty"`
-
-	// Force the upgrade (skip checks on etcd health and members)
-	// +kubebuilder:default=false
-	// +optional
-	Force bool `json:"force,omitempty"`
-
-	// PlacementPreset controls how strictly upgrade jobs avoid the target node
-	// hard: required avoidance (job will fail if can't avoid target node)
-	// soft: preferred avoidance (job prefers to avoid but can run on target node)
-	// +kubebuilder:validation:Enum=hard;soft
-	// +kubebuilder:default="soft"
-	// +optional
-	PlacementPreset string `json:"placementPreset,omitempty"`
-
-	// RebootMode select the reboot mode during upgrade
-	// +kubebuilder:validation:Enum=default;powercycle
-	// +kubebuilder:default="default"
-	// +optional
-	RebootMode string `json:"rebootMode,omitempty"`
-}
-
-// NodeLabelSelector defines how to select nodes for upgrade
-type NodeLabelSelector struct {
-	// MatchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
-	// map is equivalent to an element of matchExpressions, whose key field is "key", the
-	// operator is "In", and the values array contains only "value".
-	// +optional
-	MatchLabels map[string]string `json:"matchLabels,omitempty"`
-
-	// MatchExpressions is a list of label selector requirements. The requirements are ANDed.
-	// +optional
-	MatchExpressions []metav1.LabelSelectorRequirement `json:"matchExpressions,omitempty"`
-}
-
-// TalosctlImageSpec defines talosctl container image details
-type TalosctlImageSpec struct {
-	// Repository is the talosctl container image repository
-	// +kubebuilder:default="ghcr.io/siderolabs/talosctl"
-	// +optional
-	Repository string `json:"repository,omitempty"`
-
-	// Tag is the talosctl container image tag
-	// If not specified, defaults to the target version
-	// +optional
-	Tag string `json:"tag,omitempty"`
-
-	// PullPolicy describes a policy for if/when to pull a container image
-	// +kubebuilder:validation:Enum=Always;Never;IfNotPresent
-	// +kubebuilder:default="IfNotPresent"
-	// +optional
-	PullPolicy corev1.PullPolicy `json:"pullPolicy,omitempty"`
-}
-
-// TalosctlSpec defines the talosctl configuration
-type TalosctlSpec struct {
-	// Image specifies the talosctl container image
-	// +optional
-	Image TalosctlImageSpec `json:"image,omitempty"`
-}
-
-// TalosUpgradeSpec defines the desired state of TalosUpgrade
-type TalosUpgradeSpec struct {
-	// Version is the target Talos version to upgrade to (e.g., "v1.11.0")
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Pattern=`^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\-\.]+)?$`
-	Version string `json:"version"`
-
-	// UpgradePolicy configures upgrade behavior
-	// +optional
-	UpgradePolicy TalosUpgradePolicy `json:"upgradePolicy,omitempty"`
-
-	// NodeLabelSelector specifies which nodes to target for the upgrade
-	// If empty, all nodes will be targeted
-	// +optional
-	NodeLabelSelector NodeLabelSelector `json:"nodeLabelSelector,omitempty"`
-
-	// HealthChecks defines a list of CEL-based health checks to perform before each node upgrade
-	// +optional
-	HealthChecks []HealthCheckExpr `json:"healthChecks,omitempty"`
-
-	// Talosctl specifies the talosctl configuration for upgrade operations
-	// +optional
-	Talosctl TalosctlSpec `json:"talosctl,omitempty"`
-}
-
-// HealthCheckExpr defines a CEL-based health check
-type HealthCheckExpr struct {
+// HealthCheck defines a CEL-based health check
+type HealthCheckSpec struct {
 	// APIVersion of the resource to check
 	// +kubebuilder:validation:Required
 	APIVersion string `json:"apiVersion"`
@@ -129,6 +38,104 @@ type HealthCheckExpr struct {
 	// Description of what this check validates (for status/logging)
 	// +optional
 	Description string `json:"description,omitempty"`
+}
+
+// NodeSelector defines how to select nodes for upgrade
+type NodeSelectorSpec struct {
+	// MatchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+	// map is equivalent to an element of matchExpressions, whose key field is "key", the
+	// operator is "In", and the values array contains only "value".
+	// +optional
+	MatchLabels map[string]string `json:"matchLabels,omitempty"`
+
+	// MatchExpressions is a list of label selector requirements. The requirements are ANDed.
+	// +optional
+	MatchExpressions []metav1.LabelSelectorRequirement `json:"matchExpressions,omitempty"`
+}
+
+// Talos defines the talos configuration
+type TalosSpec struct {
+	// Version is the target Talos version to upgrade to (e.g., "v1.11.0")
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\-\.]+)?$`
+	Version string `json:"version,omitempty"`
+}
+
+// TalosctlImage defines talosctl container image details
+type TalosctlImageSpec struct {
+	// Repository is the talosctl container image repository
+	// +kubebuilder:default="ghcr.io/siderolabs/talosctl"
+	// +optional
+	Repository string `json:"repository,omitempty"`
+
+	// Tag is the talosctl container image tag
+	// If not specified, defaults to the target version
+	// +optional
+	Tag string `json:"tag,omitempty"`
+
+	// PullPolicy describes a policy for if/when to pull a container image
+	// +kubebuilder:validation:Enum=Always;Never;IfNotPresent
+	// +kubebuilder:default="IfNotPresent"
+	// +optional
+	PullPolicy corev1.PullPolicy `json:"pullPolicy,omitempty"`
+}
+
+// Talosctl defines the talosctl configuration
+type TalosctlSpec struct {
+	// Image specifies the talosctl container image
+	// +optional
+	Image TalosctlImageSpec `json:"image,omitempty"`
+}
+
+// Policy defines upgrade behavior options
+type PolicySpec struct {
+	// Debug enables debug mode for the upgrade
+	// +kubebuilder:default=true
+	// +optional
+	Debug bool `json:"debug,omitempty"`
+
+	// Force the upgrade (skip checks on etcd health and members)
+	// +kubebuilder:default=false
+	// +optional
+	Force bool `json:"force,omitempty"`
+
+	// Placement controls how strictly upgrade jobs avoid the target node
+	// hard: required avoidance (job will fail if can't avoid target node)
+	// soft: preferred avoidance (job prefers to avoid but can run on target node)
+	// +kubebuilder:validation:Enum=hard;soft
+	// +kubebuilder:default="soft"
+	// +optional
+	Placement string `json:"placementPreset,omitempty"`
+
+	// RebootMode select the reboot mode during upgrade
+	// +kubebuilder:validation:Enum=default;powercycle
+	// +kubebuilder:default="default"
+	// +optional
+	RebootMode string `json:"rebootMode,omitempty"`
+}
+
+// TalosUpgradeSpec defines the desired state of TalosUpgrade
+type TalosUpgradeSpec struct {
+	// HealthChecks defines a list of CEL-based health checks to perform before each node upgrade
+	// +optional
+	HealthChecks []HealthCheckSpec `json:"healthChecks,omitempty"`
+
+	// NodeSelector specifies which nodes to target for the upgrade
+	// If empty, all nodes will be targeted
+	// +optional
+	NodeSelector NodeSelectorSpec `json:"nodeSelector,omitempty"`
+
+	// Talosctl specifies the talosctl configuration for upgrade operations
+	// +optional
+	Talos TalosSpec `json:"talos,omitempty"`
+
+	// Talosctl specifies the talosctl configuration for upgrade operations
+	// +optional
+	Talosctl TalosctlSpec `json:"talosctl,omitempty"`
+
+	// Policy configures upgrade behavior
+	// +optional
+	Policy PolicySpec `json:"policy,omitempty"`
 }
 
 // TalosUpgradeStatus defines the observed state of TalosUpgrade
