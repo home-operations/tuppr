@@ -93,19 +93,6 @@ spec:
                       - kind
                     type: object
                   type: array
-                image:
-                  description: Image is the Talos installer image to upgrade to
-                  properties:
-                    repository:
-                      default: factory.talos.dev/metal-installer
-                      description: Repository is the container image repository (without schematic ID)
-                      type: string
-                    tag:
-                      description: Tag is the container image tag
-                      type: string
-                  required:
-                    - tag
-                  type: object
                 nodeLabelSelector:
                   description: |-
                     NodeLabelSelector specifies which nodes to target for the upgrade
@@ -171,7 +158,7 @@ spec:
                         tag:
                           description: |-
                             Tag is the talosctl container image tag
-                            If not specified, defaults to the osImage version from the target node
+                            If not specified, defaults to the target version
                           type: string
                       type: object
                   type: object
@@ -204,8 +191,12 @@ spec:
                         - powercycle
                       type: string
                   type: object
+                version:
+                  description: Version is the target Talos version to upgrade to (e.g., "v1.11.0")
+                  pattern: ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\-\.]+)?$
+                  type: string
               required:
-                - image
+                - version
               type: object
             status:
               description: TalosUpgradeStatus defines the observed state of TalosUpgrade

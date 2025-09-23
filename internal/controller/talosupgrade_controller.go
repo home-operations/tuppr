@@ -73,6 +73,7 @@ type TalosUpgradeReconciler struct {
 	TalosConfigSecret   string
 	ControllerNamespace string
 	HealthChecker       *HealthChecker
+	TalosClient         *TalosClient
 }
 
 // Reconcile is part of the main kubernetes reconciliation loop
@@ -265,13 +266,13 @@ func (r *TalosUpgradeReconciler) handleGenerationChange(ctx context.Context, tal
 	logger.Info("Spec generation changed, resetting upgrade process",
 		"generation", talosUpgrade.Generation,
 		"observed", talosUpgrade.Status.ObservedGeneration,
-		"newVersion", talosUpgrade.Spec.Image.Tag)
+		"newVersion", talosUpgrade.Spec.Version)
 
 	// Reset status for new generation
 	return true, r.updateStatus(ctx, talosUpgrade, map[string]any{
 		"phase":          PhasePending,
 		"currentNode":    "",
-		"message":        fmt.Sprintf("Spec updated to %s, restarting upgrade process", talosUpgrade.Spec.Image.Tag),
+		"message":        fmt.Sprintf("Spec updated to %s, restarting upgrade process", talosUpgrade.Spec.Version),
 		"completedNodes": []string{},
 		"failedNodes":    []upgradev1alpha1.NodeUpgradeStatus{},
 	})
@@ -526,27 +527,38 @@ func (r *TalosUpgradeReconciler) handleJobFailure(ctx context.Context, talosUpgr
 	return ctrl.Result{RequeueAfter: time.Minute * 10}, nil
 }
 
-// verifyNodeUpgrade checks if the node has been upgraded to the target version
+// verifyNodeUpgrade checks if the node has been upgraded to the target version using Talos client
 func (r *TalosUpgradeReconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade, nodeName string) error {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Verifying node upgrade", "node", nodeName)
+	logger.V(1).Info("Verifying node upgrade using Talos client", "node", nodeName)
 
 	node := &corev1.Node{}
 	if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
 		return fmt.Errorf("failed to get node: %w", err)
 	}
 
-	currentVersion := getTalosVersion(node.Status.NodeInfo.OSImage)
-	targetVersion := talosUpgrade.Spec.Image.Tag
-
-	if currentVersion != targetVersion {
-		return fmt.Errorf("node %s version mismatch: current=%s, target=%s",
-			nodeName, currentVersion, targetVersion)
+	nodeIP, err := getNodeInternalIP(node)
+	if err != nil {
+		return fmt.Errorf("failed to get node IP for %s: %w", nodeName, err)
 	}
 
-	logger.Info("Node upgrade verification successful",
+	// Get node info from Talos client
+	nodeInfo, err := r.TalosClient.GetNodeInfo(ctx, nodeIP)
+	if err != nil {
+		return fmt.Errorf("failed to get node info from Talos for %s: %w", nodeName, err)
+	}
+
+	targetVersion := talosUpgrade.Spec.Version
+
+	if nodeInfo.TalosVersion != targetVersion {
+		return fmt.Errorf("node %s version mismatch: current=%s, target=%s",
+			nodeName, nodeInfo.TalosVersion, targetVersion)
+	}
+
+	logger.Info("Node upgrade verification successful using Talos client",
 		"node", nodeName,
-		"version", currentVersion)
+		"version", nodeInfo.TalosVersion,
+		"currentImage", nodeInfo.Image)
 	return nil
 }
 
@@ -709,7 +721,7 @@ func (r *TalosUpgradeReconciler) findNextNode(ctx context.Context, talosUpgrade 
 		return strings.Compare(a.Name, b.Name)
 	})
 
-	targetTag := talosUpgrade.Spec.Image.Tag
+	targetVersion := talosUpgrade.Spec.Version
 
 	// Use slices.IndexFunc to find first node needing upgrade
 	idx := slices.IndexFunc(nodes, func(node corev1.Node) bool {
@@ -726,7 +738,7 @@ func (r *TalosUpgradeReconciler) findNextNode(ctx context.Context, talosUpgrade 
 		}
 
 		// Check if needs upgrade
-		return r.nodeNeedsUpgrade(ctx, &node, targetTag)
+		return r.nodeNeedsUpgrade(ctx, &node, targetVersion)
 	})
 
 	if idx == -1 {
@@ -739,22 +751,30 @@ func (r *TalosUpgradeReconciler) findNextNode(ctx context.Context, talosUpgrade 
 	return nodeName, nil
 }
 
-// nodeNeedsUpgrade determines if a given node requires an upgrade based on its current version
-func (r *TalosUpgradeReconciler) nodeNeedsUpgrade(ctx context.Context, node *corev1.Node, targetTag string) bool {
+// nodeNeedsUpgrade determines if a given node requires an upgrade using Talos client
+func (r *TalosUpgradeReconciler) nodeNeedsUpgrade(ctx context.Context, node *corev1.Node, targetVersion string) bool {
 	logger := log.FromContext(ctx)
 
-	currentVersion := getTalosVersion(node.Status.NodeInfo.OSImage)
-	if currentVersion == "" {
-		logger.V(1).Info("Could not determine current Talos version from node", "node", node.Name)
-		return true // If we can't determine version, assume it needs upgrade
+	nodeIP, err := getNodeInternalIP(node)
+	if err != nil {
+		logger.Error(err, "Failed to get node IP, cannot determine upgrade need", "node", node.Name)
+		return false // Cannot proceed without IP
 	}
 
-	needsUpgrade := currentVersion != targetTag
-	logger.V(1).Info("Node upgrade check",
+	nodeInfo, err := r.TalosClient.GetNodeInfo(ctx, nodeIP)
+	if err != nil {
+		logger.Error(err, "Failed to get node info from Talos client, cannot determine upgrade need",
+			"node", node.Name, "nodeIP", nodeIP)
+		return false // Cannot proceed without Talos info
+	}
+
+	needsUpgrade := nodeInfo.TalosVersion != targetVersion
+	logger.V(1).Info("Node upgrade check using Talos client",
 		"node", node.Name,
-		"currentVersion", currentVersion,
-		"targetVersion", targetTag,
-		"needsUpgrade", needsUpgrade)
+		"currentVersion", nodeInfo.TalosVersion,
+		"targetVersion", targetVersion,
+		"needsUpgrade", needsUpgrade,
+		"currentImage", nodeInfo.Image)
 
 	return needsUpgrade
 }
@@ -877,13 +897,9 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 
 	talosctlTag := talosUpgrade.Spec.Talosctl.Image.Tag
 	if talosctlTag == "" {
-		talosctlTag = r.getTalosctlTagFromNode(ctx, nodeName)
-		if talosctlTag == "" {
-			logger.V(1).Info("Could not determine talosctl version from node, using latest", "node", nodeName)
-			talosctlTag = DefaultTalosctlTag
-		} else {
-			logger.V(1).Info("Using talosctl version from node osImage", "node", nodeName, "version", talosctlTag)
-		}
+		// Default to the target version for talosctl
+		talosctlTag = talosUpgrade.Spec.Version
+		logger.V(1).Info("Using target version for talosctl", "node", nodeName, "version", talosctlTag)
 	}
 
 	talosctlImage := talosctlRepo + ":" + talosctlTag
@@ -891,13 +907,9 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *upg
 	// Build target image with schematic from node
 	targetImage, err := r.buildTalosUpgradeImage(ctx, talosUpgrade, nodeName)
 	if err != nil {
-		logger.Error(err, "Failed to build target image, using fallback", "node", nodeName)
-		// Fallback to basic image without schematic
-		repository := talosUpgrade.Spec.Image.Repository
-		if repository == "" {
-			repository = DefaultFactoryRepository
-		}
-		targetImage = fmt.Sprintf("%s:%s", repository, talosUpgrade.Spec.Image.Tag)
+		// This should never happen
+		targetImage = fmt.Sprintf("factory.talos.dev/metal-installer:%s", talosUpgrade.Spec.Version)
+		logger.Error(err, "Using fallback image", "node", nodeName, "fallbackImage", targetImage)
 	}
 
 	args := []string{
@@ -1071,30 +1083,6 @@ func (r *TalosUpgradeReconciler) cleanup(ctx context.Context, talosUpgrade *upgr
 	return ctrl.Result{}, nil
 }
 
-// getTalosctlTagFromNode extracts the Talos version from the node's osImage to use as talosctl tag
-func (r *TalosUpgradeReconciler) getTalosctlTagFromNode(ctx context.Context, nodeName string) string {
-	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	logger := log.FromContext(timeoutCtx)
-
-	node := &corev1.Node{}
-	if err := r.Get(timeoutCtx, types.NamespacedName{Name: nodeName}, node); err != nil {
-		logger.Error(err, "Failed to get node for talosctl version extraction", "node", nodeName)
-		return ""
-	}
-
-	osImage := node.Status.NodeInfo.OSImage
-	version := getTalosVersion(osImage)
-
-	logger.V(1).Info("Extracted version from node osImage",
-		"node", nodeName,
-		"osImage", osImage,
-		"extractedVersion", version)
-
-	return version
-}
-
 // getTargetNodes retrieves nodes matching the TalosUpgrade's node selector
 func (r *TalosUpgradeReconciler) getTargetNodes(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade) ([]corev1.Node, error) {
 	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -1125,36 +1113,44 @@ func (r *TalosUpgradeReconciler) getTargetNodes(ctx context.Context, talosUpgrad
 	return filteredNodes, nil
 }
 
-// buildTalosUpgradeImage constructs the target image with schematic from node
+// buildTalosUpgradeImage constructs the target image using current node image as template
 func (r *TalosUpgradeReconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *upgradev1alpha1.TalosUpgrade, nodeName string) (string, error) {
 	logger := log.FromContext(ctx)
 
-	// Get repository (use default if not specified)
-	repository := talosUpgrade.Spec.Image.Repository
-	if repository == "" {
-		repository = DefaultFactoryRepository
-	}
-
-	// Get the target node to extract schematic
+	// Get the target node
 	node := &corev1.Node{}
 	if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
 		return "", fmt.Errorf("failed to get node %s: %w", nodeName, err)
 	}
 
-	// Extract schematic from node annotation
-	schematic := getTalosSchematic(node)
-	if schematic == "" {
-		logger.Info("No schematic found in node annotations, using repository without schematic", "node", nodeName)
-		return fmt.Sprintf("%s:%s", repository, talosUpgrade.Spec.Image.Tag), nil
+	nodeIP, err := getNodeInternalIP(node)
+	if err != nil {
+		return "", fmt.Errorf("failed to get node IP for %s: %w", nodeName, err)
 	}
 
-	// Construct full image with schematic
-	fullRepository := fmt.Sprintf("%s/%s", repository, schematic)
-	targetImage := fmt.Sprintf("%s:%s", fullRepository, talosUpgrade.Spec.Image.Tag)
+	// Get node info from Talos client
+	nodeInfo, err := r.TalosClient.GetNodeInfo(ctx, nodeIP)
+	if err != nil {
+		return "", fmt.Errorf("failed to get node info from Talos client for %s: %w", nodeName, err)
+	}
 
-	logger.V(1).Info("Built target image",
+	// Use the current image as template and replace just the tag
+	if nodeInfo.Image == "" {
+		return "", fmt.Errorf("no current image found for node %s", nodeName)
+	}
+
+	// Parse the current image to extract repository and schematic
+	parts := strings.Split(nodeInfo.Image, ":")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid current image format for node %s: %s", nodeName, nodeInfo.Image)
+	}
+
+	// Build new image with same repository/schematic but new version
+	targetImage := fmt.Sprintf("%s:%s", parts[0], talosUpgrade.Spec.Version)
+
+	logger.Info("Built target image from current node image",
 		"node", nodeName,
-		"schematic", schematic,
+		"currentImage", nodeInfo.Image,
 		"targetImage", targetImage)
 
 	return targetImage, nil
@@ -1232,32 +1228,6 @@ func getNodeInternalIP(node *corev1.Node) (string, error) {
 	return "", fmt.Errorf("no InternalIP found for node %q", node.Name)
 }
 
-// getTalosSchematic extracts the Talos schematic from node annotations
-func getTalosSchematic(node *corev1.Node) string {
-	if node.Annotations == nil {
-		return ""
-	}
-	return node.Annotations[TalosSchematicAnnotation]
-}
-
-// getTalosVersion extracts the Talos version from the OS image string
-func getTalosVersion(osImage string) string {
-	// osImage format: "Talos (v1.11.1)"
-	// Find the opening parenthesis and extract everything after it
-	_, after, found := strings.Cut(osImage, "(")
-	if !found {
-		return ""
-	}
-
-	// Now extract everything before the closing parenthesis
-	version, _, found := strings.Cut(after, ")")
-	if !found {
-		return ""
-	}
-
-	return strings.TrimSpace(version)
-}
-
 // generateSafeJobName creates a Kubernetes-compliant job name that ensures
 // both Job names and generated Pod names stay under the 63-character limit
 func generateSafeJobName(upgradeName, nodeName string) string {
@@ -1304,6 +1274,7 @@ func (r *TalosUpgradeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	logger.Info("Setting up TalosUpgrade controller with manager")
 
 	r.HealthChecker = &HealthChecker{Client: mgr.GetClient()}
+	r.TalosClient = NewTalosClient(mgr.GetClient(), r.TalosConfigSecret, r.ControllerNamespace)
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&upgradev1alpha1.TalosUpgrade{}).

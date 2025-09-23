@@ -56,9 +56,7 @@ kind: TalosUpgrade
 metadata:
   name: cluster-upgrade
 spec:
-  image:
-    repository: factory.talos.dev/metal-installer  # Optional, default
-    tag: v1.11.0  # Required - target Talos version
+  version: v1.11.0  # Required - target Talos version
 
   upgradePolicy:
     debug: false           # Optional, verbose logging
