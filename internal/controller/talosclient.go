@@ -116,8 +116,11 @@ func (s *TalosClient) GetNodeInfo(ctx context.Context, nodeIP string) (*NodeInfo
 	if err != nil {
 		return nil, fmt.Errorf("failed to get talos client: %w", err)
 	}
-	defer talosClient.Close()
-
+	defer func() {
+		if closeErr := talosClient.Close(); closeErr != nil {
+			logger.V(1).Info("Failed to close Talos client", "error", closeErr, "nodeIP", nodeIP)
+		}
+	}()
 	// Target the specific node using WithNodes
 	nodeCtx := talosclient.WithNodes(ctx, nodeIP)
 
@@ -179,8 +182,11 @@ func (s *TalosClient) GetNodeInfo(ctx context.Context, nodeIP string) (*NodeInfo
 		logger.V(1).Info("Failed to create direct client for COSI, continuing without machine config", "nodeIP", nodeIP)
 		return nodeInfo, nil
 	}
-	defer directClient.Close()
-
+	defer func() {
+		if closeErr := directClient.Close(); closeErr != nil {
+			logger.V(1).Info("Failed to close direct Talos client", "error", closeErr, "nodeIP", nodeIP)
+		}
+	}()
 	// Get machine config using direct connection
 	r, err := directClient.COSI.Get(ctx, resource.NewMetadata("config", "MachineConfigs.config.talos.dev", "v1alpha1", resource.VersionUndefined))
 	if err != nil {
