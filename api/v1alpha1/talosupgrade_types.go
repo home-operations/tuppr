@@ -5,18 +5,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// TalosImageSpec defines container image details
-type TalosImageSpec struct {
-	// Repository is the container image repository (without schematic ID)
-	// +kubebuilder:default="factory.talos.dev/metal-installer"
-	// +optional
-	Repository string `json:"repository,omitempty"`
-
-	// Tag is the container image tag
-	// +kubebuilder:validation:Required
-	Tag string `json:"tag"`
-}
-
 // TalosUpgradePolicy defines upgrade behavior options
 type TalosUpgradePolicy struct {
 	// Debug enables debug mode for the upgrade
@@ -65,7 +53,7 @@ type TalosctlImageSpec struct {
 	Repository string `json:"repository,omitempty"`
 
 	// Tag is the talosctl container image tag
-	// If not specified, defaults to the osImage version from the target node
+	// If not specified, defaults to the target version
 	// +optional
 	Tag string `json:"tag,omitempty"`
 
@@ -85,9 +73,10 @@ type TalosctlSpec struct {
 
 // TalosUpgradeSpec defines the desired state of TalosUpgrade
 type TalosUpgradeSpec struct {
-	// Image is the Talos installer image to upgrade to
+	// Version is the target Talos version to upgrade to (e.g., "v1.11.0")
 	// +kubebuilder:validation:Required
-	Image TalosImageSpec `json:"image"`
+	// +kubebuilder:validation:Pattern=`^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\-\.]+)?$`
+	Version string `json:"version"`
 
 	// UpgradePolicy configures upgrade behavior
 	// +optional
@@ -132,7 +121,7 @@ type HealthCheckExpr struct {
 
 	// Timeout for this health check
 	// +kubebuilder:validation:Type=string
-	// +kubebuilder:validation:Pattern="^([0-9]+[smh])+$"
+	// +kubebuilder:validation:Pattern=`^([0-9]+[smh])+$`
 	// +kubebuilder:validation:MinLength=2
 	// +optional
 	Timeout *metav1.Duration `json:"timeout,omitempty"`

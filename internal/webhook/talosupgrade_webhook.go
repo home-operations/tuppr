@@ -3,6 +3,7 @@ package webhook
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"slices"
 
 	corev1 "k8s.io/api/core/v1"
@@ -36,7 +37,7 @@ var _ webhook.CustomValidator = &TalosUpgradeValidator{}
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type
 func (v *TalosUpgradeValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	talos := obj.(*upgradev1alpha1.TalosUpgrade)
-	taloslog.Info("validate create", "name", talos.Name, "talosConfigSecret", v.TalosConfigSecret)
+	taloslog.Info("validate create", "name", talos.Name, "version", talos.Spec.Version, "talosConfigSecret", v.TalosConfigSecret)
 
 	return v.validateTalos(ctx, talos)
 }
@@ -45,13 +46,12 @@ func (v *TalosUpgradeValidator) ValidateCreate(ctx context.Context, obj runtime.
 func (v *TalosUpgradeValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
 	talos := newObj.(*upgradev1alpha1.TalosUpgrade)
 	oldTalos := oldObj.(*upgradev1alpha1.TalosUpgrade)
-	taloslog.Info("validate update", "name", talos.Name, "talosConfigSecret", v.TalosConfigSecret)
+	taloslog.Info("validate update", "name", talos.Name, "version", talos.Spec.Version, "talosConfigSecret", v.TalosConfigSecret)
 
 	// Prevent updates to certain fields if upgrade is in progress
 	if oldTalos.Status.Phase == "InProgress" {
-		if talos.Spec.Image.Repository != oldTalos.Spec.Image.Repository ||
-			talos.Spec.Image.Tag != oldTalos.Spec.Image.Tag {
-			return nil, fmt.Errorf("cannot update spec.image while upgrade is in progress (current phase: %s)", oldTalos.Status.Phase)
+		if talos.Spec.Version != oldTalos.Spec.Version {
+			return nil, fmt.Errorf("cannot update spec.version while upgrade is in progress (current phase: %s)", oldTalos.Status.Phase)
 		}
 
 		// Check if node label selector has changed
@@ -83,6 +83,7 @@ func (v *TalosUpgradeValidator) validateTalos(ctx context.Context, talos *upgrad
 	taloslog.Info("validating talos plan",
 		"name", talos.Name,
 		"namespace", talos.Namespace,
+		"version", talos.Spec.Version,
 		"secretName", v.TalosConfigSecret)
 
 	// Validate that the Talos config secret exists
@@ -129,14 +130,24 @@ func (v *TalosUpgradeValidator) validateTalos(ctx context.Context, talos *upgrad
 	// Add warnings for risky configurations
 	warnings = append(warnings, v.generateWarnings(talos)...)
 
-	taloslog.Info("talos plan validation successful", "name", talos.Name)
+	taloslog.Info("talos plan validation successful", "name", talos.Name, "version", talos.Spec.Version)
 	return warnings, nil
 }
 
 func (v *TalosUpgradeValidator) validateTalosSpec(talos *upgradev1alpha1.TalosUpgrade) error {
-	// Validate tag is not empty (repository is optional with default)
-	if talos.Spec.Image.Tag == "" {
-		return fmt.Errorf("spec.image.tag cannot be empty")
+	// Validate version is not empty and follows semantic versioning pattern
+	if talos.Spec.Version == "" {
+		return fmt.Errorf("spec.version cannot be empty")
+	}
+
+	// Validate version format (should match the kubebuilder validation pattern)
+	versionPattern := `^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\-\.]+)?$`
+	matched, err := regexp.MatchString(versionPattern, talos.Spec.Version)
+	if err != nil {
+		return fmt.Errorf("error validating version pattern: %w", err)
+	}
+	if !matched {
+		return fmt.Errorf("spec.version '%s' does not match required pattern. Must be in format 'vX.Y.Z' or 'vX.Y.Z-suffix' (e.g., 'v1.11.0', 'v1.11.0-alpha.1')", talos.Spec.Version)
 	}
 
 	// Validate node label selector
@@ -325,6 +336,16 @@ func (v *TalosUpgradeValidator) generateWarnings(talos *upgradev1alpha1.TalosUpg
 		if check.Timeout == nil {
 			warnings = append(warnings, fmt.Sprintf("Health check %d has no timeout specified, will use default 10 minutes", i))
 		}
+	}
+
+	// Warn about pre-release versions
+	if matched, _ := regexp.MatchString(`-[a-zA-Z]`, talos.Spec.Version); matched {
+		warnings = append(warnings, fmt.Sprintf("Target version '%s' appears to be a pre-release. Ensure this version is stable and tested in your environment.", talos.Spec.Version))
+	}
+
+	// Warn if talosctl version is not specified (will default to target version)
+	if talos.Spec.Talosctl.Image.Tag == "" {
+		warnings = append(warnings, fmt.Sprintf("No talosctl version specified, will default to target version '%s'. Ensure talosctl version compatibility with your cluster.", talos.Spec.Version))
 	}
 
 	return warnings
