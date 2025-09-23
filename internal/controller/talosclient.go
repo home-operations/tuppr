@@ -58,38 +58,21 @@ func NewTalosClient(k8sClient ctrlclient.Client, talosConfigSecret, controllerNa
 }
 
 func (s *TalosClient) GetClient(ctx context.Context) (*talosclient.Client, error) {
-	logger := log.FromContext(ctx)
-	logger.V(1).Info("Creating fresh Talos client",
-		"secret", s.talosConfigSecret,
-		"namespace", s.controllerNamespace)
-
 	configData, err := s.loadTalosConfig(ctx)
 	if err != nil {
-		logger.Error(err, "Failed to load talosconfig")
 		return nil, fmt.Errorf("failed to load talosconfig: %w", err)
 	}
 
-	logger.V(2).Info("Talosconfig loaded successfully", "configSize", len(configData))
-
 	talosClient, err := s.createTalosClient(ctx, configData)
 	if err != nil {
-		logger.Error(err, "Failed to create talos client")
 		return nil, fmt.Errorf("failed to create talos client: %w", err)
 	}
 
-	logger.V(1).Info("Successfully created fresh Talos client",
-		"secret", s.talosConfigSecret,
-		"client", fmt.Sprintf("%p", talosClient))
 	return talosClient, nil
 }
 
 // loadTalosConfig loads the talosconfig from the Kubernetes secret
 func (s *TalosClient) loadTalosConfig(ctx context.Context) ([]byte, error) {
-	logger := log.FromContext(ctx)
-	logger.V(2).Info("Loading talosconfig from secret",
-		"secret", s.talosConfigSecret,
-		"namespace", s.controllerNamespace)
-
 	secret := &corev1.Secret{}
 	secretKey := types.NamespacedName{
 		Name:      s.talosConfigSecret,
@@ -97,63 +80,28 @@ func (s *TalosClient) loadTalosConfig(ctx context.Context) ([]byte, error) {
 	}
 
 	if err := s.k8sClient.Get(ctx, secretKey, secret); err != nil {
-		logger.Error(err, "Failed to get talosconfig secret",
-			"secretName", s.talosConfigSecret,
-			"namespace", s.controllerNamespace)
 		return nil, fmt.Errorf("failed to get talosconfig secret %s: %w", s.talosConfigSecret, err)
 	}
 
-	logger.V(2).Info("Secret retrieved successfully",
-		"secret", s.talosConfigSecret,
-		"dataKeys", fmt.Sprintf("%v", getMapKeys(secret.Data)))
-
 	configData, exists := secret.Data[TalosConfigSecretKey]
 	if !exists {
-		logger.Error(nil, "Config key not found in secret",
-			"secret", s.talosConfigSecret,
-			"expectedKey", TalosConfigSecretKey,
-			"availableKeys", fmt.Sprintf("%v", getMapKeys(secret.Data)))
 		return nil, fmt.Errorf("config key not found in secret %s", s.talosConfigSecret)
 	}
-
-	logger.V(2).Info("Talosconfig data extracted",
-		"secret", s.talosConfigSecret,
-		"configSize", len(configData))
 
 	return configData, nil
 }
 
-// Helper function to get map keys for logging
-func getMapKeys(m map[string][]byte) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
 // createTalosClient creates a new Talos client from config data
 func (s *TalosClient) createTalosClient(ctx context.Context, configData []byte) (*talosclient.Client, error) {
-	logger := log.FromContext(ctx)
-	logger.V(2).Info("Parsing talosconfig", "configSize", len(configData))
-
 	talosConfig, err := clientconfig.FromBytes(configData)
 	if err != nil {
-		logger.Error(err, "Failed to parse talosconfig")
 		return nil, fmt.Errorf("failed to parse talosconfig: %w", err)
 	}
 
-	logger.V(2).Info("Talosconfig parsed successfully",
-		"context", talosConfig.Context,
-		"endpoints", fmt.Sprintf("%v", talosConfig.Contexts[talosConfig.Context].Endpoints))
-
 	talosClient, err := talosclient.New(ctx, talosclient.WithConfig(talosConfig))
 	if err != nil {
-		logger.Error(err, "Failed to create talos client")
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
-
-	logger.V(2).Info("Talos client created successfully", "client", fmt.Sprintf("%p", talosClient))
 
 	return talosClient, nil
 }
@@ -163,111 +111,88 @@ func (s *TalosClient) GetNodeInfo(ctx context.Context, nodeIP string) (*NodeInfo
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Getting node info", "nodeIP", nodeIP)
 
-	// Create a node-specific client context
+	// Use the existing client with proper node targeting
+	talosClient, err := s.GetClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get talos client: %w", err)
+	}
+	defer talosClient.Close()
+
+	// Target the specific node using WithNodes
 	nodeCtx := talosclient.WithNodes(ctx, nodeIP)
-	logger.V(2).Info("Created node context", "nodeIP", nodeIP)
-
-	// Load config and create client
-	configData, err := s.loadTalosConfig(ctx)
-	if err != nil {
-		logger.Error(err, "Failed to load talosconfig for node", "nodeIP", nodeIP)
-		return nil, fmt.Errorf("failed to load talosconfig: %w", err)
-	}
-
-	talosClient, err := s.createTalosClient(ctx, configData)
-	if err != nil {
-		logger.Error(err, "Failed to create talos client for node", "nodeIP", nodeIP)
-		return nil, fmt.Errorf("failed to create talos client: %w", err)
-	}
-	defer func() {
-		if closeErr := talosClient.Close(); closeErr != nil {
-			logger.V(1).Info("Failed to close Talos client", "error", closeErr, "nodeIP", nodeIP)
-		} else {
-			logger.V(2).Info("Talos client closed successfully", "nodeIP", nodeIP)
-		}
-	}()
-
-	logger.V(2).Info("Calling talos Version API", "nodeIP", nodeIP)
 
 	// Get version info
 	resp, err := talosClient.Version(nodeCtx)
 	if err != nil {
-		logger.Error(err, "Failed to get version from node", "nodeIP", nodeIP)
 		return nil, fmt.Errorf("failed to get node info from %s: %w", nodeIP, err)
 	}
 
-	logger.V(2).Info("Version API response received",
-		"nodeIP", nodeIP,
-		"messageCount", len(resp.Messages))
-
 	if len(resp.Messages) == 0 {
-		logger.Error(nil, "No response messages from node", "nodeIP", nodeIP)
 		return nil, fmt.Errorf("no response from node %s", nodeIP)
 	}
 
 	msg := resp.Messages[0]
 	version := msg.GetVersion()
-
 	if version == nil {
-		logger.Error(nil, "Version is nil in response", "nodeIP", nodeIP)
 		return nil, fmt.Errorf("version is nil for node %s", nodeIP)
 	}
-
-	logger.V(2).Info("Version info extracted",
-		"nodeIP", nodeIP,
-		"talosVersion", version.GetTag(),
-		"platform", func() string {
-			if p := msg.GetPlatform(); p != nil {
-				return p.GetName()
-			}
-			return "unknown"
-		}())
 
 	nodeInfo := &NodeInfo{
 		NodeIP:       nodeIP,
 		TalosVersion: version.GetTag(),
 	}
 
-	// Safely handle platform info
+	// Handle platform info
 	if platform := msg.GetPlatform(); platform != nil {
 		nodeInfo.Platform = platform.GetName()
-		logger.V(2).Info("Platform info set", "nodeIP", nodeIP, "platform", platform.GetName())
-	} else {
-		logger.V(2).Info("No platform info available", "nodeIP", nodeIP)
 	}
 
-	// Now get the machine config to extract image and kubelet version
-	logger.V(2).Info("Fetching machine config from node", "nodeIP", nodeIP)
-
-	timeoutCtx, cancel := context.WithTimeout(nodeCtx, DefaultTimeout)
-	defer cancel()
-
-	r, err := talosClient.COSI.Get(timeoutCtx, resource.NewMetadata("config", "MachineConfigs.config.talos.dev", "v1alpha1", resource.VersionUndefined))
+	// For COSI operations, we need a direct connection (COSI doesn't support proxying)
+	// Only create direct connection if we need machine config
+	configData, err := s.loadTalosConfig(ctx)
 	if err != nil {
-		logger.Error(err, "Failed to get machine config from node", "nodeIP", nodeIP)
-		logger.V(1).Info("Continuing without machine config", "nodeIP", nodeIP)
+		logger.V(1).Info("Failed to load config for direct connection, continuing without machine config", "nodeIP", nodeIP)
 		return nodeInfo, nil
 	}
 
-	logger.V(2).Info("Machine config resource retrieved",
-		"nodeIP", nodeIP,
-		"resourceType", fmt.Sprintf("%T", r))
+	talosConfig, err := clientconfig.FromBytes(configData)
+	if err != nil {
+		logger.V(1).Info("Failed to parse config for direct connection, continuing without machine config", "nodeIP", nodeIP)
+		return nodeInfo, nil
+	}
+
+	// Create direct connection for COSI
+	originalContext := talosConfig.Contexts[talosConfig.Context]
+	directConfig := &clientconfig.Config{
+		Context:  talosConfig.Context,
+		Contexts: make(map[string]*clientconfig.Context),
+	}
+	directConfig.Contexts[directConfig.Context] = &clientconfig.Context{
+		Endpoints: []string{nodeIP},
+		CA:        originalContext.CA,
+		Crt:       originalContext.Crt,
+		Key:       originalContext.Key,
+	}
+
+	directClient, err := talosclient.New(ctx, talosclient.WithConfig(directConfig))
+	if err != nil {
+		logger.V(1).Info("Failed to create direct client for COSI, continuing without machine config", "nodeIP", nodeIP)
+		return nodeInfo, nil
+	}
+	defer directClient.Close()
+
+	// Get machine config using direct connection
+	r, err := directClient.COSI.Get(ctx, resource.NewMetadata("config", "MachineConfigs.config.talos.dev", "v1alpha1", resource.VersionUndefined))
+	if err != nil {
+		logger.V(1).Info("Failed to get machine config, continuing without it", "nodeIP", nodeIP, "error", err)
+		return nodeInfo, nil
+	}
 
 	mc, ok := r.(*config.MachineConfig)
 	if !ok {
-		logger.Error(nil, "Unexpected resource type for machine config",
-			"nodeIP", nodeIP,
-			"expectedType", "*config.MachineConfig",
-			"actualType", fmt.Sprintf("%T", r))
+		logger.V(1).Info("Unexpected resource type for machine config", "nodeIP", nodeIP)
 		return nodeInfo, nil
 	}
-
-	logger.V(2).Info("Machine config cast successful", "nodeIP", nodeIP)
-
-	// Debug: log the entire machine config structure
-	logger.V(3).Info("Machine config details",
-		"nodeIP", nodeIP,
-		"machineConfig", fmt.Sprintf("%+v", mc.Config().Machine().Install()))
 
 	// Extract install image
 	if mcImage := mc.Config().Machine().Install().Image(); mcImage != "" {
@@ -275,49 +200,16 @@ func (s *TalosClient) GetNodeInfo(ctx context.Context, nodeIP string) (*NodeInfo
 		logger.V(1).Info("Install image found", "nodeIP", nodeIP, "image", mcImage)
 	} else {
 		logger.V(1).Info("Install image is empty", "nodeIP", nodeIP)
-
-		// Try to get the image from the machine config's installer disk image
-		if diskImage := mc.Config().Machine().Install().Disk(); diskImage != "" {
-			logger.V(2).Info("Found disk image instead of install image", "nodeIP", nodeIP, "disk", diskImage)
-		} else {
-			logger.V(2).Info("Disk image is also empty", "nodeIP", nodeIP)
-		}
-
-		// Alternative: try to get from the extensions or system extensions
-		if extensions := mc.Config().Machine().Install().Extensions(); len(extensions) > 0 {
-			logger.V(2).Info("Found extensions", "nodeIP", nodeIP, "extensionCount", len(extensions))
-			for i, ext := range extensions {
-				logger.V(3).Info("Extension details", "nodeIP", nodeIP, "index", i, "extension", ext)
-			}
-		} else {
-			logger.V(2).Info("No extensions found", "nodeIP", nodeIP)
-		}
 	}
 
 	// Get Kubernetes version from kubelet image
-	logger.V(2).Info("Extracting kubelet image", "nodeIP", nodeIP)
-
 	if kubeletImage := mc.Config().Machine().Kubelet().Image(); kubeletImage != "" {
-		logger.V(2).Info("Kubelet image found", "nodeIP", nodeIP, "kubeletImage", kubeletImage)
-
 		if kubeletRef, err := parseImageReference(kubeletImage); err == nil {
 			nodeInfo.KubernetesVersion = kubeletRef.Tag()
-			logger.V(2).Info("Kubernetes version extracted from kubelet image",
-				"nodeIP", nodeIP,
-				"kubernetesVersion", kubeletRef.Tag())
-		} else {
-			logger.Error(err, "Failed to parse kubelet image reference",
-				"nodeIP", nodeIP,
-				"kubeletImage", kubeletImage)
 		}
-	} else {
-		logger.V(1).Info("Kubelet image is empty", "nodeIP", nodeIP)
 	}
 
-	logger.V(1).Info("Node info collection complete",
-		"nodeIP", nodeIP,
-		"nodeInfo", nodeInfo.String())
-
+	logger.V(1).Info("Node info collection complete", "nodeInfo", nodeInfo.String())
 	return nodeInfo, nil
 }
 
@@ -336,15 +228,6 @@ func parseImageReference(image string) (reference.NamedTagged, error) {
 
 // IsAvailable checks if the Talos client service is available
 func (s *TalosClient) IsAvailable(ctx context.Context) bool {
-	logger := log.FromContext(ctx)
-	logger.V(2).Info("Checking if Talos client is available")
-
 	_, err := s.GetClient(ctx)
-	isAvailable := err == nil
-
-	logger.V(2).Info("Talos client availability check complete",
-		"available", isAvailable,
-		"error", err)
-
-	return isAvailable
+	return err == nil
 }
