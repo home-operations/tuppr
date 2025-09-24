@@ -1,13 +1,13 @@
 # tuppr - Talos Linux Upgrade Controller
 
-A Kubernetes controller for managing automated upgrades of Talos Linux and Kubernetes verisons.
+A Kubernetes controller for managing automated upgrades of Talos Linux and Kubernetes versions.
 
 ## ✨ Features
 
 ### Core Capabilities
 
 - 🚀 **Automated Talos node upgrades** with intelligent orchestration
-- 🎯 **Kubernetes upgrades** - upgrade Kubernetes to newer versions *(coming soon)*
+- 🎯 **Kubernetes upgrades** - upgrade Kubernetes to newer versions
 - 🔒 **Safe upgrade execution** - upgrades always run from healthy nodes (never self-upgrade)
 - 📊 **Built-in health checks** - CEL-based expressions for custom cluster validation
 - 🎛️ **Flexible node targeting** with advanced label selectors
@@ -47,6 +47,8 @@ helm install tuppr oci://ghcr.io/home-operations/charts/tuppr \
 ```
 
 ### Basic Usage
+
+#### Talos Node Upgrades
 
 Create a `TalosUpgrade` resource:
 
@@ -89,11 +91,40 @@ spec:
       pullPolicy: IfNotPresent                 # Optional, default
 ```
 
+#### Kubernetes Upgrades
+
+Create a `KubernetesUpgrade` resource:
+
+```yaml
+apiVersion: tuppr.home-operations.com/v1alpha1
+kind: KubernetesUpgrade
+metadata:
+  name: kubernetes
+spec:
+  kubernetes:
+    # renovate: datasource=docker depName=ghcr.io/siderolabs/kubelet
+    version: v1.34.0  # Required - target Kubernetes version
+
+  # Custom health checks (optional)
+  healthChecks:
+    - apiVersion: v1
+      kind: Node
+      expr: status.conditions.exists(c, c.type == "Ready" && c.status == "True")
+      timeout: 10m
+
+  # Talosctl configuration (optional)
+  talosctl:
+    image:
+      repository: ghcr.io/siderolabs/talosctl  # Optional, default
+      tag: v1.11.0                             # Optional, auto-detected
+      pullPolicy: IfNotPresent                 # Optional, default
+```
+
 ## 🎯 Advanced Configuration
 
 ### Health Checks
 
-Define custom health checks using [CEL expressions](https://cel.dev/). These health checks are evaluated before each node upgrade and ran concurrently.
+Define custom health checks using [CEL expressions](https://cel.dev/). These health checks are evaluated before each upgrade and run concurrently.
 
 ```yaml
 healthChecks:
@@ -119,7 +150,7 @@ healthChecks:
     expr: status.ceph.health in ["HEALTH_OK"]
 ```
 
-### Node Targeting
+### Node Targeting (TalosUpgrade only)
 
 Precise control over which nodes to upgrade:
 
@@ -145,7 +176,7 @@ nodeSelector:
       operator: DoesNotExist
 ```
 
-### Upgrade Policies
+### Upgrade Policies (TalosUpgrade only)
 
 Fine-tune upgrade behavior:
 
@@ -166,36 +197,47 @@ policy:
 
 ## 🔧 Operations
 
-### Suspending Upgrades
-
-Suspending upgrades can be useful if you want to upgrade Talos from the command-line and not have the controller interfere with your changes.
-
-```bash
-# Suspend with "true" value
-kubectl annotate talosupgrade cluster-upgrade tuppr.home-operations.com/suspend="true"
-
-# Remove the suspend annotation to resume
-kubectl annotate talosupgrade cluster-upgrade tuppr.home-operations.com/suspend-
-```
-
 ### Monitoring Upgrades
 
 ```bash
-# Watch upgrade progress
+# Watch Talos upgrade progress
 kubectl get talosupgrade -w
+
+# Watch Kubernetes upgrade progress
+kubectl get kubernetesupgrade -w
 
 # Check detailed status
 kubectl describe talosupgrade cluster-upgrade
+kubectl describe kubernetesupgrade kubernetes
 
 # View upgrade logs
 kubectl logs -f deployment/tuppr -n system-upgrade
 ```
 
+### Suspending Upgrades
+
+Suspending upgrades can be useful if you want to upgrade manually and not have the controller interfere.
+
+```bash
+# Suspend Talos upgrade
+kubectl annotate talosupgrade cluster-upgrade tuppr.home-operations.com/suspend="true"
+
+# Suspend Kubernetes upgrade
+kubectl annotate kubernetesupgrade kubernetes tuppr.home-operations.com/suspend="true"
+
+# Remove the suspend annotation to resume
+kubectl annotate talosupgrade cluster-upgrade tuppr.home-operations.com/suspend-
+kubectl annotate kubernetesupgrade kubernetes tuppr.home-operations.com/suspend-
+```
+
 ### Troubleshooting
 
 ```bash
-# Reset failed upgrade
+# Reset failed Talos upgrade
 kubectl annotate talosupgrade cluster-upgrade tuppr.home-operations.com/reset="$(date)"
+
+# Reset failed Kubernetes upgrade
+kubectl annotate kubernetesupgrade kubernetes tuppr.home-operations.com/reset="$(date)"
 
 # Check job logs
 kubectl logs job/tuppr-xyz -n system-upgrade
@@ -212,11 +254,25 @@ kubectl scale deployment tuppr --replicas=0 -n system-upgrade
 
 # Emergency cleanup
 kubectl delete talosupgrade --all
+kubectl delete kubernetesupgrade --all
 kubectl delete jobs -l app.kubernetes.io/name=talos-upgrade -n system-upgrade
+kubectl delete jobs -l app.kubernetes.io/name=kubernetes-upgrade -n system-upgrade
 
 # Resume operations
 kubectl scale deployment tuppr --replicas=1 -n system-upgrade
 ```
+
+## 📋 Upgrade Comparison
+
+| Feature | TalosUpgrade | KubernetesUpgrade |
+|---------|--------------|-------------------|
+| **Scope** | Individual Talos nodes | Entire Kubernetes cluster |
+| **Execution** | Sequential node-by-node | Single controller node |
+| **Node Targeting** | ✅ Flexible selectors | ❌ Auto-selects controller |
+| **Reboot Required** | ✅ Yes | ❌ No |
+| **Queue Management** | ✅ Yes | ❌ No |
+| **Health Checks** | ✅ Before each node | ✅ Before upgrade |
+| **Handling Failures** | ❌ Manual | ❌ Manual |
 
 ## 🤝 Contributing
 
