@@ -132,6 +132,16 @@ func (r *KubernetesUpgradeReconciler) processKubernetesUpgrade(ctx context.Conte
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
 
+	// Check for active job FIRST - if there's a job running, handle it regardless of version
+	if activeJob, err := r.findActiveKubernetesJob(ctx, kubernetesUpgrade); err != nil {
+		logger.Error(err, "Failed to find active jobs")
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	} else if activeJob != nil {
+		logger.V(1).Info("Found active job, handling its status", "job", activeJob.Name)
+		return r.handleKubernetesJobStatus(ctx, kubernetesUpgrade, activeJob)
+	}
+
+	// Only check version after confirming no jobs are running
 	// Check if upgrade is needed by comparing current vs target version
 	currentVersion, err := r.getCurrentKubernetesVersion(ctx)
 	if err != nil {
@@ -163,14 +173,6 @@ func (r *KubernetesUpgradeReconciler) processKubernetesUpgrade(ctx context.Conte
 	}
 
 	logger.Info("Kubernetes upgrade needed", "current", currentVersion, "target", targetVersion)
-
-	// Check for active job
-	if activeJob, err := r.findActiveKubernetesJob(ctx, kubernetesUpgrade); err != nil {
-		logger.Error(err, "Failed to find active jobs")
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
-	} else if activeJob != nil {
-		return r.handleKubernetesJobStatus(ctx, kubernetesUpgrade, activeJob)
-	}
 
 	// Perform health checks before starting upgrade
 	if err := r.HealthChecker.CheckHealth(ctx, kubernetesUpgrade.Spec.HealthChecks); err != nil {
