@@ -247,11 +247,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.KubernetesUpgradeReconciler{
+	if err = (&tupprwebhook.KubernetesUpgradeValidator{
 		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "KubernetesUpgrade")
+	}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "KubernetesUpgrade")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
