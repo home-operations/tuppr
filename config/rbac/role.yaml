@@ -7,7 +7,15 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
   - nodes
+  - pods
   - secrets
   verbs:
   - get
@@ -28,6 +36,7 @@ rules:
 - apiGroups:
   - tuppr.home-operations.com
   resources:
+  - kubernetesupgrades
   - talosupgrades
   verbs:
   - create
@@ -40,12 +49,14 @@ rules:
 - apiGroups:
   - tuppr.home-operations.com
   resources:
+  - kubernetesupgrades/finalizers
   - talosupgrades/finalizers
   verbs:
   - update
 - apiGroups:
   - tuppr.home-operations.com
   resources:
+  - kubernetesupgrades/status
   - talosupgrades/status
   verbs:
   - get

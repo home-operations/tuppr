@@ -5,6 +5,7 @@
 resources:
   - bases/upgrade.home-operations.com_talosupgrades.yaml
   - bases/upgrade.home-operations.com_kubernetesplans.yaml
+- bases/tuppr.home-operations.com_kubernetesupgrades.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

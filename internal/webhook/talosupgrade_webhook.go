@@ -18,7 +18,8 @@ import (
 
 	talosclientconfig "github.com/siderolabs/talos/pkg/machinery/client/config"
 
-	upgradev1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/constants"
 )
 
 // log is for logging in this package.
@@ -36,7 +37,7 @@ var _ webhook.CustomValidator = &TalosUpgradeValidator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type
 func (v *TalosUpgradeValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	talos := obj.(*upgradev1alpha1.TalosUpgrade)
+	talos := obj.(*tupprv1alpha1.TalosUpgrade)
 	taloslog.Info("validate create", "name", talos.Name, "version", talos.Spec.Talos.Version, "talosConfigSecret", v.TalosConfigSecret)
 
 	return v.validateTalos(ctx, talos)
@@ -44,12 +45,12 @@ func (v *TalosUpgradeValidator) ValidateCreate(ctx context.Context, obj runtime.
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type
 func (v *TalosUpgradeValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	talos := newObj.(*upgradev1alpha1.TalosUpgrade)
-	oldTalos := oldObj.(*upgradev1alpha1.TalosUpgrade)
+	talos := newObj.(*tupprv1alpha1.TalosUpgrade)
+	oldTalos := oldObj.(*tupprv1alpha1.TalosUpgrade)
 	taloslog.Info("validate update", "name", talos.Name, "version", talos.Spec.Talos.Version, "talosConfigSecret", v.TalosConfigSecret)
 
 	// Prevent updates to certain fields if upgrade is in progress
-	if oldTalos.Status.Phase == "InProgress" {
+	if oldTalos.Status.Phase == constants.PhaseInProgress {
 		if talos.Spec.Talos.Version != oldTalos.Spec.Talos.Version {
 			return nil, fmt.Errorf("cannot update spec.version while upgrade is in progress (current phase: %s)", oldTalos.Status.Phase)
 		}
@@ -65,10 +66,10 @@ func (v *TalosUpgradeValidator) ValidateUpdate(ctx context.Context, oldObj, newO
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type
 func (v *TalosUpgradeValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	talos := obj.(*upgradev1alpha1.TalosUpgrade)
+	talos := obj.(*tupprv1alpha1.TalosUpgrade)
 
 	// Warn about deleting an in-progress upgrade
-	if talos.Status.Phase == "InProgress" {
+	if talos.Status.Phase == constants.PhaseInProgress {
 		return []string{
 			fmt.Sprintf("Deleting TalosUpgrade '%s' while upgrade is in progress. This may leave nodes in an inconsistent state.", talos.Name),
 		}, nil
@@ -77,7 +78,7 @@ func (v *TalosUpgradeValidator) ValidateDelete(ctx context.Context, obj runtime.
 	return nil, nil
 }
 
-func (v *TalosUpgradeValidator) validateTalos(ctx context.Context, talos *upgradev1alpha1.TalosUpgrade) (admission.Warnings, error) {
+func (v *TalosUpgradeValidator) validateTalos(ctx context.Context, talos *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
 	var warnings admission.Warnings
 
 	taloslog.Info("validating talos plan",
@@ -134,7 +135,7 @@ func (v *TalosUpgradeValidator) validateTalos(ctx context.Context, talos *upgrad
 	return warnings, nil
 }
 
-func (v *TalosUpgradeValidator) validateTalosSpec(talos *upgradev1alpha1.TalosUpgrade) error {
+func (v *TalosUpgradeValidator) validateTalosSpec(talos *tupprv1alpha1.TalosUpgrade) error {
 	// Validate version is not empty and follows semantic versioning pattern
 	if talos.Spec.Talos.Version == "" {
 		return fmt.Errorf("spec.version cannot be empty")
@@ -199,7 +200,7 @@ func (v *TalosUpgradeValidator) validateTalosSpec(talos *upgradev1alpha1.TalosUp
 	return nil
 }
 
-func (v *TalosUpgradeValidator) validateNodeSelector(selector upgradev1alpha1.NodeSelectorSpec) error {
+func (v *TalosUpgradeValidator) validateNodeSelector(selector tupprv1alpha1.NodeSelectorSpec) error {
 	// Validate matchLabels
 	for key, value := range selector.MatchLabels {
 		if key == "" {
@@ -244,7 +245,7 @@ func (v *TalosUpgradeValidator) validateNodeSelector(selector upgradev1alpha1.No
 	return nil
 }
 
-func (v *TalosUpgradeValidator) validateHealthCheck(check upgradev1alpha1.HealthCheckSpec) error {
+func (v *TalosUpgradeValidator) validateHealthCheck(check tupprv1alpha1.HealthCheckSpec) error {
 	if check.APIVersion == "" {
 		return fmt.Errorf("apiVersion cannot be empty")
 	}
@@ -263,7 +264,7 @@ func (v *TalosUpgradeValidator) validateHealthCheck(check upgradev1alpha1.Health
 	return nil
 }
 
-func nodeSelectorsEqual(a, b upgradev1alpha1.NodeSelectorSpec) bool {
+func nodeSelectorsEqual(a, b tupprv1alpha1.NodeSelectorSpec) bool {
 	// Compare matchLabels
 	if len(a.MatchLabels) != len(b.MatchLabels) {
 		return false
@@ -303,7 +304,7 @@ func nodeSelectorsEqual(a, b upgradev1alpha1.NodeSelectorSpec) bool {
 	return slices.Equal(aStr, bStr)
 }
 
-func (v *TalosUpgradeValidator) generateWarnings(talos *upgradev1alpha1.TalosUpgrade) []string {
+func (v *TalosUpgradeValidator) generateWarnings(talos *tupprv1alpha1.TalosUpgrade) []string {
 	var warnings []string
 
 	// Warn about force upgrades
@@ -353,7 +354,7 @@ func (v *TalosUpgradeValidator) generateWarnings(talos *upgradev1alpha1.TalosUpg
 
 func (v *TalosUpgradeValidator) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
-		For(&upgradev1alpha1.TalosUpgrade{}).
+		For(&tupprv1alpha1.TalosUpgrade{}).
 		WithValidator(v).
 		Complete()
 }

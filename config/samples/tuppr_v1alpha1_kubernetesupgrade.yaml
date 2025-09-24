@@ -1,0 +1,9 @@
+apiVersion: tuppr.home-operations.com/v1alpha1
+kind: KubernetesUpgrade
+metadata:
+  labels:
+    app.kubernetes.io/name: tuppr
+    app.kubernetes.io/managed-by: kustomize
+  name: kubernetesupgrade-sample
+spec:
+  # TODO(user): Add fields here

@@ -3,4 +3,5 @@
 resources:
   - upgrade_v1alpha1_talos.yaml
   - upgrade_v1alpha1_kubernetes.yaml
+- tuppr_v1alpha1_kubernetesupgrade.yaml
   # +kubebuilder:scaffold:manifestskustomizesamples
