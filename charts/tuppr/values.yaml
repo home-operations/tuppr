@@ -17,21 +17,19 @@ image:
   # Overrides the image tag whose default is the chart appVersion
   tag: ""
 
-# Talos configuration
-talos:
-  # Talos ServiceAccount for node access
-  # This creates a Talos CRD ServiceAccount for authenticating with nodes
-  serviceAccount:
-    # Create Talos ServiceAccount for node operations
-    create: true
-    # Name of the Talos ServiceAccount (also used as the secret name for talosconfig)
-    # If empty, will use the release fullname
-    name: ""
-    # Annotations for the Talos ServiceAccount
-    annotations: {}
-    # Roles for Talos ServiceAccount - required for node operations
-    roles:
-      - "os:admin" # Required for node upgrades and operations
+# Talos ServiceAccount for node access
+# This creates a Talos CRD ServiceAccount for authenticating with nodes
+talosServiceAccount:
+  # Create Talos ServiceAccount for node operations
+  create: true
+  # Name of the Talos ServiceAccount (also used as the secret name for talosconfig)
+  # If empty, will use the release fullname
+  name: ""
+  # Annotations for the Talos ServiceAccount
+  annotations: {}
+  # Roles for Talos ServiceAccount - required for node operations
+  roles:
+    - "os:admin" # Required for node upgrades and operations
 
 # Image pull secrets for private registries
 imagePullSecrets: []

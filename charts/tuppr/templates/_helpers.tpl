@@ -65,10 +65,10 @@ Create the name of the service account to use
 Create the name of the talos service account to use (also used as secret name)
 */}}
 {{- define "tuppr.talosServiceAccountName" -}}
-{{- if and .Values.talos.serviceAccount .Values.talos.serviceAccount.name }}
-{{- .Values.talos.serviceAccount.name }}
+{{- if and .Values.talosServiceAccount .Values.talosServiceAccount.name }}
+{{- .Values.talosServiceAccount.name }}
 {{- else }}
-{{- include "tuppr.fullname" . }}
+{{- include "tuppr.fullname" . }}-talosconfig
 {{- end }}
 {{- end }}
 
