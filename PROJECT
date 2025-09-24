@@ -13,7 +13,6 @@ repo: github.com/home-operations/tuppr
 resources:
 - api:
     crdVersion: v1
-    namespaced: false
   controller: true
   domain: home-operations.com
   group: tuppr
@@ -22,4 +21,12 @@ resources:
   version: v1alpha1
   webhooks:
     validation: true
+- api:
+    crdVersion: v1
+  controller: true
+  domain: home-operations.com
+  group: tuppr
+  kind: KubernetesUpgrade
+  path: github.com/home-operations/tuppr/api/v1alpha1
+  version: v1alpha1
 version: "3"

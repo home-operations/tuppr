@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	upgradev1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 )
 
 const (
@@ -35,7 +35,7 @@ type healthCheckResult struct {
 }
 
 // CheckHealth performs the health checks defined in the TalosUpgrade resource
-func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []upgradev1alpha1.HealthCheckSpec) error {
+func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1.HealthCheckSpec) error {
 	logger := log.FromContext(ctx)
 
 	if len(healthChecks) == 0 {
@@ -56,7 +56,7 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []upgrade
 	// Start all health checks concurrently
 	for i, check := range healthChecks {
 		wg.Add(1)
-		go func(check upgradev1alpha1.HealthCheckSpec, index int) {
+		go func(check tupprv1alpha1.HealthCheckSpec, index int) {
 			defer wg.Done()
 			err := hc.evaluateHealthCheck(ctx, check, index)
 			resultChan <- healthCheckResult{index: index, err: err}
@@ -86,7 +86,7 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []upgrade
 }
 
 // evaluateHealthCheck evaluates a single health check with timeout and retries
-func (hc *HealthChecker) evaluateHealthCheck(ctx context.Context, check upgradev1alpha1.HealthCheckSpec, index int) error {
+func (hc *HealthChecker) evaluateHealthCheck(ctx context.Context, check tupprv1alpha1.HealthCheckSpec, index int) error {
 	logger := log.FromContext(ctx).WithValues(
 		"checkIndex", index,
 		"apiVersion", check.APIVersion,
@@ -159,7 +159,7 @@ func (hc *HealthChecker) evaluateHealthCheck(ctx context.Context, check upgradev
 }
 
 // evaluateExpression evaluates the CEL expression against the current resource state
-func (hc *HealthChecker) evaluateExpression(ctx context.Context, check upgradev1alpha1.HealthCheckSpec, program cel.Program) (bool, error) {
+func (hc *HealthChecker) evaluateExpression(ctx context.Context, check tupprv1alpha1.HealthCheckSpec, program cel.Program) (bool, error) {
 	// Get the resource(s)
 	gvk := schema.FromAPIVersionAndKind(check.APIVersion, check.Kind)
 
@@ -173,7 +173,7 @@ func (hc *HealthChecker) evaluateExpression(ctx context.Context, check upgradev1
 }
 
 // evaluateSpecificResource evaluates the expression against a specific resource
-func (hc *HealthChecker) evaluateSpecificResource(ctx context.Context, check upgradev1alpha1.HealthCheckSpec, program cel.Program, gvk schema.GroupVersionKind) (bool, error) {
+func (hc *HealthChecker) evaluateSpecificResource(ctx context.Context, check tupprv1alpha1.HealthCheckSpec, program cel.Program, gvk schema.GroupVersionKind) (bool, error) {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(gvk)
 
@@ -190,7 +190,7 @@ func (hc *HealthChecker) evaluateSpecificResource(ctx context.Context, check upg
 }
 
 // evaluateAllResources evaluates the expression against all resources of the kind
-func (hc *HealthChecker) evaluateAllResources(ctx context.Context, check upgradev1alpha1.HealthCheckSpec, program cel.Program, gvk schema.GroupVersionKind) (bool, error) {
+func (hc *HealthChecker) evaluateAllResources(ctx context.Context, check tupprv1alpha1.HealthCheckSpec, program cel.Program, gvk schema.GroupVersionKind) (bool, error) {
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(gvk)
 
@@ -247,7 +247,7 @@ func (hc *HealthChecker) runCELExpression(program cel.Program, resourceData map[
 }
 
 // validateHealthChecks validates health check expressions before execution
-func (hc *HealthChecker) validateHealthChecks(healthChecks []upgradev1alpha1.HealthCheckSpec) error {
+func (hc *HealthChecker) validateHealthChecks(healthChecks []tupprv1alpha1.HealthCheckSpec) error {
 	var validationErrors []error
 
 	for i, check := range healthChecks {

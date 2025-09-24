@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	upgradev1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 )
 
 var _ = Describe("HealthChecker", func() {
@@ -33,14 +33,14 @@ var _ = Describe("HealthChecker", func() {
 	Describe("CheckHealth", func() {
 		Context("when no health checks are provided", func() {
 			It("should return nil", func() {
-				err := healthChecker.CheckHealth(ctx, []upgradev1alpha1.HealthCheckSpec{})
+				err := healthChecker.CheckHealth(ctx, []tupprv1alpha1.HealthCheckSpec{})
 				Expect(err).ToNot(HaveOccurred())
 			})
 		})
 
 		Context("when health checks have validation errors", func() {
 			It("should return validation error for missing apiVersion", func() {
-				healthChecks := []upgradev1alpha1.HealthCheckSpec{
+				healthChecks := []tupprv1alpha1.HealthCheckSpec{
 					{
 						Kind: "Pod",
 						Expr: "status.phase == 'Running'",
@@ -53,7 +53,7 @@ var _ = Describe("HealthChecker", func() {
 			})
 
 			It("should return validation error for missing kind", func() {
-				healthChecks := []upgradev1alpha1.HealthCheckSpec{
+				healthChecks := []tupprv1alpha1.HealthCheckSpec{
 					{
 						APIVersion: "v1",
 						Expr:       "status.phase == 'Running'",
@@ -66,7 +66,7 @@ var _ = Describe("HealthChecker", func() {
 			})
 
 			It("should return validation error for missing expr", func() {
-				healthChecks := []upgradev1alpha1.HealthCheckSpec{
+				healthChecks := []tupprv1alpha1.HealthCheckSpec{
 					{
 						APIVersion: "v1",
 						Kind:       "Pod",
@@ -79,7 +79,7 @@ var _ = Describe("HealthChecker", func() {
 			})
 
 			It("should return validation error for invalid CEL expression", func() {
-				healthChecks := []upgradev1alpha1.HealthCheckSpec{
+				healthChecks := []tupprv1alpha1.HealthCheckSpec{
 					{
 						APIVersion: "v1",
 						Kind:       "Pod",
@@ -97,7 +97,7 @@ var _ = Describe("HealthChecker", func() {
 	Describe("validateHealthChecks", func() {
 		Context("with valid health checks", func() {
 			It("should return nil", func() {
-				healthChecks := []upgradev1alpha1.HealthCheckSpec{
+				healthChecks := []tupprv1alpha1.HealthCheckSpec{
 					{
 						APIVersion: "v1",
 						Kind:       "Pod",
@@ -112,7 +112,7 @@ var _ = Describe("HealthChecker", func() {
 
 		Context("with multiple validation errors", func() {
 			It("should return all errors", func() {
-				healthChecks := []upgradev1alpha1.HealthCheckSpec{
+				healthChecks := []tupprv1alpha1.HealthCheckSpec{
 					{
 						Kind: "Pod", // missing apiVersion
 						Expr: "status.phase == 'Running'",
@@ -276,7 +276,7 @@ var _ = Describe("HealthChecker", func() {
 		Context("with custom timeout", func() {
 			It("should respect the timeout duration", func() {
 				timeout := 1 * time.Second
-				healthCheck := upgradev1alpha1.HealthCheckSpec{
+				healthCheck := tupprv1alpha1.HealthCheckSpec{
 					APIVersion: "v1",
 					Kind:       "Pod",
 					Name:       "non-existent-pod",
@@ -296,7 +296,7 @@ var _ = Describe("HealthChecker", func() {
 
 		Context("with default timeout", func() {
 			It("should use 10 minute default when no timeout specified", func() {
-				healthCheck := upgradev1alpha1.HealthCheckSpec{
+				healthCheck := tupprv1alpha1.HealthCheckSpec{
 					APIVersion: "v1",
 					Kind:       "Pod",
 					Name:       "test-pod",

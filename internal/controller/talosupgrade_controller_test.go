@@ -11,7 +11,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	upgradev1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 )
 
 var _ = Describe("Talos Controller", func() {
@@ -24,22 +24,22 @@ var _ = Describe("Talos Controller", func() {
 		typeNamespacedName := types.NamespacedName{
 			Name: resourceName,
 		}
-		talos := &upgradev1alpha1.TalosUpgrade{}
+		talos := &tupprv1alpha1.TalosUpgrade{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind TalosUpgrade")
 			err := k8sClient.Get(ctx, typeNamespacedName, talos)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &upgradev1alpha1.TalosUpgrade{
+				resource := &tupprv1alpha1.TalosUpgrade{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: resourceName,
 						// No namespace - TalosUpgrade is cluster-scoped
 					},
-					Spec: upgradev1alpha1.TalosUpgradeSpec{
-						Talos: upgradev1alpha1.TalosSpec{
+					Spec: tupprv1alpha1.TalosUpgradeSpec{
+						Talos: tupprv1alpha1.TalosSpec{
 							Version: "v1.11.0", // Required field with valid format
 						},
-						Policy: upgradev1alpha1.PolicySpec{
+						Policy: tupprv1alpha1.PolicySpec{
 							Debug:      false,
 							Force:      false,
 							Placement:  "soft",
@@ -53,7 +53,7 @@ var _ = Describe("Talos Controller", func() {
 
 		AfterEach(func() {
 			// Cleanup logic after each test
-			resource := &upgradev1alpha1.TalosUpgrade{}
+			resource := &tupprv1alpha1.TalosUpgrade{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
