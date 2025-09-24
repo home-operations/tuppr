@@ -130,7 +130,16 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
 
-	// Check upgrade queue
+	// Check for active job FIRST - if there's a job running, handle it regardless of queue position or failed nodes
+	if activeJob, activeNode, err := r.findActiveJob(ctx, talosUpgrade); err != nil {
+		logger.Error(err, "Failed to find active jobs")
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	} else if activeJob != nil {
+		logger.V(1).Info("Found active job, handling its status", "job", activeJob.Name, "node", activeNode)
+		return r.handleJobStatus(ctx, talosUpgrade, activeNode, activeJob)
+	}
+
+	// Check upgrade queue only after confirming no jobs are running
 	if canProceed, pos, err := r.acquireUpgradeLock(ctx, talosUpgrade); err != nil {
 		logger.Error(err, "Failed to check upgrade lock")
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
@@ -143,7 +152,7 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
-	// Check for failed nodes
+	// Check for failed nodes only after confirming no jobs are running
 	if len(talosUpgrade.Status.FailedNodes) > 0 {
 		logger.Info("Upgrade plan has failed nodes, blocking further progress",
 			"failedNodes", len(talosUpgrade.Status.FailedNodes))
@@ -153,14 +162,6 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 		}
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
-	}
-
-	// Handle active job
-	if activeJob, activeNode, err := r.findActiveJob(ctx, talosUpgrade); err != nil {
-		logger.Error(err, "Failed to find active jobs")
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
-	} else if activeJob != nil {
-		return r.handleJobStatus(ctx, talosUpgrade, activeNode, activeJob)
 	}
 
 	// Find next node or complete
