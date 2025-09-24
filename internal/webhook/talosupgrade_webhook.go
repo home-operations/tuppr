@@ -192,7 +192,7 @@ func (v *TalosUpgradeValidator) validateTalosSpec(talos *tupprv1alpha1.TalosUpgr
 	if talos.Spec.Policy.Placement != "" {
 		validPresets := []string{"hard", "soft"}
 		if !slices.Contains(validPresets, talos.Spec.Policy.Placement) {
-			return fmt.Errorf("spec.policy.placementPreset '%s' is invalid. Valid values are: %v",
+			return fmt.Errorf("spec.policy.placement '%s' is invalid. Valid values are: %v",
 				talos.Spec.Policy.Placement, validPresets)
 		}
 	}

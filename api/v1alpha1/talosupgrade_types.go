@@ -43,7 +43,7 @@ type PolicySpec struct {
 	// +kubebuilder:validation:Enum=hard;soft
 	// +kubebuilder:default="soft"
 	// +optional
-	Placement string `json:"placementPreset,omitempty"`
+	Placement string `json:"placement,omitempty"`
 
 	// RebootMode select the reboot mode during upgrade
 	// +kubebuilder:validation:Enum=default;powercycle
