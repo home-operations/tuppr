@@ -154,7 +154,7 @@ spec:
                     description: Force the upgrade (skip checks on etcd health and
                       members)
                     type: boolean
-                  placementPreset:
+                  placement:
                     default: soft
                     description: |-
                       Placement controls how strictly upgrade jobs avoid the target node

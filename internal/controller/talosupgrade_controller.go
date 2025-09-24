@@ -834,9 +834,9 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tup
 	}
 
 	// Configure node affinity based on PlacementPreset
-	placementPreset := talosUpgrade.Spec.Policy.Placement
-	if placementPreset == "" {
-		placementPreset = "soft" // Default value from kubebuilder annotation
+	placement := talosUpgrade.Spec.Policy.Placement
+	if placement == "" {
+		placement = "soft" // Default value from kubebuilder annotation
 	}
 
 	nodeSelector := corev1.NodeSelectorRequirement{
@@ -846,7 +846,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tup
 	}
 
 	var nodeAffinity *corev1.NodeAffinity
-	if placementPreset == "hard" {
+	if placement == "hard" {
 		// Required avoidance - job will fail if it can't avoid the target node
 		nodeAffinity = &corev1.NodeAffinity{
 			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
@@ -866,8 +866,8 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tup
 				},
 			}},
 		}
-		if placementPreset != "soft" {
-			logger.V(1).Info("Unknown placement preset, using soft placement as fallback", "preset", placementPreset, "node", nodeName)
+		if placement != "soft" {
+			logger.V(1).Info("Unknown placement preset, using soft placement as fallback", "preset", placement, "node", nodeName)
 		} else {
 			logger.V(1).Info("Using soft placement preset - preferred node avoidance", "node", nodeName)
 		}
