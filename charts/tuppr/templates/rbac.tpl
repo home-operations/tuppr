@@ -35,7 +35,7 @@ rules:
   - tuppr.home-operations.com
   resources:
   - talosupgrades
-  - kubernetesplans
+  - kubernetesupgrades
   verbs:
   - create
   - delete
@@ -48,14 +48,14 @@ rules:
   - tuppr.home-operations.com
   resources:
   - talosupgrades/finalizers
-  - kubernetesplans/finalizers
+  - kubernetesupgrades/finalizers
   verbs:
   - update
 - apiGroups:
   - tuppr.home-operations.com
   resources:
   - talosupgrades/status
-  - kubernetesplans/status
+  - kubernetesupgrades/status
   verbs:
   - get
   - patch
