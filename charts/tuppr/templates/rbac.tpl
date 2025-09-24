@@ -13,7 +13,15 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
   - nodes
+  - pods
   - secrets
   verbs:
   - get
@@ -34,8 +42,8 @@ rules:
 - apiGroups:
   - tuppr.home-operations.com
   resources:
-  - talosupgrades
   - kubernetesupgrades
+  - talosupgrades
   verbs:
   - create
   - delete
@@ -47,15 +55,15 @@ rules:
 - apiGroups:
   - tuppr.home-operations.com
   resources:
-  - talosupgrades/finalizers
   - kubernetesupgrades/finalizers
+  - talosupgrades/finalizers
   verbs:
   - update
 - apiGroups:
   - tuppr.home-operations.com
   resources:
-  - talosupgrades/status
   - kubernetesupgrades/status
+  - talosupgrades/status
   verbs:
   - get
   - patch
@@ -94,36 +102,36 @@ metadata:
   {{- end }}
 rules:
 - apiGroups:
-  - ""
+    - ""
   resources:
-  - configmaps
+    - configmaps
   verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
+    - get
+    - list
+    - watch
+    - create
+    - update
+    - patch
+    - delete
 - apiGroups:
-  - coordination.k8s.io
+    - coordination.k8s.io
   resources:
-  - leases
+    - leases
   verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
+    - get
+    - list
+    - watch
+    - create
+    - update
+    - patch
+    - delete
 - apiGroups:
-  - ""
+    - ""
   resources:
-  - events
+    - events
   verbs:
-  - create
-  - patch
+    - create
+    - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
