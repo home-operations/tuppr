@@ -371,18 +371,16 @@ func (r *KubernetesUpgradeReconciler) buildKubernetesJob(ctx context.Context, ku
 
 	talosctlTag := kubernetesUpgrade.Spec.Talosctl.Image.Tag
 	if talosctlTag == "" {
-		// Auto-detect talosctl version from current Talos version
-		if detectedTag := r.detectTalosctlVersion(ctx, controllerIP); detectedTag != "" {
-			talosctlTag = detectedTag
-			logger.Info("Auto-detected talosctl version from Talos node",
-				"controllerNode", controllerNode,
-				"controllerIP", controllerIP,
-				"talosctlVersion", talosctlTag)
+		// Try to detect the current Talos version for talosctl compatibility
+		if currentVersion, err := r.TalosClient.GetNodeVersion(ctx, controllerIP); err == nil && currentVersion != "" {
+			talosctlTag = currentVersion
+			logger.V(1).Info("Using current node version for talosctl compatibility",
+				"node", controllerNode, "currentVersion", currentVersion)
 		} else {
+			// This should never happen but lets fallback to 'latest' just in case
 			talosctlTag = constants.DefaultTalosctlTag
-			logger.Info("Failed to auto-detect talosctl version, using fallback",
-				"controllerNode", controllerNode,
-				"fallbackVersion", talosctlTag)
+			logger.V(1).Info("Could not detect current version, using fallback version for talosctl",
+				"node", controllerNode, "version", talosctlTag, "error", err)
 		}
 	}
 
@@ -507,39 +505,6 @@ func (r *KubernetesUpgradeReconciler) buildKubernetesJob(ctx context.Context, ku
 			},
 		},
 	}
-}
-
-// detectTalosctlVersion attempts to detect the appropriate talosctl version from the controller node
-func (r *KubernetesUpgradeReconciler) detectTalosctlVersion(ctx context.Context, controllerIP string) string {
-	logger := log.FromContext(ctx)
-
-	// Use a shorter timeout for version detection to avoid blocking the upgrade
-	detectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	talosVersion, err := r.TalosClient.GetNodeVersion(detectCtx, controllerIP)
-	if err != nil {
-		logger.V(1).Info("Failed to get node version for talosctl version detection",
-			"controllerIP", controllerIP,
-			"error", err.Error())
-		return ""
-	}
-
-	if talosVersion == "" {
-		logger.V(1).Info("Node returned empty Talos version", "controllerIP", controllerIP)
-		return ""
-	}
-
-	// Ensure the version has a 'v' prefix for consistency
-	if !strings.HasPrefix(talosVersion, "v") {
-		talosVersion = "v" + talosVersion
-	}
-
-	logger.V(1).Info("Successfully detected Talos version for talosctl",
-		"controllerIP", controllerIP,
-		"talosVersion", talosVersion)
-
-	return talosVersion
 }
 
 // findActiveKubernetesJob looks for any currently running job for this KubernetesUpgrade
