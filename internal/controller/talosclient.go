@@ -3,9 +3,12 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/distribution/reference"
-	talosclient "github.com/siderolabs/talos/pkg/machinery/client"
+	"github.com/siderolabs/go-retry/retry"
+	"github.com/siderolabs/talos/pkg/machinery/api/machine"
+	"github.com/siderolabs/talos/pkg/machinery/client"
 	"github.com/siderolabs/talos/pkg/machinery/resources/config"
 
 	"github.com/cosi-project/runtime/pkg/resource"
@@ -13,12 +16,12 @@ import (
 
 // TalosClient provides Talos SDK operations for gathering node information
 type TalosClient struct {
-	talos *talosclient.Client
+	talos *client.Client
 }
 
 // NewTalosClient creates a new Talos client service using the mounted configuration
 func NewTalosClient(ctx context.Context) (*TalosClient, error) {
-	talosClient, err := talosclient.New(ctx, talosclient.WithDefaultConfig())
+	talosClient, err := client.New(ctx, client.WithDefaultConfig())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create talos client: %w", err)
 	}
@@ -36,11 +39,40 @@ func (s *TalosClient) Close() error {
 	return nil
 }
 
+// refreshTalosClient recreates the client if the current one is stale
+func (s *TalosClient) refreshTalosClient(ctx context.Context) error {
+	if _, err := s.talos.Version(ctx); err != nil {
+		newClient, err := NewTalosClient(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to reinitialize talos client: %w", err)
+		}
+
+		s.talos.Close() //nolint:errcheck
+		s.talos = newClient.talos
+	}
+
+	return nil
+}
+
 // GetNodeVersion retrieves the Talos version from a specific node
 func (s *TalosClient) GetNodeVersion(ctx context.Context, nodeIP string) (string, error) {
-	nodeCtx := talosclient.WithNodes(ctx, nodeIP)
+	nodeCtx := client.WithNode(ctx, nodeIP)
 
-	resp, err := s.talos.Version(nodeCtx)
+	var resp *machine.VersionResponse
+
+	err := retry.Constant(10*time.Second, retry.WithUnits(100*time.Millisecond)).Retry(func() error {
+		var versionErr error
+		resp, versionErr = s.talos.Version(nodeCtx)
+		if versionErr != nil {
+			err := s.refreshTalosClient(ctx) //nolint:errcheck
+			if err != nil {
+				return retry.ExpectedError(err)
+			}
+			return versionErr
+		}
+		return nil
+	})
+
 	if err != nil {
 		return "", fmt.Errorf("failed to get node version from %s: %w", nodeIP, err)
 	}
@@ -59,18 +91,23 @@ func (s *TalosClient) GetNodeVersion(ctx context.Context, nodeIP string) (string
 
 // GetNodeMachineConfig retrieves the machine configuration from a specific node
 func (s *TalosClient) GetNodeMachineConfig(ctx context.Context, nodeIP string) (*config.MachineConfig, error) {
-	// Create a direct client to the node for COSI operations
-	directClient, err := talosclient.New(ctx,
-		talosclient.WithDefaultConfig(),
-		talosclient.WithEndpoints(nodeIP),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create direct client for node %s: %w", nodeIP, err)
-	}
-	defer directClient.Close() //nolint:errcheck
+	nodeCtx := client.WithNode(ctx, nodeIP)
 
-	// Get machine config using direct connection
-	r, err := directClient.COSI.Get(ctx, resource.NewMetadata("config", "MachineConfigs.config.talos.dev", "v1alpha1", resource.VersionUndefined))
+	var r resource.Resource
+
+	err := retry.Constant(10*time.Second, retry.WithUnits(100*time.Millisecond)).Retry(func() error {
+		var getErr error
+		r, getErr = s.talos.COSI.Get(nodeCtx, resource.NewMetadata("config", "MachineConfigs.config.talos.dev", "v1alpha1", resource.VersionUndefined))
+		if getErr != nil {
+			err := s.refreshTalosClient(ctx) //nolint:errcheck
+			if err != nil {
+				return retry.ExpectedError(err)
+			}
+			return getErr
+		}
+		return nil
+	})
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to get machine config from node %s: %w", nodeIP, err)
 	}
