@@ -31,14 +31,6 @@ func NewTalosClient(ctx context.Context) (*TalosClient, error) {
 	}, nil
 }
 
-// Close closes the underlying Talos client
-func (s *TalosClient) Close() error {
-	if s.talos != nil {
-		return s.talos.Close()
-	}
-	return nil
-}
-
 // refreshTalosClient recreates the client if the current one is stale
 func (s *TalosClient) refreshTalosClient(ctx context.Context) error {
 	if _, err := s.talos.Version(ctx); err != nil {
