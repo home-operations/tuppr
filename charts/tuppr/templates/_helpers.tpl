@@ -62,17 +62,6 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
-Create the name of the talos service account to use (also used as secret name)
-*/}}
-{{- define "tuppr.talosServiceAccountName" -}}
-{{- if and .Values.talosServiceAccount .Values.talosServiceAccount.name }}
-{{- .Values.talosServiceAccount.name }}
-{{- else }}
-{{- include "tuppr.fullname" . }}-talosconfig
-{{- end }}
-{{- end }}
-
-{{/*
 Create the image name
 */}}
 {{- define "tuppr.image" -}}

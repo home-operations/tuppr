@@ -10,6 +10,16 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 rules:
+# Health check permissions - read-only access to all resources
+- apiGroups:
+  - "*"
+  resources:
+  - "*"
+  verbs:
+  - get
+  - list
+  - watch
+# Core resource permissions for controller operations
 - apiGroups:
   - ""
   resources:
@@ -102,36 +112,36 @@ metadata:
   {{- end }}
 rules:
 - apiGroups:
-    - ""
+  - ""
   resources:
-    - configmaps
+  - configmaps
   verbs:
-    - get
-    - list
-    - watch
-    - create
-    - update
-    - patch
-    - delete
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
 - apiGroups:
-    - coordination.k8s.io
+  - coordination.k8s.io
   resources:
-    - leases
+  - leases
   verbs:
-    - get
-    - list
-    - watch
-    - create
-    - update
-    - patch
-    - delete
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
 - apiGroups:
-    - ""
+  - ""
   resources:
-    - events
+  - events
   verbs:
-    - create
-    - patch
+  - create
+  - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

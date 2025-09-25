@@ -44,7 +44,7 @@ spec:
             - --leader-elect={{ .Values.controller.leaderElection.enabled }}
             - --metrics-bind-address=:{{ .Values.controller.metrics.port }}
             - --health-probe-bind-address=:{{ .Values.controller.health.port }}
-            - --talosconfig-secret={{ include "tuppr.talosServiceAccountName" . }}
+            - --talosconfig-secret={{ include "tuppr.serviceAccountName" . }}-talosconfig
           env:
             - name: CONTROLLER_NAMESPACE
               valueFrom:
@@ -76,9 +76,9 @@ spec:
               name: cert
               readOnly: true
             {{- end }}
-            {{- with .Values.volumeMounts }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
+            - name: talosconfig
+              mountPath: /var/run/secrets/talos.dev
+              readOnly: true
       volumes:
         {{- if .Values.webhook.enabled }}
         - name: cert
@@ -86,9 +86,10 @@ spec:
             defaultMode: 420
             secretName: {{ include "tuppr.webhookCertName" . }}
         {{- end }}
-        {{- with .Values.volumes }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
+        - name: talosconfig
+          secret:
+            secretName: {{ include "tuppr.serviceAccountName" . }}-talosconfig
+            defaultMode: 420
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
