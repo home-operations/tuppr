@@ -443,12 +443,6 @@ func (r *KubernetesUpgradeReconciler) buildKubernetesJob(ctx context.Context, ku
 						Image:           talosctlImage,
 						ImagePullPolicy: pullPolicy,
 						Args:            []string{"health", "--nodes=" + controllerIP, "--wait-timeout=" + KubernetesJobTalosHealthTimeout},
-						Env: []corev1.EnvVar{
-							{
-								Name:  "TALOSCONFIG",
-								Value: "/var/run/secrets/talos.dev/config",
-							},
-						},
 						SecurityContext: &corev1.SecurityContext{
 							AllowPrivilegeEscalation: ptr.To(false),
 							ReadOnlyRootFilesystem:   ptr.To(true),
@@ -477,12 +471,6 @@ func (r *KubernetesUpgradeReconciler) buildKubernetesJob(ctx context.Context, ku
 						Image:           talosctlImage,
 						ImagePullPolicy: pullPolicy,
 						Args:            args,
-						Env: []corev1.EnvVar{
-							{
-								Name:  "TALOSCONFIG",
-								Value: "/var/run/secrets/talos.dev/config",
-							},
-						},
 						SecurityContext: &corev1.SecurityContext{
 							AllowPrivilegeEscalation: ptr.To(false),
 							ReadOnlyRootFilesystem:   ptr.To(true),
@@ -529,22 +517,18 @@ func (r *KubernetesUpgradeReconciler) detectTalosctlVersion(ctx context.Context,
 	detectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	nodeInfo, err := r.TalosClient.GetNodeInfo(detectCtx, controllerIP)
+	talosVersion, err := r.TalosClient.GetNodeVersion(detectCtx, controllerIP)
 	if err != nil {
-		logger.V(1).Info("Failed to get node info for talosctl version detection",
+		logger.V(1).Info("Failed to get node version for talosctl version detection",
 			"controllerIP", controllerIP,
 			"error", err.Error())
 		return ""
 	}
 
-	if nodeInfo.TalosVersion == "" {
-		logger.V(1).Info("Node info returned empty Talos version", "controllerIP", controllerIP)
+	if talosVersion == "" {
+		logger.V(1).Info("Node returned empty Talos version", "controllerIP", controllerIP)
 		return ""
 	}
-
-	// Use the same version as the running Talos version
-	// This ensures compatibility between talosctl and the Talos cluster
-	talosVersion := nodeInfo.TalosVersion
 
 	// Ensure the version has a 'v' prefix for consistency
 	if !strings.HasPrefix(talosVersion, "v") {
@@ -758,9 +742,13 @@ func (r *KubernetesUpgradeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	logger := ctrl.Log.WithName("setup")
 	logger.Info("Setting up KubernetesUpgrade controller with manager")
 
-	// Initialize shared components
 	r.HealthChecker = &HealthChecker{Client: mgr.GetClient()}
-	r.TalosClient = NewTalosClient(mgr.GetClient(), r.TalosConfigSecret, r.ControllerNamespace)
+
+	talosClient, err := NewTalosClient(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to create talos client: %w", err)
+	}
+	r.TalosClient = talosClient
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&tupprv1alpha1.KubernetesUpgrade{}).
