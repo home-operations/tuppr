@@ -12,3 +12,18 @@ metadata:
   {{- end }}
 automountServiceAccountToken: {{ .Values.serviceAccount.automount | default true }}
 {{- end }}
+---
+apiVersion: talos.dev/v1alpha1
+kind: ServiceAccount
+metadata:
+  name: {{ include "tuppr.serviceAccountName" . }}-talosconfig
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tuppr.labels" . | nindent 4 }}
+  {{- with .Values.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  roles:
+    - os:admin
