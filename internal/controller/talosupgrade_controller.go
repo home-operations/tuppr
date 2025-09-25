@@ -878,9 +878,17 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tup
 
 	talosctlTag := talosUpgrade.Spec.Talosctl.Image.Tag
 	if talosctlTag == "" {
-		// Default to the target version for talosctl
-		talosctlTag = talosUpgrade.Spec.Talos.Version
-		logger.V(1).Info("Using target version for talosctl", "node", nodeName, "version", talosctlTag)
+		// Try to detect the current Talos version for talosctl compatibility
+		if currentVersion, err := r.TalosClient.GetNodeVersion(ctx, nodeIP); err == nil && currentVersion != "" {
+			talosctlTag = currentVersion
+			logger.V(1).Info("Using current node version for talosctl compatibility",
+				"node", nodeName, "currentVersion", currentVersion)
+		} else {
+			// This should never happen but lets fallback to the target version
+			talosctlTag = talosUpgrade.Spec.Talos.Version
+			logger.V(1).Info("Could not detect current version, using target version for talosctl",
+				"node", nodeName, "version", talosctlTag, "error", err)
+		}
 	}
 
 	talosctlImage := talosctlRepo + ":" + talosctlTag
