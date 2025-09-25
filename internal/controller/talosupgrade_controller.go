@@ -971,34 +971,6 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tup
 							Operator: corev1.TolerationOpExists,
 						},
 					},
-					InitContainers: []corev1.Container{{
-						Name:            "health",
-						Image:           talosctlImage,
-						ImagePullPolicy: pullPolicy,
-						Args:            []string{"health", "--nodes=" + nodeIP, "--wait-timeout=" + TalosJobTalosHealthTimeout},
-						SecurityContext: &corev1.SecurityContext{
-							AllowPrivilegeEscalation: ptr.To(false),
-							ReadOnlyRootFilesystem:   ptr.To(true),
-							Capabilities: &corev1.Capabilities{
-								Drop: []corev1.Capability{"ALL"},
-							},
-						},
-						Resources: corev1.ResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceCPU:    resource.MustParse("1m"),
-								corev1.ResourceMemory: resource.MustParse("8Mi"),
-							},
-							Limits: corev1.ResourceList{
-								corev1.ResourceCPU:    resource.MustParse("100m"),
-								corev1.ResourceMemory: resource.MustParse("256Mi"),
-							},
-						},
-						VolumeMounts: []corev1.VolumeMount{{
-							Name:      constants.TalosSecretName,
-							MountPath: "/var/run/secrets/talos.dev",
-							ReadOnly:  true,
-						}},
-					}},
 					Containers: []corev1.Container{{
 						Name:            "upgrade",
 						Image:           talosctlImage,
