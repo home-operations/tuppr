@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/distribution/reference"
 	"github.com/siderolabs/go-retry/retry"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
 	"github.com/siderolabs/talos/pkg/machinery/client"
@@ -125,37 +124,4 @@ func (s *TalosClient) GetNodeInstallImage(ctx context.Context, nodeIP string) (s
 	}
 
 	return image, nil
-}
-
-// GetNodeKubernetesVersion retrieves the Kubernetes version from a specific node's machine config
-func (s *TalosClient) GetNodeKubernetesVersion(ctx context.Context, nodeIP string) (string, error) {
-	mc, err := s.GetNodeMachineConfig(ctx, nodeIP)
-	if err != nil {
-		return "", err
-	}
-
-	kubeletImage := mc.Config().Machine().Kubelet().Image()
-	if kubeletImage == "" {
-		return "", fmt.Errorf("kubelet image is empty for node %s", nodeIP)
-	}
-
-	kubeletRef, err := parseImageReference(kubeletImage)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse kubelet image %s: %w", kubeletImage, err)
-	}
-
-	return kubeletRef.Tag(), nil
-}
-
-// parseImageReference parses an image reference to extract components
-func parseImageReference(image string) (reference.NamedTagged, error) {
-	ref, err := reference.ParseAnyReference(image)
-	if err != nil {
-		return nil, err
-	}
-	ntref, ok := ref.(reference.NamedTagged)
-	if !ok {
-		return nil, fmt.Errorf("not a NamedTagged reference")
-	}
-	return ntref, nil
 }

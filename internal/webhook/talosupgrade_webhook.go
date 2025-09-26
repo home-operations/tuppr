@@ -3,11 +3,11 @@ package webhook
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"regexp"
 	"slices"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -32,6 +32,7 @@ type TalosUpgradeValidator struct {
 }
 
 // +kubebuilder:webhook:path=/validate-tuppr-home-operations-com-v1alpha1-talosupgrade,mutating=false,failurePolicy=fail,sideEffects=None,groups=tuppr.home-operations.com,resources=talosupgrades,verbs=create;update,versions=v1alpha1,name=vtalosupgrade.kb.io,admissionReviewVersions=v1
+// +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=talosupgrades,verbs=get;list;watch
 
 var _ webhook.CustomValidator = &TalosUpgradeValidator{}
 
@@ -49,15 +50,11 @@ func (v *TalosUpgradeValidator) ValidateUpdate(ctx context.Context, oldObj, newO
 	oldTalos := oldObj.(*tupprv1alpha1.TalosUpgrade)
 	taloslog.Info("validate update", "name", talos.Name, "version", talos.Spec.Talos.Version, "talosConfigSecret", v.TalosConfigSecret)
 
-	// Prevent updates to certain fields if upgrade is in progress
+	// Prevent ANY spec updates if upgrade is in progress
 	if oldTalos.Status.Phase == constants.PhaseInProgress {
-		if talos.Spec.Talos.Version != oldTalos.Spec.Talos.Version {
-			return nil, fmt.Errorf("cannot update spec.version while upgrade is in progress (current phase: %s)", oldTalos.Status.Phase)
-		}
-
-		// Check if node label selector has changed
-		if !nodeSelectorsEqual(talos.Spec.NodeSelector, oldTalos.Spec.NodeSelector) {
-			return nil, fmt.Errorf("cannot update spec.nodeSelector while upgrade is in progress (current phase: %s)", oldTalos.Status.Phase)
+		if !reflect.DeepEqual(talos.Spec, oldTalos.Spec) {
+			return nil, fmt.Errorf("cannot update spec while upgrade is in progress (current phase: %s). Please wait for the upgrade to complete or reset it using the %s annotation",
+				oldTalos.Status.Phase, constants.ResetAnnotation)
 		}
 	}
 
@@ -81,11 +78,15 @@ func (v *TalosUpgradeValidator) ValidateDelete(ctx context.Context, obj runtime.
 func (v *TalosUpgradeValidator) validateTalos(ctx context.Context, talos *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
 	var warnings admission.Warnings
 
-	taloslog.Info("validating talos plan",
+	taloslog.Info("validating talos upgrade",
 		"name", talos.Name,
-		"namespace", talos.Namespace,
 		"version", talos.Spec.Talos.Version,
 		"secretName", v.TalosConfigSecret)
+
+	// Check for singleton constraint - only allow one TalosUpgrade per cluster
+	if err := v.validateSingleton(ctx, talos); err != nil {
+		return warnings, err
+	}
 
 	// Validate that the Talos config secret exists
 	secret := &corev1.Secret{}
@@ -151,11 +152,6 @@ func (v *TalosUpgradeValidator) validateTalosSpec(talos *tupprv1alpha1.TalosUpgr
 		return fmt.Errorf("spec.version '%s' does not match required pattern. Must be in format 'vX.Y.Z' or 'vX.Y.Z-suffix' (e.g., 'v1.11.0', 'v1.11.0-alpha.1')", talos.Spec.Talos.Version)
 	}
 
-	// Validate node label selector
-	if err := v.validateNodeSelector(talos.Spec.NodeSelector); err != nil {
-		return fmt.Errorf("spec.nodeSelector validation failed: %w", err)
-	}
-
 	// Validate health checks
 	for i, check := range talos.Spec.HealthChecks {
 		if err := v.validateHealthCheck(check); err != nil {
@@ -200,51 +196,6 @@ func (v *TalosUpgradeValidator) validateTalosSpec(talos *tupprv1alpha1.TalosUpgr
 	return nil
 }
 
-func (v *TalosUpgradeValidator) validateNodeSelector(selector tupprv1alpha1.NodeSelectorSpec) error {
-	// Validate matchLabels
-	for key, value := range selector.MatchLabels {
-		if key == "" {
-			return fmt.Errorf("matchLabels key cannot be empty")
-		}
-		if value == "" {
-			return fmt.Errorf("matchLabels value for key '%s' cannot be empty", key)
-		}
-	}
-
-	// Validate matchExpressions
-	for i, expr := range selector.MatchExpressions {
-		if expr.Key == "" {
-			return fmt.Errorf("matchExpressions[%d].key cannot be empty", i)
-		}
-
-		validOps := []metav1.LabelSelectorOperator{
-			metav1.LabelSelectorOpIn,
-			metav1.LabelSelectorOpNotIn,
-			metav1.LabelSelectorOpExists,
-			metav1.LabelSelectorOpDoesNotExist,
-		}
-
-		// Validate operator is valid
-		if !slices.Contains(validOps, expr.Operator) {
-			return fmt.Errorf("matchExpressions[%d].operator '%s' is invalid", i, expr.Operator)
-		}
-
-		// Validate that value-requiring operators have values
-		if (expr.Operator == metav1.LabelSelectorOpIn ||
-			expr.Operator == metav1.LabelSelectorOpNotIn) && len(expr.Values) == 0 {
-			return fmt.Errorf("matchExpressions[%d] with operator '%s' requires at least one value", i, expr.Operator)
-		}
-
-		// Validate that non-value operators don't have values
-		if (expr.Operator == metav1.LabelSelectorOpExists ||
-			expr.Operator == metav1.LabelSelectorOpDoesNotExist) && len(expr.Values) > 0 {
-			return fmt.Errorf("matchExpressions[%d] with operator '%s' must not have values", i, expr.Operator)
-		}
-	}
-
-	return nil
-}
-
 func (v *TalosUpgradeValidator) validateHealthCheck(check tupprv1alpha1.HealthCheckSpec) error {
 	if check.APIVersion == "" {
 		return fmt.Errorf("apiVersion cannot be empty")
@@ -264,44 +215,30 @@ func (v *TalosUpgradeValidator) validateHealthCheck(check tupprv1alpha1.HealthCh
 	return nil
 }
 
-func nodeSelectorsEqual(a, b tupprv1alpha1.NodeSelectorSpec) bool {
-	// Compare matchLabels
-	if len(a.MatchLabels) != len(b.MatchLabels) {
-		return false
+func (v *TalosUpgradeValidator) validateSingleton(ctx context.Context, talos *tupprv1alpha1.TalosUpgrade) error {
+	// List all existing TalosUpgrade resources
+	existingList := &tupprv1alpha1.TalosUpgradeList{}
+	if err := v.Client.List(ctx, existingList); err != nil {
+		return fmt.Errorf("failed to check for existing TalosUpgrade resources: %w", err)
 	}
-	for k, v := range a.MatchLabels {
-		if b.MatchLabels[k] != v {
-			return false
+
+	// Filter out the current resource being validated (for updates)
+	for _, existing := range existingList.Items {
+		if existing.Name == talos.Name {
+			// This is the same resource, skip it
+			continue
 		}
+
+		// Found another TalosUpgrade resource
+		taloslog.Info("rejecting creation/update due to existing TalosUpgrade",
+			"existing", existing.Name,
+			"attempted", talos.Name)
+
+		return fmt.Errorf("only one TalosUpgrade resource is allowed per cluster. Found existing resource '%s'. Please delete the existing resource or update it instead of creating a new one",
+			existing.Name)
 	}
 
-	// Compare matchExpressions
-	if len(a.MatchExpressions) != len(b.MatchExpressions) {
-		return false
-	}
-
-	// Convert to comparable format and sort for consistent comparison
-	aStr := make([]string, len(a.MatchExpressions))
-	bStr := make([]string, len(b.MatchExpressions))
-
-	for i, expr := range a.MatchExpressions {
-		values := make([]string, len(expr.Values))
-		copy(values, expr.Values)
-		slices.Sort(values)
-		aStr[i] = fmt.Sprintf("%s:%s:%v", expr.Key, expr.Operator, values)
-	}
-
-	for i, expr := range b.MatchExpressions {
-		values := make([]string, len(expr.Values))
-		copy(values, expr.Values)
-		slices.Sort(values)
-		bStr[i] = fmt.Sprintf("%s:%s:%v", expr.Key, expr.Operator, values)
-	}
-
-	slices.Sort(aStr)
-	slices.Sort(bStr)
-
-	return slices.Equal(aStr, bStr)
+	return nil
 }
 
 func (v *TalosUpgradeValidator) generateWarnings(talos *tupprv1alpha1.TalosUpgrade) []string {
@@ -315,11 +252,6 @@ func (v *TalosUpgradeValidator) generateWarnings(talos *tupprv1alpha1.TalosUpgra
 	// Warn about powercycle reboot mode
 	if talos.Spec.Policy.RebootMode == "powercycle" {
 		warnings = append(warnings, "Powercycle reboot mode selected. This performs a hard power cycle and may cause data loss if nodes don't shutdown cleanly.")
-	}
-
-	// Warn about upgrading all nodes (no selector)
-	if len(talos.Spec.NodeSelector.MatchLabels) == 0 && len(talos.Spec.NodeSelector.MatchExpressions) == 0 {
-		warnings = append(warnings, "No node selector specified. This will upgrade ALL nodes in the cluster.")
 	}
 
 	// Add warning for debug mode

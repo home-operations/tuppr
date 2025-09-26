@@ -20,7 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -47,11 +46,10 @@ const (
 	KubernetesUpgradeFinalizer = "tuppr.home-operations.com/kubernetes-finalizer"
 
 	// Job constants for Kubernetes upgrades
-	KubernetesJobBackoffLimit       = 2     // Retry up to 2 times on failure
-	KubernetesJobActiveDeadline     = 3600  // 60 minutes for Kubernetes upgrade
-	KubernetesJobGracePeriod        = 300   // 5 minutes
-	KubernetesJobTTLAfterFinished   = 300   // 5 minutes
-	KubernetesJobTalosHealthTimeout = "10m" // Health check timeout
+	KubernetesJobBackoffLimit     = 2    // Retry up to 2 times on failure
+	KubernetesJobActiveDeadline   = 3600 // 60 minutes for Kubernetes upgrade
+	KubernetesJobGracePeriod      = 300  // 5 minutes
+	KubernetesJobTTLAfterFinished = 300  // 5 minutes
 )
 
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=kubernetesupgrades,verbs=get;list;watch;create;update;patch;delete
@@ -81,34 +79,24 @@ func (r *KubernetesUpgradeReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	var kubernetesUpgrade tupprv1alpha1.KubernetesUpgrade
 	if err := r.Get(ctx, client.ObjectKey{Name: req.Name}, &kubernetesUpgrade); err != nil {
 		if errors.IsNotFound(err) {
-			logger.V(1).Info("KubernetesUpgrade resource not found, likely deleted", "kubernetesupgrade", req.Name)
+			logger.V(1).Info("KubernetesUpgrade resource not found, likely deleted")
 		} else {
-			logger.Error(err, "Failed to get KubernetesUpgrade resource", "kubernetesupgrade", req.Name)
+			logger.Error(err, "Failed to get KubernetesUpgrade resource")
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	logger.V(1).Info("Retrieved KubernetesUpgrade",
-		"name", kubernetesUpgrade.Name,
-		"phase", kubernetesUpgrade.Status.Phase,
-		"generation", kubernetesUpgrade.Generation,
-		"observedGeneration", kubernetesUpgrade.Status.ObservedGeneration)
-
 	// Handle deletion
 	if kubernetesUpgrade.DeletionTimestamp != nil {
-		logger.Info("KubernetesUpgrade is being deleted, starting cleanup", "name", kubernetesUpgrade.Name)
 		return r.cleanup(ctx, &kubernetesUpgrade)
 	}
 
 	// Add finalizer
 	if !controllerutil.ContainsFinalizer(&kubernetesUpgrade, KubernetesUpgradeFinalizer) {
-		logger.V(1).Info("Adding finalizer to KubernetesUpgrade", "name", kubernetesUpgrade.Name, "finalizer", KubernetesUpgradeFinalizer)
 		controllerutil.AddFinalizer(&kubernetesUpgrade, KubernetesUpgradeFinalizer)
 		return ctrl.Result{}, r.Update(ctx, &kubernetesUpgrade)
 	}
 
-	// Process upgrade
-	logger.V(1).Info("Processing Kubernetes upgrade", "name", kubernetesUpgrade.Name, "currentPhase", kubernetesUpgrade.Status.Phase)
 	return r.processKubernetesUpgrade(ctx, &kubernetesUpgrade)
 }
 
@@ -133,7 +121,7 @@ func (r *KubernetesUpgradeReconciler) processKubernetesUpgrade(ctx context.Conte
 	}
 
 	// Check for active job FIRST - if there's a job running, handle it regardless of version
-	if activeJob, err := r.findActiveKubernetesJob(ctx, kubernetesUpgrade); err != nil {
+	if activeJob, err := r.findActiveKubernetesJob(ctx); err != nil {
 		logger.Error(err, "Failed to find active jobs")
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	} else if activeJob != nil {
@@ -146,8 +134,8 @@ func (r *KubernetesUpgradeReconciler) processKubernetesUpgrade(ctx context.Conte
 	currentVersion, err := r.getCurrentKubernetesVersion(ctx)
 	if err != nil {
 		logger.Error(err, "Failed to get current Kubernetes version")
-		if setErr := r.setKubernetesPhase(ctx, kubernetesUpgrade, constants.PhaseFailed, "", fmt.Sprintf("Failed to get current version: %s", err.Error())); setErr != nil {
-			logger.Error(setErr, "Failed to update phase for version detection failure")
+		if err := r.setKubernetesPhase(ctx, kubernetesUpgrade, constants.PhaseFailed, "", fmt.Sprintf("Failed to get current version: %s", err.Error())); err != nil {
+			logger.Error(err, "Failed to update phase for version detection failure")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
@@ -177,8 +165,8 @@ func (r *KubernetesUpgradeReconciler) processKubernetesUpgrade(ctx context.Conte
 	// Perform health checks before starting upgrade
 	if err := r.HealthChecker.CheckHealth(ctx, kubernetesUpgrade.Spec.HealthChecks); err != nil {
 		logger.Info("Health checks failed, will retry", "error", err.Error())
-		if setErr := r.setKubernetesPhase(ctx, kubernetesUpgrade, constants.PhasePending, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); setErr != nil {
-			logger.Error(setErr, "Failed to update phase for health check")
+		if err := r.setKubernetesPhase(ctx, kubernetesUpgrade, constants.PhasePending, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
+			logger.Error(err, "Failed to update phase for health check")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
@@ -189,7 +177,7 @@ func (r *KubernetesUpgradeReconciler) processKubernetesUpgrade(ctx context.Conte
 
 // handleKubernetesGenerationChange resets the upgrade if the spec generation has changed
 func (r *KubernetesUpgradeReconciler) handleKubernetesGenerationChange(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade) (bool, error) {
-	if kubernetesUpgrade.Status.ObservedGeneration == 0 || kubernetesUpgrade.Status.ObservedGeneration >= kubernetesUpgrade.Generation {
+	if kubernetesUpgrade.Status.ObservedGeneration >= kubernetesUpgrade.Generation {
 		return false, nil
 	}
 
@@ -246,33 +234,25 @@ func (r *KubernetesUpgradeReconciler) getCurrentKubernetesVersion(ctx context.Co
 	return version, nil
 }
 
-// Replace manual slice searching with slices functions
+// findControllerNode finds the first available controller node
 func (r *KubernetesUpgradeReconciler) findControllerNode(ctx context.Context) (string, string, error) {
-	logger := log.FromContext(ctx)
-
 	nodeList := &corev1.NodeList{}
 	if err := r.List(ctx, nodeList); err != nil {
 		return "", "", fmt.Errorf("failed to list nodes: %w", err)
 	}
 
-	// Use slices.IndexFunc for finding controller nodes
-	controllerIdx := slices.IndexFunc(nodeList.Items, func(node corev1.Node) bool {
-		_, isController := node.Labels["node-role.kubernetes.io/control-plane"]
-		return isController
-	})
-
-	if controllerIdx == -1 {
-		return "", "", fmt.Errorf("no controller node found with node-role.kubernetes.io/control-plane label")
+	// Find first controller node
+	for _, node := range nodeList.Items {
+		if _, isController := node.Labels["node-role.kubernetes.io/control-plane"]; isController {
+			nodeIP, err := GetNodeInternalIP(&node)
+			if err != nil {
+				continue // Try next controller node
+			}
+			return node.Name, nodeIP, nil
+		}
 	}
 
-	node := nodeList.Items[controllerIdx]
-	nodeIP, err := GetNodeInternalIP(&node)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to get IP for controller node %s: %w", node.Name, err)
-	}
-
-	logger.Info("Found controller node", "node", node.Name, "ip", nodeIP)
-	return node.Name, nodeIP, nil
+	return "", "", fmt.Errorf("no controller node found with node-role.kubernetes.io/control-plane label")
 }
 
 // startKubernetesUpgrade creates a job to upgrade Kubernetes
@@ -282,8 +262,8 @@ func (r *KubernetesUpgradeReconciler) startKubernetesUpgrade(ctx context.Context
 	controllerNode, controllerIP, err := r.findControllerNode(ctx)
 	if err != nil {
 		logger.Error(err, "Failed to find controller node")
-		if setErr := r.setKubernetesPhase(ctx, kubernetesUpgrade, constants.PhaseFailed, "", fmt.Sprintf("Failed to find controller node: %s", err.Error())); setErr != nil {
-			logger.Error(setErr, "Failed to update phase for controller node failure")
+		if err := r.setKubernetesPhase(ctx, kubernetesUpgrade, constants.PhaseFailed, "", fmt.Sprintf("Failed to find controller node: %s", err.Error())); err != nil {
+			logger.Error(err, "Failed to update phase for controller node failure")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
@@ -293,8 +273,8 @@ func (r *KubernetesUpgradeReconciler) startKubernetesUpgrade(ctx context.Context
 	job, err := r.createKubernetesJob(ctx, kubernetesUpgrade, controllerNode, controllerIP)
 	if err != nil {
 		logger.Error(err, "Failed to create Kubernetes upgrade job")
-		if setErr := r.setKubernetesPhase(ctx, kubernetesUpgrade, constants.PhaseFailed, controllerNode, fmt.Sprintf("Failed to create job: %s", err.Error())); setErr != nil {
-			logger.Error(setErr, "Failed to update phase for job creation failure")
+		if err := r.setKubernetesPhase(ctx, kubernetesUpgrade, constants.PhaseFailed, controllerNode, fmt.Sprintf("Failed to create job: %s", err.Error())); err != nil {
+			logger.Error(err, "Failed to update phase for job creation failure")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
@@ -324,24 +304,17 @@ func (r *KubernetesUpgradeReconciler) createKubernetesJob(ctx context.Context, k
 		return nil, fmt.Errorf("failed to set controller reference: %w", err)
 	}
 
-	logger.V(1).Info("Creating Kubernetes upgrade job in cluster", "job", job.Name, "controllerNode", controllerNode)
+	logger.V(1).Info("Creating Kubernetes upgrade job", "job", job.Name, "controllerNode", controllerNode)
 
 	if err := r.Create(ctx, job); err != nil {
 		if errors.IsAlreadyExists(err) {
+			// Job already exists, just return it
 			existingJob := &batchv1.Job{}
 			if getErr := r.Get(ctx, types.NamespacedName{Name: job.Name, Namespace: job.Namespace}, existingJob); getErr != nil {
 				return nil, fmt.Errorf("failed to get existing job: %w", getErr)
 			}
-
-			existingGen := existingJob.Labels["tuppr.home-operations.com/generation"]
-			currentGen := fmt.Sprintf("%d", kubernetesUpgrade.Generation)
-
-			if existingGen == currentGen {
-				logger.V(1).Info("Kubernetes upgrade job already exists for current generation, reusing", "job", job.Name)
-				return existingJob, nil
-			} else {
-				return nil, fmt.Errorf("job generation conflict: existing=%s, current=%s", existingGen, currentGen)
-			}
+			logger.V(1).Info("Kubernetes upgrade job already exists, reusing", "job", job.Name)
+			return existingJob, nil
 		}
 		return nil, fmt.Errorf("failed to create job: %w", err)
 	}
@@ -360,7 +333,6 @@ func (r *KubernetesUpgradeReconciler) buildKubernetesJob(ctx context.Context, ku
 		"app.kubernetes.io/instance":            kubernetesUpgrade.Name,
 		"app.kubernetes.io/part-of":             "tuppr",
 		"tuppr.home-operations.com/target-node": controllerNode,
-		"tuppr.home-operations.com/generation":  fmt.Sprintf("%d", kubernetesUpgrade.Generation),
 	}
 
 	// Get talosctl image with defaults
@@ -450,12 +422,12 @@ func (r *KubernetesUpgradeReconciler) buildKubernetesJob(ctx context.Context, ku
 						},
 						Resources: corev1.ResourceRequirements{
 							Requests: corev1.ResourceList{
-								corev1.ResourceCPU:    resource.MustParse("10m"),
-								corev1.ResourceMemory: resource.MustParse("32Mi"),
+								corev1.ResourceCPU:    resource.MustParse("1m"),
+								corev1.ResourceMemory: resource.MustParse("8Mi"),
 							},
 							Limits: corev1.ResourceList{
 								corev1.ResourceCPU:    resource.MustParse("100m"),
-								corev1.ResourceMemory: resource.MustParse("128Mi"),
+								corev1.ResourceMemory: resource.MustParse("256Mi"),
 							},
 						},
 						VolumeMounts: []corev1.VolumeMount{{
@@ -480,28 +452,18 @@ func (r *KubernetesUpgradeReconciler) buildKubernetesJob(ctx context.Context, ku
 }
 
 // findActiveKubernetesJob looks for any currently running job for this KubernetesUpgrade
-func (r *KubernetesUpgradeReconciler) findActiveKubernetesJob(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade) (*batchv1.Job, error) {
-	logger := log.FromContext(ctx)
-
+func (r *KubernetesUpgradeReconciler) findActiveKubernetesJob(ctx context.Context) (*batchv1.Job, error) {
 	jobList := &batchv1.JobList{}
 	if err := r.List(ctx, jobList,
 		client.InNamespace(r.ControllerNamespace),
 		client.MatchingLabels{
-			"app.kubernetes.io/name":     "kubernetes-upgrade",
-			"app.kubernetes.io/instance": kubernetesUpgrade.Name,
+			"app.kubernetes.io/name": "kubernetes-upgrade",
 		}); err != nil {
 		return nil, err
 	}
 
-	logger.V(1).Info("Found jobs for KubernetesUpgrade", "count", len(jobList.Items))
-
+	// Return the first job we find - there should only be one since there's only one CR
 	for _, job := range jobList.Items {
-		// Return the first job we find - there should only be one active at a time
-		logger.V(1).Info("Found job that needs handling",
-			"job", job.Name,
-			"active", job.Status.Active,
-			"succeeded", job.Status.Succeeded,
-			"failed", job.Status.Failed)
 		return &job, nil
 	}
 
@@ -587,13 +549,9 @@ func (r *KubernetesUpgradeReconciler) handleKubernetesJobFailure(ctx context.Con
 	logger := log.FromContext(ctx)
 	logger.Info("Kubernetes upgrade job failed permanently", "job", job.Name)
 
-	retries := kubernetesUpgrade.Status.Retries + 1
-	message := fmt.Sprintf("Kubernetes upgrade job failed (attempt %d)", retries)
-
 	if err := r.updateKubernetesStatus(ctx, kubernetesUpgrade, map[string]any{
 		"phase":     constants.PhaseFailed,
-		"message":   message,
-		"retries":   retries,
+		"message":   "Kubernetes upgrade job failed permanently",
 		"lastError": "Job failed permanently",
 		"jobName":   job.Name,
 	}); err != nil {

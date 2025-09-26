@@ -3,6 +3,7 @@ package webhook
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"regexp"
 	"slices"
 
@@ -31,13 +32,14 @@ type KubernetesUpgradeValidator struct {
 }
 
 // +kubebuilder:webhook:path=/validate-tuppr-home-operations-com-v1alpha1-kubernetesupgrade,mutating=false,failurePolicy=fail,sideEffects=None,groups=tuppr.home-operations.com,resources=kubernetesupgrades,verbs=create;update,versions=v1alpha1,name=vkubernetesupgrade.kb.io,admissionReviewVersions=v1
+// +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=kubernetesupgrades,verbs=get;list;watch
 
 var _ webhook.CustomValidator = &KubernetesUpgradeValidator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type
 func (v *KubernetesUpgradeValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	kubernetes := obj.(*tupprv1alpha1.KubernetesUpgrade)
-	kuberneteslog.Info("validate create", "name", kubernetes.Name, "version", kubernetes.Spec.Kubernetes.Version, "talosConfigSecret", v.TalosConfigSecret)
+	kuberneteslog.Info("validate create", "name", kubernetes.Name, "namespace", kubernetes.Namespace, "version", kubernetes.Spec.Kubernetes.Version)
 
 	return v.validateKubernetes(ctx, kubernetes)
 }
@@ -48,10 +50,11 @@ func (v *KubernetesUpgradeValidator) ValidateUpdate(ctx context.Context, oldObj,
 	oldKubernetes := oldObj.(*tupprv1alpha1.KubernetesUpgrade)
 	kuberneteslog.Info("validate update", "name", kubernetes.Name, "version", kubernetes.Spec.Kubernetes.Version, "talosConfigSecret", v.TalosConfigSecret)
 
-	// Prevent updates to certain fields if upgrade is in progress
+	// Prevent ANY spec updates if upgrade is in progress
 	if oldKubernetes.Status.Phase == constants.PhaseInProgress {
-		if kubernetes.Spec.Kubernetes.Version != oldKubernetes.Spec.Kubernetes.Version {
-			return nil, fmt.Errorf("cannot update spec.kubernetes.version while upgrade is in progress (current phase: %s)", oldKubernetes.Status.Phase)
+		if !reflect.DeepEqual(kubernetes.Spec, oldKubernetes.Spec) {
+			return nil, fmt.Errorf("cannot update spec while upgrade is in progress (current phase: %s). Please wait for the upgrade to complete or reset it using the %s annotation",
+				oldKubernetes.Status.Phase, constants.ResetAnnotation)
 		}
 	}
 
@@ -77,9 +80,13 @@ func (v *KubernetesUpgradeValidator) validateKubernetes(ctx context.Context, kub
 
 	kuberneteslog.Info("validating kubernetes upgrade",
 		"name", kubernetes.Name,
-		"namespace", kubernetes.Namespace,
 		"version", kubernetes.Spec.Kubernetes.Version,
 		"secretName", v.TalosConfigSecret)
+
+	// Check for singleton constraint - only allow one KubernetesUpgrade per cluster
+	if err := v.validateSingleton(ctx, kubernetes); err != nil {
+		return warnings, err
+	}
 
 	// Validate that the Talos config secret exists
 	secret := &corev1.Secret{}
@@ -89,7 +96,7 @@ func (v *KubernetesUpgradeValidator) validateKubernetes(ctx context.Context, kub
 	}, secret)
 
 	if err != nil {
-		return warnings, fmt.Errorf("talosconfig secret '%s' not found in namespace '%s'. Please create this secret with your Talos configuration before creating KubernetesUpgrade resources: %w",
+		return warnings, fmt.Errorf("talosconfig secret '%s' not found in controller namespace '%s'. Please create this secret with your Talos configuration before creating KubernetesUpgrade resources: %w",
 			v.TalosConfigSecret, kubernetes.Namespace, err)
 	}
 
@@ -127,6 +134,32 @@ func (v *KubernetesUpgradeValidator) validateKubernetes(ctx context.Context, kub
 
 	kuberneteslog.Info("kubernetes upgrade validation successful", "name", kubernetes.Name, "version", kubernetes.Spec.Kubernetes.Version)
 	return warnings, nil
+}
+
+func (v *KubernetesUpgradeValidator) validateSingleton(ctx context.Context, kubernetes *tupprv1alpha1.KubernetesUpgrade) error {
+	// List all existing KubernetesUpgrade resources (cluster-scoped)
+	existingList := &tupprv1alpha1.KubernetesUpgradeList{}
+	if err := v.Client.List(ctx, existingList); err != nil {
+		return fmt.Errorf("failed to check for existing KubernetesUpgrade resources: %w", err)
+	}
+
+	// Filter out the current resource being validated (for updates)
+	for _, existing := range existingList.Items {
+		if existing.Name == kubernetes.Name {
+			// This is the same resource, skip it
+			continue
+		}
+
+		// Found another KubernetesUpgrade resource
+		kuberneteslog.Info("rejecting creation/update due to existing KubernetesUpgrade",
+			"existing", existing.Name,
+			"attempted", kubernetes.Name)
+
+		return fmt.Errorf("only one KubernetesUpgrade resource is allowed per cluster. Found existing resource '%s'. Kubernetes upgrades affect the entire cluster, so multiple upgrade resources would conflict. Please delete the existing resource first or update it to the desired version instead",
+			existing.Name)
+	}
+
+	return nil
 }
 
 func (v *KubernetesUpgradeValidator) validateKubernetesSpec(kubernetes *tupprv1alpha1.KubernetesUpgrade) error {

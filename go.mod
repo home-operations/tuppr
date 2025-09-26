@@ -4,7 +4,6 @@ go 1.24.0
 
 require (
 	github.com/cosi-project/runtime v1.11.0
-	github.com/distribution/reference v0.6.0
 	github.com/google/cel-go v0.26.1
 	github.com/google/uuid v1.6.0
 	github.com/onsi/ginkgo/v2 v2.25.3
@@ -69,7 +68,6 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/runtime-spec v1.2.1 // indirect
 	github.com/petermattis/goid v0.0.0-20240813172612-4fcff4a6cae7 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect

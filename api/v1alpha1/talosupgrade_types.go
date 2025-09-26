@@ -4,19 +4,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// NodeSelector defines how to select nodes for upgrade
-type NodeSelectorSpec struct {
-	// MatchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
-	// map is equivalent to an element of matchExpressions, whose key field is "key", the
-	// operator is "In", and the values array contains only "value".
-	// +optional
-	MatchLabels map[string]string `json:"matchLabels,omitempty"`
-
-	// MatchExpressions is a list of label selector requirements. The requirements are ANDed.
-	// +optional
-	MatchExpressions []metav1.LabelSelectorRequirement `json:"matchExpressions,omitempty"`
-}
-
 // Talos defines the talos configuration
 type TalosSpec struct {
 	// Version is the target Talos version to upgrade to (e.g., "v1.11.0")
@@ -58,12 +45,7 @@ type TalosUpgradeSpec struct {
 	// +optional
 	HealthChecks []HealthCheckSpec `json:"healthChecks,omitempty"`
 
-	// NodeSelector specifies which nodes to target for the upgrade
-	// If empty, all nodes will be targeted
-	// +optional
-	NodeSelector NodeSelectorSpec `json:"nodeSelector,omitempty"`
-
-	// Talosctl specifies the talosctl configuration for upgrade operations
+	// Talos specifies the talos configuration for upgrade operations
 	// +optional
 	Talos TalosSpec `json:"talos,omitempty"`
 
