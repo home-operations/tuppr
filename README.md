@@ -235,6 +235,7 @@ kubectl scale deployment tuppr --replicas=1 -n system-upgrade
 | **Execution** | Sequential node-by-node | Single controller node |
 | **Reboot Required** | ✅ Yes | ❌ No |
 | **Health Checks** | ✅ Before each node | ✅ Before upgrade |
+| **Concurrent Execution** | ❌ Blocked by other upgrades | ❌ Blocked by other upgrades |
 | **Handling Failures** | ❌ Manual | ❌ Manual |
 
 ### Important Resource Constraints
@@ -242,6 +243,10 @@ kubectl scale deployment tuppr --replicas=1 -n system-upgrade
 - **TalosUpgrade**: Only **one** `TalosUpgrade` resource is allowed per cluster. This constraint simplifies the upgrade orchestration by processing all nodes sequentially in a single upgrade workflow, eliminating the need for complex queueing and coordination between multiple upgrade resources. The admission webhook will reject attempts to create additional `TalosUpgrade` resources.
 
 - **KubernetesUpgrade**: Only **one** `KubernetesUpgrade` resource is allowed per cluster. This constraint exists because Kubernetes upgrades affect the entire cluster, and multiple concurrent upgrades would conflict with each other. The admission webhook will reject attempts to create additional `KubernetesUpgrade` resources.
+
+- **Cross-Upgrade Coordination**: TalosUpgrade and KubernetesUpgrade resources **cannot run concurrently**. If one upgrade is in progress (status.phase == "InProgress"), the other will wait in a "Pending" state until the active upgrade completes. This prevents conflicts between Talos node changes and Kubernetes cluster changes that could destabilize the cluster.
+
+### Upgrade Coordination Examples
 
 ```yaml
 # ✅ Valid: Single TalosUpgrade resource
@@ -253,7 +258,7 @@ spec:
   talos:
     version: v1.11.0
 ---
-# ❌ Invalid: Second TalosUpgrade will be rejected
+# ❌ Invalid: Second TalosUpgrade will be rejected by webhook
 apiVersion: tuppr.home-operations.com/v1alpha1
 kind: TalosUpgrade
 metadata:
@@ -270,9 +275,8 @@ metadata:
 spec:
   kubernetes:
     version: v1.34.0
-
 ---
-# ❌ Invalid: Second KubernetesUpgrade will be rejected
+# ❌ Invalid: Second KubernetesUpgrade will be rejected by webhook
 apiVersion: tuppr.home-operations.com/v1alpha1
 kind: KubernetesUpgrade
 metadata:
@@ -280,6 +284,48 @@ metadata:
 spec:
   kubernetes:
     version: v1.35.0
+```
+
+### Cross-Upgrade Coordination Behavior
+
+**Scenario 1: TalosUpgrade starts first**
+
+```bash
+kubectl apply -f talos-upgrade.yaml
+# ✅ TalosUpgrade starts immediately (phase: InProgress)
+
+kubectl apply -f kubernetes-upgrade.yaml
+# ⏳ KubernetesUpgrade waits (phase: Pending)
+#    message: "Waiting for Talos upgrade 'talos' to complete before starting Kubernetes upgrade"
+
+# After TalosUpgrade completes (phase: Completed)
+# ✅ KubernetesUpgrade starts automatically (phase: InProgress)
+```
+
+**Scenario 2: KubernetesUpgrade starts first**
+
+```bash
+kubectl apply -f kubernetes-upgrade.yaml
+# ✅ KubernetesUpgrade starts immediately (phase: InProgress)
+
+kubectl apply -f talos-upgrade.yaml
+# ⏳ TalosUpgrade waits (phase: Pending)
+#    message: "Waiting for Kubernetes upgrade 'kubernetes' to complete before starting Talos upgrade"
+
+# After KubernetesUpgrade completes (phase: Completed)
+# ✅ TalosUpgrade starts automatically (phase: InProgress)
+```
+
+**Scenario 3: Only one upgrade type needed**
+
+```bash
+# If you only need Talos upgrades
+kubectl apply -f talos-upgrade.yaml
+# ✅ Starts immediately - no blocking
+
+# If you only need Kubernetes upgrades
+kubectl apply -f kubernetes-upgrade.yaml
+# ✅ Starts immediately - no blocking
 ```
 
 ## 🤝 Contributing

@@ -41,6 +41,7 @@ const (
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=talosupgrades,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=talosupgrades/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=talosupgrades/finalizers,verbs=update
+// +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=kubernetesupgrades,verbs=get;list;watch
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
@@ -90,7 +91,7 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 
 	logger.V(1).Info("Starting upgrade processing")
 
-	// Check for suspend annotation first (before any other processing)
+	// Check for suspend annotation first
 	if suspended, err := r.handleSuspendAnnotation(ctx, talosUpgrade); err != nil || suspended {
 		return ctrl.Result{RequeueAfter: time.Minute * 30}, err
 	}
@@ -105,13 +106,27 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
 	}
 
-	// Skip if already completed/failed (and generation matches)
+	// Skip if already completed/failed
 	if talosUpgrade.Status.Phase == constants.PhaseCompleted || talosUpgrade.Status.Phase == constants.PhaseFailed {
 		logger.V(1).Info("Upgrade already completed or failed", "phase", talosUpgrade.Status.Phase)
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
 
-	// Check for active job FIRST - if there's a job running, handle it
+	// Coordination check - only when not already InProgress (first-applied wins)
+	if talosUpgrade.Status.Phase != constants.PhaseInProgress {
+		if blocked, message, err := IsAnotherUpgradeActive(ctx, r.Client, "talos"); err != nil {
+			logger.Error(err, "Failed to check for other active upgrades")
+			return ctrl.Result{RequeueAfter: time.Minute}, nil
+		} else if blocked {
+			logger.Info("Blocked by another upgrade", "reason", message)
+			if err := r.setPhase(ctx, talosUpgrade, constants.PhasePending, "", message); err != nil {
+				logger.Error(err, "Failed to update phase for coordination wait")
+			}
+			return ctrl.Result{RequeueAfter: time.Minute * 2}, nil
+		}
+	}
+
+	// Continue with existing upgrade logic...
 	if activeJob, activeNode, err := r.findActiveJob(ctx, talosUpgrade); err != nil {
 		logger.Error(err, "Failed to find active jobs")
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
@@ -120,7 +135,7 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 		return r.handleJobStatus(ctx, talosUpgrade, activeNode, activeJob)
 	}
 
-	// Check for failed nodes - stop if any failures
+	// Check for failed nodes
 	if len(talosUpgrade.Status.FailedNodes) > 0 {
 		logger.Info("Upgrade has failed nodes, blocking further progress",
 			"failedNodes", len(talosUpgrade.Status.FailedNodes))
