@@ -1,6 +1,6 @@
 # tuppr - Talos Linux Upgrade Controller
 
-A Kubernetes controller for managing automated upgrades of Talos Linux and Kubernetes versions.
+A Kubernetes controller for managing automated upgrades of Talos Linux and Kubernetes.
 
 ## ✨ Features
 
@@ -10,7 +10,6 @@ A Kubernetes controller for managing automated upgrades of Talos Linux and Kuber
 - 🎯 **Kubernetes upgrades** - upgrade Kubernetes to newer versions
 - 🔒 **Safe upgrade execution** - upgrades always run from healthy nodes (never self-upgrade)
 - 📊 **Built-in health checks** - CEL-based expressions for custom cluster validation
-- 🎛️ **Flexible node targeting** with advanced label selectors
 - 🔄 **Configurable reboot modes** - default or powercycle options
 - 📋 **Comprehensive status tracking** with real-time progress reporting
 - ⚡ **Resilient job execution** with automatic retry and pod replacement
@@ -31,7 +30,7 @@ machine:
   features:
     kubernetesTalosAPIAccess:
       allowedKubernetesNamespaces:
-        - system-upgrade
+        - system-upgrade # or the namespace the controller will be installed to
       allowedRoles:
         - os:admin
       enabled: true
@@ -67,15 +66,6 @@ spec:
     force: false         # Optional, skip etcd health checks
     rebootMode: default  # Optional, default|powercycle
     placement: soft      # Optional, hard|soft
-
-  # Target specific nodes (optional - defaults to all nodes)
-  nodeSelector:
-    matchLabels:
-      node-role.kubernetes.io/control-plane: ""
-    matchExpressions:
-      - key: kubernetes.io/hostname
-        operator: NotIn
-        values: ["maintenance-node"]
 
   # Custom health checks (optional)
   healthChecks:
@@ -150,32 +140,6 @@ healthChecks:
     expr: status.ceph.health in ["HEALTH_OK"]
 ```
 
-### Node Targeting (TalosUpgrade only)
-
-Precise control over which nodes to upgrade:
-
-```yaml
-nodeSelector:
-  matchLabels:
-    environment: production
-    node-role.kubernetes.io/worker: ""
-
-  matchExpressions:
-    # Exclude specific nodes
-    - key: kubernetes.io/hostname
-      operator: NotIn
-      values: ["node-1", "node-2"]
-
-    # Target nodes with specific zones
-    - key: topology.kubernetes.io/zone
-      operator: In
-      values: ["us-west-2a", "us-west-2b"]
-
-    # Exclude maintenance windows
-    - key: maintenance
-      operator: DoesNotExist
-```
-
 ### Upgrade Policies (TalosUpgrade only)
 
 Fine-tune upgrade behavior:
@@ -186,7 +150,7 @@ policy:
   debug: true
 
   # Force upgrade even if etcd is unhealthy (dangerous!)
-  force: false
+  force: true
 
   # Controls how strictly upgrade jobs avoid the target node
   placement: hard  # or "soft"
@@ -266,13 +230,57 @@ kubectl scale deployment tuppr --replicas=1 -n system-upgrade
 
 | Feature | TalosUpgrade | KubernetesUpgrade |
 |---------|--------------|-------------------|
-| **Scope** | Individual Talos nodes | Entire Kubernetes cluster |
+| **Scope** | Talos nodes | Kubernetes cluster |
+| **Multiple CRs** | ❌ Only one per cluster | ❌ Only one per cluster |
 | **Execution** | Sequential node-by-node | Single controller node |
-| **Node Targeting** | ✅ Flexible selectors | ❌ Auto-selects controller |
 | **Reboot Required** | ✅ Yes | ❌ No |
-| **Queue Management** | ✅ Yes | ❌ No |
 | **Health Checks** | ✅ Before each node | ✅ Before upgrade |
 | **Handling Failures** | ❌ Manual | ❌ Manual |
+
+### Important Resource Constraints
+
+- **TalosUpgrade**: Only **one** `TalosUpgrade` resource is allowed per cluster. This constraint simplifies the upgrade orchestration by processing all nodes sequentially in a single upgrade workflow, eliminating the need for complex queueing and coordination between multiple upgrade resources. The admission webhook will reject attempts to create additional `TalosUpgrade` resources.
+
+- **KubernetesUpgrade**: Only **one** `KubernetesUpgrade` resource is allowed per cluster. This constraint exists because Kubernetes upgrades affect the entire cluster, and multiple concurrent upgrades would conflict with each other. The admission webhook will reject attempts to create additional `KubernetesUpgrade` resources.
+
+```yaml
+# ✅ Valid: Single TalosUpgrade resource
+apiVersion: tuppr.home-operations.com/v1alpha1
+kind: TalosUpgrade
+metadata:
+  name: talos
+spec:
+  talos:
+    version: v1.11.0
+---
+# ❌ Invalid: Second TalosUpgrade will be rejected
+apiVersion: tuppr.home-operations.com/v1alpha1
+kind: TalosUpgrade
+metadata:
+  name: another-talos  # This will fail validation
+spec:
+  talos:
+    version: v1.11.1
+---
+# ✅ Valid: Single KubernetesUpgrade resource
+apiVersion: tuppr.home-operations.com/v1alpha1
+kind: KubernetesUpgrade
+metadata:
+  name: kubernetes
+spec:
+  kubernetes:
+    version: v1.34.0
+
+---
+# ❌ Invalid: Second KubernetesUpgrade will be rejected
+apiVersion: tuppr.home-operations.com/v1alpha1
+kind: KubernetesUpgrade
+metadata:
+  name: another-kubernetes  # This will fail validation
+spec:
+  kubernetes:
+    version: v1.35.0
+```
 
 ## 🤝 Contributing
 
