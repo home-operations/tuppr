@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"sync"
 	"time"
 
 	"github.com/google/cel-go/cel"
@@ -28,18 +27,12 @@ type HealthChecker struct {
 	client.Client
 }
 
-// healthCheckResult represents the result of a single health check
-type healthCheckResult struct {
-	index int
-	err   error
-}
-
 // CheckHealth performs the health checks defined in the TalosUpgrade resource
 func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1.HealthCheckSpec) error {
 	logger := log.FromContext(ctx)
 
 	if len(healthChecks) == 0 {
-		return nil // No health checks to perform
+		return nil
 	}
 
 	// Validate health checks first
@@ -49,111 +42,84 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1
 
 	logger.Info("Performing health checks", "count", len(healthChecks))
 
-	// Run health checks concurrently
-	resultChan := make(chan healthCheckResult, len(healthChecks))
-	var wg sync.WaitGroup
-
-	// Start all health checks concurrently
-	for i, check := range healthChecks {
-		wg.Add(1)
-		go func(check tupprv1alpha1.HealthCheckSpec, index int) {
-			defer wg.Done()
-			err := hc.evaluateHealthCheck(ctx, check, index)
-			resultChan <- healthCheckResult{index: index, err: err}
-		}(check, i)
-	}
-
-	// Close the result channel when all goroutines are done
-	go func() {
-		wg.Wait()
-		close(resultChan)
-	}()
-
-	// Collect results
-	var healthErrors []error
-	for result := range resultChan {
-		if result.err != nil {
-			healthErrors = append(healthErrors, fmt.Errorf("health check %d failed: %w", result.index, result.err))
+	// Find the maximum timeout across all checks
+	maxTimeout := DefaultHealthCheckTimeout
+	for _, check := range healthChecks {
+		if check.Timeout != nil && check.Timeout.Duration > maxTimeout {
+			maxTimeout = check.Timeout.Duration
 		}
 	}
 
-	if len(healthErrors) > 0 {
-		return errors.Join(healthErrors...)
-	}
-
-	logger.Info("All health checks passed")
-	return nil
-}
-
-// evaluateHealthCheck evaluates a single health check with timeout and retries
-func (hc *HealthChecker) evaluateHealthCheck(ctx context.Context, check tupprv1alpha1.HealthCheckSpec, index int) error {
-	logger := log.FromContext(ctx).WithValues(
-		"checkIndex", index,
-		"apiVersion", check.APIVersion,
-		"kind", check.Kind,
-		"name", check.Name,
-		"namespace", check.Namespace,
-	)
-
-	// Set default timeout
-	timeout := DefaultHealthCheckTimeout
-	if check.Timeout != nil {
-		timeout = check.Timeout.Duration
-	}
-
-	description := check.Description
-	if description == "" {
-		description = fmt.Sprintf("%s/%s health check", check.APIVersion, check.Kind)
-	}
-
-	logger.Info("Starting health check", "description", description, "timeout", timeout)
-
-	// Create timeout context with cause
-	timeoutCause := fmt.Errorf("health check '%s' exceeded timeout of %v", description, timeout)
-	timeoutCtx, cancel := context.WithTimeoutCause(ctx, timeout, timeoutCause)
+	timeoutCtx, cancel := context.WithTimeout(ctx, maxTimeout)
 	defer cancel()
 
-	// Compile CEL expression - provide both 'object' for full resource and 'status' for convenience
-	env, err := cel.NewEnv(
-		cel.Variable("object", cel.DynType), // Full Kubernetes resource object
-		cel.Variable("status", cel.DynType), // Just the status field for convenience
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create CEL environment: %w", err)
+	// Compile all CEL programs upfront
+	programs := make([]cel.Program, len(healthChecks))
+	for i, check := range healthChecks {
+		env, err := cel.NewEnv(
+			cel.Variable("object", cel.DynType),
+			cel.Variable("status", cel.DynType),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create CEL environment for check %d: %w", i, err)
+		}
+
+		ast, issues := env.Compile(check.Expr)
+		if issues != nil && issues.Err() != nil {
+			return fmt.Errorf("failed to compile CEL expression for check %d: %w", i, issues.Err())
+		}
+
+		program, err := env.Program(ast)
+		if err != nil {
+			return fmt.Errorf("failed to create CEL program for check %d: %w", i, err)
+		}
+		programs[i] = program
 	}
 
-	ast, issues := env.Compile(check.Expr)
-	if issues != nil && issues.Err() != nil {
-		return fmt.Errorf("failed to compile CEL expression '%s': %w", check.Expr, issues.Err())
-	}
-
-	program, err := env.Program(ast)
-	if err != nil {
-		return fmt.Errorf("failed to create CEL program: %w", err)
-	}
-
-	// Poll until expression evaluates to true or timeout
+	// Poll until ALL checks pass simultaneously
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-timeoutCtx.Done():
-			return fmt.Errorf("health check failed: %w", context.Cause(timeoutCtx))
+			return fmt.Errorf("health checks failed: exceeded maximum timeout of %v", maxTimeout)
 
 		case <-ticker.C:
-			passed, err := hc.evaluateExpression(timeoutCtx, check, program)
-			if err != nil {
-				logger.V(1).Info("Health check evaluation error (will retry)", "error", err.Error())
+			allPassed := true
+			var checkErrors []error
+
+			// Evaluate ALL checks in this iteration
+			for i, check := range healthChecks {
+				passed, err := hc.evaluateExpression(timeoutCtx, check, programs[i])
+				if err != nil {
+					checkErrors = append(checkErrors, fmt.Errorf("check %d evaluation error: %w", i, err))
+					allPassed = false
+					continue
+				}
+
+				if !passed {
+					logger.V(1).Info("Health check not satisfied",
+						"index", i,
+						"description", check.Description,
+						"apiVersion", check.APIVersion,
+						"kind", check.Kind,
+					)
+					allPassed = false
+				}
+			}
+
+			if len(checkErrors) > 0 {
+				logger.V(1).Info("Some health checks had evaluation errors (will retry)", "errors", len(checkErrors))
 				continue
 			}
 
-			if passed {
-				logger.Info("Health check passed", "description", description)
+			if allPassed {
+				logger.Info("All health checks passed simultaneously")
 				return nil
 			}
 
-			logger.V(1).Info("Health check not yet satisfied (will retry)", "description", description)
+			logger.V(1).Info("Not all health checks passed, will retry")
 		}
 	}
 }
