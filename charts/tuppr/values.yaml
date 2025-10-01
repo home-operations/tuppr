@@ -144,6 +144,9 @@ controller:
     enabled: true
     # Port for metrics endpoint
     port: 8080
+    # Enable secure metrics (HTTPS with authentication)
+    # When false, metrics are served over HTTP without authentication
+    secure: false
     # Annotations for the metrics service
     annotations: {}
     # Example:

@@ -45,6 +45,7 @@ spec:
             - --metrics-bind-address=:{{ .Values.controller.metrics.port }}
             - --health-probe-bind-address=:{{ .Values.controller.health.port }}
             - --talosconfig-secret={{ include "tuppr.serviceAccountName" . }}-talosconfig
+            - --metrics-secure={{ .Values.controller.metrics.secure }}
           env:
             - name: CONTROLLER_NAMESPACE
               valueFrom:
