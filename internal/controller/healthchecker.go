@@ -35,6 +35,24 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1
 		return nil
 	}
 
+	// Get upgrade info from context for metrics
+	upgradeType := ctx.Value(ContextKeyUpgradeType)
+	upgradeName := ctx.Value(ContextKeyUpgradeName)
+
+	startTime := time.Now()
+	defer func() {
+		if upgradeType != nil && upgradeName != nil {
+			duration := time.Since(startTime).Seconds()
+			if metricsReporter != nil {
+				metricsReporter.RecordHealthCheckDuration(
+					upgradeType.(string),
+					upgradeName.(string),
+					duration,
+				)
+			}
+		}
+	}()
+
 	// Validate health checks first
 	if err := hc.validateHealthChecks(healthChecks); err != nil {
 		return fmt.Errorf("health check validation failed: %w", err)
@@ -95,6 +113,15 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1
 				if err != nil {
 					checkErrors = append(checkErrors, fmt.Errorf("check %d evaluation error: %w", i, err))
 					allPassed = false
+
+					// Record health check failure metric
+					if upgradeType != nil && upgradeName != nil && metricsReporter != nil {
+						metricsReporter.RecordHealthCheckFailure(
+							upgradeType.(string),
+							upgradeName.(string),
+							i,
+						)
+					}
 					continue
 				}
 
@@ -106,6 +133,15 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1
 						"kind", check.Kind,
 					)
 					allPassed = false
+
+					// Record health check failure metric
+					if upgradeType != nil && upgradeName != nil && metricsReporter != nil {
+						metricsReporter.RecordHealthCheckFailure(
+							upgradeType.(string),
+							upgradeName.(string),
+							i,
+						)
+					}
 				}
 			}
 
@@ -245,4 +281,10 @@ func (hc *HealthChecker) validateHealthChecks(healthChecks []tupprv1alpha1.Healt
 	}
 
 	return nil
+}
+
+var metricsReporter *MetricsReporter
+
+func init() {
+	metricsReporter = NewMetricsReporter()
 }
