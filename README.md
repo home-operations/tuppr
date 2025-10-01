@@ -13,6 +13,7 @@ A Kubernetes controller for managing automated upgrades of Talos Linux and Kuber
 - 🔄 **Configurable reboot modes** - default or powercycle options
 - 📋 **Comprehensive status tracking** with real-time progress reporting
 - ⚡ **Resilient job execution** with automatic retry and pod replacement
+- 📈 **Prometheus metrics** - detailed monitoring of upgrade progress and health
 
 ## 🚀 Quick Start
 
@@ -159,6 +160,127 @@ policy:
   rebootMode: powercycle  # or "default"
 ```
 
+## 📊 Monitoring & Metrics
+
+### Prometheus Metrics
+
+Tuppr exposes comprehensive Prometheus metrics for monitoring upgrade progress, health check performance, and job execution:
+
+#### Talos Upgrade Metrics
+
+```prometheus
+# Current phase of Talos upgrades (0=Pending, 1=InProgress, 2=Completed, 3=Failed)
+tuppr_talos_upgrade_phase{name="cluster", phase="InProgress"} 1
+
+# Node counts for Talos upgrades
+tuppr_talos_upgrade_nodes_total{name="cluster"} 5
+tuppr_talos_upgrade_nodes_completed{name="cluster"} 3
+tuppr_talos_upgrade_nodes_failed{name="cluster"} 0
+
+# Duration of Talos upgrade phases (histogram)
+tuppr_talos_upgrade_duration_seconds{name="cluster", phase="InProgress"}
+```
+
+#### Kubernetes Upgrade Metrics
+
+```prometheus
+# Current phase of Kubernetes upgrades (0=Pending, 1=InProgress, 2=Completed, 3=Failed)
+tuppr_kubernetes_upgrade_phase{name="kubernetes", phase="Completed"} 2
+
+# Duration of Kubernetes upgrade phases (histogram)
+tuppr_kubernetes_upgrade_duration_seconds{name="kubernetes", phase="InProgress"}
+```
+
+#### Health Check Metrics
+
+```prometheus
+# Time taken for health checks to pass (histogram)
+tuppr_health_check_duration_seconds{upgrade_type="talos", upgrade_name="cluster"}
+
+# Total number of health check failures (counter)
+tuppr_health_check_failures_total{upgrade_type="talos", upgrade_name="cluster", check_index="0"}
+```
+
+#### Job Execution Metrics
+
+```prometheus
+# Number of active upgrade jobs
+tuppr_upgrade_jobs_active{upgrade_type="talos"} 1
+
+# Time taken for upgrade jobs to complete (histogram)
+tuppr_upgrade_job_duration_seconds{upgrade_type="talos", node_name="worker-01", result="success"}
+```
+
+### Grafana Dashboard Examples
+
+#### Upgrade Progress Panel
+
+```promql
+# Upgrade phase status
+tuppr_talos_upgrade_phase or tuppr_kubernetes_upgrade_phase
+
+# Node upgrade progress for Talos
+tuppr_talos_upgrade_nodes_completed / tuppr_talos_upgrade_nodes_total * 100
+
+# Health check success rate
+rate(tuppr_health_check_failures_total[5m]) == 0
+```
+
+#### Performance Monitoring
+
+```promql
+# Average health check duration
+histogram_quantile(0.95, rate(tuppr_health_check_duration_seconds_bucket[5m]))
+
+# Job completion rate
+rate(tuppr_upgrade_job_duration_seconds_count{result="success"}[5m])
+
+# Active jobs by type
+sum(tuppr_upgrade_jobs_active) by (upgrade_type)
+```
+
+### Alerting Rules
+
+Example Prometheus alerting rules:
+
+```yaml
+groups:
+  - name: tuppr
+    rules:
+      - alert: TupprUpgradeFailed
+        expr: tuppr_talos_upgrade_phase{phase="Failed"} == 3 or tuppr_kubernetes_upgrade_phase{phase="Failed"} == 3
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Tuppr upgrade failed"
+          description: "Upgrade {{ $labels.name }} has failed"
+
+      - alert: TupprUpgradeStuck
+        expr: |
+          (
+            tuppr_talos_upgrade_phase{phase="InProgress"} == 1 and
+            increase(tuppr_talos_upgrade_nodes_completed[30m]) == 0
+          ) or (
+            tuppr_kubernetes_upgrade_phase{phase="InProgress"} == 1
+          )
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tuppr upgrade appears stuck"
+          description: "Upgrade {{ $labels.name }} has been in progress for 30+ minutes without completing nodes"
+
+      - alert: TupprHealthCheckFailures
+        expr: rate(tuppr_health_check_failures_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High health check failure rate"
+          description: "Health checks for {{ $labels.upgrade_name }} are failing frequently"
+```
+
 ## 🔧 Operations
 
 ### Monitoring Upgrades
@@ -176,6 +298,10 @@ kubectl describe kubernetesupgrade kubernetes
 
 # View upgrade logs
 kubectl logs -f deployment/tuppr -n system-upgrade
+
+# Check metrics endpoint
+kubectl port-forward -n system-upgrade deployment/tuppr 8080:8080
+curl http://localhost:8080/metrics | grep tuppr_
 ```
 
 ### Suspending Upgrades
@@ -208,6 +334,10 @@ kubectl logs job/tuppr-xyz -n system-upgrade
 
 # Check controller health
 kubectl get pods -n system-upgrade -l app.kubernetes.io/name=tuppr
+
+# View metrics for debugging
+kubectl port-forward -n system-upgrade deployment/tuppr 8080:8080
+curl http://localhost:8080/metrics | grep -E "(tuppr_.*_phase|tuppr_.*_duration)"
 ```
 
 ### Emergency Procedures
@@ -237,6 +367,7 @@ kubectl scale deployment tuppr --replicas=1 -n system-upgrade
 | **Health Checks** | ✅ Before each node | ✅ Before upgrade |
 | **Concurrent Execution** | ❌ Blocked by other upgrades | ❌ Blocked by other upgrades |
 | **Handling Failures** | ❌ Manual | ❌ Manual |
+| **Metrics** | ✅ Comprehensive | ✅ Comprehensive |
 
 ### Important Resource Constraints
 
@@ -343,6 +474,7 @@ This project is licensed under the **GNU Affero General Public License v3.0** - 
 - **[Kubebuilder](https://book.kubebuilder.io/)** - Excellent framework for building Kubernetes controllers
 - **[Controller Runtime](https://github.com/kubernetes-sigs/controller-runtime)** - Powerful runtime for Kubernetes controllers
 - **[CEL](https://cel.dev/)** - Common Expression Language for flexible health checks
+- **[Prometheus](https://prometheus.io/)** - Monitoring and alerting toolkit for metrics collection
 
 ---
 

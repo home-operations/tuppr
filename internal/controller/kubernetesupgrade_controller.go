@@ -71,6 +71,7 @@ type KubernetesUpgradeReconciler struct {
 	ControllerNamespace string
 	HealthChecker       *HealthChecker
 	TalosClient         *TalosClient
+	MetricsReporter     *MetricsReporter
 }
 
 // Reconcile is part of the main kubernetes reconciliation loop
@@ -182,6 +183,10 @@ func (r *KubernetesUpgradeReconciler) processUpgrade(ctx context.Context, kubern
 		}
 		return ctrl.Result{RequeueAfter: time.Hour}, nil
 	}
+
+	// Add upgrade info to context for health check metrics
+	ctx = context.WithValue(ctx, ContextKeyUpgradeType, UpgradeTypeKubernetes)
+	ctx = context.WithValue(ctx, ContextKeyUpgradeName, kubernetesUpgrade.Name)
 
 	logger.Info("Kubernetes upgrade needed", "current", currentVersion, "target", targetVersion)
 
@@ -719,6 +724,9 @@ func (r *KubernetesUpgradeReconciler) updateStatus(ctx context.Context, kubernet
 
 // setPhase updates the phase, controller node, and message in status
 func (r *KubernetesUpgradeReconciler) setPhase(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, phase, controllerNode, message string) error {
+	// Record phase change metrics
+	r.MetricsReporter.RecordKubernetesUpgradePhase(kubernetesUpgrade.Name, phase)
+
 	return r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
 		"phase":          phase,
 		"controllerNode": controllerNode,
@@ -732,6 +740,7 @@ func (r *KubernetesUpgradeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	logger.Info("Setting up KubernetesUpgrade controller with manager")
 
 	r.HealthChecker = &HealthChecker{Client: mgr.GetClient()}
+	r.MetricsReporter = NewMetricsReporter()
 
 	talosClient, err := NewTalosClient(context.Background())
 	if err != nil {

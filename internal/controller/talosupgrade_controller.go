@@ -56,6 +56,7 @@ type TalosUpgradeReconciler struct {
 	ControllerNamespace string
 	HealthChecker       *HealthChecker
 	TalosClient         *TalosClient
+	MetricsReporter     *MetricsReporter
 }
 
 // Reconcile is part of the main kubernetes reconciliation loop
@@ -248,6 +249,10 @@ func (r *TalosUpgradeReconciler) handleGenerationChange(ctx context.Context, tal
 func (r *TalosUpgradeReconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
+	// Add upgrade info to context for health check metrics
+	ctx = context.WithValue(ctx, ContextKeyUpgradeType, UpgradeTypeTalos)
+	ctx = context.WithValue(ctx, ContextKeyUpgradeName, talosUpgrade.Name)
+
 	// Perform health checks before finding next node
 	if err := r.HealthChecker.CheckHealth(ctx, talosUpgrade.Spec.HealthChecks); err != nil {
 		logger.Info("Health checks failed, will retry", "error", err.Error())
@@ -325,6 +330,18 @@ func (r *TalosUpgradeReconciler) updateStatus(ctx context.Context, talosUpgrade 
 
 // setPhase updates the phase, current node, and message in status
 func (r *TalosUpgradeReconciler) setPhase(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase, currentNode, message string) error {
+	// Record phase change metrics
+	r.MetricsReporter.RecordTalosUpgradePhase(talosUpgrade.Name, phase)
+
+	// Record node counts
+	totalNodes, _ := r.getTotalNodeCount(ctx)
+	r.MetricsReporter.RecordTalosUpgradeNodes(
+		talosUpgrade.Name,
+		totalNodes,
+		len(talosUpgrade.Status.CompletedNodes),
+		len(talosUpgrade.Status.FailedNodes),
+	)
+
 	return r.updateStatus(ctx, talosUpgrade, map[string]any{
 		"phase":       phase,
 		"currentNode": currentNode,
@@ -925,11 +942,21 @@ func (r *TalosUpgradeReconciler) buildTalosUpgradeImage(ctx context.Context, tal
 	return targetImage, nil
 }
 
+// getTotalNodeCount returns the total number of nodes in the cluster
+func (r *TalosUpgradeReconciler) getTotalNodeCount(ctx context.Context) (int, error) {
+	nodeList := &corev1.NodeList{}
+	if err := r.List(ctx, nodeList); err != nil {
+		return 0, err
+	}
+	return len(nodeList.Items), nil
+}
+
 func (r *TalosUpgradeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	logger := ctrl.Log.WithName("setup")
 	logger.Info("Setting up TalosUpgrade controller with manager")
 
 	r.HealthChecker = &HealthChecker{Client: mgr.GetClient()}
+	r.MetricsReporter = NewMetricsReporter()
 
 	talosClient, err := NewTalosClient(context.Background())
 	if err != nil {
