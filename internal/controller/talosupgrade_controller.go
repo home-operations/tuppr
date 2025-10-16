@@ -24,7 +24,6 @@ import (
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
-	"github.com/siderolabs/go-retry/retry"
 )
 
 const (
@@ -514,24 +513,17 @@ func (r *TalosUpgradeReconciler) verifyNodeUpgrade(ctx context.Context, talosUpg
 		return fmt.Errorf("failed to get node IP for %s: %w", nodeName, err)
 	}
 
-	var currentVersion string
+	targetVersion := talosUpgrade.Spec.Talos.Version
 
-	// Add retry logic to handle certificate regeneration during upgrades
-	err = retry.Constant(30*time.Second, retry.WithUnits(2*time.Second)).Retry(func() error {
-		var versionErr error
-		currentVersion, versionErr = r.TalosClient.GetNodeVersion(ctx, nodeIP)
-		if versionErr != nil {
-			logger.V(1).Info("Failed to get node version, retrying", "node", nodeName, "error", versionErr.Error())
-			return versionErr
-		}
-		return nil
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to get current version from Talos for %s after retries: %w", nodeName, err)
+	// Wait for the Talos node to be ready after upgrade
+	if err := r.TalosClient.WaitForNodeReady(ctx, nodeIP, nodeName); err != nil {
+		return fmt.Errorf("failed waiting for Talos node to be ready for %s: %w", nodeName, err)
 	}
 
-	targetVersion := talosUpgrade.Spec.Talos.Version
+	currentVersion, err := r.TalosClient.GetNodeVersion(ctx, nodeIP)
+	if err != nil {
+		return fmt.Errorf("failed to get current version from Talos for %s: %w", nodeName, err)
+	}
 
 	if currentVersion != targetVersion {
 		return fmt.Errorf("node %s version mismatch: current=%s, target=%s",
