@@ -6,7 +6,7 @@ require (
 	github.com/cosi-project/runtime v1.11.0
 	github.com/google/cel-go v0.26.1
 	github.com/google/uuid v1.6.0
-	github.com/onsi/ginkgo/v2 v2.26.0
+	github.com/onsi/ginkgo/v2 v2.27.1
 	github.com/onsi/gomega v1.38.2
 	github.com/prometheus/client_golang v1.23.2
 	github.com/siderolabs/go-retry v0.3.3
