@@ -862,12 +862,11 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tup
 						},
 						Resources: corev1.ResourceRequirements{
 							Requests: corev1.ResourceList{
-								corev1.ResourceCPU:    resource.MustParse("1m"),
-								corev1.ResourceMemory: resource.MustParse("8Mi"),
+								corev1.ResourceCPU:    resource.MustParse("10m"),
+								corev1.ResourceMemory: resource.MustParse("64Mi"),
 							},
 							Limits: corev1.ResourceList{
-								corev1.ResourceCPU:    resource.MustParse("100m"),
-								corev1.ResourceMemory: resource.MustParse("256Mi"),
+								corev1.ResourceMemory: resource.MustParse("512Mi"),
 							},
 						},
 						VolumeMounts: []corev1.VolumeMount{{
