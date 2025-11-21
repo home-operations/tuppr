@@ -3,7 +3,7 @@ module github.com/home-operations/tuppr
 go 1.24.0
 
 require (
-	github.com/cosi-project/runtime v1.12.0
+	github.com/cosi-project/runtime v1.13.0
 	github.com/google/cel-go v0.26.1
 	github.com/google/uuid v1.6.0
 	github.com/onsi/ginkgo/v2 v2.27.2
