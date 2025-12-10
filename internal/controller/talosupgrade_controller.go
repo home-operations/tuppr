@@ -801,6 +801,11 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tup
 		logger.V(1).Info("Powercycle reboot mode enabled", "node", nodeName)
 	}
 
+	if talosUpgrade.Spec.Policy.Stage {
+		args = append(args, "--stage")
+		logger.V(1).Info("Stage upgrade enabled", "node", nodeName)
+	}
+
 	pullPolicy := corev1.PullIfNotPresent
 	if talosUpgrade.Spec.Talosctl.Image.PullPolicy != "" {
 		pullPolicy = talosUpgrade.Spec.Talosctl.Image.PullPolicy
