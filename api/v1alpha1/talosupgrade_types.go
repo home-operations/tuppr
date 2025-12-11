@@ -37,6 +37,11 @@ type PolicySpec struct {
 	// +kubebuilder:default="default"
 	// +optional
 	RebootMode string `json:"rebootMode,omitempty"`
+
+	// Stage the upgrade to perform it after a reboot
+	// +kubebuilder:default=false
+	// +optional
+	Stage bool `json:"stage,omitempty"`
 }
 
 // TalosUpgradeSpec defines the desired state of TalosUpgrade

@@ -67,6 +67,7 @@ spec:
     force: false         # Optional, skip etcd health checks
     rebootMode: default  # Optional, default|powercycle
     placement: soft      # Optional, hard|soft
+    stage: false         # Optional, stage upgrade
 
   # Custom health checks (optional)
   healthChecks:
@@ -158,6 +159,9 @@ policy:
 
   # Use powercycle reboot for problematic nodes
   rebootMode: powercycle  # or "default"
+
+  # Stage upgrade then reboot to apply (2 total reboots)
+  stage: false
 ```
 
 ## 📊 Monitoring & Metrics

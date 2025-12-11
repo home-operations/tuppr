@@ -44,6 +44,7 @@ var _ = Describe("Talos Controller", func() {
 							Force:      false,
 							Placement:  "soft",
 							RebootMode: "default",
+							Stage:      false,
 						},
 					},
 				}
