@@ -512,6 +512,10 @@ func (r *KubernetesUpgradeReconciler) buildJob(ctx context.Context, kubernetesUp
 						Image:           talosctlImage,
 						ImagePullPolicy: pullPolicy,
 						Args:            args,
+						Env: []corev1.EnvVar{{
+							Name:  "TALOSCONFIG",
+							Value: "/var/run/secrets/talos.dev/talosconfig",
+						}},
 						SecurityContext: &corev1.SecurityContext{
 							AllowPrivilegeEscalation: ptr.To(false),
 							ReadOnlyRootFilesystem:   ptr.To(true),
