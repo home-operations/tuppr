@@ -21,6 +21,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -83,6 +84,114 @@ var _ = Describe("KubernetesUpgrade Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
 			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		})
+	})
+
+	Context("When finding controller nodes", func() {
+		var reconciler *KubernetesUpgradeReconciler
+
+		BeforeEach(func() {
+			reconciler = &KubernetesUpgradeReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+		})
+
+		It("should return appropriate error when no control plane nodes exist", func() {
+			ctx := context.Background()
+
+			// Ensure no nodes with control-plane label exist
+			nodeList := &corev1.NodeList{}
+			err := k8sClient.List(ctx, nodeList)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Delete any existing control plane nodes for this test
+			for _, node := range nodeList.Items {
+				if _, hasLabel := node.Labels["node-role.kubernetes.io/control-plane"]; hasLabel {
+					err := k8sClient.Delete(ctx, &node)
+					Expect(err).NotTo(HaveOccurred())
+				}
+			}
+
+			_, _, err = reconciler.findControllerNode(ctx)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("no controller node found with node-role.kubernetes.io/control-plane label"))
+		})
+
+		It("should return appropriate error when control plane nodes lack InternalIP", func() {
+			ctx := context.Background()
+
+			// Create a control plane node without InternalIP
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-control-plane-no-ip",
+					Labels: map[string]string{
+						"node-role.kubernetes.io/control-plane": "",
+					},
+				},
+				Status: corev1.NodeStatus{
+					Addresses: []corev1.NodeAddress{
+						// Intentionally no InternalIP
+						{
+							Type:    corev1.NodeHostName,
+							Address: "test-control-plane-no-ip",
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(ctx, node)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Clean up after test
+			defer func() {
+				err := k8sClient.Delete(ctx, node)
+				Expect(err).NotTo(HaveOccurred())
+			}()
+
+			_, _, err = reconciler.findControllerNode(ctx)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("found control plane nodes but failed to get internal IP"))
+		})
+
+		It("should successfully find control plane node with InternalIP", func() {
+			ctx := context.Background()
+
+			// Create a proper control plane node with InternalIP
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-control-plane-with-ip",
+					Labels: map[string]string{
+						"node-role.kubernetes.io/control-plane": "",
+					},
+				},
+				Status: corev1.NodeStatus{
+					Addresses: []corev1.NodeAddress{
+						{
+							Type:    corev1.NodeInternalIP,
+							Address: "192.168.1.100",
+						},
+						{
+							Type:    corev1.NodeHostName,
+							Address: "test-control-plane-with-ip",
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(ctx, node)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Clean up after test
+			defer func() {
+				err := k8sClient.Delete(ctx, node)
+				Expect(err).NotTo(HaveOccurred())
+			}()
+
+			nodeName, nodeIP, err := reconciler.findControllerNode(ctx)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(nodeName).To(Equal("test-control-plane-with-ip"))
+			Expect(nodeIP).To(Equal("192.168.1.100"))
 		})
 	})
 })

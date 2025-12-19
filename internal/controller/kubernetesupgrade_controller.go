@@ -340,15 +340,24 @@ func (r *KubernetesUpgradeReconciler) findControllerNode(ctx context.Context) (s
 		return "", "", fmt.Errorf("failed to list nodes: %w", err)
 	}
 
+	var controlPlaneFound bool
+	var lastIPError error
+
 	// Find first controller node
 	for _, node := range nodeList.Items {
 		if _, isController := node.Labels["node-role.kubernetes.io/control-plane"]; isController {
+			controlPlaneFound = true
 			nodeIP, err := GetNodeInternalIP(&node)
 			if err != nil {
+				lastIPError = err
 				continue // Try next controller node
 			}
 			return node.Name, nodeIP, nil
 		}
+	}
+
+	if controlPlaneFound {
+		return "", "", fmt.Errorf("found control plane nodes but failed to get internal IP: %w", lastIPError)
 	}
 
 	return "", "", fmt.Errorf("no controller node found with node-role.kubernetes.io/control-plane label")
