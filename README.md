@@ -68,6 +68,7 @@ spec:
     rebootMode: default  # Optional, default|powercycle
     placement: soft      # Optional, hard|soft
     stage: false         # Optional, stage upgrade
+    timeout: 30m         # Optional, per-node upgrade timeout
 
   # Custom health checks (optional)
   healthChecks:
