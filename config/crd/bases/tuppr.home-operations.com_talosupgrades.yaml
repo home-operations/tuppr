@@ -129,6 +129,11 @@ spec:
                     default: false
                     description: Stage the upgrade to perform it after a reboot
                     type: boolean
+                  timeout:
+                    default: 30m
+                    description: Timeout for the per-node talosctl upgrade command
+                    pattern: ^([0-9]+[smh])+$
+                    type: string
                 type: object
               talos:
                 description: Talos specifies the talos configuration for upgrade operations

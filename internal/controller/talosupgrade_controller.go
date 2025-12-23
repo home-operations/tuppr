@@ -31,11 +31,11 @@ const (
 	TalosUpgradeFinalizer = "tuppr.home-operations.com/talos-finalizer"
 
 	// Job constants
-	TalosJobBackoffLimit        = 2     // Retry up to 2 times on failure
-	TalosJobActiveDeadline      = 6000  // 100 minutes (3 [attempts] × 30 [talosctl timeouts] + 10 [buffer])
-	TalosJobGracePeriod         = 300   // 5 minutes
-	TalosJobTTLAfterFinished    = 300   // 5 minutes (fallback if the controller misses cleanup)
-	TalosJobTalosUpgradeTimeout = "20m" // Affects TalosJobActiveDeadline
+	TalosJobBackoffLimit               = 2   // Retry up to 2 times on failure
+	TalosJobGracePeriod                = 300 // 5 minutes
+	TalosJobTTLAfterFinished           = 300 // 5 minutes (fallback if the controller misses cleanup)
+	TalosJobActiveDeadlineBuffer       = 600 // 10 minutes buffer for job overhead
+	TalosJobTalosUpgradeDefaultTimeout = 30 * time.Minute
 )
 
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=talosupgrades,verbs=get;list;watch;create;update;patch;delete
@@ -778,11 +778,17 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tup
 		logger.Error(err, "Using fallback image", "node", nodeName, "fallbackImage", targetImage)
 	}
 
+	// Get timeout with default
+	timeout := TalosJobTalosUpgradeDefaultTimeout
+	if talosUpgrade.Spec.Policy.Timeout != nil {
+		timeout = talosUpgrade.Spec.Policy.Timeout.Duration
+	}
+
 	args := []string{
 		"upgrade",
 		"--nodes=" + nodeIP,
 		"--image=" + targetImage,
-		"--timeout=" + TalosJobTalosUpgradeTimeout,
+		"--timeout=" + timeout.String(),
 		"--wait=true",
 	}
 
@@ -829,7 +835,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tup
 			Completions:             ptr.To(int32(1)),
 			TTLSecondsAfterFinished: ptr.To(int32(TalosJobTTLAfterFinished)),
 			Parallelism:             ptr.To(int32(1)),
-			ActiveDeadlineSeconds:   ptr.To(int64(TalosJobActiveDeadline)),
+			ActiveDeadlineSeconds:   ptr.To(getActiveDeadlineSeconds(timeout)),
 			PodReplacementPolicy:    ptr.To(batchv1.Failed),
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
@@ -981,4 +987,12 @@ func (r *TalosUpgradeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&tupprv1alpha1.TalosUpgrade{}).
 		Owns(&batchv1.Job{}).
 		Complete(r)
+}
+
+// getActiveDeadlineSeconds computes the job active deadline from the upgrade timeout.
+// Formula: (BackoffLimit + 1) × timeout + buffer
+func getActiveDeadlineSeconds(timeout time.Duration) int64 {
+	attempts := int64(TalosJobBackoffLimit + 1)
+	timeoutSeconds := int64(timeout.Seconds())
+	return attempts*timeoutSeconds + TalosJobActiveDeadlineBuffer
 }
