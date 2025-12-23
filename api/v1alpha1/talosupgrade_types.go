@@ -42,6 +42,13 @@ type PolicySpec struct {
 	// +kubebuilder:default=false
 	// +optional
 	Stage bool `json:"stage,omitempty"`
+
+	// Timeout for the per-node talosctl upgrade command
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern=`^([0-9]+[smh])+$`
+	// +kubebuilder:default="30m"
+	// +optional
+	Timeout *metav1.Duration `json:"timeout,omitempty"`
 }
 
 // TalosUpgradeSpec defines the desired state of TalosUpgrade
