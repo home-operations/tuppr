@@ -489,6 +489,9 @@ func (r *KubernetesUpgradeReconciler) buildJob(ctx context.Context, kubernetesUp
 			ActiveDeadlineSeconds:   ptr.To(int64(KubernetesJobActiveDeadline)),
 			PodReplacementPolicy:    ptr.To(batchv1.Failed),
 			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: labels,
+				},
 				Spec: corev1.PodSpec{
 					RestartPolicy:                 corev1.RestartPolicyNever,
 					TerminationGracePeriodSeconds: ptr.To(int64(KubernetesJobGracePeriod)),
