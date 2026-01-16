@@ -508,7 +508,7 @@ func (r *TalosUpgradeReconciler) verifyNodeUpgrade(ctx context.Context, talosUpg
 		return fmt.Errorf("failed to get node: %w", err)
 	}
 
-	nodeIP, err := GetNodeInternalIP(node)
+	nodeIP, err := GetNodeIP(node)
 	if err != nil {
 		return fmt.Errorf("failed to get node IP for %s: %w", nodeName, err)
 	}
@@ -629,7 +629,7 @@ func (r *TalosUpgradeReconciler) getSortedNodes(ctx context.Context) ([]corev1.N
 func (r *TalosUpgradeReconciler) nodeNeedsUpgrade(ctx context.Context, node *corev1.Node, targetVersion string) bool {
 	logger := log.FromContext(ctx)
 
-	nodeIP, err := GetNodeInternalIP(node)
+	nodeIP, err := GetNodeIP(node)
 	if err != nil {
 		logger.Error(err, "Failed to get node IP, cannot determine upgrade need", "node", node.Name)
 		return false // Cannot proceed without IP
@@ -663,9 +663,9 @@ func (r *TalosUpgradeReconciler) createJob(ctx context.Context, talosUpgrade *tu
 		return nil, err
 	}
 
-	nodeIP, err := GetNodeInternalIP(targetNode)
+	nodeIP, err := GetNodeIP(targetNode)
 	if err != nil {
-		logger.Error(err, "Failed to get node internal IP", "node", nodeName)
+		logger.Error(err, "Failed to get InternalIP or ExternalIP", "node", nodeName)
 		return nil, err
 	}
 
@@ -936,7 +936,7 @@ func (r *TalosUpgradeReconciler) buildTalosUpgradeImage(ctx context.Context, tal
 		return "", fmt.Errorf("failed to get node %s: %w", nodeName, err)
 	}
 
-	nodeIP, err := GetNodeInternalIP(node)
+	nodeIP, err := GetNodeIP(node)
 	if err != nil {
 		return "", fmt.Errorf("failed to get node IP for %s: %w", nodeName, err)
 	}
