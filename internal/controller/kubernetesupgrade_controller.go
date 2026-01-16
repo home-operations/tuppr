@@ -343,7 +343,7 @@ func (r *KubernetesUpgradeReconciler) findControllerNode(ctx context.Context) (s
 	// Find first controller node
 	for _, node := range nodeList.Items {
 		if _, isController := node.Labels["node-role.kubernetes.io/control-plane"]; isController {
-			nodeIP, err := GetNodeInternalIP(&node)
+			nodeIP, err := GetNodeIP(&node)
 			if err != nil {
 				continue // Try next controller node
 			}

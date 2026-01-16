@@ -13,13 +13,22 @@ import (
 )
 
 // GetNodeInternalIP retrieves the InternalIP of a Kubernetes node
-func GetNodeInternalIP(node *corev1.Node) (string, error) {
+func GetNodeIP(node *corev1.Node) (string, error) {
+	externalIP := ""
+
 	for _, addr := range node.Status.Addresses {
-		if addr.Type == corev1.NodeInternalIP {
+		switch addr.Type {
+		case corev1.NodeInternalIP:
 			return addr.Address, nil
+		case corev1.NodeExternalIP:
+			externalIP = addr.Address
 		}
 	}
-	return "", fmt.Errorf("no InternalIP found for node %q", node.Name)
+	if externalIP != "" {
+		return externalIP, nil
+	}
+
+	return "", fmt.Errorf("no InternalIP or ExternalIP found for node %q", node.Name)
 }
 
 // GenerateSafeJobName generates a safe Kubernetes Job name
