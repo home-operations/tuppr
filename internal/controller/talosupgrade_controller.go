@@ -665,7 +665,7 @@ func (r *TalosUpgradeReconciler) createJob(ctx context.Context, talosUpgrade *tu
 
 	nodeIP, err := GetNodeIP(targetNode)
 	if err != nil {
-		logger.Error(err, "Failed to get node internal IP", "node", nodeName)
+		logger.Error(err, "Failed to get InternalIP or ExternalIP", "node", nodeName)
 		return nil, err
 	}
 

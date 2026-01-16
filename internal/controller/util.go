@@ -12,7 +12,7 @@ import (
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 )
 
-// GetNodeInternalIP retrieves the InternalIP of a Kubernetes node
+// GetNodeIp retrieves the InternalIP or ExternalIP of a Kubernetes node while preferring the InternalIP
 func GetNodeIP(node *corev1.Node) (string, error) {
 	externalIP := ""
 
