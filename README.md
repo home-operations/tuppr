@@ -329,7 +329,7 @@ kubectl annotate kubernetesupgrade kubernetes tuppr.home-operations.com/suspend-
 
 ```bash
 # Reset failed Talos upgrade
-kubectl annotate talosupgrade cluster-upgrade tuppr.home-operations.com/reset="$(date)"
+kubectl annotate talosupgrade talos tuppr.home-operations.com/reset="$(date)"
 
 # Reset failed Kubernetes upgrade
 kubectl annotate kubernetesupgrade kubernetes tuppr.home-operations.com/reset="$(date)"
