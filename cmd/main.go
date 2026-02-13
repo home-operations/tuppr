@@ -139,18 +139,27 @@ func main() {
 		})
 	}
 
-	// When using cert-controller rotation, it writes certs to CertDir.
-	// The webhook server reads from CertDir automatically.
-	webhookOpts := webhook.Options{
-		TLSOpts: webhookTLSOpts,
-	}
+	// When using cert-controller rotation, use a dynamic GetCertificate callback
+	// instead of CertDir. The rotator writes certs asynchronously after mgr.Start(),
+	// so the webhook server must tolerate missing cert files during startup.
 	if webhookConfigName != "" && webhookCertPath == "" {
-		webhookOpts.CertDir = filepath.Join(os.TempDir(), "k8s-webhook-server", "serving-certs")
-		webhookOpts.CertName = webhookCertName
-		webhookOpts.KeyName = webhookCertKey
+		certDir := filepath.Join(os.TempDir(), "k8s-webhook-server", "serving-certs")
+		certFile := filepath.Join(certDir, webhookCertName)
+		keyFile := filepath.Join(certDir, webhookCertKey)
+		webhookTLSOpts = append(webhookTLSOpts, func(config *tls.Config) {
+			config.GetCertificate = func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+				cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+				if err != nil {
+					return nil, err
+				}
+				return &cert, nil
+			}
+		})
 	}
 
-	webhookServer := webhook.NewServer(webhookOpts)
+	webhookServer := webhook.NewServer(webhook.Options{
+		TLSOpts: webhookTLSOpts,
+	})
 
 	// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
 	// More info:
