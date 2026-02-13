@@ -32,7 +32,8 @@ func validateMaintenanceWindow(window *v1alpha1.WindowSpec) (admission.Warnings,
 	if err != nil {
 		return nil, err
 	}
-	specParser := cron.NewParser(controller.CronjobDefaultOption)
+	specParser := cron.MustNewParser(controller.CronjobDefaultOption)
+
 	_, err = specParser.Parse(window.Start)
 	if err != nil {
 		return nil, err

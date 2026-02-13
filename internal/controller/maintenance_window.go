@@ -46,7 +46,7 @@ func checkWindow(window v1alpha1.WindowSpec, now time.Time) (*MaintenanceWindowR
 	if err != nil {
 		return nil, err
 	}
-	specParser := cron.NewParser(CronjobDefaultOption)
+	specParser := cron.MustNewParser(CronjobDefaultOption)
 	sched, err := specParser.Parse(window.Start)
 	if err != nil {
 		return nil, err
