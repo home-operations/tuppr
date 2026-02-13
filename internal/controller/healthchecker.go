@@ -22,9 +22,14 @@ const (
 	DefaultHealthCheckTimeout = 10 * time.Minute
 )
 
+type HealthCheckRunner interface {
+	CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1.HealthCheckSpec) error
+}
+
 // HealthChecker evaluates CEL-based health checks
 type HealthChecker struct {
 	client.Client
+	MetricsReporter *MetricsReporter
 }
 
 // CheckHealth performs the health checks defined in the TalosUpgrade resource
@@ -43,8 +48,8 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1
 	defer func() {
 		if upgradeType != nil && upgradeName != nil {
 			duration := time.Since(startTime).Seconds()
-			if metricsReporter != nil {
-				metricsReporter.RecordHealthCheckDuration(
+			if hc.MetricsReporter != nil {
+				hc.MetricsReporter.RecordHealthCheckDuration(
 					upgradeType.(string),
 					upgradeName.(string),
 					duration,
@@ -115,8 +120,8 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1
 					allPassed = false
 
 					// Record health check failure metric
-					if upgradeType != nil && upgradeName != nil && metricsReporter != nil {
-						metricsReporter.RecordHealthCheckFailure(
+					if upgradeType != nil && upgradeName != nil && hc.MetricsReporter != nil {
+						hc.MetricsReporter.RecordHealthCheckFailure(
 							upgradeType.(string),
 							upgradeName.(string),
 							i,
@@ -135,8 +140,8 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1
 					allPassed = false
 
 					// Record health check failure metric
-					if upgradeType != nil && upgradeName != nil && metricsReporter != nil {
-						metricsReporter.RecordHealthCheckFailure(
+					if upgradeType != nil && upgradeName != nil && hc.MetricsReporter != nil {
+						hc.MetricsReporter.RecordHealthCheckFailure(
 							upgradeType.(string),
 							upgradeName.(string),
 							i,
@@ -236,7 +241,6 @@ func (hc *HealthChecker) runCELExpression(program cel.Program, resourceData map[
 		"object": safeData,   // Full Kubernetes resource object
 		"status": statusData, // Just the status field for convenience
 	})
-
 	if err != nil {
 		return false, fmt.Errorf("CEL evaluation error: %w", err)
 	}
@@ -281,10 +285,4 @@ func (hc *HealthChecker) validateHealthChecks(healthChecks []tupprv1alpha1.Healt
 	}
 
 	return nil
-}
-
-var metricsReporter *MetricsReporter
-
-func init() {
-	metricsReporter = NewMetricsReporter()
 }

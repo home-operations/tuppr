@@ -53,6 +53,10 @@ const (
 	KubernetesJobTTLAfterFinished = 300  // 5 minutes
 )
 
+type VersionGetter interface {
+	GetCurrentKubernetesVersion(ctx context.Context) (string, error)
+}
+
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=kubernetesupgrades,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=kubernetesupgrades/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=kubernetesupgrades/finalizers,verbs=update
@@ -69,9 +73,10 @@ type KubernetesUpgradeReconciler struct {
 	Scheme              *runtime.Scheme
 	TalosConfigSecret   string
 	ControllerNamespace string
-	HealthChecker       *HealthChecker
-	TalosClient         *TalosClient
+	HealthChecker       HealthCheckRunner
+	TalosClient         TalosClientInterface
 	MetricsReporter     *MetricsReporter
+	VersionGetter       VersionGetter
 }
 
 // Reconcile is part of the main kubernetes reconciliation loop
@@ -157,7 +162,7 @@ func (r *KubernetesUpgradeReconciler) processUpgrade(ctx context.Context, kubern
 	}
 
 	// Check version and continue with upgrade logic...
-	currentVersion, err := r.getCurrentKubernetesVersion(ctx)
+	currentVersion, err := r.VersionGetter.GetCurrentKubernetesVersion(ctx)
 	if err != nil {
 		logger.Error(err, "Failed to get current Kubernetes version")
 		if err := r.setPhase(ctx, kubernetesUpgrade, constants.PhaseFailed, "", fmt.Sprintf("Failed to get current version: %s", err.Error())); err != nil {
@@ -297,34 +302,31 @@ func (r *KubernetesUpgradeReconciler) handleSuspendAnnotation(ctx context.Contex
 	return true, nil // Return true to indicate we should stop processing
 }
 
-// getCurrentKubernetesVersion gets the current Kubernetes version from the cluster
-func (r *KubernetesUpgradeReconciler) getCurrentKubernetesVersion(ctx context.Context) (string, error) {
-	// Use the existing REST config from the manager instead of ctrl.GetConfigOrDie()
+// DiscoveryVersionGetter gets the Kubernetes version via the discovery API
+type DiscoveryVersionGetter struct{}
+
+func (d *DiscoveryVersionGetter) GetCurrentKubernetesVersion(ctx context.Context) (string, error) {
 	config, err := ctrl.GetConfig()
 	if err != nil {
 		return "", fmt.Errorf("failed to get REST config: %w", err)
 	}
 
-	// Create discovery client
 	discoveryClient, err := discovery.NewDiscoveryClientForConfig(config)
 	if err != nil {
 		return "", fmt.Errorf("failed to create discovery client: %w", err)
 	}
 
-	// Check if context is cancelled before making the call
 	select {
 	case <-ctx.Done():
 		return "", ctx.Err()
 	default:
 	}
 
-	// Get server version
 	serverVersion, err := discoveryClient.ServerVersion()
 	if err != nil {
 		return "", fmt.Errorf("failed to get server version: %w", err)
 	}
 
-	// Return version in format that matches our spec (with 'v' prefix)
 	version := serverVersion.GitVersion
 	if !strings.HasPrefix(version, "v") {
 		version = "v" + version
@@ -616,7 +618,7 @@ func (r *KubernetesUpgradeReconciler) handleJobSuccess(ctx context.Context, kube
 	logger.Info("Kubernetes upgrade job completed successfully", "job", job.Name)
 
 	// Verify the upgrade worked by checking the current version
-	currentVersion, err := r.getCurrentKubernetesVersion(ctx)
+	currentVersion, err := r.VersionGetter.GetCurrentKubernetesVersion(ctx)
 	if err != nil {
 		logger.Error(err, "Failed to verify Kubernetes upgrade")
 		return r.handleJobFailure(ctx, kubernetesUpgrade, job)
@@ -745,8 +747,9 @@ func (r *KubernetesUpgradeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	logger := ctrl.Log.WithName("setup")
 	logger.Info("Setting up KubernetesUpgrade controller with manager")
 
-	r.HealthChecker = &HealthChecker{Client: mgr.GetClient()}
 	r.MetricsReporter = NewMetricsReporter()
+	r.HealthChecker = &HealthChecker{Client: mgr.GetClient(), MetricsReporter: r.MetricsReporter}
+	r.VersionGetter = &DiscoveryVersionGetter{}
 
 	talosClient, err := NewTalosClient(context.Background())
 	if err != nil {
