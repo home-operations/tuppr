@@ -670,7 +670,7 @@ func TestTalosUpgrade_Warnings_NoWarningsForSafeDefaults(t *testing.T) {
 func TestTalosUpgrade_ValidateCreate_MaintenanceWindowValid(t *testing.T) {
 	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
 	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
-		tu.Spec.MaintenanceWindow = &tupprv1alpha1.MaintenanceWindowSpec{
+		tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{
 				{
 					Start:    "0 2 * * 0",
@@ -696,7 +696,7 @@ func TestTalosUpgrade_ValidateCreate_MaintenanceWindowValid(t *testing.T) {
 func TestTalosUpgrade_ValidateCreate_MaintenanceWindowInvalidCron(t *testing.T) {
 	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
 	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
-		tu.Spec.MaintenanceWindow = &tupprv1alpha1.MaintenanceWindowSpec{
+		tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{
 				{
 					Start:    "not a cron",
@@ -719,7 +719,7 @@ func TestTalosUpgrade_ValidateCreate_MaintenanceWindowInvalidCron(t *testing.T) 
 func TestTalosUpgrade_ValidateCreate_MaintenanceWindowShortDuration(t *testing.T) {
 	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
 	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
-		tu.Spec.MaintenanceWindow = &tupprv1alpha1.MaintenanceWindowSpec{
+		tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{
 				{
 					Start:    "0 2 * * *",

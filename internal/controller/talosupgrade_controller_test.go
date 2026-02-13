@@ -1027,7 +1027,7 @@ func TestTalosUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
 	// Window: every day at 02:00 UTC for 4 hours (outside current time)
 	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
 		controllerutil.AddFinalizer(tu, TalosUpgradeFinalizer)
-		tu.Spec.MaintenanceWindow = &tupprv1alpha1.MaintenanceWindowSpec{
+		tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{
 				{
 					Start:    "0 2 * * *",
@@ -1083,7 +1083,7 @@ func TestTalosUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
 
 	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
 		controllerutil.AddFinalizer(tu, TalosUpgradeFinalizer)
-		tu.Spec.MaintenanceWindow = &tupprv1alpha1.MaintenanceWindowSpec{
+		tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{
 				{
 					Start:    "0 2 * * *",

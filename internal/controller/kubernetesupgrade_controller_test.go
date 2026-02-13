@@ -692,7 +692,7 @@ func TestKubernetesUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
 	// Window: every day at 02:00 UTC for 4 hours (outside current time)
 	ku := newKubernetesUpgrade("test", func(ku *tupprv1alpha1.KubernetesUpgrade) {
 		controllerutil.AddFinalizer(ku, KubernetesUpgradeFinalizer)
-		ku.Spec.MaintenanceWindow = &tupprv1alpha1.MaintenanceWindowSpec{
+		ku.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{
 				{
 					Start:    "0 2 * * *",
@@ -749,7 +749,7 @@ func TestKubernetesUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
 
 	ku := newKubernetesUpgrade("test", func(ku *tupprv1alpha1.KubernetesUpgrade) {
 		controllerutil.AddFinalizer(ku, KubernetesUpgradeFinalizer)
-		ku.Spec.MaintenanceWindow = &tupprv1alpha1.MaintenanceWindowSpec{
+		ku.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{
 				{
 					Start:    "0 2 * * *",

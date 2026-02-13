@@ -66,7 +66,7 @@ type TalosctlSpec struct {
 	Image TalosctlImageSpec `json:"image,omitempty"`
 }
 
-type MaintenanceWindowSpec struct {
+type MaintenanceSpec struct {
 	// +optional
 	// +kubebuilder:validation:MinItems=1
 	Windows []WindowSpec `json:"windows,omitempty"`

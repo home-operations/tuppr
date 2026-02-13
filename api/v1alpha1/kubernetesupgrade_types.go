@@ -28,7 +28,7 @@ type KubernetesUpgradeSpec struct {
 
 	// Maintenance configuration behavior for upgrade operations
 	// +optional
-	MaintenanceWindow *MaintenanceWindowSpec `json:"maintenanceWindow,omitempty"`
+	Maintenance *MaintenanceSpec `json:"maintenance,omitempty"`
 }
 
 // KubernetesUpgradeStatus defines the observed state of KubernetesUpgrade

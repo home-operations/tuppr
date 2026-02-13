@@ -130,7 +130,7 @@ func (v *KubernetesUpgradeValidator) validateKubernetes(ctx context.Context, kub
 	}
 
 	// Validate maintenance window if specified
-	if mwWarnings, err := validateMaintenanceWindows(kubernetes.Spec.MaintenanceWindow); err != nil {
+	if mwWarnings, err := validateMaintenanceWindows(kubernetes.Spec.Maintenance); err != nil {
 		return warnings, fmt.Errorf("spec.maintenanceWindow validation failed: %w", err)
 	} else {
 		warnings = append(warnings, mwWarnings...)

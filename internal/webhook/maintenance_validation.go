@@ -10,7 +10,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
-func validateMaintenanceWindows(spec *v1alpha1.MaintenanceWindowSpec) (admission.Warnings, error) {
+func validateMaintenanceWindows(spec *v1alpha1.MaintenanceSpec) (admission.Warnings, error) {
 	if spec == nil || len(spec.Windows) == 0 {
 		return nil, nil
 	}

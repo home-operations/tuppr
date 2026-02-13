@@ -508,7 +508,7 @@ func containsWarning(warnings []string, substr string) bool {
 func TestKubernetesUpgrade_ValidateCreate_MaintenanceWindowValid(t *testing.T) {
 	v := newK8sValidator(talosConfigSecretWithKey("default", validTalosConfig()))
 	ku := newKubernetesUpgrade("test", func(ku *tupprv1alpha1.KubernetesUpgrade) {
-		ku.Spec.MaintenanceWindow = &tupprv1alpha1.MaintenanceWindowSpec{
+		ku.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{
 				{
 					Start:    "0 2 * * 0",
@@ -534,7 +534,7 @@ func TestKubernetesUpgrade_ValidateCreate_MaintenanceWindowValid(t *testing.T) {
 func TestKubernetesUpgrade_ValidateCreate_MaintenanceWindowInvalidTimezone(t *testing.T) {
 	v := newK8sValidator(talosConfigSecretWithKey("default", validTalosConfig()))
 	ku := newKubernetesUpgrade("test", func(ku *tupprv1alpha1.KubernetesUpgrade) {
-		ku.Spec.MaintenanceWindow = &tupprv1alpha1.MaintenanceWindowSpec{
+		ku.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{
 				{
 					Start:    "0 2 * * *",

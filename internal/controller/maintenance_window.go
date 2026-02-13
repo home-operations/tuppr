@@ -15,7 +15,7 @@ type MaintenanceWindowResult struct {
 	CurrentWindowEnd *time.Time
 }
 
-func CheckMaintenanceWindow(spec *v1alpha1.MaintenanceWindowSpec, now time.Time) (*MaintenanceWindowResult, error) {
+func CheckMaintenanceWindow(spec *v1alpha1.MaintenanceSpec, now time.Time) (*MaintenanceWindowResult, error) {
 	if spec == nil || len(spec.Windows) == 0 {
 		return &MaintenanceWindowResult{Allowed: true}, nil
 	}

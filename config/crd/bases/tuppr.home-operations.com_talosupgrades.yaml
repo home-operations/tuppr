@@ -96,7 +96,7 @@ spec:
                   - kind
                   type: object
                 type: array
-              maintenanceWindow:
+              maintenance:
                 description: Maintenance configuration behavior for upgrade operations
                 properties:
                   windows:

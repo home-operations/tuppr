@@ -71,7 +71,7 @@ type TalosUpgradeSpec struct {
 
 	// Maintenance configuration behavior for upgrade operations
 	// +optional
-	MaintenanceWindow *MaintenanceWindowSpec `json:"maintenanceWindow,omitempty"`
+	Maintenance *MaintenanceSpec `json:"maintenance,omitempty"`
 }
 
 // TalosUpgradeStatus defines the observed state of TalosUpgrade

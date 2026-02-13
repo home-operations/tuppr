@@ -125,7 +125,7 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 
 	// Check maintenance window - only gate start of work, not in-progress upgrades
 	if talosUpgrade.Status.Phase != constants.PhaseInProgress {
-		maintenanceRes, err := CheckMaintenanceWindow(talosUpgrade.Spec.MaintenanceWindow, now)
+		maintenanceRes, err := CheckMaintenanceWindow(talosUpgrade.Spec.Maintenance, now)
 		if err != nil {
 			return ctrl.Result{RequeueAfter: time.Second * 30}, err
 		}
@@ -286,7 +286,7 @@ func (r *TalosUpgradeReconciler) processNextNode(ctx context.Context, talosUpgra
 	logger := log.FromContext(ctx)
 
 	// Check maintenance window between nodes - if window closed, wait for next one
-	maintenanceRes, err := CheckMaintenanceWindow(talosUpgrade.Spec.MaintenanceWindow, r.now.Now())
+	maintenanceRes, err := CheckMaintenanceWindow(talosUpgrade.Spec.Maintenance, r.now.Now())
 	if err != nil {
 		logger.Error(err, "Failed to check maintenance window")
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err

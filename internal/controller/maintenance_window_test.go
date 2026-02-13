@@ -16,17 +16,17 @@ func window(start string, duration time.Duration, tz string) v1alpha1.WindowSpec
 	}
 }
 
-func spec(windows ...v1alpha1.WindowSpec) *v1alpha1.MaintenanceWindowSpec {
-	return &v1alpha1.MaintenanceWindowSpec{Windows: windows}
+func spec(windows ...v1alpha1.WindowSpec) *v1alpha1.MaintenanceSpec {
+	return &v1alpha1.MaintenanceSpec{Windows: windows}
 }
 
 func TestCheckMaintenanceWindow_NilAndEmpty(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		spec *v1alpha1.MaintenanceWindowSpec
+		spec *v1alpha1.MaintenanceSpec
 	}{
 		{"nil spec", nil},
-		{"empty windows", &v1alpha1.MaintenanceWindowSpec{}},
+		{"empty windows", &v1alpha1.MaintenanceSpec{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			result, err := CheckMaintenanceWindow(tc.spec, time.Now())
@@ -163,7 +163,7 @@ func TestCheckMaintenanceWindow_SpansMidnight(t *testing.T) {
 func TestCheckMaintenanceWindow_InvalidInputs(t *testing.T) {
 	tests := []struct {
 		name string
-		spec *v1alpha1.MaintenanceWindowSpec
+		spec *v1alpha1.MaintenanceSpec
 	}{
 		{"invalid cron", spec(window("not a cron", 4*time.Hour, "UTC"))},
 		{"invalid timezone", spec(window("0 2 * * *", 4*time.Hour, "Not/Real"))},

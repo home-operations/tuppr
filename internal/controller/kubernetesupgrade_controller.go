@@ -142,7 +142,7 @@ func (r *KubernetesUpgradeReconciler) processUpgrade(ctx context.Context, kubern
 
 	// Check maintenance window - only gate start of work, not in-progress upgrades
 	if kubernetesUpgrade.Status.Phase != constants.PhaseInProgress {
-		maintenanceRes, err := CheckMaintenanceWindow(kubernetesUpgrade.Spec.MaintenanceWindow, now)
+		maintenanceRes, err := CheckMaintenanceWindow(kubernetesUpgrade.Spec.Maintenance, now)
 		if err != nil {
 			return ctrl.Result{RequeueAfter: time.Second * 30}, err
 		}
