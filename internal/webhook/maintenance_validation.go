@@ -6,7 +6,7 @@ import (
 
 	"github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/controller"
-	"github.com/robfig/cron/v3"
+	cron "github.com/netresearch/go-cron"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 

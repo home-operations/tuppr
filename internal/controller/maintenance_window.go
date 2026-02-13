@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/home-operations/tuppr/api/v1alpha1"
-	"github.com/robfig/cron/v3"
+	cron "github.com/netresearch/go-cron"
 )
 
 var CronjobDefaultOption = cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow
