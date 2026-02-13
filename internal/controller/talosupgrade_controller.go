@@ -36,7 +36,15 @@ const (
 	TalosJobTTLAfterFinished           = 300 // 5 minutes (fallback if the controller misses cleanup)
 	TalosJobActiveDeadlineBuffer       = 600 // 10 minutes buffer for job overhead
 	TalosJobTalosUpgradeDefaultTimeout = 30 * time.Minute
+
+	PlacementSoft = "soft"
 )
+
+type TalosClientInterface interface {
+	GetNodeVersion(ctx context.Context, nodeIP string) (string, error)
+	WaitForNodeReady(ctx context.Context, nodeIP, nodeName string) error
+	GetNodeInstallImage(ctx context.Context, nodeIP string) (string, error)
+}
 
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=talosupgrades,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=talosupgrades/status,verbs=get;update;patch
@@ -54,8 +62,8 @@ type TalosUpgradeReconciler struct {
 	Scheme              *runtime.Scheme
 	TalosConfigSecret   string
 	ControllerNamespace string
-	HealthChecker       *HealthChecker
-	TalosClient         *TalosClient
+	HealthChecker       HealthCheckRunner
+	TalosClient         TalosClientInterface
 	MetricsReporter     *MetricsReporter
 }
 
@@ -710,7 +718,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tup
 	// Configure node affinity based on PlacementPreset
 	placement := talosUpgrade.Spec.Policy.Placement
 	if placement == "" {
-		placement = "soft" // Default value from kubebuilder annotation
+		placement = PlacementSoft // Default value from kubebuilder annotation
 	}
 
 	nodeSelector := corev1.NodeSelectorRequirement{
@@ -740,7 +748,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tup
 				},
 			}},
 		}
-		if placement != "soft" {
+		if placement != PlacementSoft {
 			logger.V(1).Info("Unknown placement preset, using soft placement as fallback", "preset", placement, "node", nodeName)
 		} else {
 			logger.V(1).Info("Using soft placement preset - preferred node avoidance", "node", nodeName)
@@ -977,8 +985,8 @@ func (r *TalosUpgradeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	logger := ctrl.Log.WithName("setup")
 	logger.Info("Setting up TalosUpgrade controller with manager")
 
-	r.HealthChecker = &HealthChecker{Client: mgr.GetClient()}
 	r.MetricsReporter = NewMetricsReporter()
+	r.HealthChecker = &HealthChecker{Client: mgr.GetClient(), MetricsReporter: r.MetricsReporter}
 
 	talosClient, err := NewTalosClient(context.Background())
 	if err != nil {
