@@ -46,6 +46,11 @@ spec:
             - --health-probe-bind-address=:{{ .Values.controller.health.port }}
             - --talosconfig-secret={{ include "tuppr.serviceAccountName" . }}-talosconfig
             - --metrics-secure={{ .Values.controller.metrics.secure }}
+            {{- if .Values.webhook.enabled }}
+            - --webhook-config-name={{ include "tuppr.webhookConfigName" . }}
+            - --webhook-service-name={{ include "tuppr.webhookServiceName" . }}
+            - --webhook-secret-name={{ include "tuppr.webhookCertName" . }}
+            {{- end }}
           env:
             - name: CONTROLLER_NAMESPACE
               valueFrom:
@@ -75,7 +80,6 @@ spec:
             {{- if .Values.webhook.enabled }}
             - mountPath: /tmp/k8s-webhook-server/serving-certs
               name: cert
-              readOnly: true
             {{- end }}
             - name: talosconfig
               mountPath: /var/run/secrets/talos.dev
@@ -83,9 +87,7 @@ spec:
       volumes:
         {{- if .Values.webhook.enabled }}
         - name: cert
-          secret:
-            defaultMode: 420
-            secretName: {{ include "tuppr.webhookCertName" . }}
+          emptyDir: {}
         {{- end }}
         - name: talosconfig
           secret:
