@@ -90,6 +90,13 @@ Create webhook certificate name
 {{- end }}
 
 {{/*
+Create webhook configuration name
+*/}}
+{{- define "tuppr.webhookConfigName" -}}
+{{- printf "%s-validating-webhook" (include "tuppr.fullname" .) }}
+{{- end }}
+
+{{/*
 Create metrics service name
 */}}
 {{- define "tuppr.metricsServiceName" -}}

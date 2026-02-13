@@ -169,8 +169,9 @@ webhook:
   annotations: {}
   # Certificate management
   certManager:
-    # Use cert-manager for webhook certificates
-    enabled: true
+    # Use cert-manager for webhook certificates (requires cert-manager to be installed)
+    # When false, the operator generates and rotates self-signed certificates automatically
+    enabled: false
     # Private key rotation policy (Always, Never)
     # In cert-manager >= v1.18.0, default changed from Never to Always
     rotationPolicy: Always

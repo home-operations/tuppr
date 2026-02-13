@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -10,7 +11,9 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"github.com/open-policy-agent/cert-controller/pkg/rotator"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -44,6 +47,8 @@ func main() {
 	var metricsAddr string
 	var metricsCertPath, metricsCertName, metricsCertKey string
 	var webhookCertPath, webhookCertName, webhookCertKey string
+	var webhookConfigName, webhookServiceName, webhookSecretName string
+	var disableCertRotation bool
 	var enableLeaderElection bool
 	var probeAddr string
 	var secureMetrics bool
@@ -70,6 +75,14 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&talosConfigSecret, "talosconfig-secret", "tuppr",
 		"The name of the secret containing talos configuration")
+	flag.StringVar(&webhookConfigName, "webhook-config-name", "",
+		"The name of the ValidatingWebhookConfiguration to patch with CA bundle")
+	flag.StringVar(&webhookServiceName, "webhook-service-name", "",
+		"The DNS name of the webhook service (e.g. tuppr-webhook-service)")
+	flag.StringVar(&webhookSecretName, "webhook-secret-name", "",
+		"The name of the Secret to store webhook certificates")
+	flag.BoolVar(&disableCertRotation, "disable-cert-rotation", false,
+		"Disable automatic certificate generation and rotation")
 
 	opts := zap.Options{
 		Development: true,
@@ -129,9 +142,18 @@ func main() {
 		})
 	}
 
-	webhookServer := webhook.NewServer(webhook.Options{
+	// When using cert-controller rotation, it writes certs to CertDir.
+	// The webhook server reads from CertDir automatically.
+	webhookOpts := webhook.Options{
 		TLSOpts: webhookTLSOpts,
-	})
+	}
+	if !disableCertRotation && webhookConfigName != "" && webhookCertPath == "" {
+		webhookOpts.CertDir = filepath.Join(os.TempDir(), "k8s-webhook-server", "serving-certs")
+		webhookOpts.CertName = webhookCertName
+		webhookOpts.KeyName = webhookCertKey
+	}
+
+	webhookServer := webhook.NewServer(webhookOpts)
 
 	// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
 	// More info:
@@ -200,6 +222,41 @@ func main() {
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
+	}
+
+	// Set up self-signed certificate rotation for webhooks
+	certSetupFinished := make(chan struct{})
+	if !disableCertRotation && webhookConfigName != "" {
+		dnsName := fmt.Sprintf("%s.%s.svc", webhookServiceName, controllerNamespace)
+		setupLog.Info("setting up cert rotation",
+			"webhook-config", webhookConfigName,
+			"dns-name", dnsName,
+			"secret", webhookSecretName,
+		)
+
+		if err := rotator.AddRotator(mgr, &rotator.CertRotator{
+			SecretKey: types.NamespacedName{
+				Namespace: controllerNamespace,
+				Name:      webhookSecretName,
+			},
+			CertDir:        filepath.Join(os.TempDir(), "k8s-webhook-server", "serving-certs"),
+			CAName:         "tuppr-ca",
+			CAOrganization: "tuppr",
+			DNSName:        dnsName,
+			ExtraDNSNames:  []string{fmt.Sprintf("%s.%s.svc.cluster.local", webhookServiceName, controllerNamespace)},
+			IsReady:        certSetupFinished,
+			Webhooks: []rotator.WebhookInfo{
+				{
+					Name: webhookConfigName,
+					Type: rotator.Validating,
+				},
+			},
+		}); err != nil {
+			setupLog.Error(err, "unable to set up cert rotation")
+			os.Exit(1)
+		}
+	} else {
+		close(certSetupFinished)
 	}
 
 	setupLog.Info("Setting up controllers")

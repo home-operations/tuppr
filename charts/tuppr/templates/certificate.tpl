@@ -28,20 +28,4 @@ metadata:
     {{- include "tuppr.labels" . | nindent 4 }}
 spec:
   selfSigned: {}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ include "tuppr.webhookServiceName" . }}
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "tuppr.labels" . | nindent 4 }}
-spec:
-  ports:
-    - port: 443
-      protocol: TCP
-      targetPort: {{ .Values.webhook.port }}
-      name: webhook
-  selector:
-    {{- include "tuppr.selectorLabels" . | nindent 4 }}
 {{- end }}
