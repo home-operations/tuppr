@@ -65,6 +65,7 @@ type TalosUpgradeReconciler struct {
 	HealthChecker       HealthCheckRunner
 	TalosClient         TalosClientInterface
 	MetricsReporter     *MetricsReporter
+	now                 Now
 }
 
 // Reconcile is part of the main kubernetes reconciliation loop
@@ -100,11 +101,12 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 
 	logger.V(1).Info("Starting upgrade processing")
 
+	now := r.now.Now()
+
 	// Check for suspend annotation first
 	if suspended, err := r.handleSuspendAnnotation(ctx, talosUpgrade); err != nil || suspended {
 		return ctrl.Result{RequeueAfter: time.Minute * 30}, err
 	}
-
 	// Check for reset annotation
 	if resetRequested, err := r.handleResetAnnotation(ctx, talosUpgrade); err != nil || resetRequested {
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
@@ -119,6 +121,32 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 	if talosUpgrade.Status.Phase == constants.PhaseCompleted || talosUpgrade.Status.Phase == constants.PhaseFailed {
 		logger.V(1).Info("Upgrade already completed or failed", "phase", talosUpgrade.Status.Phase)
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+	}
+
+	// Check maintenance window - only gate start of work, not in-progress upgrades
+	if talosUpgrade.Status.Phase != constants.PhaseInProgress {
+		maintenanceRes, err := CheckMaintenanceWindow(talosUpgrade.Spec.MaintenanceWindow, now)
+		if err != nil {
+			return ctrl.Result{RequeueAfter: time.Second * 30}, err
+		}
+		if !maintenanceRes.Allowed {
+			requeueAfter := time.Until(*maintenanceRes.NextWindowStart)
+			if requeueAfter > 5*time.Minute {
+				requeueAfter = 5 * time.Minute
+			}
+			nextTimestamp := maintenanceRes.NextWindowStart.Unix()
+			r.MetricsReporter.RecordMaintenanceWindow(UpgradeTypeTalos, talosUpgrade.Name, false, &nextTimestamp)
+			if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
+				"phase":                 constants.PhasePending,
+				"currentNode":           "",
+				"message":               fmt.Sprintf("Waiting for maintenance window (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339)),
+				"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
+			}); err != nil {
+				logger.Error(err, "Failed to update status for maintenance window")
+			}
+			return ctrl.Result{RequeueAfter: requeueAfter}, nil
+		}
+		r.MetricsReporter.RecordMaintenanceWindow(UpgradeTypeTalos, talosUpgrade.Name, true, nil)
 	}
 
 	// Coordination check - only when not already InProgress (first-applied wins)
@@ -256,6 +284,31 @@ func (r *TalosUpgradeReconciler) handleGenerationChange(ctx context.Context, tal
 // processNextNode finds the next node to upgrade or completes the upgrade if done
 func (r *TalosUpgradeReconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+
+	// Check maintenance window between nodes - if window closed, wait for next one
+	maintenanceRes, err := CheckMaintenanceWindow(talosUpgrade.Spec.MaintenanceWindow, r.now.Now())
+	if err != nil {
+		logger.Error(err, "Failed to check maintenance window")
+		return ctrl.Result{RequeueAfter: time.Second * 30}, err
+	}
+	if !maintenanceRes.Allowed {
+		requeueAfter := time.Until(*maintenanceRes.NextWindowStart)
+		if requeueAfter > 5*time.Minute {
+			requeueAfter = 5 * time.Minute
+		}
+		nextTimestamp := maintenanceRes.NextWindowStart.Unix()
+		r.MetricsReporter.RecordMaintenanceWindow(UpgradeTypeTalos, talosUpgrade.Name, false, &nextTimestamp)
+		if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
+			"phase":                 constants.PhasePending,
+			"currentNode":           "",
+			"message":               fmt.Sprintf("Maintenance window closed between nodes, waiting (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339)),
+			"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
+		}); err != nil {
+			logger.Error(err, "Failed to update status for maintenance window")
+		}
+		return ctrl.Result{RequeueAfter: requeueAfter}, nil
+	}
+	r.MetricsReporter.RecordMaintenanceWindow(UpgradeTypeTalos, talosUpgrade.Name, true, nil)
 
 	// Add upgrade info to context for health check metrics
 	ctx = context.WithValue(ctx, ContextKeyUpgradeType, UpgradeTypeTalos)
@@ -993,6 +1046,7 @@ func (r *TalosUpgradeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to create talos client: %w", err)
 	}
 	r.TalosClient = talosClient
+	r.now = &realClock{}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&tupprv1alpha1.TalosUpgrade{}).

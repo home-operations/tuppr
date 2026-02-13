@@ -68,6 +68,10 @@ type TalosUpgradeSpec struct {
 	// Policy configures upgrade behavior
 	// +optional
 	Policy PolicySpec `json:"policy,omitempty"`
+
+	// Maintenance configuration behavior for upgrade operations
+	// +optional
+	MaintenanceWindow *MaintenanceWindowSpec `json:"maintenanceWindow,omitempty"`
 }
 
 // TalosUpgradeStatus defines the observed state of TalosUpgrade
@@ -100,6 +104,10 @@ type TalosUpgradeStatus struct {
 	// ObservedGeneration reflects the generation of the most recently observed spec
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// NextMaintenanceWindow reflect the next time a maintenance can happen
+	// +optional
+	NextMaintenanceWindow *metav1.Time `json:"nextMaintenanceWindow,omitempty"`
 }
 
 // NodeUpgradeStatus tracks the upgrade status of individual nodes

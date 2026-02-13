@@ -65,3 +65,27 @@ type TalosctlSpec struct {
 	// +optional
 	Image TalosctlImageSpec `json:"image,omitempty"`
 }
+
+type MaintenanceWindowSpec struct {
+	// +optional
+	// +kubebuilder:validation:MinItems=1
+	Windows []WindowSpec `json:"windows,omitempty"`
+}
+
+type WindowSpec struct {
+	// Cron expression (5-field): minute hour day-of-month month day-of-week
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=9
+	Start string `json:"start"`
+
+	// How long the window stays open (e.g., "4h", "2h30m")
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern=`^([0-9]+[smh])+$`
+	Duration metav1.Duration `json:"duration"`
+
+	// IANA timezone (e.g., "UTC", "Europe/Paris")
+	// +kubebuilder:default="UTC"
+	// +optional
+	Timezone string `json:"timezone,omitempty"`
+}

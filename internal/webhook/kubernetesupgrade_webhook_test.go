@@ -504,3 +504,52 @@ func containsWarning(warnings []string, substr string) bool {
 	}
 	return false
 }
+
+func TestKubernetesUpgrade_ValidateCreate_MaintenanceWindowValid(t *testing.T) {
+	v := newK8sValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	ku := newKubernetesUpgrade("test", func(ku *tupprv1alpha1.KubernetesUpgrade) {
+		ku.Spec.MaintenanceWindow = &tupprv1alpha1.MaintenanceWindowSpec{
+			Windows: []tupprv1alpha1.WindowSpec{
+				{
+					Start:    "0 2 * * 0",
+					Duration: metav1.Duration{Duration: 4 * time.Hour},
+					Timezone: "UTC",
+				},
+			},
+		}
+	})
+
+	warnings, err := v.ValidateCreate(context.Background(), ku)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	// Check that there are no maintenance window-specific warnings (other warnings like talosctl version are OK)
+	for _, w := range warnings {
+		if strings.Contains(strings.ToLower(w), "maintenance") || strings.Contains(strings.ToLower(w), "window") {
+			t.Errorf("unexpected maintenance window warning: %s", w)
+		}
+	}
+}
+
+func TestKubernetesUpgrade_ValidateCreate_MaintenanceWindowInvalidTimezone(t *testing.T) {
+	v := newK8sValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	ku := newKubernetesUpgrade("test", func(ku *tupprv1alpha1.KubernetesUpgrade) {
+		ku.Spec.MaintenanceWindow = &tupprv1alpha1.MaintenanceWindowSpec{
+			Windows: []tupprv1alpha1.WindowSpec{
+				{
+					Start:    "0 2 * * *",
+					Duration: metav1.Duration{Duration: 4 * time.Hour},
+					Timezone: "Not/Real",
+				},
+			},
+		}
+	})
+
+	_, err := v.ValidateCreate(context.Background(), ku)
+	if err == nil {
+		t.Fatal("expected error for invalid timezone")
+	}
+	if !strings.Contains(err.Error(), "maintenanceWindow") {
+		t.Errorf("expected error to mention maintenanceWindow, got: %v", err)
+	}
+}

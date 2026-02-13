@@ -77,6 +77,7 @@ type KubernetesUpgradeReconciler struct {
 	TalosClient         TalosClientInterface
 	MetricsReporter     *MetricsReporter
 	VersionGetter       VersionGetter
+	now                 Now
 }
 
 // Reconcile is part of the main kubernetes reconciliation loop
@@ -116,6 +117,7 @@ func (r *KubernetesUpgradeReconciler) processUpgrade(ctx context.Context, kubern
 	)
 
 	logger.V(1).Info("Starting Kubernetes upgrade processing")
+	now := r.now.Now()
 
 	// Check for suspend annotation first
 	if suspended, err := r.handleSuspendAnnotation(ctx, kubernetesUpgrade); err != nil || suspended {
@@ -136,6 +138,32 @@ func (r *KubernetesUpgradeReconciler) processUpgrade(ctx context.Context, kubern
 	if kubernetesUpgrade.Status.Phase == constants.PhaseCompleted || kubernetesUpgrade.Status.Phase == constants.PhaseFailed {
 		logger.V(1).Info("Kubernetes upgrade already completed or failed", "phase", kubernetesUpgrade.Status.Phase)
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+	}
+
+	// Check maintenance window - only gate start of work, not in-progress upgrades
+	if kubernetesUpgrade.Status.Phase != constants.PhaseInProgress {
+		maintenanceRes, err := CheckMaintenanceWindow(kubernetesUpgrade.Spec.MaintenanceWindow, now)
+		if err != nil {
+			return ctrl.Result{RequeueAfter: time.Second * 30}, err
+		}
+		if !maintenanceRes.Allowed {
+			requeueAfter := time.Until(*maintenanceRes.NextWindowStart)
+			if requeueAfter > 5*time.Minute {
+				requeueAfter = 5 * time.Minute
+			}
+			nextTimestamp := maintenanceRes.NextWindowStart.Unix()
+			r.MetricsReporter.RecordMaintenanceWindow(UpgradeTypeKubernetes, kubernetesUpgrade.Name, false, &nextTimestamp)
+			if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
+				"phase":                 constants.PhasePending,
+				"controllerNode":        "",
+				"message":               fmt.Sprintf("Waiting for maintenance window (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339)),
+				"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
+			}); err != nil {
+				logger.Error(err, "Failed to update status for maintenance window")
+			}
+			return ctrl.Result{RequeueAfter: requeueAfter}, nil
+		}
+		r.MetricsReporter.RecordMaintenanceWindow(UpgradeTypeKubernetes, kubernetesUpgrade.Name, true, nil)
 	}
 
 	// Coordination check - only when not already InProgress (first-applied wins)
@@ -756,6 +784,7 @@ func (r *KubernetesUpgradeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to create talos client: %w", err)
 	}
 	r.TalosClient = talosClient
+	r.now = &realClock{}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&tupprv1alpha1.KubernetesUpgrade{}).

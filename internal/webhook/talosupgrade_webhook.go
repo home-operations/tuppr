@@ -129,6 +129,13 @@ func (v *TalosUpgradeValidator) validateTalos(ctx context.Context, talos *tupprv
 		return warnings, fmt.Errorf("spec validation failed: %w", err)
 	}
 
+	// Validate maintenance window if specified
+	if mwWarnings, err := validateMaintenanceWindows(talos.Spec.MaintenanceWindow); err != nil {
+		return warnings, fmt.Errorf("spec.maintenanceWindow validation failed: %w", err)
+	} else {
+		warnings = append(warnings, mwWarnings...)
+	}
+
 	// Add warnings for risky configurations
 	warnings = append(warnings, v.generateWarnings(talos)...)
 
