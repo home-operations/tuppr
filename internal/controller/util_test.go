@@ -7,8 +7,10 @@ import (
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -116,6 +118,14 @@ func TestGenerateSafeJobName(t *testing.T) {
 			}
 		})
 	}
+}
+
+func newScheme() *runtime.Scheme {
+	s := runtime.NewScheme()
+	_ = tupprv1alpha1.AddToScheme(s)
+	_ = corev1.AddToScheme(s)
+	_ = batchv1.AddToScheme(s)
+	return s
 }
 
 func TestGenerateSafeJobName_UniquePerCall(t *testing.T) {
