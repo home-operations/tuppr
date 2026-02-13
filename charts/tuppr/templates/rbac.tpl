@@ -88,6 +88,9 @@ rules:
   - create
   - update
   - patch
+  - get
+  - list
+  - watch
 - apiGroups:
   - admissionregistration.k8s.io
   resources:
@@ -95,6 +98,7 @@ rules:
   verbs:
   - get
   - list
+  - watch
   - patch
   - update
 {{- end }}
