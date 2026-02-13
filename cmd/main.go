@@ -48,7 +48,6 @@ func main() {
 	var metricsCertPath, metricsCertName, metricsCertKey string
 	var webhookCertPath, webhookCertName, webhookCertKey string
 	var webhookConfigName, webhookServiceName, webhookSecretName string
-	var disableCertRotation bool
 	var enableLeaderElection bool
 	var probeAddr string
 	var secureMetrics bool
@@ -81,8 +80,6 @@ func main() {
 		"The DNS name of the webhook service (e.g. tuppr-webhook-service)")
 	flag.StringVar(&webhookSecretName, "webhook-secret-name", "",
 		"The name of the Secret to store webhook certificates")
-	flag.BoolVar(&disableCertRotation, "disable-cert-rotation", false,
-		"Disable automatic certificate generation and rotation")
 
 	opts := zap.Options{
 		Development: true,
@@ -147,7 +144,7 @@ func main() {
 	webhookOpts := webhook.Options{
 		TLSOpts: webhookTLSOpts,
 	}
-	if !disableCertRotation && webhookConfigName != "" && webhookCertPath == "" {
+	if webhookConfigName != "" && webhookCertPath == "" {
 		webhookOpts.CertDir = filepath.Join(os.TempDir(), "k8s-webhook-server", "serving-certs")
 		webhookOpts.CertName = webhookCertName
 		webhookOpts.KeyName = webhookCertKey
@@ -173,14 +170,6 @@ func main() {
 		metricsServerOptions.FilterProvider = filters.WithAuthenticationAndAuthorization
 	}
 
-	// If the certificate is not specified, controller-runtime will automatically
-	// generate self-signed certificates for the metrics server. While convenient for development and testing,
-	// this setup is not recommended for production.
-	//
-	// TODO(user): If you enable certManager, uncomment the following lines:
-	// - [METRICS-WITH-CERTS] at config/default/kustomization.yaml to generate and use certificates
-	// managed by cert-manager for the metrics server.
-	// - [PROMETHEUS-WITH-CERTS] at config/prometheus/kustomization.yaml for TLS certification.
 	if len(metricsCertPath) > 0 {
 		setupLog.Info("Initializing metrics certificate watcher using provided certificates",
 			"metrics-cert-path", metricsCertPath, "metrics-cert-name", metricsCertName, "metrics-cert-key", metricsCertKey)
@@ -226,7 +215,7 @@ func main() {
 
 	// Set up self-signed certificate rotation for webhooks
 	certSetupFinished := make(chan struct{})
-	if !disableCertRotation && webhookConfigName != "" {
+	if webhookConfigName != "" {
 		dnsName := fmt.Sprintf("%s.%s.svc", webhookServiceName, controllerNamespace)
 		setupLog.Info("setting up cert rotation",
 			"webhook-config", webhookConfigName,

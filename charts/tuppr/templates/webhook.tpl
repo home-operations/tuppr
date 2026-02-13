@@ -5,10 +5,6 @@ metadata:
   name: {{ include "tuppr.webhookConfigName" . }}
   labels:
     {{- include "tuppr.labels" . | nindent 4 }}
-  {{- if .Values.webhook.certManager.enabled }}
-  annotations:
-    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "tuppr.fullname" . }}-serving-cert
-  {{- end }}
 webhooks:
   - name: vkubernetesupgrade.kb.io
     admissionReviewVersions:

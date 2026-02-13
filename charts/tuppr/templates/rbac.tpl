@@ -78,7 +78,7 @@ rules:
   - get
   - patch
   - update
-{{- if and .Values.webhook.enabled (not .Values.webhook.certManager.enabled) }}
+{{- if .Values.webhook.enabled }}
 # Self-signed certificate management
 - apiGroups:
   - ""
