@@ -181,6 +181,7 @@ func newTalosReconciler(cl client.Client, scheme *runtime.Scheme, talosClient Ta
 		HealthChecker:       healthChecker,
 		MetricsReporter:     NewMetricsReporter(),
 		now:                 &realClock{},
+		ImageChecker:        &mockImageChecker{availableImages: nil},
 	}
 }
 
@@ -958,8 +959,9 @@ func TestTalosBuildJob_Properties(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, newNode(fakeNodeA, "10.0.0.1")).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+	targetImage := "factory.talos.dev/installer:" + fakeTalosVersion
 
-	job := r.buildJob(context.Background(), tu, fakeNodeA, "10.0.0.1")
+	job := r.buildJob(context.Background(), tu, fakeNodeA, "10.0.0.1", targetImage)
 
 	if job.Labels["app.kubernetes.io/name"] != "talos-upgrade" {
 		t.Fatalf("expected talos-upgrade label, got: %s", job.Labels["app.kubernetes.io/name"])
@@ -993,7 +995,7 @@ func TestTalosBuildJob_Properties(t *testing.T) {
 		"--force=true":             false,
 		"--reboot-mode=powercycle": false,
 		"--stage":                  false,
-		"--image=factory.talos.dev/installer:" + fakeTalosVersion: false,
+		"--image=" + targetImage:   false,
 	}
 	for _, arg := range container.Args {
 		if _, ok := wantArgs[arg]; ok {
@@ -1025,8 +1027,8 @@ func TestTalosBuildJob_SoftPlacement(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, newNode(fakeNodeA, "10.0.0.1")).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
-
-	job := r.buildJob(context.Background(), tu, fakeNodeA, "10.0.0.1")
+	targetImage := "factory.talos.dev/installer:" + fakeTalosVersion
+	job := r.buildJob(context.Background(), tu, fakeNodeA, "10.0.0.1", targetImage)
 	podSpec := job.Spec.Template.Spec
 	if podSpec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution == nil {
 		t.Fatal("expected preferred node affinity for soft placement")
@@ -1103,16 +1105,8 @@ func TestTalosUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
 	})
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tu).WithStatusSubresource(tu).Build()
-	r := &TalosUpgradeReconciler{
-		Client:              cl,
-		Scheme:              scheme,
-		ControllerNamespace: "default",
-		TalosConfigSecret:   "talosconfig",
-		HealthChecker:       &mockHealthChecker{},
-		TalosClient:         &mockTalosClient{},
-		MetricsReporter:     NewMetricsReporter(),
-		now:                 &fixedClock{t: now},
-	}
+	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+	r.now = &fixedClock{now}
 
 	result, err := r.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: "test"},
@@ -1170,20 +1164,8 @@ func TestTalosUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tu).WithLists(nodes).WithStatusSubresource(tu).Build()
-	r := &TalosUpgradeReconciler{
-		Client:              cl,
-		Scheme:              scheme,
-		ControllerNamespace: "default",
-		TalosConfigSecret:   "talosconfig",
-		HealthChecker:       &mockHealthChecker{},
-		TalosClient: &mockTalosClient{
-			nodeVersions:  map[string]string{"10.0.0.1": "v1.11.0"},
-			installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer:v1.11.0"},
-		},
-		MetricsReporter: NewMetricsReporter(),
-		now:             &fixedClock{t: now},
-	}
-
+	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+	r.now = &fixedClock{now}
 	// Inside window — should proceed with upgrade logic (find next node)
 	result, err := r.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: "test"},
@@ -1203,4 +1185,129 @@ func TestTalosUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
 	if strings.Contains(updated.Status.Message, "Waiting for maintenance window") {
 		t.Fatalf("should not be blocked by maintenance window inside window, message: %s", updated.Status.Message)
 	}
+}
+
+func TestTalosReconcile_WaitsForImageAvailability(t *testing.T) {
+	scheme := newScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(constants.PhasePending),
+	)
+	node := newNode(fakeNodeA, "10.0.0.1")
+
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{"10.0.0.1": "v1.10.0"},
+		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/abc:v1.10.0"},
+	}
+
+	// Setup ImageChecker to fail (simulate 500 error)
+	ic := &mockImageChecker{
+		availableImages: map[string]bool{}, // Empty map = image not found
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+	r.ImageChecker = ic
+
+	result := reconcileTalos(t, r, "test-upgrade")
+
+	if result.RequeueAfter != 1*time.Minute {
+		t.Fatalf("expected 1m requeue when image unavailable, got: %v", result.RequeueAfter)
+	}
+
+	// Verify Job was NOT created
+	var jobList batchv1.JobList
+	err := cl.List(context.Background(), &jobList)
+	if err != nil {
+		t.Fatalf("error not expected %s", err)
+	}
+	if len(jobList.Items) > 0 {
+		t.Fatal("expected no job to be created when image is unavailable")
+	}
+
+	// Verify Status message
+	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != constants.PhasePending {
+		t.Fatalf("expected phase Pending, got: %s", updated.Status.Phase)
+	}
+	if !strings.Contains(updated.Status.Message, "Waiting for image availability") {
+		t.Fatalf("expected waiting message, got: %s", updated.Status.Message)
+	}
+}
+
+func TestTalosReconcile_ProceedsWhenImageAvailable(t *testing.T) {
+	scheme := newScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(constants.PhasePending),
+	)
+	node := newNode(fakeNodeA, "10.0.0.1")
+
+	targetImage := "factory.talos.dev/installer/abc:" + fakeTalosVersion
+
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{"10.0.0.1": "v1.10.0"},
+		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/abc:v1.10.0"},
+	}
+
+	ic := &mockImageChecker{
+		availableImages: map[string]bool{
+			targetImage: true,
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+	r.ImageChecker = ic
+	// Run Reconcile
+	result := reconcileTalos(t, r, "test-upgrade")
+
+	if result.RequeueAfter != 30*time.Second {
+		t.Fatalf("expected 30s requeue (job created), got: %v", result.RequeueAfter)
+	}
+
+	var jobList batchv1.JobList
+	err := cl.List(context.Background(), &jobList)
+	if err != nil {
+		t.Fatalf("error not expected %s", err)
+	}
+	if len(jobList.Items) != 1 {
+		t.Fatal("expected upgrade job to be created")
+	}
+
+	container := jobList.Items[0].Spec.Template.Spec.Containers[0]
+	expectedArg := "--image=" + targetImage
+	foundImageArg := false
+	for _, arg := range container.Args {
+		if arg == expectedArg {
+			foundImageArg = true
+			break
+		}
+	}
+	if !foundImageArg {
+		t.Fatalf("job does not contain expected image arg: %s", expectedArg)
+	}
+}
+
+type mockImageChecker struct {
+	availableImages map[string]bool
+	err             error
+}
+
+func (m *mockImageChecker) Check(ctx context.Context, imageRef string) error {
+	if m.err != nil {
+		return m.err
+	}
+	if m.availableImages == nil {
+		return nil
+	}
+	if available, ok := m.availableImages[imageRef]; ok && available {
+		return nil
+	}
+	// Simulate 500 or 404 error
+	return fmt.Errorf("fetch failed after status: 500 Internal Server Error")
 }
