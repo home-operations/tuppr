@@ -11,8 +11,9 @@ glob = ["*.just", ".justfile"]
 stage_fixed = true
 
 [pre-commit.commands.format-go]
-run = "gofmt -s -w {staged_files}"
+run = "make lint-fix"
 glob = ["*.go"]
+tags = "lint"
 stage_fixed = true
 
 [pre-commit.commands.format-yaml]
