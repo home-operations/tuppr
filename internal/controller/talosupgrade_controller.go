@@ -449,6 +449,35 @@ func (r *TalosUpgradeReconciler) setPhase(ctx context.Context, talosUpgrade *tup
 	})
 }
 
+func (r *TalosUpgradeReconciler) buildDrainFlags(spec *tupprv1alpha1.DrainSpec, nodeName string) []string {
+	args := []string{"drain", nodeName}
+
+	if spec.DeleteLocalData != nil && *spec.DeleteLocalData {
+		args = append(args, "--delete-emptydir-data")
+	}
+
+	if spec.IgnoreDaemonSets != nil && *spec.IgnoreDaemonSets {
+		args = append(args, "--ignore-daemonsets")
+	}
+
+	if spec.Force != nil && *spec.Force {
+		args = append(args, "--force")
+	}
+
+	if spec.DisableEviction != nil && *spec.DisableEviction {
+		args = append(args, "--disable-eviction")
+	}
+
+	if spec.SkipWaitForDeleteTimeout != nil && *spec.SkipWaitForDeleteTimeout > 0 {
+		args = append(args, fmt.Sprintf("--skip-wait-for-delete-timeout=%ds", *spec.SkipWaitForDeleteTimeout))
+	}
+
+	// Standard safe defaults
+	args = append(args, "--timeout=300s") // 5 minute timeout for drain to prevent hanging indefinitely
+
+	return args
+}
+
 // addCompletedNode adds a node to the completed list if not already present
 func (r *TalosUpgradeReconciler) addCompletedNode(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) error {
 	// Simple check since we know state is managed by single controller
@@ -516,6 +545,21 @@ func (r *TalosUpgradeReconciler) handleJobSuccess(ctx context.Context, talosUpgr
 	if err := r.verifyNodeUpgrade(ctx, talosUpgrade, nodeName); err != nil {
 		logger.Error(err, "Node upgrade verification failed", "node", nodeName)
 		return r.handleJobFailure(ctx, talosUpgrade, nodeName)
+	}
+	if talosUpgrade.Spec.Drain != nil {
+		logger.Info("Uncordoning node after successful upgrade", "node", nodeName)
+		node := &corev1.Node{}
+		if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
+			logger.Error(err, "Failed to get node for uncordon", "node", nodeName)
+		} else {
+			// Only patch if currently unschedulable
+			if node.Spec.Unschedulable {
+				patch := []byte(`{"spec":{"unschedulable":false}}`)
+				if err := r.Patch(ctx, node, client.RawPatch(types.MergePatchType, patch)); err != nil {
+					logger.Error(err, "Failed to uncordon node", "node", nodeName)
+				}
+			}
+		}
 	}
 
 	// Clean up the successful job immediately
@@ -958,7 +1002,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tup
 		"pullPolicy", pullPolicy,
 		"args", args)
 
-	return &batchv1.Job{
+	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
 			Namespace: r.ControllerNamespace,
@@ -979,6 +1023,7 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tup
 					RestartPolicy:                 corev1.RestartPolicyNever,
 					TerminationGracePeriodSeconds: ptr.To(int64(TalosJobGracePeriod)),
 					PriorityClassName:             "system-node-critical",
+					ServiceAccountName:            "tuppr-controller-manager",
 					SecurityContext: &corev1.PodSecurityContext{
 						RunAsNonRoot: ptr.To(true),
 						RunAsUser:    ptr.To(int64(65532)),
@@ -1040,6 +1085,25 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tup
 			},
 		},
 	}
+	if talosUpgrade.Spec.Drain != nil {
+		kubectlImage := "alpine/kubectl:latest"
+		if talosUpgrade.Spec.Kubectl != nil && talosUpgrade.Spec.Kubectl.Image != "" {
+			kubectlImage = talosUpgrade.Spec.Kubectl.Image
+		}
+
+		drainArgs := r.buildDrainFlags(talosUpgrade.Spec.Drain, nodeName)
+
+		initContainer := corev1.Container{
+			Name:            "drain-node",
+			Image:           kubectlImage,
+			ImagePullPolicy: corev1.PullIfNotPresent,
+			Command:         []string{"kubectl"},
+			Args:            drainArgs,
+		}
+
+		job.Spec.Template.Spec.InitContainers = append(job.Spec.Template.Spec.InitContainers, initContainer)
+	}
+	return job
 }
 
 // cleanup handles finalization logic when a TalosUpgrade is deleted

@@ -951,6 +951,107 @@ func TestTalosReconcile_Cleanup(t *testing.T) {
 	}
 }
 
+func TestTalosReconcile_UncordonsNodeAfterDrain(t *testing.T) {
+	scheme := newScheme()
+
+	// Upgrade with Drain enabled
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(constants.PhaseInProgress),
+	)
+	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Force: ptr.To(true)}
+
+	// Node that is currently Cordoned
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Spec.Unschedulable = true
+
+	// Successful Job
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-upgrade-node-a-12345",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app.kubernetes.io/name":                "talos-upgrade",
+				"tuppr.home-operations.com/target-node": fakeNodeA,
+			},
+		},
+		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
+		Status: batchv1.JobStatus{Succeeded: 1},
+	}
+
+	// Mock client successful version check
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{"10.0.0.1": fakeTalosVersion},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	// Run Reconcile
+	result := reconcileTalos(t, r, "test-upgrade")
+
+	if result.RequeueAfter != 5*time.Second {
+		t.Fatalf("expected 5s requeue (success), got %v", result.RequeueAfter)
+	}
+
+	// Verify Node is Uncordoned
+	updatedNode := &corev1.Node{}
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: fakeNodeA}, updatedNode); err != nil {
+		t.Fatalf("failed to get node: %v", err)
+	}
+
+	if updatedNode.Spec.Unschedulable {
+		t.Error("expected node to be uncordoned (unschedulable=false), but it is still true")
+	}
+}
+
+func TestTalosReconcile_DoesNotUncordonWithoutDrainSpec(t *testing.T) {
+	scheme := newScheme()
+
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(constants.PhaseInProgress),
+	)
+
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Spec.Unschedulable = true
+
+	// Successful Job
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-upgrade-node-a-12345",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app.kubernetes.io/name":                "talos-upgrade",
+				"tuppr.home-operations.com/target-node": fakeNodeA,
+			},
+		},
+		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
+		Status: batchv1.JobStatus{Succeeded: 1},
+	}
+
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{"10.0.0.1": fakeTalosVersion},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	reconcileTalos(t, r, "test-upgrade")
+
+	// Verify Node remains Cordoned
+	updatedNode := &corev1.Node{}
+	_ = cl.Get(context.Background(), types.NamespacedName{Name: fakeNodeA}, updatedNode)
+
+	if !updatedNode.Spec.Unschedulable {
+		t.Error("expected node to remain cordoned because Drain spec was nil")
+	}
+}
+
 func TestTalosReconcile_MultiNodeFullLifecycle(t *testing.T) {
 	scheme := newScheme()
 	tu := newTalosUpgrade("test-upgrade",
@@ -1708,5 +1809,78 @@ func TestTalosGetSortedNodes_InvalidSelector(t *testing.T) {
 	_, err := r.getSortedNodes(context.Background(), ns)
 	if err == nil {
 		t.Error("expected error for invalid nodeSelector, got nil")
+	}
+}
+
+func TestTalosBuildJob_WithDrain(t *testing.T) {
+	scheme := newScheme()
+
+	// Setup TalosUpgrade with Drain configuration
+	drainConfig := &tupprv1alpha1.DrainSpec{
+		Force:            ptr.To(true),
+		IgnoreDaemonSets: ptr.To(true),
+		DeleteLocalData:  ptr.To(true),
+	}
+	kubectlConfig := &tupprv1alpha1.KubectlSpec{
+		Image: "custom-kubectl:v1.30",
+	}
+
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Drain = drainConfig
+	tu.Spec.Kubectl = kubectlConfig
+	tu.Spec.Talos.Version = fakeTalosVersion
+
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{"10.0.0.1": "v1.10.0"},
+		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer:v1.10.0"},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, newNode(fakeNodeA, "10.0.0.1")).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+	targetImage := "factory.talos.dev/installer:" + fakeTalosVersion
+
+	// Call buildJob
+	job := r.buildJob(context.Background(), tu, fakeNodeA, "10.0.0.1", targetImage)
+
+	// Verify InitContainer presence
+	if len(job.Spec.Template.Spec.InitContainers) != 1 {
+		t.Fatalf("expected 1 init container, got %d", len(job.Spec.Template.Spec.InitContainers))
+	}
+
+	initContainer := job.Spec.Template.Spec.InitContainers[0]
+
+	// Verify Image
+	if initContainer.Image != "custom-kubectl:v1.30" {
+		t.Errorf("expected kubectl image 'custom-kubectl:v1.30', got '%s'", initContainer.Image)
+	}
+
+	// Verify Command
+	if initContainer.Name != "drain-node" {
+		t.Errorf("expected init container name 'drain-node', got '%s'", initContainer.Name)
+	}
+
+	// Verify Arguments
+	expectedArgs := []string{
+		"drain", fakeNodeA,
+		"--delete-emptydir-data",
+		"--ignore-daemonsets",
+		"--force",
+		"--timeout=300s", // Default
+	}
+
+	// Helper to check if all expected args are present (order might vary slightly in real impl, though array append is deterministic)
+	for _, expected := range expectedArgs {
+		found := false
+		for _, arg := range initContainer.Args {
+			if arg == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("init container args missing expected flag: %s. Got: %v", expected, initContainer.Args)
+		}
 	}
 }
