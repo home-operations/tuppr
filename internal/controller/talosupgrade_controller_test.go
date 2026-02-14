@@ -422,6 +422,69 @@ func TestTalosReconcile_AllNodesUpToDate(t *testing.T) {
 	}
 }
 
+func TestTalosReconcile_SingleNodeVersionCheckFailure(t *testing.T) {
+	// Regression test for https://github.com/home-operations/tuppr/issues/65
+	// On single-node clusters, if GetNodeVersion fails (e.g. TLS expired cert),
+	// the controller should retry instead of silently completing with 0 nodes.
+	scheme := newScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(constants.PhasePending),
+	)
+	node := newNode(fakeNodeA, "10.0.0.1")
+	tc := &mockTalosClient{
+		getVersionErr: fmt.Errorf("rpc error: code = Unavailable desc = connection error: desc = \"error reading server preface: remote error: tls: expired certificate\""),
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	result := reconcileTalos(t, r, "test-upgrade")
+
+	// Should requeue for retry, not complete
+	if result.RequeueAfter != time.Minute {
+		t.Fatalf("expected 1m requeue for transient error, got: %v", result.RequeueAfter)
+	}
+
+	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	// Must NOT be Completed — the node was never checked successfully
+	if updated.Status.Phase == constants.PhaseCompleted {
+		t.Fatal("expected phase to NOT be Completed when version check fails on single-node cluster")
+	}
+}
+
+func TestTalosReconcile_MultiNodePartialVersionCheckFailure(t *testing.T) {
+	// When one node's version check fails, the entire findNextNode should error
+	// and the controller should retry, not skip that node.
+	scheme := newScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(constants.PhasePending),
+	)
+	nodeA := newNode(fakeNodeA, "10.0.0.1")
+	nodeB := newNode(fakeNodeB, "10.0.0.2")
+	// nodeA is already at target, nodeB fails version check
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{"10.0.0.1": fakeTalosVersion},
+		// nodeB (10.0.0.2) is not in the map, so GetNodeVersion returns an error
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, nodeA, nodeB).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	result := reconcileTalos(t, r, "test-upgrade")
+
+	// Should requeue for retry since nodeB version check failed
+	if result.RequeueAfter != time.Minute {
+		t.Fatalf("expected 1m requeue for node version check failure, got: %v", result.RequeueAfter)
+	}
+
+	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase == constants.PhaseCompleted {
+		t.Fatal("expected phase to NOT be Completed when a node version check fails")
+	}
+}
+
 func TestTalosReconcile_CreatesJobForNextNode(t *testing.T) {
 	scheme := newScheme()
 	tu := newTalosUpgrade("test-upgrade",
