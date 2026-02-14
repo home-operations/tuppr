@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8slabel "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
@@ -673,7 +674,7 @@ func (r *TalosUpgradeReconciler) findNextNode(ctx context.Context, talosUpgrade 
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Finding next node to upgrade", "talosupgrade", talosUpgrade.Name)
 
-	nodes, err := r.getSortedNodes(ctx)
+	nodes, err := r.getSortedNodes(ctx, talosUpgrade.Spec.NodeSelector)
 	if err != nil {
 		logger.Error(err, "Failed to get nodes")
 		return "", err
@@ -714,9 +715,23 @@ func (r *TalosUpgradeReconciler) findNextNode(ctx context.Context, talosUpgrade 
 }
 
 // getSortedNodes retrieves all nodes in the cluster sorted by name for consistent ordering
-func (r *TalosUpgradeReconciler) getSortedNodes(ctx context.Context) ([]corev1.Node, error) {
+func (r *TalosUpgradeReconciler) getSortedNodes(ctx context.Context, nodeSelector *metav1.LabelSelector) ([]corev1.Node, error) {
+	var selector k8slabel.Selector
+	var err error
 	nodeList := &corev1.NodeList{}
-	if err := r.List(ctx, nodeList); err != nil {
+	// Create a selector from the Spec
+	if nodeSelector != nil {
+		selector, err = metav1.LabelSelectorAsSelector(nodeSelector)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse nodeSelector: %w", err)
+		}
+	} else {
+		selector = k8slabel.Everything() // Ensure fallback for nil selectors
+	}
+
+	// List nodes with the selector filter
+	listOpts := &client.ListOptions{LabelSelector: selector}
+	if err := r.List(ctx, nodeList, listOpts); err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
 
