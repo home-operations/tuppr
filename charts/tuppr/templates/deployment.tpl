@@ -57,6 +57,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           ports:
             {{- if .Values.webhook.enabled }}
             - name: webhook-server
@@ -85,6 +88,9 @@ spec:
             - name: talosconfig
               mountPath: /var/run/secrets/talos.dev
               readOnly: true
+            {{- with .Values.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
       volumes:
         {{- if .Values.webhook.enabled }}
         - name: cert
@@ -96,6 +102,9 @@ spec:
           secret:
             secretName: {{ include "tuppr.serviceAccountName" . }}-talosconfig
             defaultMode: 420
+        {{- with .Values.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
