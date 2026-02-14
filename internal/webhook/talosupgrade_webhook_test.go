@@ -237,36 +237,6 @@ func TestTalosUpgrade_ValidateCreate_ValidVersionFormats(t *testing.T) {
 	}
 }
 
-func TestTalosUpgrade_ValidateCreate_SingletonRejectsSecondResource(t *testing.T) {
-	existing := newTalosUpgrade("existing")
-	v := newTalosValidator(existing, talosConfigSecretWithKey("default", validTalosConfig()))
-
-	tu := newTalosUpgrade("second")
-
-	_, err := v.ValidateCreate(context.Background(), tu)
-	if err == nil {
-		t.Fatal("expected singleton violation")
-	}
-	if !strings.Contains(err.Error(), "only one TalosUpgrade") {
-		t.Errorf("expected singleton error, got: %v", err)
-	}
-}
-
-func TestTalosUpgrade_ValidateUpdate_SingletonAllowsSameResource(t *testing.T) {
-	existing := newTalosUpgrade("my-upgrade")
-	v := newTalosValidator(existing, talosConfigSecretWithKey("default", validTalosConfig()))
-
-	old := newTalosUpgrade("my-upgrade")
-	updated := newTalosUpgrade("my-upgrade", withTalosVersion("v1.12.0"))
-
-	_, err := v.ValidateUpdate(context.Background(), old, updated)
-	if err != nil {
-		t.Fatalf("update of same resource should succeed, got: %v", err)
-	}
-}
-
-// --- ValidateUpdate: in-progress protection ---
-
 func TestTalosUpgrade_ValidateUpdate_RejectsSpecChangeWhileInProgress(t *testing.T) {
 	old := newTalosUpgrade("test", withTalosPhase(constants.PhaseInProgress))
 	updated := newTalosUpgrade("test",
@@ -732,4 +702,98 @@ func TestTalosUpgrade_ValidateCreate_MaintenanceWindowShortDuration(t *testing.T
 	if maintenanceWarnings != 1 {
 		t.Fatalf("expected 1 maintenance window warning for short duration, got %d: %v", maintenanceWarnings, warnings)
 	}
+}
+
+// Helper to create a node with labels for testing overlaps
+func newWebhookNode(name string, labels map[string]string) *corev1.Node {
+	return &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   name,
+			Labels: labels,
+		},
+	}
+}
+
+func TestTalosUpgrade_ValidateOverlaps(t *testing.T) {
+	// Define nodes in the cluster
+	node1 := newWebhookNode("node-1", map[string]string{"role": "worker", "zone": "a"})
+	node2 := newWebhookNode("node-2", map[string]string{"role": "worker", "zone": "b"})
+	node3 := newWebhookNode("node-3", map[string]string{"role": "control-plane", "zone": "a"})
+
+	// Existing plan targeting zone=a (matches node-1, node-3)
+	existingPlan := newTalosUpgrade("plan-zone-a")
+	existingPlan.Spec.NodeSelector = &metav1.LabelSelector{
+		MatchLabels: map[string]string{"zone": "a"},
+	}
+
+	secret := talosConfigSecretWithKey("default", validTalosConfig())
+
+	t.Run("Detects Overlap", func(t *testing.T) {
+		// New plan targeting role=worker (matches node-1, node-2)
+		// Overlap should be node-1 (it has both zone=a and role=worker)
+		newPlan := newTalosUpgrade("plan-workers")
+		newPlan.Spec.NodeSelector = &metav1.LabelSelector{
+			MatchLabels: map[string]string{"role": "worker"},
+		}
+
+		// Initialize validator with existing resources AND the nodes
+		v := newTalosValidator(secret, existingPlan, node1, node2, node3)
+
+		warnings, err := v.ValidateCreate(context.Background(), newPlan)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		foundOverlap := false
+		for _, w := range warnings {
+			if strings.Contains(w, "Detected node overlap") && strings.Contains(w, "node-1") {
+				foundOverlap = true
+				break
+			}
+		}
+		if !foundOverlap {
+			t.Errorf("expected overlap warning for node-1, got warnings: %v", warnings)
+		}
+	})
+
+	t.Run("No Overlap", func(t *testing.T) {
+		// New plan targeting zone=b (matches node-2 only)
+		// No intersection with existing plan (zone=a)
+		newPlan := newTalosUpgrade("plan-zone-b")
+		newPlan.Spec.NodeSelector = &metav1.LabelSelector{
+			MatchLabels: map[string]string{"zone": "b"},
+		}
+
+		v := newTalosValidator(secret, existingPlan, node1, node2, node3)
+
+		warnings, err := v.ValidateCreate(context.Background(), newPlan)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		for _, w := range warnings {
+			if strings.Contains(w, "Detected node overlap") {
+				t.Errorf("unexpected overlap warning: %s", w)
+			}
+		}
+	})
+
+	t.Run("Self Update Ignored", func(t *testing.T) {
+		// Updating the existing plan should not trigger overlap with itself
+		v := newTalosValidator(secret, existingPlan, node1, node2, node3)
+
+		updatedPlan := existingPlan.DeepCopy()
+		updatedPlan.Spec.Talos.Version = "v1.12.6"
+
+		warnings, err := v.ValidateUpdate(context.Background(), existingPlan, updatedPlan)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		for _, w := range warnings {
+			if strings.Contains(w, "Detected node overlap") {
+				t.Errorf("unexpected overlap warning for self-update: %s", w)
+			}
+		}
+	})
 }

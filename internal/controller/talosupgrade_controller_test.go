@@ -1584,3 +1584,129 @@ func TestTalosBuildTalosUpgradeImage_WithSchematicAnnotation(t *testing.T) {
 		t.Fatalf("expected schematic image %s, got: %s", expected, image)
 	}
 }
+
+func TestTalosGetSortedNodes_FilteringAndSorting(t *testing.T) {
+	scheme := newScheme()
+
+	// Define nodes with varying labels and names
+	nodeA := newNode("node-alpha", "10.0.0.1")
+	nodeA.Labels = map[string]string{"tier": "frontend", "upgrade": "true"}
+
+	nodeB := newNode("node-beta", "10.0.0.2")
+	nodeB.Labels = map[string]string{"tier": "backend", "upgrade": "true"}
+
+	nodeC := newNode("node-charlie", "10.0.0.3")
+	nodeC.Labels = map[string]string{"tier": "backend", "upgrade": "false"}
+
+	tests := []struct {
+		name         string
+		nodeSelector *metav1.LabelSelector
+		expected     []string // Names in expected order
+	}{
+		{
+			name:         "No selector returns all nodes sorted",
+			nodeSelector: nil,
+			expected:     []string{"node-alpha", "node-beta", "node-charlie"},
+		},
+		{
+			name: "Simple matchLabels filter",
+			nodeSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"tier": "backend"},
+			},
+			expected: []string{"node-beta", "node-charlie"},
+		},
+		{
+			name: "Complex matchExpressions (operator: In)",
+			nodeSelector: &metav1.LabelSelector{
+				MatchExpressions: []metav1.LabelSelectorRequirement{
+					{
+						Key:      "tier",
+						Operator: metav1.LabelSelectorOpIn,
+						Values:   []string{"frontend", "other"},
+					},
+				},
+			},
+			expected: []string{"node-alpha"},
+		},
+		{
+			name: "Complex matchExpressions (operator: Exists)",
+			nodeSelector: &metav1.LabelSelector{
+				MatchExpressions: []metav1.LabelSelectorRequirement{
+					{
+						Key:      "upgrade",
+						Operator: metav1.LabelSelectorOpExists,
+					},
+				},
+			},
+			expected: []string{"node-alpha", "node-beta", "node-charlie"},
+		},
+		{
+			name: "Filtering by value 'true' and verifying sort order",
+			nodeSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"upgrade": "true"},
+			},
+			// alpha comes before beta alphabetically
+			expected: []string{"node-alpha", "node-beta"},
+		},
+		{
+			name: "Empty result for non-matching selector",
+			nodeSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"non-existent": "label"},
+			},
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a fresh fake client for each test case
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(nodeA, nodeB, nodeC).
+				Build()
+
+			r := &TalosUpgradeReconciler{
+				Client: cl,
+				Scheme: scheme,
+			}
+
+			nodes, err := r.getSortedNodes(context.Background(), tt.nodeSelector)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			// Check length
+			if len(nodes) != len(tt.expected) {
+				t.Fatalf("expected %d nodes, got %d. Result: %v", len(tt.expected), len(nodes), nodes)
+			}
+
+			// Check names and order
+			for i, name := range tt.expected {
+				if nodes[i].Name != name {
+					t.Errorf("at index %d: expected node %s, got %s", i, name, nodes[i].Name)
+				}
+			}
+		})
+	}
+}
+
+func TestTalosGetSortedNodes_InvalidSelector(t *testing.T) {
+	scheme := newScheme()
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	r := &TalosUpgradeReconciler{Client: cl}
+
+	// An invalid operator like "BadOperator" will cause LabelSelectorAsSelector to error
+	ns := &metav1.LabelSelector{
+		MatchExpressions: []metav1.LabelSelectorRequirement{
+			{
+				Key:      "tier",
+				Operator: "BadOperator",
+			},
+		},
+	}
+
+	_, err := r.getSortedNodes(context.Background(), ns)
+	if err == nil {
+		t.Error("expected error for invalid nodeSelector, got nil")
+	}
+}

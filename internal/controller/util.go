@@ -65,7 +65,7 @@ func GenerateSafeJobName(prefix, identifier string) string {
 }
 
 // IsAnotherUpgradeActive checks if any other type of upgrade is currently active
-func IsAnotherUpgradeActive(ctx context.Context, c client.Client, currentUpgradeType string) (bool, string, error) {
+func IsAnotherUpgradeActive(ctx context.Context, c client.Client, currentUpgradeName string, currentUpgradeType string) (bool, string, error) {
 	if currentUpgradeType == "talos" {
 		// Check if any KubernetesUpgrade is InProgress
 		kubernetesUpgrades := &tupprv1alpha1.KubernetesUpgradeList{}
@@ -88,6 +88,24 @@ func IsAnotherUpgradeActive(ctx context.Context, c client.Client, currentUpgrade
 		for _, upgrade := range talosUpgrades.Items {
 			if upgrade.Status.Phase == constants.PhaseInProgress || upgrade.Status.Phase == constants.PhasePending {
 				return true, fmt.Sprintf("Waiting for TalosUpgrade '%s' to complete", upgrade.Name), nil
+			}
+		}
+	}
+	if currentUpgradeType == "talos" {
+		talosUpgrades := &tupprv1alpha1.TalosUpgradeList{}
+		if err := c.List(ctx, talosUpgrades); err != nil {
+			return false, "", fmt.Errorf("failed to list TalosUpgrade resources: %w", err)
+		}
+
+		for _, upgrade := range talosUpgrades.Items {
+			if upgrade.Name == currentUpgradeName {
+				continue
+			}
+
+			// if two plans started at the exact same second.
+			// The controller's natural Reconcile order resolves the tie-break.
+			if upgrade.Status.Phase == constants.PhaseInProgress {
+				return true, fmt.Sprintf("Waiting for another TalosUpgrade plan '%s' to complete", upgrade.Name), nil
 			}
 		}
 	}
