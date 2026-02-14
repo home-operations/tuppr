@@ -29,6 +29,7 @@ var taloslog = logf.Log.WithName("talos-resource")
 type TalosUpgradeValidator struct {
 	Client            client.Client
 	TalosConfigSecret string
+	Namespace         string
 }
 
 // +kubebuilder:webhook:path=/validate-tuppr-home-operations-com-v1alpha1-talosupgrade,mutating=false,failurePolicy=fail,sideEffects=None,groups=tuppr.home-operations.com,resources=talosupgrades,verbs=create;update,versions=v1alpha1,name=vtalosupgrade.kb.io,admissionReviewVersions=v1
@@ -92,9 +93,8 @@ func (v *TalosUpgradeValidator) validateTalos(ctx context.Context, talos *tupprv
 	secret := &corev1.Secret{}
 	err := v.Client.Get(ctx, types.NamespacedName{
 		Name:      v.TalosConfigSecret,
-		Namespace: talos.Namespace,
+		Namespace: v.Namespace,
 	}, secret)
-
 	if err != nil {
 		return warnings, fmt.Errorf("talosconfig secret '%s' not found in namespace '%s'. Please create this secret with your Talos configuration before creating TalosUpgrade resources: %w",
 			v.TalosConfigSecret, talos.Namespace, err)
