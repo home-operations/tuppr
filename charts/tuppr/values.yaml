@@ -57,6 +57,11 @@ podSecurityContext:
   runAsUser: 65532
   fsGroup: 65532
 
+# Additional environment variables passed to container
+env: []
+# - name: FOO
+#   value: bar
+
 # Container security context
 securityContext:
   allowPrivilegeEscalation: false
@@ -102,6 +107,19 @@ readinessProbe:
     port: 8081
   initialDelaySeconds: 5
   periodSeconds: 10
+
+# Additional volumes on the output Deployment definition.
+volumes: []
+# - name: foo
+#   secret:
+#     secretName: mysecret
+#     optional: false
+
+# Additional volumeMounts on the output Deployment definition.
+volumeMounts: []
+# - name: foo
+#   mountPath: "/etc/foo"
+#   readOnly: true
 
 # Node selector for pod assignment
 nodeSelector: {}
