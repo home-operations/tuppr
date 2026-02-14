@@ -20,6 +20,15 @@ const (
 	SuspendAnnotation = "tuppr.home-operations.com/suspend"
 )
 
+const (
+	// Override annotations
+	SchematicAnnotation = "tuppr.home-operations.com/schematic"
+	VersionAnnotation   = "tuppr.home-operations.com/version"
+
+	// Default factory URL for schematic construction
+	DefaultFactoryURL = "factory.talos.dev/installer"
+)
+
 // Talos config secret constants
 const (
 	TalosSecretName = "talosconfig"
