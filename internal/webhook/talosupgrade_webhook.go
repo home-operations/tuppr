@@ -160,11 +160,11 @@ func (v *TalosUpgradeValidator) validateTalosSpec(talos *tupprv1alpha1.TalosUpgr
 	}
 
 	// Validate talosctl image if specified
-	talosctlRepoEmpty := talos.Spec.Talosctl.Image.Repository == ""
-	talosctlTagEmpty := talos.Spec.Talosctl.Image.Tag == ""
+	talosctlRepoEmpty := talos.Spec.Talosctl.Image.Repository
+	talosctlTagEmpty := talos.Spec.Talosctl.Image.Tag
 
-	if talosctlRepoEmpty != talosctlTagEmpty {
-		return fmt.Errorf("both spec.talosctl.image.repository and spec.talosctl.image.tag must be specified together, or both omitted for defaults")
+	if talosctlRepoEmpty == "" && talosctlTagEmpty != "" {
+		return fmt.Errorf("spec.talosctl.image.tag cannot be set without a repository")
 	}
 
 	// Validate pull policy if specified
