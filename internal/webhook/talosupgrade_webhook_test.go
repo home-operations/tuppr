@@ -100,6 +100,7 @@ func newTalosValidator(objects ...runtime.Object) *TalosUpgradeValidator {
 	return &TalosUpgradeValidator{
 		Client:            c,
 		TalosConfigSecret: "talosconfig",
+		Namespace:         "default",
 	}
 }
 

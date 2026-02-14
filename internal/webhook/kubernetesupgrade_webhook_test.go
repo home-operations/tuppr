@@ -88,6 +88,7 @@ func newK8sValidator(objects ...runtime.Object) *KubernetesUpgradeValidator {
 	return &KubernetesUpgradeValidator{
 		Client:            c,
 		TalosConfigSecret: "talosconfig",
+		Namespace:         "default",
 	}
 }
 
