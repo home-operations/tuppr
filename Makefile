@@ -243,7 +243,7 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 KUSTOMIZE_VERSION ?= v5.6.0
 CONTROLLER_TOOLS_VERSION ?= v0.18.0
 
-GOLANGCI_LINT_VERSION ?= v2.1.0
+GOLANGCI_LINT_VERSION ?= v2.9.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
