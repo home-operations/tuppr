@@ -222,7 +222,8 @@ func main() {
 		// +kubebuilder:scaffold:builder
 		if err := (&tupprwebhook.TalosUpgradeValidator{
 			Client:            mgr.GetClient(),
-			TalosConfigSecret: talosConfigSecret, // Pass the secret name!
+			TalosConfigSecret: talosConfigSecret,
+			Namespace:         controllerNamespace,
 		}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "TalosUpgrade")
 			os.Exit(1)
@@ -230,7 +231,8 @@ func main() {
 
 		if err := (&tupprwebhook.KubernetesUpgradeValidator{
 			Client:            mgr.GetClient(),
-			TalosConfigSecret: talosConfigSecret, // Pass the secret name!
+			TalosConfigSecret: talosConfigSecret,
+			Namespace:         controllerNamespace,
 		}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "KubernetesUpgrade")
 			os.Exit(1)
