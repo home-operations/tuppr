@@ -34,7 +34,7 @@ const (
 type mockTalosClient struct {
 	nodeVersions  map[string]string
 	installImages map[string]string
-	waitReadyErr  error
+	checkReadyErr error
 	getVersionErr error
 	getInstallErr error
 }
@@ -49,8 +49,8 @@ func (m *mockTalosClient) GetNodeVersion(ctx context.Context, nodeIP string) (st
 	return "", fmt.Errorf("node %s not found", nodeIP)
 }
 
-func (m *mockTalosClient) WaitForNodeReady(ctx context.Context, nodeIP, nodeName string) error {
-	return m.waitReadyErr
+func (m *mockTalosClient) CheckNodeReady(ctx context.Context, nodeIP, nodeName string) error {
+	return m.checkReadyErr
 }
 
 func (m *mockTalosClient) GetNodeInstallImage(ctx context.Context, nodeIP string) (string, error) {
@@ -1141,6 +1141,168 @@ func TestTalosBuildJob_Properties(t *testing.T) {
 	}
 	if podSpec.PriorityClassName != "system-node-critical" {
 		t.Fatalf("expected system-node-critical priority, got: %s", podSpec.PriorityClassName)
+	}
+}
+
+func TestTalosReconcile_HandleJobSuccess_NodeReady(t *testing.T) {
+	scheme := newScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(constants.PhaseInProgress),
+	)
+	node := newNode(fakeNodeA, "10.0.0.1")
+
+	// Job is marked Successful
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "job-node-a",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app.kubernetes.io/name":                "talos-upgrade",
+				"tuppr.home-operations.com/target-node": fakeNodeA,
+			},
+		},
+		Spec: batchv1.JobSpec{
+			BackoffLimit: ptr.To(int32(6)),
+		},
+		Status: batchv1.JobStatus{Succeeded: 1},
+	}
+
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{"10.0.0.1": fakeTalosVersion},
+		checkReadyErr: nil, // Node is ready
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	// Run Reconcile
+	result := reconcileTalos(t, r, "test-upgrade")
+
+	if result.RequeueAfter != 5*time.Second {
+		t.Errorf("expected 5s requeue for success, got %v", result.RequeueAfter)
+	}
+
+	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != constants.PhasePending {
+		t.Errorf("expected phase Pending, got %s", updated.Status.Phase)
+	}
+
+	if len(updated.Status.CompletedNodes) != 1 || updated.Status.CompletedNodes[0] != fakeNodeA {
+		t.Errorf("expected node-a in completed nodes, got %v", updated.Status.CompletedNodes)
+	}
+
+	var jobs batchv1.JobList
+	if err := cl.List(context.Background(), &jobs); err != nil {
+		t.Fatalf("error not expected %s", err)
+	}
+	if len(jobs.Items) != 0 {
+		t.Errorf("expected job to be deleted, found %d", len(jobs.Items))
+	}
+}
+
+func TestTalosReconcile_HandleJobSuccess_NodeNotReady_Requeues(t *testing.T) {
+	scheme := newScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(constants.PhaseInProgress),
+	)
+	node := newNode(fakeNodeA, "10.0.0.1")
+
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "job-node-a",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app.kubernetes.io/name":                "talos-upgrade",
+				"tuppr.home-operations.com/target-node": fakeNodeA,
+			},
+		},
+		Spec: batchv1.JobSpec{
+			BackoffLimit: ptr.To(int32(6)),
+		},
+		Status: batchv1.JobStatus{Succeeded: 1},
+	}
+
+	// Talos Client reports Error (Node rebooting)
+	tc := &mockTalosClient{
+		checkReadyErr: fmt.Errorf("connection refused"),
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	// Run Reconcile
+	result := reconcileTalos(t, r, "test-upgrade")
+
+	if result.RequeueAfter != 30*time.Second {
+		t.Errorf("expected 30s requeue for wait, got %v", result.RequeueAfter)
+	}
+
+	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != constants.PhaseInProgress {
+		t.Errorf("expected phase to stay InProgress, got %s", updated.Status.Phase)
+	}
+
+	var jobs batchv1.JobList
+	if err := cl.List(context.Background(), &jobs); err != nil {
+		t.Fatalf("error not expected %s", err)
+	}
+	if len(jobs.Items) == 0 {
+		t.Error("job was deleted prematurely")
+	}
+}
+
+func TestTalosReconcile_HandleJobSuccess_VerificationFailed_Permanent(t *testing.T) {
+	scheme := newScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(constants.PhaseInProgress),
+	)
+	node := newNode(fakeNodeA, "10.0.0.1")
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "job-node-a",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app.kubernetes.io/name":                "talos-upgrade",
+				"tuppr.home-operations.com/target-node": fakeNodeA,
+			},
+		},
+		Spec: batchv1.JobSpec{
+			BackoffLimit: ptr.To(int32(6)),
+		},
+		Status: batchv1.JobStatus{Succeeded: 1},
+	}
+
+	// Talos Client: Node is Ready, BUT version is wrong (Upgrade failed silently)
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{"10.0.0.1": "v1.0.0"}, // Old version
+		checkReadyErr: nil,
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	result := reconcileTalos(t, r, "test-upgrade")
+
+	if result.RequeueAfter != 10*time.Minute {
+		t.Errorf("expected 10m requeue for failure, got %v", result.RequeueAfter)
+	}
+
+	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != constants.PhaseFailed {
+		t.Errorf("expected phase Failed, got %s", updated.Status.Phase)
+	}
+
+	if len(updated.Status.FailedNodes) != 1 {
+		t.Error("expected node added to failed nodes list")
 	}
 }
 
