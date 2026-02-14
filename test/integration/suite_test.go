@@ -89,6 +89,12 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
+	By("setting up field indexers")
+	err = k8sManager.GetFieldIndexer().IndexField(ctx, &corev1.Pod{}, "spec.nodeName", func(obj client.Object) []string {
+		return []string{obj.(*corev1.Pod).Spec.NodeName}
+	})
+	Expect(err).ToNot(HaveOccurred())
+
 	By("creating test namespace and talosconfig secret")
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -205,22 +211,43 @@ func runJobSimulator(ctx context.Context, k8sClient client.Client) {
 					continue
 				}
 
-				// Simulate job completion after a short delay
-				if job.Status.StartTime != nil && time.Since(job.Status.StartTime.Time) > 1*time.Second {
+				// Check if job has fast-complete annotation (for testing)
+				_, fastComplete := job.Annotations["test.tuppr/fast-complete"]
+
+				// Simulate job completion after a short delay, or immediately if fast-complete
+				shouldComplete := fastComplete
+				if !shouldComplete && job.Status.StartTime != nil {
+					shouldComplete = time.Since(job.Status.StartTime.Time) > 1*time.Second
+				}
+
+				if shouldComplete {
+					now := metav1.Now()
 					job.Status.Succeeded = 1
+					job.Status.Active = 0
+					job.Status.CompletionTime = &now
 					job.Status.Conditions = []batchv1.JobCondition{
+						{
+							Type:               batchv1.JobSuccessCriteriaMet,
+							Status:             corev1.ConditionTrue,
+							LastTransitionTime: now,
+						},
 						{
 							Type:               batchv1.JobComplete,
 							Status:             corev1.ConditionTrue,
-							LastTransitionTime: metav1.Now(),
+							LastTransitionTime: now,
 						},
 					}
-					_ = k8sClient.Status().Update(ctx, job)
+					if err := k8sClient.Status().Update(ctx, job); err != nil {
+						// If update fails, retry on next tick
+						continue
+					}
 				} else if job.Status.StartTime == nil {
 					// Set start time if not set
 					now := metav1.Now()
 					job.Status.StartTime = &now
-					_ = k8sClient.Status().Update(ctx, job)
+					if err := k8sClient.Status().Update(ctx, job); err != nil {
+						continue
+					}
 				}
 			}
 		}
