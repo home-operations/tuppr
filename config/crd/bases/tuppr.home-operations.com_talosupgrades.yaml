@@ -57,6 +57,31 @@ spec:
           spec:
             description: TalosUpgradeSpec defines the desired state of TalosUpgrade
             properties:
+              drain:
+                description: Drain configuration for the node prior to upgrade
+                properties:
+                  deleteLocalData:
+                    description: |-
+                      DeleteLocalData causes the drain to continue even if there are pods using emptyDir
+                      (local data that will be deleted when the node is drained).
+                    type: boolean
+                  disableEviction:
+                    description: DisableEviction forces drain to use delete, even
+                      if eviction is supported.
+                    type: boolean
+                  force:
+                    description: Force continues even if there are pods that do not
+                      declare a controller.
+                    type: boolean
+                  ignoreDaemonSets:
+                    description: IgnoreDaemonSets ignores DaemonSet-managed pods.
+                    type: boolean
+                  skipWaitForDeleteTimeout:
+                    description: |-
+                      SkipWaitForDeleteTimeout specifies that if a pod DeletionTimestamp is older than N seconds,
+                      skip waiting for the pod. Seconds must be greater than 0 to skip.
+                    type: integer
+                type: object
               healthChecks:
                 description: HealthChecks defines a list of CEL-based health checks
                   to perform before each node upgrade
@@ -96,6 +121,14 @@ spec:
                   - kind
                   type: object
                 type: array
+              kubectl:
+                description: Kubectl configuration for drain operations
+                properties:
+                  image:
+                    default: bitnami/kubectl:latest
+                    description: Image is the container image to use for kubectl commands
+                    type: string
+                type: object
               maintenance:
                 description: Maintenance configuration behavior for upgrade operations
                 properties:
