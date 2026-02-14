@@ -419,19 +419,6 @@ func TestKubernetesUpgrade_ValidateCreate_HealthCheckValidation(t *testing.T) {
 }
 
 func TestKubernetesUpgrade_ValidateCreate_TalosctlImagePartialSpec(t *testing.T) {
-	t.Run("repo without tag", func(t *testing.T) {
-		v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
-		ku := newKubernetesUpgrade("test", withK8sTalosctlImage("ghcr.io/custom/talosctl", ""))
-
-		_, err := v.ValidateCreate(context.Background(), ku)
-		if err == nil {
-			t.Fatal("expected error when repo set without tag")
-		}
-		if !strings.Contains(err.Error(), "must be specified together") {
-			t.Errorf("unexpected error message: %v", err)
-		}
-	})
-
 	t.Run("tag without repo", func(t *testing.T) {
 		v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
 		ku := newKubernetesUpgrade("test", withK8sTalosctlImage("", "v1.11.0"))

@@ -186,11 +186,11 @@ func (v *KubernetesUpgradeValidator) validateKubernetesSpec(kubernetes *tupprv1a
 	}
 
 	// Validate talosctl image if specified
-	talosctlRepoEmpty := kubernetes.Spec.Talosctl.Image.Repository == ""
-	talosctlTagEmpty := kubernetes.Spec.Talosctl.Image.Tag == ""
+	talosctlRepoEmpty := kubernetes.Spec.Talosctl.Image.Repository
+	talosctlTagEmpty := kubernetes.Spec.Talosctl.Image.Tag
 
-	if talosctlRepoEmpty != talosctlTagEmpty {
-		return fmt.Errorf("both spec.talosctl.image.repository and spec.talosctl.image.tag must be specified together, or both omitted for defaults")
+	if talosctlRepoEmpty == "" && talosctlTagEmpty != "" {
+		return fmt.Errorf("spec.talosctl.image.tag cannot be set without a repository")
 	}
 
 	// Validate pull policy if specified
