@@ -72,6 +72,10 @@ type TalosUpgradeSpec struct {
 	// Maintenance configuration behavior for upgrade operations
 	// +optional
 	Maintenance *MaintenanceSpec `json:"maintenance,omitempty"`
+
+	// NodeSelector defines which nodes should be included in this upgrade.
+	// +optional
+	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 }
 
 // TalosUpgradeStatus defines the observed state of TalosUpgrade
