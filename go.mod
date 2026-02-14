@@ -6,6 +6,7 @@ require (
 	github.com/cosi-project/runtime v1.14.0
 	github.com/google/cel-go v0.27.0
 	github.com/google/uuid v1.6.0
+	github.com/netresearch/go-cron v0.11.0
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
 	github.com/open-policy-agent/cert-controller v0.15.0

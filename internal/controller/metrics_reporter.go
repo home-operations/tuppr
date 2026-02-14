@@ -119,6 +119,23 @@ var (
 		},
 		[]string{"upgrade_type", "node_name", "result"},
 	)
+
+	// Maintenance window metrics
+	maintenanceWindowActive = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "tuppr_maintenance_window_active",
+			Help: "Whether upgrade is currently inside a maintenance window (1=inside, 0=outside)",
+		},
+		[]string{"upgrade_type", "name"},
+	)
+
+	maintenanceWindowNextOpenTimestamp = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "tuppr_maintenance_window_next_open_timestamp",
+			Help: "Unix timestamp of the next maintenance window start",
+		},
+		[]string{"upgrade_type", "name"},
+	)
 )
 
 func init() {
@@ -135,6 +152,8 @@ func init() {
 		healthCheckFailuresTotal,
 		upgradeJobsActive,
 		upgradeJobDuration,
+		maintenanceWindowActive,
+		maintenanceWindowNextOpenTimestamp,
 	)
 }
 
@@ -229,6 +248,19 @@ func (m *MetricsReporter) RecordJobDuration(upgradeType, nodeName, result string
 	upgradeJobDuration.WithLabelValues(upgradeType, nodeName, result).Observe(duration)
 }
 
+func (m *MetricsReporter) RecordMaintenanceWindow(upgradeType, name string, active bool, nextOpenTimestamp *int64) {
+	if active {
+		maintenanceWindowActive.WithLabelValues(upgradeType, name).Set(1)
+		// Clear next open timestamp when inside window
+		maintenanceWindowNextOpenTimestamp.DeleteLabelValues(upgradeType, name)
+	} else {
+		maintenanceWindowActive.WithLabelValues(upgradeType, name).Set(0)
+		if nextOpenTimestamp != nil {
+			maintenanceWindowNextOpenTimestamp.WithLabelValues(upgradeType, name).Set(float64(*nextOpenTimestamp))
+		}
+	}
+}
+
 // Cleanup removes all metrics for a specific upgrade (useful when upgrade is deleted)
 func (m *MetricsReporter) CleanupUpgradeMetrics(upgradeType, name string) {
 	m.mu.Lock()
@@ -251,4 +283,8 @@ func (m *MetricsReporter) CleanupUpgradeMetrics(upgradeType, name string) {
 	case UpgradeTypeKubernetes:
 		kubernetesUpgradePhaseGauge.DeletePartialMatch(prometheus.Labels{"name": name})
 	}
+
+	// Clean up maintenance window metrics
+	maintenanceWindowActive.DeleteLabelValues(upgradeType, name)
+	maintenanceWindowNextOpenTimestamp.DeleteLabelValues(upgradeType, name)
 }

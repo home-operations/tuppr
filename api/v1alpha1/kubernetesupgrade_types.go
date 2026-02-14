@@ -25,6 +25,10 @@ type KubernetesUpgradeSpec struct {
 	// HealthChecks defines a list of CEL-based health checks to perform before the upgrade
 	// +optional
 	HealthChecks []HealthCheckSpec `json:"healthChecks,omitempty"`
+
+	// Maintenance configuration behavior for upgrade operations
+	// +optional
+	Maintenance *MaintenanceSpec `json:"maintenance,omitempty"`
 }
 
 // KubernetesUpgradeStatus defines the observed state of KubernetesUpgrade
@@ -70,6 +74,10 @@ type KubernetesUpgradeStatus struct {
 	// LastError contains the last error message
 	// +optional
 	LastError string `json:"lastError,omitempty"`
+
+	// NextMaintenanceWindow reflect the next time a maintenance can happen
+	// +optional
+	NextMaintenanceWindow *metav1.Time `json:"nextMaintenanceWindow,omitempty"`
 }
 
 // +kubebuilder:object:root=true

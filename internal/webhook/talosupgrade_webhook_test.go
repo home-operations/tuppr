@@ -654,3 +654,82 @@ func TestTalosUpgrade_Warnings_NoWarningsForSafeDefaults(t *testing.T) {
 		t.Errorf("expected no warnings for safe config, got: %v", warnings)
 	}
 }
+
+func TestTalosUpgrade_ValidateCreate_MaintenanceWindowValid(t *testing.T) {
+	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
+		tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
+			Windows: []tupprv1alpha1.WindowSpec{
+				{
+					Start:    "0 2 * * 0",
+					Duration: metav1.Duration{Duration: 4 * time.Hour},
+					Timezone: "UTC",
+				},
+			},
+		}
+	})
+
+	warnings, err := v.ValidateCreate(context.Background(), tu)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	// Check that there are no maintenance window-specific warnings (other warnings like talosctl version are OK)
+	for _, w := range warnings {
+		if strings.Contains(strings.ToLower(w), "maintenance") || strings.Contains(strings.ToLower(w), "window") {
+			t.Errorf("unexpected maintenance window warning: %s", w)
+		}
+	}
+}
+
+func TestTalosUpgrade_ValidateCreate_MaintenanceWindowInvalidCron(t *testing.T) {
+	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
+		tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
+			Windows: []tupprv1alpha1.WindowSpec{
+				{
+					Start:    "not a cron",
+					Duration: metav1.Duration{Duration: 4 * time.Hour},
+					Timezone: "UTC",
+				},
+			},
+		}
+	})
+
+	_, err := v.ValidateCreate(context.Background(), tu)
+	if err == nil {
+		t.Fatal("expected error for invalid cron")
+	}
+	if !strings.Contains(err.Error(), "maintenanceWindow") {
+		t.Errorf("expected error to mention maintenanceWindow, got: %v", err)
+	}
+}
+
+func TestTalosUpgrade_ValidateCreate_MaintenanceWindowShortDuration(t *testing.T) {
+	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
+		tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
+			Windows: []tupprv1alpha1.WindowSpec{
+				{
+					Start:    "0 2 * * *",
+					Duration: metav1.Duration{Duration: 30 * time.Minute},
+					Timezone: "UTC",
+				},
+			},
+		}
+	})
+
+	warnings, err := v.ValidateCreate(context.Background(), tu)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Count maintenance window warnings (not other warnings like talosctl version)
+	maintenanceWarnings := 0
+	for _, w := range warnings {
+		if strings.Contains(strings.ToLower(w), "maintenance") || strings.Contains(strings.ToLower(w), "window") {
+			maintenanceWarnings++
+		}
+	}
+	if maintenanceWarnings != 1 {
+		t.Fatalf("expected 1 maintenance window warning for short duration, got %d: %v", maintenanceWarnings, warnings)
+	}
+}

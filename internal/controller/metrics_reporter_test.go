@@ -72,6 +72,29 @@ func TestMetricsReporter_EndPhaseTimingCleansUp(t *testing.T) {
 
 func TestMetricsReporter_EndPhaseTimingNoopForMissingTimer(t *testing.T) {
 	mr := NewMetricsReporter()
-	// Should not panic when ending a timer that was never started
 	mr.EndPhaseTiming(UpgradeTypeTalos, "nonexistent", "Pending")
+}
+
+func TestMetricsReporter_RecordMaintenanceWindow(t *testing.T) {
+	mr := NewMetricsReporter()
+
+	// Test active window
+	mr.RecordMaintenanceWindow(UpgradeTypeTalos, "test", true, nil)
+
+	// Test blocked window
+	nextTimestamp := int64(1234567890)
+	mr.RecordMaintenanceWindow(UpgradeTypeKubernetes, "k8s-test", false, &nextTimestamp)
+	// Metric should be set to 0, next timestamp should be set
+
+	// Test nil nextTimestamp when blocked
+	mr.RecordMaintenanceWindow(UpgradeTypeTalos, "test2", false, nil)
+}
+
+func TestMetricsReporter_CleanupMaintenanceWindowMetrics(t *testing.T) {
+	mr := NewMetricsReporter()
+
+	nextTimestamp := int64(1234567890)
+	mr.RecordMaintenanceWindow(UpgradeTypeTalos, "test", false, &nextTimestamp)
+
+	mr.CleanupUpgradeMetrics(UpgradeTypeTalos, "test")
 }
