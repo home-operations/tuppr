@@ -90,6 +90,14 @@ spec:
       - start: "0 2 * * 0"    # Cron expression (Sunday 02:00)
         duration: "4h"         # How long window stays open
         timezone: "UTC"        # IANA timezone, default UTC
+
+  # Node selector (optional)
+  nodeSelector:
+    matchExpressions:
+      # Only upgrade nodes that have opted-in via this label
+      - {key: tuppr.home-operations.com/upgrade, operator: In, values: ["enabled"]}
+      # Exclude control plane nodes from this specific plan
+      - {key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}
 ```
 
 #### Kubernetes Upgrades
@@ -126,14 +134,6 @@ spec:
       - start: "0 2 * * 0"    # Cron expression (Sunday 02:00)
         duration: "4h"         # How long window stays open
         timezone: "UTC"        # IANA timezone, default UTC
-
-  # Node selector (optional)
-  nodeSelector:
-    matchExpressions:
-      # Only upgrade nodes that have opted-in via this label
-      - {key: tuppr.home-operations.com/upgrade, operator: In, values: ["enabled"]}
-      # Exclude control plane nodes from this specific plan
-      - {key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}
 ```
 
 ## 🎯 Advanced Configuration
