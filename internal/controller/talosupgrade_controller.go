@@ -1126,14 +1126,20 @@ func (r *TalosUpgradeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	logger := ctrl.Log.WithName("setup")
 	logger.Info("Setting up TalosUpgrade controller with manager")
 
-	r.MetricsReporter = NewMetricsReporter()
-	r.HealthChecker = &HealthChecker{Client: mgr.GetClient(), MetricsReporter: r.MetricsReporter}
-
-	talosClient, err := NewTalosClient(context.Background())
-	if err != nil {
-		return fmt.Errorf("failed to create talos client: %w", err)
+	// Only create dependencies if not already set (allows mock injection for testing)
+	if r.MetricsReporter == nil {
+		r.MetricsReporter = NewMetricsReporter()
 	}
-	r.TalosClient = talosClient
+	if r.HealthChecker == nil {
+		r.HealthChecker = &HealthChecker{Client: mgr.GetClient(), MetricsReporter: r.MetricsReporter}
+	}
+	if r.TalosClient == nil {
+		talosClient, err := NewTalosClient(context.Background())
+		if err != nil {
+			return fmt.Errorf("failed to create talos client: %w", err)
+		}
+		r.TalosClient = talosClient
+	}
 	r.now = &realClock{}
 	r.ImageChecker = &RemoteImageChecker{}
 
