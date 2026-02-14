@@ -9,6 +9,7 @@ import (
 	"github.com/home-operations/tuppr/internal/constants"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -127,99 +128,116 @@ func TestGenerateSafeJobName_UniquePerCall(t *testing.T) {
 }
 
 func TestIsAnotherUpgradeActive(t *testing.T) {
+	scheme := newScheme()
+
 	tests := []struct {
-		name        string
-		upgradeType string
-		objects     []interface{ GetName() string }
-		wantBlocked bool
+		name            string
+		currentType     string
+		existingObjects []client.Object
+		wantBlocked     bool
+		wantMessagePart string
 	}{
+		// --- Scenarios where Talos is checking ---
 		{
-			name:        "talos not blocked when no k8s upgrades",
-			upgradeType: "talos",
+			name:            "Talos checks: No K8s upgrade exists",
+			currentType:     "talos",
+			existingObjects: []client.Object{},
+			wantBlocked:     false,
+		},
+		{
+			name:        "Talos checks: K8s upgrade is Pending (Should NOT block)",
+			currentType: "talos",
+			existingObjects: []client.Object{
+				&tupprv1alpha1.KubernetesUpgrade{
+					ObjectMeta: metav1.ObjectMeta{Name: "k8s-upgrade"},
+					Status:     tupprv1alpha1.KubernetesUpgradeStatus{Phase: constants.PhasePending},
+				},
+			},
 			wantBlocked: false,
 		},
 		{
-			name:        "kubernetes not blocked when no talos upgrades",
-			upgradeType: "kubernetes",
+			name:        "Talos checks: K8s upgrade is InProgress (SHOULD block)",
+			currentType: "talos",
+			existingObjects: []client.Object{
+				&tupprv1alpha1.KubernetesUpgrade{
+					ObjectMeta: metav1.ObjectMeta{Name: "k8s-upgrade"},
+					Status:     tupprv1alpha1.KubernetesUpgradeStatus{Phase: constants.PhaseInProgress},
+				},
+			},
+			wantBlocked:     true,
+			wantMessagePart: "Waiting for KubernetesUpgrade",
+		},
+		{
+			name:        "Talos checks: K8s upgrade is Completed (Should NOT block)",
+			currentType: "talos",
+			existingObjects: []client.Object{
+				&tupprv1alpha1.KubernetesUpgrade{
+					ObjectMeta: metav1.ObjectMeta{Name: "k8s-upgrade"},
+					Status:     tupprv1alpha1.KubernetesUpgradeStatus{Phase: constants.PhaseCompleted},
+				},
+			},
 			wantBlocked: false,
+		},
+		{
+			name:        "Talos checks: K8s upgrade is Failed (Should NOT block)",
+			currentType: "talos",
+			existingObjects: []client.Object{
+				&tupprv1alpha1.KubernetesUpgrade{
+					ObjectMeta: metav1.ObjectMeta{Name: "k8s-upgrade"},
+					Status:     tupprv1alpha1.KubernetesUpgradeStatus{Phase: constants.PhaseFailed},
+				},
+			},
+			wantBlocked: false,
+		},
+
+		// --- Scenarios where Kubernetes is checking ---
+		{
+			name:            "K8s checks: No Talos upgrade exists",
+			currentType:     "kubernetes",
+			existingObjects: []client.Object{},
+			wantBlocked:     false,
+		},
+		{
+			name:        "K8s checks: Talos upgrade is InProgress (SHOULD block)",
+			currentType: "kubernetes",
+			existingObjects: []client.Object{
+				&tupprv1alpha1.TalosUpgrade{
+					ObjectMeta: metav1.ObjectMeta{Name: "talos-upgrade"},
+					Status:     tupprv1alpha1.TalosUpgradeStatus{Phase: constants.PhaseInProgress},
+				},
+			},
+			wantBlocked:     true,
+			wantMessagePart: "Waiting for TalosUpgrade",
+		},
+		{
+			name:        "K8s checks: Talos upgrade is Pending",
+			currentType: "kubernetes",
+			existingObjects: []client.Object{
+				&tupprv1alpha1.TalosUpgrade{
+					ObjectMeta: metav1.ObjectMeta{Name: "talos-upgrade"},
+					Status:     tupprv1alpha1.TalosUpgradeStatus{Phase: constants.PhasePending},
+				},
+			},
+			wantBlocked: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scheme := newScheme()
-			cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+			cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tt.existingObjects...).Build()
 
-			blocked, _, err := IsAnotherUpgradeActive(context.Background(), cl, tt.upgradeType)
+			blocked, msg, err := IsAnotherUpgradeActive(context.Background(), cl, tt.currentType)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+
 			if blocked != tt.wantBlocked {
-				t.Fatalf("IsAnotherUpgradeActive() = %v, want %v", blocked, tt.wantBlocked)
+				t.Errorf("IsAnotherUpgradeActive() blocked = %v, want %v", blocked, tt.wantBlocked)
+			}
+
+			if tt.wantBlocked && !strings.Contains(msg, tt.wantMessagePart) {
+				t.Errorf("expected message to contain %q, got %q", tt.wantMessagePart, msg)
 			}
 		})
-	}
-}
-
-func TestIsAnotherUpgradeActive_TalosBlockedByK8s(t *testing.T) {
-	scheme := newScheme()
-	ku := &tupprv1alpha1.KubernetesUpgrade{
-		ObjectMeta: metav1.ObjectMeta{Name: "k8s-upgrade"},
-		Status: tupprv1alpha1.KubernetesUpgradeStatus{
-			Phase: constants.PhaseInProgress,
-		},
-	}
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(ku).WithStatusSubresource(ku).Build()
-
-	blocked, msg, err := IsAnotherUpgradeActive(context.Background(), cl, "talos")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !blocked {
-		t.Fatal("expected talos to be blocked by k8s upgrade")
-	}
-	if msg == "" {
-		t.Fatal("expected non-empty message")
-	}
-}
-
-func TestIsAnotherUpgradeActive_K8sBlockedByTalos(t *testing.T) {
-	scheme := newScheme()
-	tu := &tupprv1alpha1.TalosUpgrade{
-		ObjectMeta: metav1.ObjectMeta{Name: "talos-upgrade"},
-		Status: tupprv1alpha1.TalosUpgradeStatus{
-			Phase: constants.PhaseInProgress,
-		},
-	}
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tu).WithStatusSubresource(tu).Build()
-
-	blocked, msg, err := IsAnotherUpgradeActive(context.Background(), cl, "kubernetes")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !blocked {
-		t.Fatal("expected k8s to be blocked by talos upgrade")
-	}
-	if msg == "" {
-		t.Fatal("expected non-empty message")
-	}
-}
-
-func TestIsAnotherUpgradeActive_NotBlockedByCompleted(t *testing.T) {
-	scheme := newScheme()
-	ku := &tupprv1alpha1.KubernetesUpgrade{
-		ObjectMeta: metav1.ObjectMeta{Name: "k8s-upgrade"},
-		Status: tupprv1alpha1.KubernetesUpgradeStatus{
-			Phase: constants.PhaseCompleted,
-		},
-	}
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(ku).WithStatusSubresource(ku).Build()
-
-	blocked, _, err := IsAnotherUpgradeActive(context.Background(), cl, "talos")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if blocked {
-		t.Fatal("should not be blocked by completed upgrade")
 	}
 }

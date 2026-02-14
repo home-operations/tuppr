@@ -86,7 +86,7 @@ func IsAnotherUpgradeActive(ctx context.Context, c client.Client, currentUpgrade
 		}
 
 		for _, upgrade := range talosUpgrades.Items {
-			if upgrade.Status.Phase == constants.PhaseInProgress {
+			if upgrade.Status.Phase == constants.PhaseInProgress || upgrade.Status.Phase == constants.PhasePending {
 				return true, fmt.Sprintf("Waiting for TalosUpgrade '%s' to complete", upgrade.Name), nil
 			}
 		}
