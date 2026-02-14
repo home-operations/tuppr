@@ -37,7 +37,7 @@ func (m *mockTalosClient) SetNodeVersion(nodeIP, version string) {
 	m.nodeVersions[nodeIP] = version
 }
 
-func (m *mockTalosClient) WaitForNodeReady(ctx context.Context, nodeIP, nodeName string) error {
+func (m *mockTalosClient) CheckNodeReady(ctx context.Context, nodeIP, nodeName string) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.waitReadyErr

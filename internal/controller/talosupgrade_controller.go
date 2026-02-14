@@ -45,7 +45,7 @@ const (
 
 type TalosClientInterface interface {
 	GetNodeVersion(ctx context.Context, nodeIP string) (string, error)
-	WaitForNodeReady(ctx context.Context, nodeIP, nodeName string) error
+	CheckNodeReady(ctx context.Context, nodeIP, nodeName string) error
 	GetNodeInstallImage(ctx context.Context, nodeIP string) (string, error)
 }
 
@@ -513,10 +513,19 @@ func (r *TalosUpgradeReconciler) handleJobSuccess(ctx context.Context, talosUpgr
 	logger.Info("Job completed successfully", "node", nodeName)
 
 	// Verify the upgrade actually worked
-	if err := r.verifyNodeUpgrade(ctx, talosUpgrade, nodeName); err != nil {
-		logger.Error(err, "Node upgrade verification failed", "node", nodeName)
+	isReady, err := r.verifyNodeUpgrade(ctx, talosUpgrade, nodeName)
+	if err != nil {
+		logger.Error(err, "Failed to verify node", "node", nodeName)
 		return r.handleJobFailure(ctx, talosUpgrade, nodeName)
 	}
+
+	// If not ready, exit and try again in 30 seconds
+	if !isReady {
+		logger.Info("Job finished, but node not yet ready. Requeuing...", "node", nodeName)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	logger.Info("Node verified as upgraded and ready", "node", nodeName)
 
 	// Clean up the successful job immediately
 	if err := r.cleanupJobForNode(ctx, nodeName); err != nil {
@@ -599,41 +608,41 @@ func (r *TalosUpgradeReconciler) handleJobFailure(ctx context.Context, talosUpgr
 }
 
 // verifyNodeUpgrade checks if the node has been upgraded to the target version using Talos client
-func (r *TalosUpgradeReconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) error {
+func (r *TalosUpgradeReconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (bool, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Verifying node upgrade using Talos client", "node", nodeName)
 
 	node := &corev1.Node{}
 	if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
-		return fmt.Errorf("failed to get node: %w", err)
+		return false, fmt.Errorf("failed to get node: %w", err)
 	}
 
 	nodeIP, err := GetNodeIP(node)
 	if err != nil {
-		return fmt.Errorf("failed to get node IP for %s: %w", nodeName, err)
+		return false, fmt.Errorf("failed to get node IP for %s: %w", nodeName, err)
 	}
 
 	targetVersion := talosUpgrade.Spec.Talos.Version
 
-	// Wait for the Talos node to be ready after upgrade
-	if err := r.TalosClient.WaitForNodeReady(ctx, nodeIP, nodeName); err != nil {
-		return fmt.Errorf("failed waiting for Talos node to be ready for %s: %w", nodeName, err)
+	// if error then return false and nil to be requeue
+	if err := r.TalosClient.CheckNodeReady(ctx, nodeIP, nodeName); err != nil {
+		return false, nil
 	}
 
 	currentVersion, err := r.TalosClient.GetNodeVersion(ctx, nodeIP)
 	if err != nil {
-		return fmt.Errorf("failed to get current version from Talos for %s: %w", nodeName, err)
+		return false, fmt.Errorf("failed to get current version from Talos for %s: %w", nodeName, err)
 	}
 
 	if currentVersion != targetVersion {
-		return fmt.Errorf("node %s version mismatch: current=%s, target=%s",
+		return false, fmt.Errorf("node %s version mismatch: current=%s, target=%s",
 			nodeName, currentVersion, targetVersion)
 	}
 
 	logger.Info("Node upgrade verification successful using Talos client",
 		"node", nodeName,
 		"version", currentVersion)
-	return nil
+	return true, nil
 }
 
 // findActiveJob looks for any currently running job for this TalosUpgrade
