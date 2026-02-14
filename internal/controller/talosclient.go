@@ -44,7 +44,6 @@ func (s *TalosClient) GetNodeVersion(ctx context.Context, nodeIP string) (string
 		resp, err = s.talos.Version(nodeCtx)
 		return err
 	})
-
 	if err != nil {
 		return "", fmt.Errorf("failed to get node version from %s: %w", nodeIP, err)
 	}
@@ -71,7 +70,6 @@ func (s *TalosClient) GetNodeMachineConfig(ctx context.Context, nodeIP string) (
 		r, err = s.talos.COSI.Get(nodeCtx, resource.NewMetadata("config", "MachineConfigs.config.talos.dev", "v1alpha1", resource.VersionUndefined))
 		return err
 	})
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to get machine config from node %s: %w", nodeIP, err)
 	}
@@ -99,47 +97,21 @@ func (s *TalosClient) GetNodeInstallImage(ctx context.Context, nodeIP string) (s
 	return image, nil
 }
 
-// WaitForNodeReady waits for a Talos node to be ready after an upgrade
-func (s *TalosClient) WaitForNodeReady(ctx context.Context, nodeIP, nodeName string) error {
+// CheckNodeReady  check to see if the node is back online.
+// It returns nil if the node is ready, or an error if it is currently unreachable or not ready.
+func (s *TalosClient) CheckNodeReady(ctx context.Context, nodeIP, nodeName string) error {
 	logger := log.FromContext(ctx)
 
-	const (
-		maxRetries    = 30
-		retryInterval = 30 * time.Second
-	)
-
-	logger.V(1).Info("Waiting for Talos node readiness after upgrade",
+	logger.V(1).Info("Verifying Talos node readiness",
 		"node", nodeName,
 		"nodeIP", nodeIP,
-		"timeout", time.Duration(maxRetries)*retryInterval)
+	)
 
-	startTime := time.Now()
-
-	for i := range maxRetries {
-		if err := s.checkNodeReady(ctx, nodeIP); err != nil {
-			if i == maxRetries-1 {
-				elapsed := time.Since(startTime)
-				logger.Error(err, "Talos node failed to become ready within timeout",
-					"node", nodeName,
-					"nodeIP", nodeIP,
-					"totalAttempts", maxRetries,
-					"totalElapsed", elapsed.Round(time.Second))
-				return fmt.Errorf("talos node not ready after %d attempts for node %s: %w", maxRetries, nodeName, err)
-			}
-			time.Sleep(retryInterval)
-			continue
-		}
-
-		elapsed := time.Since(startTime)
-		logger.V(1).Info("Talos node is ready after upgrade",
-			"node", nodeName,
-			"nodeIP", nodeIP,
-			"attempts", i+1,
-			"totalElapsed", elapsed.Round(time.Second))
-		return nil
+	if err := s.checkNodeReady(ctx, nodeIP); err != nil {
+		return fmt.Errorf("node not ready: %w", err)
 	}
 
-	return fmt.Errorf("timeout waiting for Talos node %s to be ready", nodeName)
+	return nil
 }
 
 // refreshTalosClient recreates the client if the current one is stale
