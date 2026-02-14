@@ -643,32 +643,36 @@ func (r *TalosUpgradeReconciler) findNextNode(ctx context.Context, talosUpgrade 
 
 	targetVersion := talosUpgrade.Spec.Talos.Version
 
-	// Use slices.IndexFunc to find first node needing upgrade
-	idx := slices.IndexFunc(nodes, func(node corev1.Node) bool {
+	for i := range nodes {
+		node := &nodes[i]
+
 		// Skip completed nodes
 		if slices.Contains(talosUpgrade.Status.CompletedNodes, node.Name) {
-			return false
+			continue
 		}
 
 		// Skip failed nodes
 		if slices.ContainsFunc(talosUpgrade.Status.FailedNodes, func(fn tupprv1alpha1.NodeUpgradeStatus) bool {
 			return fn.NodeName == node.Name
 		}) {
-			return false
+			continue
 		}
 
-		// Check if needs upgrade
-		return r.nodeNeedsUpgrade(ctx, &node, targetVersion)
-	})
+		// Check if needs upgrade - propagate errors so we retry instead of skipping
+		needsUpgrade, err := r.nodeNeedsUpgrade(ctx, node, targetVersion)
+		if err != nil {
+			logger.Error(err, "Failed to check if node needs upgrade", "node", node.Name)
+			return "", fmt.Errorf("failed to check node %s: %w", node.Name, err)
+		}
 
-	if idx == -1 {
-		logger.V(1).Info("No nodes need upgrade")
-		return "", nil
+		if needsUpgrade {
+			logger.Info("Node needs upgrade", "node", node.Name)
+			return node.Name, nil
+		}
 	}
 
-	nodeName := nodes[idx].Name
-	logger.Info("Node needs upgrade", "node", nodeName)
-	return nodeName, nil
+	logger.V(1).Info("No nodes need upgrade")
+	return "", nil
 }
 
 // getSortedNodes retrieves all nodes in the cluster sorted by name for consistent ordering
@@ -687,20 +691,17 @@ func (r *TalosUpgradeReconciler) getSortedNodes(ctx context.Context) ([]corev1.N
 }
 
 // nodeNeedsUpgrade determines if a given node requires an upgrade using Talos client
-func (r *TalosUpgradeReconciler) nodeNeedsUpgrade(ctx context.Context, node *corev1.Node, targetVersion string) bool {
+func (r *TalosUpgradeReconciler) nodeNeedsUpgrade(ctx context.Context, node *corev1.Node, targetVersion string) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	nodeIP, err := GetNodeIP(node)
 	if err != nil {
-		logger.Error(err, "Failed to get node IP, cannot determine upgrade need", "node", node.Name)
-		return false // Cannot proceed without IP
+		return false, fmt.Errorf("failed to get node IP for %s: %w", node.Name, err)
 	}
 
 	currentVersion, err := r.TalosClient.GetNodeVersion(ctx, nodeIP)
 	if err != nil {
-		logger.Error(err, "Failed to get current version from Talos client, cannot determine upgrade need",
-			"node", node.Name, "nodeIP", nodeIP)
-		return false // Cannot proceed without Talos info
+		return false, fmt.Errorf("failed to get current version for node %s (%s): %w", node.Name, nodeIP, err)
 	}
 
 	needsUpgrade := currentVersion != targetVersion
@@ -710,7 +711,7 @@ func (r *TalosUpgradeReconciler) nodeNeedsUpgrade(ctx context.Context, node *cor
 		"targetVersion", targetVersion,
 		"needsUpgrade", needsUpgrade)
 
-	return needsUpgrade
+	return needsUpgrade, nil
 }
 
 // createJob creates a Kubernetes Job to perform the Talos upgrade on the specified node
