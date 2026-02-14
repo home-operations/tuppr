@@ -18,7 +18,10 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Running Tests
+      - name: Running Unit Tests
         run: |-
           go mod tidy
           make test
+
+      - name: Running Integration Tests
+        run: make test-integration

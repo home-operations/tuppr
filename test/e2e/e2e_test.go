@@ -44,6 +44,10 @@ var _ = Describe("Manager", Ordered, func() {
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
 
+		By("creating talosconfig secret")
+		err = utils.CreateTalosConfigSecret(namespace)
+		Expect(err).NotTo(HaveOccurred(), "Failed to create talosconfig secret")
+
 		By("installing CRDs")
 		cmd = exec.Command("make", "install")
 		_, err = utils.Run(cmd)

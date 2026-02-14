@@ -121,6 +121,72 @@ func GetProjectDir() (string, error) {
 	return wd, nil
 }
 
+// CreateTalosConfigSecret creates a minimal valid talosconfig secret for testing
+func CreateTalosConfigSecret(namespace string) error {
+	yaml := fmt.Sprintf(`
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tuppr
+  namespace: %s
+type: Opaque
+stringData:
+  config: |
+    context: default
+    contexts:
+      default:
+        endpoints:
+          - https://10.0.0.1:50000
+        ca: ""
+        crt: ""
+        key: ""
+`, namespace)
+
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(yaml)
+	_, err := Run(cmd)
+	return err
+}
+
+// ApplyFromStdin applies YAML from stdin and returns error if it fails
+func ApplyFromStdin(yaml string) error {
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(yaml)
+	_, err := Run(cmd)
+	return err
+}
+
+// ApplyFromStdinExpectError applies YAML from stdin and expects it to fail
+func ApplyFromStdinExpectError(yaml string) error {
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(yaml)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s", string(output))
+	}
+	return nil
+}
+
+// ResourceExists checks if a resource exists
+func ResourceExists(kind, name string) bool {
+	cmd := exec.Command("kubectl", "get", kind, name, "--ignore-not-found=true", "-o", "name")
+	output, err := Run(cmd)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(output) != ""
+}
+
+// GetResourceField retrieves a specific field from a resource using jsonpath
+func GetResourceField(kind, name, jsonpath string) (string, error) {
+	cmd := exec.Command("kubectl", "get", kind, name, "-o", fmt.Sprintf("jsonpath=%s", jsonpath))
+	output, err := Run(cmd)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(output), nil
+}
+
 // UncommentCode searches for target in the file and remove the comment prefix
 // of the target content. The target content may span multiple lines.
 func UncommentCode(filename, target, prefix string) error {
