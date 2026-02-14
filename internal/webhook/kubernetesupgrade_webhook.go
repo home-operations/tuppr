@@ -8,12 +8,10 @@ import (
 	"slices"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	talosclientconfig "github.com/siderolabs/talos/pkg/machinery/client/config"
@@ -35,20 +33,17 @@ type KubernetesUpgradeValidator struct {
 // +kubebuilder:webhook:path=/validate-tuppr-home-operations-com-v1alpha1-kubernetesupgrade,mutating=false,failurePolicy=fail,sideEffects=None,groups=tuppr.home-operations.com,resources=kubernetesupgrades,verbs=create;update,versions=v1alpha1,name=vkubernetesupgrade.kb.io,admissionReviewVersions=v1
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=kubernetesupgrades,verbs=get;list;watch
 
-var _ webhook.CustomValidator = &KubernetesUpgradeValidator{}
+var _ admission.Validator[*tupprv1alpha1.KubernetesUpgrade] = &KubernetesUpgradeValidator{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type
-func (v *KubernetesUpgradeValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	kubernetes := obj.(*tupprv1alpha1.KubernetesUpgrade)
+// ValidateCreate implements admission.Validator so a webhook will be registered for the type
+func (v *KubernetesUpgradeValidator) ValidateCreate(ctx context.Context, kubernetes *tupprv1alpha1.KubernetesUpgrade) (admission.Warnings, error) {
 	kuberneteslog.Info("validate create", "name", kubernetes.Name, "namespace", kubernetes.Namespace, "version", kubernetes.Spec.Kubernetes.Version)
 
 	return v.validateKubernetes(ctx, kubernetes)
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type
-func (v *KubernetesUpgradeValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	kubernetes := newObj.(*tupprv1alpha1.KubernetesUpgrade)
-	oldKubernetes := oldObj.(*tupprv1alpha1.KubernetesUpgrade)
+// ValidateUpdate implements admission.Validator so a webhook will be registered for the type
+func (v *KubernetesUpgradeValidator) ValidateUpdate(ctx context.Context, oldKubernetes, kubernetes *tupprv1alpha1.KubernetesUpgrade) (admission.Warnings, error) {
 	kuberneteslog.Info("validate update", "name", kubernetes.Name, "version", kubernetes.Spec.Kubernetes.Version, "talosConfigSecret", v.TalosConfigSecret)
 
 	// Prevent ANY spec updates if upgrade is in progress
@@ -62,10 +57,8 @@ func (v *KubernetesUpgradeValidator) ValidateUpdate(ctx context.Context, oldObj,
 	return v.validateKubernetes(ctx, kubernetes)
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type
-func (v *KubernetesUpgradeValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	kubernetes := obj.(*tupprv1alpha1.KubernetesUpgrade)
-
+// ValidateDelete implements admission.Validator so a webhook will be registered for the type
+func (v *KubernetesUpgradeValidator) ValidateDelete(ctx context.Context, kubernetes *tupprv1alpha1.KubernetesUpgrade) (admission.Warnings, error) {
 	// Warn about deleting an in-progress upgrade
 	if kubernetes.Status.Phase == constants.PhaseInProgress {
 		return []string{
@@ -254,8 +247,7 @@ func (v *KubernetesUpgradeValidator) generateKubernetesWarnings(kubernetes *tupp
 }
 
 func (v *KubernetesUpgradeValidator) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&tupprv1alpha1.KubernetesUpgrade{}).
+	return ctrl.NewWebhookManagedBy(mgr, &tupprv1alpha1.KubernetesUpgrade{}).
 		WithValidator(v).
 		Complete()
 }
