@@ -96,6 +96,7 @@ func newK8sReconciler(cl client.Client, vg VersionGetter, tc TalosClientInterfac
 		HealthChecker:       hc,
 		MetricsReporter:     NewMetricsReporter(),
 		VersionGetter:       vg,
+		now:                 &fixedClock{time.Now()},
 	}
 }
 
@@ -681,5 +682,119 @@ func TestK8sBuildJob_FallbackTag(t *testing.T) {
 	expectedImage := "ghcr.io/siderolabs/talosctl:latest"
 	if container.Image != expectedImage {
 		t.Fatalf("expected fallback image %s, got: %s", expectedImage, container.Image)
+	}
+}
+
+func TestKubernetesUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
+	scheme := newScheme()
+	now := time.Date(2025, 6, 15, 10, 0, 0, 0, time.UTC)
+
+	// Window: every day at 02:00 UTC for 4 hours (outside current time)
+	ku := newKubernetesUpgrade("test", func(ku *tupprv1alpha1.KubernetesUpgrade) {
+		controllerutil.AddFinalizer(ku, KubernetesUpgradeFinalizer)
+		ku.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
+			Windows: []tupprv1alpha1.WindowSpec{
+				{
+					Start:    "0 2 * * *",
+					Duration: metav1.Duration{Duration: 4 * time.Hour},
+					Timezone: "UTC",
+				},
+			},
+		}
+		ku.Status.ObservedGeneration = ku.Generation
+	})
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(ku).WithStatusSubresource(ku).Build()
+	r := &KubernetesUpgradeReconciler{
+		Client:              cl,
+		Scheme:              scheme,
+		ControllerNamespace: "default",
+		TalosConfigSecret:   "talosconfig",
+		HealthChecker:       &mockHealthChecker{},
+		TalosClient:         &mockTalosClient{},
+		VersionGetter:       &mockVersionGetter{version: "v1.34.0"},
+		MetricsReporter:     NewMetricsReporter(),
+		now:                 &fixedClock{t: now},
+	}
+
+	result, err := r.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "test"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequeueAfter == 0 {
+		t.Fatal("expected requeue when outside maintenance window")
+	}
+
+	// Verify status updated
+	var updated tupprv1alpha1.KubernetesUpgrade
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: "test"}, &updated); err != nil {
+		t.Fatalf("failed to get updated upgrade: %v", err)
+	}
+	if updated.Status.Phase != constants.PhasePending {
+		t.Fatalf("expected phase Pending, got %s", updated.Status.Phase)
+	}
+	if !strings.Contains(updated.Status.Message, "Waiting for maintenance window") {
+		t.Fatalf("expected message about waiting for window, got: %s", updated.Status.Message)
+	}
+	if updated.Status.NextMaintenanceWindow == nil {
+		t.Fatal("expected nextMaintenanceWindow to be set")
+	}
+}
+
+func TestKubernetesUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
+	scheme := newScheme()
+	now := time.Date(2025, 6, 15, 3, 0, 0, 0, time.UTC) // Inside window
+
+	ku := newKubernetesUpgrade("test", func(ku *tupprv1alpha1.KubernetesUpgrade) {
+		controllerutil.AddFinalizer(ku, KubernetesUpgradeFinalizer)
+		ku.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
+			Windows: []tupprv1alpha1.WindowSpec{
+				{
+					Start:    "0 2 * * *",
+					Duration: metav1.Duration{Duration: 4 * time.Hour},
+					Timezone: "UTC",
+				},
+			},
+		}
+		ku.Status.ObservedGeneration = ku.Generation
+	})
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku, newControllerNode(fakeCrtl, "10.0.0.1")).
+		WithStatusSubresource(ku).Build()
+	r := &KubernetesUpgradeReconciler{
+		Client:              cl,
+		Scheme:              scheme,
+		ControllerNamespace: "default",
+		TalosConfigSecret:   "talosconfig",
+		HealthChecker:       &mockHealthChecker{},
+		TalosClient: &mockTalosClient{
+			nodeVersions: map[string]string{"10.0.0.1": "v1.11.0"},
+		},
+		VersionGetter:   &mockVersionGetter{version: "v1.34.0"},
+		MetricsReporter: NewMetricsReporter(),
+		now:             &fixedClock{t: now},
+	}
+
+	// Inside window — should proceed with upgrade logic
+	result, err := r.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "test"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequeueAfter == 0 {
+		t.Fatal("expected requeue for normal processing")
+	}
+
+	// Should NOT be blocked by maintenance window
+	var updated tupprv1alpha1.KubernetesUpgrade
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: "test"}, &updated); err != nil {
+		t.Fatalf("failed to get updated upgrade: %v", err)
+	}
+	if strings.Contains(updated.Status.Message, "Waiting for maintenance window") {
+		t.Fatalf("should not be blocked by maintenance window inside window, message: %s", updated.Status.Message)
 	}
 }

@@ -96,6 +96,33 @@ spec:
                   - kind
                   type: object
                 type: array
+              maintenance:
+                description: Maintenance configuration behavior for upgrade operations
+                properties:
+                  windows:
+                    items:
+                      properties:
+                        duration:
+                          description: How long the window stays open (e.g., "4h",
+                            "2h30m")
+                          pattern: ^([0-9]+[smh])+$
+                          type: string
+                        start:
+                          description: 'Cron expression (5-field): minute hour day-of-month
+                            month day-of-week'
+                          minLength: 9
+                          type: string
+                        timezone:
+                          default: UTC
+                          description: IANA timezone (e.g., "UTC", "Europe/Paris")
+                          type: string
+                      required:
+                      - duration
+                      - start
+                      type: object
+                    minItems: 1
+                    type: array
+                type: object
               policy:
                 description: Policy configures upgrade behavior
                 properties:
@@ -216,6 +243,11 @@ spec:
                 type: string
               message:
                 description: Message provides details about the current state
+                type: string
+              nextMaintenanceWindow:
+                description: NextMaintenanceWindow reflect the next time a maintenance
+                  can happen
+                format: date-time
                 type: string
               observedGeneration:
                 description: ObservedGeneration reflects the generation of the most

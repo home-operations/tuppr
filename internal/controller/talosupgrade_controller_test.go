@@ -80,6 +80,14 @@ func (m *mockVersionGetter) GetCurrentKubernetesVersion(ctx context.Context) (st
 	return m.version, m.err
 }
 
+type fixedClock struct {
+	t time.Time
+}
+
+func (f *fixedClock) Now() time.Time {
+	return f.t
+}
+
 func newScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
 	_ = tupprv1alpha1.AddToScheme(s)
@@ -172,6 +180,7 @@ func newTalosReconciler(cl client.Client, scheme *runtime.Scheme, talosClient Ta
 		TalosClient:         talosClient,
 		HealthChecker:       healthChecker,
 		MetricsReporter:     NewMetricsReporter(),
+		now:                 &realClock{},
 	}
 }
 
@@ -1008,5 +1017,127 @@ func TestGetActiveDeadlineSeconds(t *testing.T) {
 	expected := int64(3*1800 + 600)
 	if result != expected {
 		t.Fatalf("getActiveDeadlineSeconds(%v) = %d, want %d", timeout, result, expected)
+	}
+}
+
+func TestTalosUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
+	scheme := newScheme()
+	now := time.Date(2025, 6, 15, 10, 0, 0, 0, time.UTC)
+
+	// Window: every day at 02:00 UTC for 4 hours (outside current time)
+	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
+		controllerutil.AddFinalizer(tu, TalosUpgradeFinalizer)
+		tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
+			Windows: []tupprv1alpha1.WindowSpec{
+				{
+					Start:    "0 2 * * *",
+					Duration: metav1.Duration{Duration: 4 * time.Hour},
+					Timezone: "UTC",
+				},
+			},
+		}
+		tu.Status.ObservedGeneration = tu.Generation
+	})
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tu).WithStatusSubresource(tu).Build()
+	r := &TalosUpgradeReconciler{
+		Client:              cl,
+		Scheme:              scheme,
+		ControllerNamespace: "default",
+		TalosConfigSecret:   "talosconfig",
+		HealthChecker:       &mockHealthChecker{},
+		TalosClient:         &mockTalosClient{},
+		MetricsReporter:     NewMetricsReporter(),
+		now:                 &fixedClock{t: now},
+	}
+
+	result, err := r.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "test"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequeueAfter == 0 {
+		t.Fatal("expected requeue when outside maintenance window")
+	}
+
+	// Verify status updated
+	var updated tupprv1alpha1.TalosUpgrade
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: "test"}, &updated); err != nil {
+		t.Fatalf("failed to get updated upgrade: %v", err)
+	}
+	if updated.Status.Phase != constants.PhasePending {
+		t.Fatalf("expected phase Pending, got %s", updated.Status.Phase)
+	}
+	if !strings.Contains(updated.Status.Message, "Waiting for maintenance window") {
+		t.Fatalf("expected message about waiting for window, got: %s", updated.Status.Message)
+	}
+	if updated.Status.NextMaintenanceWindow == nil {
+		t.Fatal("expected nextMaintenanceWindow to be set")
+	}
+}
+
+func TestTalosUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
+	scheme := newScheme()
+	now := time.Date(2025, 6, 15, 3, 0, 0, 0, time.UTC) // Inside window
+
+	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
+		controllerutil.AddFinalizer(tu, TalosUpgradeFinalizer)
+		tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
+			Windows: []tupprv1alpha1.WindowSpec{
+				{
+					Start:    "0 2 * * *",
+					Duration: metav1.Duration{Duration: 4 * time.Hour},
+					Timezone: "UTC",
+				},
+			},
+		}
+		tu.Status.ObservedGeneration = tu.Generation
+	})
+
+	nodes := &corev1.NodeList{
+		Items: []corev1.Node{
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: fakeNodeA},
+				Status: corev1.NodeStatus{
+					Addresses: []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "10.0.0.1"}},
+				},
+			},
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tu).WithLists(nodes).WithStatusSubresource(tu).Build()
+	r := &TalosUpgradeReconciler{
+		Client:              cl,
+		Scheme:              scheme,
+		ControllerNamespace: "default",
+		TalosConfigSecret:   "talosconfig",
+		HealthChecker:       &mockHealthChecker{},
+		TalosClient: &mockTalosClient{
+			nodeVersions:  map[string]string{"10.0.0.1": "v1.11.0"},
+			installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer:v1.11.0"},
+		},
+		MetricsReporter: NewMetricsReporter(),
+		now:             &fixedClock{t: now},
+	}
+
+	// Inside window — should proceed with upgrade logic (find next node)
+	result, err := r.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "test"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequeueAfter == 0 {
+		t.Fatal("expected requeue for normal processing")
+	}
+
+	// Should NOT be blocked by maintenance window
+	var updated tupprv1alpha1.TalosUpgrade
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: "test"}, &updated); err != nil {
+		t.Fatalf("failed to get updated upgrade: %v", err)
+	}
+	if strings.Contains(updated.Status.Message, "Waiting for maintenance window") {
+		t.Fatalf("should not be blocked by maintenance window inside window, message: %s", updated.Status.Message)
 	}
 }

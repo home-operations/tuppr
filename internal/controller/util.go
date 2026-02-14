@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/home-operations/tuppr/internal/constants"
@@ -11,6 +12,16 @@ import (
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 )
+
+type Now interface {
+	Now() time.Time
+}
+
+type realClock struct{}
+
+func (r realClock) Now() time.Time {
+	return time.Now()
+}
 
 // GetNodeIp retrieves the InternalIP or ExternalIP of a Kubernetes node while preferring the InternalIP
 func GetNodeIP(node *corev1.Node) (string, error) {

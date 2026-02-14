@@ -82,6 +82,13 @@ spec:
       repository: ghcr.io/siderolabs/talosctl  # Optional, default
       tag: v1.11.0                             # Optional, auto-detected
       pullPolicy: IfNotPresent                 # Optional, default
+
+  # Maintenance windows (optional)
+  maintenance:
+    windows:
+      - start: "0 2 * * 0"    # Cron expression (Sunday 02:00)
+        duration: "4h"         # How long window stays open
+        timezone: "UTC"        # IANA timezone, default UTC
 ```
 
 #### Kubernetes Upgrades
@@ -111,6 +118,13 @@ spec:
       repository: ghcr.io/siderolabs/talosctl  # Optional, default
       tag: v1.11.0                             # Optional, auto-detected
       pullPolicy: IfNotPresent                 # Optional, default
+
+  # Maintenance windows (optional)
+  maintenance:
+    windows:
+      - start: "0 2 * * 0"    # Cron expression (Sunday 02:00)
+        duration: "4h"         # How long window stays open
+        timezone: "UTC"        # IANA timezone, default UTC
 ```
 
 ## 🎯 Advanced Configuration
@@ -165,6 +179,24 @@ policy:
   stage: false
 ```
 
+### Maintenance Windows
+
+Control when upgrades start using cron-based maintenance windows. Running upgrades always complete without interruption.
+
+```yaml
+maintenance:
+  windows:
+    - start: "0 2 * * 0"      # Sunday 02:00
+      duration: "4h"           # Max 168h, warn if <1h
+      timezone: "Europe/Paris" # IANA timezone, default UTC
+```
+
+- Upgrades only start during open windows (stays `Pending` otherwise)
+- Multiple windows create union (any open window allows start)
+- In-progress upgrades always complete (never interrupted)
+- TalosUpgrade re-checks between nodes
+- Empty config: upgrades start immediately (backwards compatible)
+
 ## 📊 Monitoring & Metrics
 
 ### Prometheus Metrics
@@ -214,6 +246,16 @@ tuppr_upgrade_jobs_active{upgrade_type="talos"} 1
 
 # Time taken for upgrade jobs to complete (histogram)
 tuppr_upgrade_job_duration_seconds{upgrade_type="talos", node_name="worker-01", result="success"}
+```
+
+#### Maintenance Window Metrics
+
+```prometheus
+# Whether upgrade is currently inside a maintenance window (1=inside, 0=outside)
+tuppr_maintenance_window_active{upgrade_type="talos", name="talos"} 0
+
+# Unix timestamp of the next maintenance window start
+tuppr_maintenance_window_next_open_timestamp{upgrade_type="talos", name="talos"} 1735603200
 ```
 
 ### Grafana Dashboard Examples
