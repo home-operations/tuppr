@@ -22,6 +22,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
 )
@@ -56,6 +58,22 @@ type TalosClientInterface interface {
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
+type ImageChecker interface {
+	Check(ctx context.Context, imageRef string) error
+}
+
+// Default implementation using remote.Head
+type RemoteImageChecker struct{}
+
+func (r *RemoteImageChecker) Check(ctx context.Context, imageRef string) error {
+	ref, err := name.ParseReference(imageRef)
+	if err != nil {
+		return fmt.Errorf("failed to parse image reference %s: %w", imageRef, err)
+	}
+	_, err = remote.Head(ref, remote.WithContext(ctx))
+	return err
+}
+
 // TalosUpgradeReconciler reconciles a TalosUpgrade object
 type TalosUpgradeReconciler struct {
 	client.Client
@@ -66,6 +84,7 @@ type TalosUpgradeReconciler struct {
 	TalosClient         TalosClientInterface
 	MetricsReporter     *MetricsReporter
 	now                 Now
+	ImageChecker        ImageChecker
 }
 
 // Reconcile is part of the main kubernetes reconciliation loop
@@ -332,10 +351,29 @@ func (r *TalosUpgradeReconciler) processNextNode(ctx context.Context, talosUpgra
 	if nextNode == "" {
 		return r.completeUpgrade(ctx, talosUpgrade)
 	}
+	targetImage, err := r.buildTalosUpgradeImage(ctx, talosUpgrade, nextNode)
+	if err != nil {
+		logger.Error(err, "Failed to determine target image", "node", nextNode)
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
+
+	logger.Info("Verifying target image availability", "image", targetImage)
+	if err := r.checkImageAvailability(ctx, targetImage); err != nil {
+		logger.Info("Target image not yet available, waiting", "node", nextNode, "image", targetImage, "error", err.Error())
+
+		// Update status to show we are waiting for the image
+		message := fmt.Sprintf("Waiting for image availability: %s", err.Error())
+		if err := r.setPhase(ctx, talosUpgrade, constants.PhasePending, nextNode, message); err != nil {
+			logger.Error(err, "Failed to update phase while waiting for image")
+		}
+
+		// Requeue to try again in 1 minute
+		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+	}
 
 	logger.Info("Found next node to upgrade", "node", nextNode)
 
-	if _, err := r.createJob(ctx, talosUpgrade, nextNode); err != nil {
+	if _, err := r.createJob(ctx, talosUpgrade, nextNode, targetImage); err != nil {
 		logger.Error(err, "Failed to create upgrade job", "node", nextNode)
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
@@ -714,7 +752,7 @@ func (r *TalosUpgradeReconciler) nodeNeedsUpgrade(ctx context.Context, node *cor
 }
 
 // createJob creates a Kubernetes Job to perform the Talos upgrade on the specified node
-func (r *TalosUpgradeReconciler) createJob(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (*batchv1.Job, error) {
+func (r *TalosUpgradeReconciler) createJob(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName, targetImage string) (*batchv1.Job, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Creating upgrade job", "node", nodeName)
 
@@ -730,7 +768,7 @@ func (r *TalosUpgradeReconciler) createJob(ctx context.Context, talosUpgrade *tu
 		return nil, err
 	}
 
-	job := r.buildJob(ctx, talosUpgrade, nodeName, nodeIP)
+	job := r.buildJob(ctx, talosUpgrade, nodeName, nodeIP, targetImage)
 	if err := controllerutil.SetControllerReference(talosUpgrade, job, r.Scheme); err != nil {
 		logger.Error(err, "Failed to set controller reference", "job", job.Name)
 		return nil, err
@@ -756,7 +794,7 @@ func (r *TalosUpgradeReconciler) createJob(ctx context.Context, talosUpgrade *tu
 }
 
 // buildJob constructs a Kubernetes Job object for upgrading a specific node
-func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName, nodeIP string) *batchv1.Job {
+func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName, nodeIP, targetImage string) *batchv1.Job {
 	logger := log.FromContext(ctx)
 
 	jobName := GenerateSafeJobName(talosUpgrade.Name, nodeName)
@@ -830,14 +868,6 @@ func (r *TalosUpgradeReconciler) buildJob(ctx context.Context, talosUpgrade *tup
 	}
 
 	talosctlImage := talosctlRepo + ":" + talosctlTag
-
-	// Build target image with schematic from node
-	targetImage, err := r.buildTalosUpgradeImage(ctx, talosUpgrade, nodeName)
-	if err != nil {
-		// This should never happen
-		targetImage = fmt.Sprintf("factory.talos.dev/metal-installer:%s", talosUpgrade.Spec.Talos.Version)
-		logger.Error(err, "Using fallback image", "node", nodeName, "fallbackImage", targetImage)
-	}
 
 	// Get timeout with default
 	timeout := TalosJobTalosUpgradeDefaultTimeout
@@ -1034,6 +1064,11 @@ func (r *TalosUpgradeReconciler) getTotalNodeCount(ctx context.Context) (int, er
 	return len(nodeList.Items), nil
 }
 
+// checkImageAvailability verifies if the remote image exists and is accessible
+func (r *TalosUpgradeReconciler) checkImageAvailability(ctx context.Context, imageRef string) error {
+	return r.ImageChecker.Check(ctx, imageRef)
+}
+
 func (r *TalosUpgradeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	logger := ctrl.Log.WithName("setup")
 	logger.Info("Setting up TalosUpgrade controller with manager")
@@ -1047,6 +1082,7 @@ func (r *TalosUpgradeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	r.TalosClient = talosClient
 	r.now = &realClock{}
+	r.ImageChecker = &RemoteImageChecker{}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&tupprv1alpha1.TalosUpgrade{}).
