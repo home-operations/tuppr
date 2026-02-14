@@ -29,6 +29,7 @@ var kuberneteslog = logf.Log.WithName("kubernetes-resource")
 type KubernetesUpgradeValidator struct {
 	Client            client.Client
 	TalosConfigSecret string
+	Namespace         string
 }
 
 // +kubebuilder:webhook:path=/validate-tuppr-home-operations-com-v1alpha1-kubernetesupgrade,mutating=false,failurePolicy=fail,sideEffects=None,groups=tuppr.home-operations.com,resources=kubernetesupgrades,verbs=create;update,versions=v1alpha1,name=vkubernetesupgrade.kb.io,admissionReviewVersions=v1
@@ -92,12 +93,11 @@ func (v *KubernetesUpgradeValidator) validateKubernetes(ctx context.Context, kub
 	secret := &corev1.Secret{}
 	err := v.Client.Get(ctx, types.NamespacedName{
 		Name:      v.TalosConfigSecret,
-		Namespace: kubernetes.Namespace,
+		Namespace: v.Namespace,
 	}, secret)
-
 	if err != nil {
 		return warnings, fmt.Errorf("talosconfig secret '%s' not found in controller namespace '%s'. Please create this secret with your Talos configuration before creating KubernetesUpgrade resources: %w",
-			v.TalosConfigSecret, kubernetes.Namespace, err)
+			v.TalosConfigSecret, v.Namespace, err)
 	}
 
 	// Validate that the secret has the required key (use consistent key name)
@@ -193,11 +193,11 @@ func (v *KubernetesUpgradeValidator) validateKubernetesSpec(kubernetes *tupprv1a
 	}
 
 	// Validate talosctl image if specified
-	talosctlRepoEmpty := kubernetes.Spec.Talosctl.Image.Repository == ""
-	talosctlTagEmpty := kubernetes.Spec.Talosctl.Image.Tag == ""
+	talosctlRepoEmpty := kubernetes.Spec.Talosctl.Image.Repository
+	talosctlTagEmpty := kubernetes.Spec.Talosctl.Image.Tag
 
-	if talosctlRepoEmpty != talosctlTagEmpty {
-		return fmt.Errorf("both spec.talosctl.image.repository and spec.talosctl.image.tag must be specified together, or both omitted for defaults")
+	if talosctlRepoEmpty == "" && talosctlTagEmpty != "" {
+		return fmt.Errorf("spec.talosctl.image.tag cannot be set without a repository")
 	}
 
 	// Validate pull policy if specified
