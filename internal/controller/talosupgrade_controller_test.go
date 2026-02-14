@@ -280,6 +280,134 @@ func TestTalosReconcile_ResetAnnotation(t *testing.T) {
 	}
 }
 
+func TestTalosReconcile_NodeVersionOverride(t *testing.T) {
+	scheme := newScheme()
+	// Global target is fakeTalosVersion (v1.12.0)
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(constants.PhasePending),
+	)
+
+	// Node is already at v1.12.0 (matches global), so normally wouldn't upgrade.
+	// But we add an annotation requesting v1.12.1
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Annotations = map[string]string{
+		constants.VersionAnnotation: "v1.12.1",
+	}
+
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{"10.0.0.1": fakeTalosVersion}, // Node is at v1.12.0
+		// The controller will fetch the current image to get the base
+		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/b55fbf4fdc6aec0c43e108cc8bde16d5533fbdeec3cb114ff3913ed9e8d019fe:v1.12.0"},
+	}
+
+	// We must mock that the specific overridden image is available
+	ic := &mockImageChecker{
+		availableImages: map[string]bool{
+			"factory.talos.dev/installer/b55fbf4fdc6aec0c43e108cc8bde16d5533fbdeec3cb114ff3913ed9e8d019fe:v1.12.1": true,
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+	r.ImageChecker = ic
+
+	// Run Reconcile
+	result := reconcileTalos(t, r, "test-upgrade")
+
+	// Expect job creation (30s requeue)
+	if result.RequeueAfter != 30*time.Second {
+		t.Fatalf("expected 30s requeue (job creation), got: %v", result.RequeueAfter)
+	}
+
+	// Verify the job uses the OVERRIDDEN version
+	var jobList batchv1.JobList
+	if err := cl.List(context.Background(), &jobList); err != nil {
+		t.Fatalf("failed to list jobs: %v", err)
+	}
+	if len(jobList.Items) != 1 {
+		t.Fatal("expected 1 job created")
+	}
+
+	container := jobList.Items[0].Spec.Template.Spec.Containers[0]
+	expectedArg := "--image=factory.talos.dev/installer/b55fbf4fdc6aec0c43e108cc8bde16d5533fbdeec3cb114ff3913ed9e8d019fe:v1.12.1"
+
+	found := false
+	for _, arg := range container.Args {
+		if arg == expectedArg {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("job args %v did not contain expected override image %s", container.Args, expectedArg)
+	}
+}
+
+func TestTalosReconcile_NodeSchematicOverride(t *testing.T) {
+	scheme := newScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(constants.PhasePending),
+	)
+
+	node := newNode(fakeNodeA, "10.0.0.1")
+	// Add schematic override
+	node.Annotations = map[string]string{
+		constants.SchematicAnnotation: "custom-schematic-id",
+	}
+
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{"10.0.0.1": "v1.11.0"}, // Needs upgrade to v1.12.0
+		// The current image is vanilla, but we expect the upgrade to use the schematic
+		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/b55fbf4fdc6aec0c43e108cc8bde16d5533fbdeec3cb114ff3913ed9e8d019fe:v1.11.0"},
+	}
+
+	// The expected image is DefaultFactoryURL + schematic + global version
+	// Note: buildTalosUpgradeImage uses "%s/%s" for factory/schematic, then adds ":%s" for version
+	expectedImage := fmt.Sprintf("%s/custom-schematic-id:%s", constants.DefaultFactoryURL, fakeTalosVersion)
+
+	ic := &mockImageChecker{
+		availableImages: map[string]bool{
+			expectedImage: true,
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+	r.ImageChecker = ic
+
+	result := reconcileTalos(t, r, "test-upgrade")
+
+	if result.RequeueAfter != 30*time.Second {
+		t.Fatalf("expected 30s requeue, got: %v", result.RequeueAfter)
+	}
+
+	var jobList batchv1.JobList
+	err := cl.List(context.Background(), &jobList)
+	if err != nil {
+		t.Fatalf("Error not expected %s", err)
+	}
+
+	container := jobList.Items[0].Spec.Template.Spec.Containers[0]
+	expectedArg := "--image=" + expectedImage
+
+	found := false
+	for _, arg := range container.Args {
+		if arg == expectedArg {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("job args %v did not contain expected schematic image %s", container.Args, expectedArg)
+	}
+}
+
 func TestTalosReconcile_GenerationChange(t *testing.T) {
 	scheme := newScheme()
 	tu := newTalosUpgrade("test-upgrade",
@@ -1016,6 +1144,118 @@ func TestTalosBuildJob_Properties(t *testing.T) {
 	}
 }
 
+func TestNodeNeedsUpgrade(t *testing.T) {
+	scheme := newScheme()
+	r := newTalosReconciler(fake.NewClientBuilder().WithScheme(scheme).Build(), scheme, nil, nil)
+
+	tests := []struct {
+		name          string
+		nodeVersion   string
+		nodeImage     string
+		globalVersion string
+		annotations   map[string]string
+		wantUpgrade   bool
+		wantError     bool
+	}{
+		{
+			name:          "Standard: Versions match, no annotations -> No Upgrade",
+			nodeVersion:   "v1.12.0",
+			globalVersion: "v1.12.0",
+			wantUpgrade:   false,
+		},
+		{
+			name:          "Standard: Versions mismatch -> Upgrade",
+			nodeVersion:   "v1.11.0",
+			globalVersion: "v1.12.0",
+			wantUpgrade:   true,
+		},
+		{
+			name:          "Override: Version annotation differs from current -> Upgrade",
+			nodeVersion:   "v1.12.0",
+			globalVersion: "v1.12.0", // Global matches
+			annotations: map[string]string{
+				constants.VersionAnnotation: "v1.12.1", // Override requests update
+			},
+			wantUpgrade: true,
+		},
+		{
+			name:          "Override: Version annotation matches current (Global differs) -> No Upgrade",
+			nodeVersion:   "v1.12.0",
+			globalVersion: "v1.13.0", // Global wants update
+			annotations: map[string]string{
+				constants.VersionAnnotation: "v1.12.0", // Override pins to current
+			},
+			wantUpgrade: false,
+		},
+		{
+			name:          "Schematic: Versions match, Schematic annotation differs -> Upgrade",
+			nodeVersion:   "v1.12.0",
+			globalVersion: "v1.12.0",
+			nodeImage:     "factory.talos.dev/installer/12345:v1.12.0",
+			annotations: map[string]string{
+				constants.SchematicAnnotation: "custom-schematic-id", // Request custom
+			},
+			wantUpgrade: true,
+		},
+		{
+			name:          "Schematic: Versions match, Schematic annotation matches -> No Upgrade",
+			nodeVersion:   "v1.12.0",
+			globalVersion: "v1.12.0",
+			nodeImage:     "factory.talos.dev/installer/custom-schematic-id:v1.12.0", // Already has schematic
+			annotations: map[string]string{
+				constants.SchematicAnnotation: "custom-schematic-id",
+			},
+			wantUpgrade: false,
+		},
+		{
+			name:          "Schematic: Versions match, Image fetch fails -> Error",
+			nodeVersion:   "v1.12.0",
+			globalVersion: "v1.12.0",
+			nodeImage:     "error", // Simulates failure
+			annotations: map[string]string{
+				constants.SchematicAnnotation: "custom-schematic-id",
+			},
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node := newNode("test-node", "10.0.0.1")
+			if tt.annotations != nil {
+				node.Annotations = tt.annotations
+			}
+
+			// Mock Client Setup
+			tc := &mockTalosClient{
+				nodeVersions: map[string]string{
+					"10.0.0.1": tt.nodeVersion,
+				},
+			}
+
+			if tt.nodeImage == "error" {
+				tc.getInstallErr = fmt.Errorf("failed to fetch image")
+			} else if tt.nodeImage != "" {
+				tc.installImages = map[string]string{
+					"10.0.0.1": tt.nodeImage,
+				}
+			}
+
+			r.TalosClient = tc
+
+			gotUpgrade, err := r.nodeNeedsUpgrade(context.Background(), node, tt.globalVersion)
+
+			if (err != nil) != tt.wantError {
+				t.Errorf("nodeNeedsUpgrade() error = %v, wantError %v", err, tt.wantError)
+				return
+			}
+			if gotUpgrade != tt.wantUpgrade {
+				t.Errorf("nodeNeedsUpgrade() = %v, want %v", gotUpgrade, tt.wantUpgrade)
+			}
+		})
+	}
+}
+
 func TestTalosBuildJob_SoftPlacement(t *testing.T) {
 	scheme := newScheme()
 	tu := newTalosUpgrade("test-upgrade", withFinalizer)
@@ -1310,4 +1550,37 @@ func (m *mockImageChecker) Check(ctx context.Context, imageRef string) error {
 	}
 	// Simulate 500 or 404 error
 	return fmt.Errorf("fetch failed after status: 500 Internal Server Error")
+}
+
+func TestTalosBuildTalosUpgradeImage_WithSchematicAnnotation(t *testing.T) {
+	scheme := newScheme()
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion // v1.12.0
+
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Annotations = map[string]string{
+		constants.SchematicAnnotation: "abc123schematic",
+	}
+
+	// TalosClient shouldn't even be called for image info if annotation exists,
+	// but we provide it just in case
+	tc := &mockTalosClient{
+		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/b55fbf4fdc6aec0c43e108cc8bde16d5533fbdeec3cb114ff3913ed9e8d019fe:v1.10.0"},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should use factory URL + schematic + CR version
+	expected := "factory.talos.dev/installer/abc123schematic:" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("expected schematic image %s, got: %s", expected, image)
+	}
 }

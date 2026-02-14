@@ -14,6 +14,7 @@ A Kubernetes controller for managing automated upgrades of Talos Linux and Kuber
 - 📋 **Comprehensive status tracking** with real-time progress reporting
 - ⚡ **Resilient job execution** with automatic retry and pod replacement
 - 📈 **Prometheus metrics** - detailed monitoring of upgrade progress and health
+- 🎯 **Per-node overrides** - use annotations to specify unique versions or schematics for specific nodes.
 
 ## 🚀 Quick Start
 
@@ -197,6 +198,30 @@ maintenance:
 - TalosUpgrade re-checks between nodes
 - Empty config: upgrades start immediately (backwards compatible)
 
+### Per-Node Overrides
+
+Tuppr supports overriding the global TalosUpgrade configuration on a per-node basis using Kubernetes annotations. This is useful for testing new versions on a canary node or handling nodes with different hardware schematics.
+
+| Annotation | Description | Example |
+| -------- | ------- | ------- |
+| tuppr.home-operations.com/version | Overrides the target Talos version for this node. | v1.12.1 |
+| tuppr.home-operations.com/schematic | Overrides the Talos schematic hash for this node. | b55fbf... |
+
+
+Example: Applying an override
+
+```Bash
+# Upgrade a specific node to a different version than the global policy
+kubectl annotate node worker-01 tuppr.home-operations.com/version="v1.12.1"
+
+# Apply a custom schematic (with specific extensions) to one node
+kubectl annotate node worker-02 tuppr.home-operations.com/schematic="314b18a3f89d..."
+```
+
+How it works:
+- The controller checks if a node version or schematic matches the annotation instead of the global TalosUpgrade spec.
+- If an inconsistency is found, an upgrade job is triggered for that node using the override values.
+
 ## 📊 Monitoring & Metrics
 
 ### Prometheus Metrics
@@ -345,6 +370,13 @@ kubectl describe kubernetesupgrade kubernetes
 
 # View upgrade logs
 kubectl logs -f deployment/tuppr -n system-upgrade
+
+# Force a node to a specific version/schematic
+kubectl annotate node <node-name> tuppr.home-operations.com/version="v1.10.7"
+kubectl annotate node <node-name> tuppr.home-operations.com/schematic="<hash>"
+
+# Check if a node has overrides applied
+kubectl get nodes -o custom-columns=NAME:.metadata.name,VERSION-OVERRIDE:.metadata.annotations."tuppr\.home-operations\.com/version"
 
 # Check metrics endpoint
 kubectl port-forward -n system-upgrade deployment/tuppr 8080:8080
