@@ -458,7 +458,8 @@ kubectl scale deployment tuppr --replicas=1 -n system-upgrade
 
 ### Important Resource Constraints
 
-- **TalosUpgrade**: Only **one** `TalosUpgrade` resource is allowed per cluster. This constraint simplifies the upgrade orchestration by processing all nodes sequentially in a single upgrade workflow, eliminating the need for complex queueing and coordination between multiple upgrade resources. The admission webhook will reject attempts to create additional `TalosUpgrade` resources.
+
+- **TalosUpgrade**:: You can now define multiple TalosUpgrade resources to target different groups of nodes (e.g., "workers-west" vs "workers-east"). While multiple plans can exist simultaneously, only one plan will execute at a time (First-Come, First-Served). The controller automatically queues subsequent plans to ensure safe, sequential orchestration across the cluster.
 
 - **KubernetesUpgrade**: Only **one** `KubernetesUpgrade` resource is allowed per cluster. This constraint exists because Kubernetes upgrades affect the entire cluster, and multiple concurrent upgrades would conflict with each other. The admission webhook will reject attempts to create additional `KubernetesUpgrade` resources.
 
@@ -467,23 +468,30 @@ kubectl scale deployment tuppr --replicas=1 -n system-upgrade
 ### Upgrade Coordination Examples
 
 ```yaml
-# ✅ Valid: Single TalosUpgrade resource
+# ✅ Valid: Multiple TalosUpgrade Plans (Queued Execution)
+# Plan 1: Upgrade worker nodes in west zone
 apiVersion: tuppr.home-operations.com/v1alpha1
 kind: TalosUpgrade
 metadata:
-  name: talos
+  name: workers-west
 spec:
   talos:
-    version: v1.11.0
+    version: v1.12.4
+  nodeSelector:
+    matchLabels:
+      topology.kubernetes.io/zone: west
 ---
-# ❌ Invalid: Second TalosUpgrade will be rejected by webhook
+# Plan 2: Upgrade worker nodes in east zone
 apiVersion: tuppr.home-operations.com/v1alpha1
 kind: TalosUpgrade
 metadata:
-  name: another-talos  # This will fail validation
+  name: workers-east
 spec:
   talos:
-    version: v1.11.1
+    version: v1.12.4
+  nodeSelector:
+    matchLabels:
+      topology.kubernetes.io/zone: east
 ---
 # ✅ Valid: Single KubernetesUpgrade resource
 apiVersion: tuppr.home-operations.com/v1alpha1
@@ -503,6 +511,10 @@ spec:
   kubernetes:
     version: v1.35.0
 ```
+
+#### ⚠️ Warning: Node Overlap
+
+If two active plans target the same node (e.g., Plan A selects role: worker and Plan B selects zone: west, and a node has both labels), the webhook will issue a Warning upon creation. While allowed, this configuration is discouraged as it can cause conflicting upgrade cycles where a node is repeatedly updated by alternating plans.
 
 ### Cross-Upgrade Coordination Behavior
 

@@ -171,7 +171,7 @@ func (r *TalosUpgradeReconciler) processUpgrade(ctx context.Context, talosUpgrad
 
 	// Coordination check - only when not already InProgress (first-applied wins)
 	if talosUpgrade.Status.Phase != constants.PhaseInProgress {
-		if blocked, message, err := IsAnotherUpgradeActive(ctx, r.Client, "talos"); err != nil {
+		if blocked, message, err := IsAnotherUpgradeActive(ctx, r.Client, talosUpgrade.Name, "talos"); err != nil {
 			logger.Error(err, "Failed to check for other active upgrades")
 			return ctrl.Result{RequeueAfter: time.Minute}, nil
 		} else if blocked {

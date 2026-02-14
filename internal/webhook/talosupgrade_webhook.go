@@ -3,7 +3,11 @@ package webhook
 import (
 	"context"
 	"fmt"
+	"slices"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -55,9 +59,12 @@ func (v *TalosUpgradeValidator) ValidateDelete(ctx context.Context, t *tupprv1al
 func (v *TalosUpgradeValidator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
 	var warnings admission.Warnings
 
-	list := &tupprv1alpha1.TalosUpgradeList{}
-	if err := ValidateSingleton(ctx, v.Client, "TalosUpgrade", t.Name, list); err != nil {
-		return warnings, err
+	overlapWarnings, err := v.validateOverlaps(ctx, t)
+	if err != nil {
+		// We fail open if we can't check overlaps (e.g. API error), but log it
+		taloslog.Error(err, "failed to check for overlaps")
+	} else {
+		warnings = append(warnings, overlapWarnings...)
 	}
 
 	if _, err := ValidateTalosConfigSecret(ctx, v.Client, v.TalosConfigSecret, v.Namespace); err != nil {
@@ -112,6 +119,90 @@ func (v *TalosUpgradeValidator) validate(ctx context.Context, t *tupprv1alpha1.T
 
 	taloslog.Info("talos plan validation successful", "name", t.Name, "version", t.Spec.Talos.Version)
 	return warnings, nil
+}
+
+// validateOverlaps checks if the new/updated TalosUpgrade targets nodes that are already
+// targeted by other existing TalosUpgrade resources.
+func (v *TalosUpgradeValidator) validateOverlaps(ctx context.Context, current *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
+	var warnings admission.Warnings
+
+	currentNodes, err := v.getMatchingNodes(ctx, current.Spec.NodeSelector)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(currentNodes) == 0 {
+		return nil, nil
+	}
+
+	existingList := &tupprv1alpha1.TalosUpgradeList{}
+	if err := v.Client.List(ctx, existingList); err != nil {
+		return nil, err
+	}
+
+	for _, existing := range existingList.Items {
+		if existing.Name == current.Name {
+			continue
+		}
+
+		otherNodes, err := v.getMatchingNodes(ctx, existing.Spec.NodeSelector)
+		if err != nil {
+			return nil, err
+		}
+
+		intersection := findNodeIntersection(currentNodes, otherNodes)
+
+		if len(intersection) > 0 {
+			shownNodes := intersection
+			if len(shownNodes) > 3 {
+				shownNodes = append(shownNodes[:3], "...")
+			}
+
+			warnings = append(warnings, fmt.Sprintf(
+				"Detected node overlap with existing plan '%s'. The following nodes match both plans: %v. "+
+					"This may cause conflicting upgrades/downgrades if both plans are active.",
+				existing.Name, shownNodes))
+		}
+	}
+
+	return warnings, nil
+}
+
+// getMatchingNodes returns a set of node names that match the given selector
+func (v *TalosUpgradeValidator) getMatchingNodes(ctx context.Context, labelSelector *metav1.LabelSelector) (map[string]bool, error) {
+	var selector labels.Selector
+	var err error
+
+	if labelSelector != nil {
+		selector, err = metav1.LabelSelectorAsSelector(labelSelector)
+		if err != nil {
+			return nil, fmt.Errorf("invalid nodeSelector: %w", err)
+		}
+	} else {
+		selector = labels.Everything()
+	}
+
+	nodeList := &corev1.NodeList{}
+	if err := v.Client.List(ctx, nodeList, &client.ListOptions{LabelSelector: selector}); err != nil {
+		return nil, fmt.Errorf("failed to list nodes: %w", err)
+	}
+
+	nodeSet := make(map[string]bool)
+	for _, node := range nodeList.Items {
+		nodeSet[node.Name] = true
+	}
+	return nodeSet, nil
+}
+
+func findNodeIntersection(setA, setB map[string]bool) []string {
+	var intersection []string
+	for name := range setA {
+		if setB[name] {
+			intersection = append(intersection, name)
+		}
+	}
+	slices.Sort(intersection)
+	return intersection
 }
 
 func (v *TalosUpgradeValidator) SetupWebhookWithManager(mgr ctrl.Manager) error {
