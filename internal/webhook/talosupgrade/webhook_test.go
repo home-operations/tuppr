@@ -1,4 +1,4 @@
-package webhook
+package talosupgrade
 
 import (
 	"context"
@@ -13,6 +13,29 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+// Helper functions copied from kubernetesupgrade tests since test files can't be imported
+
+func validTalosConfig() []byte {
+	return []byte(`context: default
+contexts:
+  default:
+    endpoints:
+      - https://10.0.0.1:50000
+    ca: ""
+    crt: ""
+    key: ""
+`)
+}
+
+func containsWarning(warnings []string, substr string) bool {
+	for _, w := range warnings {
+		if strings.Contains(w, substr) {
+			return true
+		}
+	}
+	return false
+}
 
 func newTalosUpgrade(name string, opts ...func(*tupprv1alpha1.TalosUpgrade)) *tupprv1alpha1.TalosUpgrade {
 	tu := &tupprv1alpha1.TalosUpgrade{
@@ -87,7 +110,7 @@ func withDebug(d bool) func(*tupprv1alpha1.TalosUpgrade) {
 	}
 }
 
-func newTalosValidator(objects ...runtime.Object) *TalosUpgradeValidator {
+func newTalosValidator(objects ...runtime.Object) *Validator {
 	scheme := runtime.NewScheme()
 	_ = tupprv1alpha1.AddToScheme(scheme)
 	_ = corev1.AddToScheme(scheme)
@@ -97,7 +120,7 @@ func newTalosValidator(objects ...runtime.Object) *TalosUpgradeValidator {
 		WithRuntimeObjects(objects...).
 		Build()
 
-	return &TalosUpgradeValidator{
+	return &Validator{
 		Client:            c,
 		TalosConfigSecret: "talosconfig",
 		Namespace:         "default",

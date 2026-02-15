@@ -1,4 +1,4 @@
-package controller
+package metrics
 
 import (
 	"strconv"
@@ -9,22 +9,19 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
-// Constants for upgrade types and context keys
 const (
 	UpgradeTypeTalos      = "talos"
 	UpgradeTypeKubernetes = "kubernetes"
 )
 
-// Define custom types for context keys to avoid collisions
-type contextKey string
+type ContextKey string
 
 const (
-	ContextKeyUpgradeType contextKey = "upgradeType"
-	ContextKeyUpgradeName contextKey = "upgradeName"
+	ContextKeyUpgradeType ContextKey = "upgradeType"
+	ContextKeyUpgradeName ContextKey = "upgradeName"
 )
 
 var (
-	// TalosUpgrade metrics
 	talosUpgradePhaseGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "tuppr_talos_upgrade_phase",
@@ -61,12 +58,11 @@ var (
 		prometheus.HistogramOpts{
 			Name:    "tuppr_talos_upgrade_duration_seconds",
 			Help:    "Time taken for Talos upgrade phases",
-			Buckets: []float64{30, 60, 300, 600, 1200, 1800, 3600, 7200}, // 30s to 2h
+			Buckets: []float64{30, 60, 300, 600, 1200, 1800, 3600, 7200},
 		},
 		[]string{"name", "phase"},
 	)
 
-	// KubernetesUpgrade metrics
 	kubernetesUpgradePhaseGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "tuppr_kubernetes_upgrade_phase",
@@ -79,17 +75,16 @@ var (
 		prometheus.HistogramOpts{
 			Name:    "tuppr_kubernetes_upgrade_duration_seconds",
 			Help:    "Time taken for Kubernetes upgrade phases",
-			Buckets: []float64{30, 60, 300, 600, 1200, 1800, 3600}, // 30s to 1h
+			Buckets: []float64{30, 60, 300, 600, 1200, 1800, 3600},
 		},
 		[]string{"name", "phase"},
 	)
 
-	// Health check metrics
 	healthCheckDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "tuppr_health_check_duration_seconds",
 			Help:    "Time taken for health checks to pass",
-			Buckets: []float64{1, 5, 10, 30, 60, 120, 300, 600}, // 1s to 10m
+			Buckets: []float64{1, 5, 10, 30, 60, 120, 300, 600},
 		},
 		[]string{"upgrade_type", "upgrade_name"},
 	)
@@ -102,7 +97,6 @@ var (
 		[]string{"upgrade_type", "upgrade_name", "check_index"},
 	)
 
-	// Job metrics
 	upgradeJobsActive = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "tuppr_upgrade_jobs_active",
@@ -115,12 +109,11 @@ var (
 		prometheus.HistogramOpts{
 			Name:    "tuppr_upgrade_job_duration_seconds",
 			Help:    "Time taken for upgrade jobs to complete",
-			Buckets: []float64{60, 300, 600, 1200, 1800, 3600, 7200}, // 1m to 2h
+			Buckets: []float64{60, 300, 600, 1200, 1800, 3600, 7200},
 		},
 		[]string{"upgrade_type", "node_name", "result"},
 	)
 
-	// Maintenance window metrics
 	maintenanceWindowActive = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "tuppr_maintenance_window_active",
@@ -139,7 +132,6 @@ var (
 )
 
 func init() {
-	// Register metrics with controller-runtime's registry
 	metrics.Registry.MustRegister(
 		talosUpgradePhaseGauge,
 		talosUpgradeNodesTotal,
@@ -157,7 +149,6 @@ func init() {
 	)
 }
 
-// Helper functions to convert phase strings to numbers for Prometheus
 func phaseToFloat64(phase string) float64 {
 	switch phase {
 	case "Pending":
@@ -173,41 +164,34 @@ func phaseToFloat64(phase string) float64 {
 	}
 }
 
-// MetricsReporter handles metric reporting for upgrades
-type MetricsReporter struct {
-	mu         sync.RWMutex // Add mutex for thread safety
+type Reporter struct {
+	mu         sync.RWMutex
 	startTimes map[string]*prometheus.Timer
 }
 
-func NewMetricsReporter() *MetricsReporter {
-	return &MetricsReporter{
+func NewReporter() *Reporter {
+	return &Reporter{
 		startTimes: make(map[string]*prometheus.Timer),
 	}
 }
 
-func (m *MetricsReporter) RecordTalosUpgradePhase(name, phase string) {
-	// Clear previous phase metrics for this upgrade
+func (m *Reporter) RecordTalosUpgradePhase(name, phase string) {
 	talosUpgradePhaseGauge.DeletePartialMatch(prometheus.Labels{"name": name})
-
-	// Set current phase
 	talosUpgradePhaseGauge.WithLabelValues(name, phase).Set(phaseToFloat64(phase))
 }
 
-func (m *MetricsReporter) RecordTalosUpgradeNodes(name string, total, completed, failed int) {
+func (m *Reporter) RecordTalosUpgradeNodes(name string, total, completed, failed int) {
 	talosUpgradeNodesTotal.WithLabelValues(name).Set(float64(total))
 	talosUpgradeNodesCompleted.WithLabelValues(name).Set(float64(completed))
 	talosUpgradeNodesFailed.WithLabelValues(name).Set(float64(failed))
 }
 
-func (m *MetricsReporter) RecordKubernetesUpgradePhase(name, phase string) {
-	// Clear previous phase metrics for this upgrade
+func (m *Reporter) RecordKubernetesUpgradePhase(name, phase string) {
 	kubernetesUpgradePhaseGauge.DeletePartialMatch(prometheus.Labels{"name": name})
-
-	// Set current phase
 	kubernetesUpgradePhaseGauge.WithLabelValues(name, phase).Set(phaseToFloat64(phase))
 }
 
-func (m *MetricsReporter) StartPhaseTiming(upgradeType, name, phase string) {
+func (m *Reporter) StartPhaseTiming(upgradeType, name, phase string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -221,7 +205,7 @@ func (m *MetricsReporter) StartPhaseTiming(upgradeType, name, phase string) {
 	}
 }
 
-func (m *MetricsReporter) EndPhaseTiming(upgradeType, name, phase string) {
+func (m *Reporter) EndPhaseTiming(upgradeType, name, phase string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -232,26 +216,25 @@ func (m *MetricsReporter) EndPhaseTiming(upgradeType, name, phase string) {
 	}
 }
 
-func (m *MetricsReporter) RecordHealthCheckDuration(upgradeType, upgradeName string, duration float64) {
+func (m *Reporter) RecordHealthCheckDuration(upgradeType, upgradeName string, duration float64) {
 	healthCheckDuration.WithLabelValues(upgradeType, upgradeName).Observe(duration)
 }
 
-func (m *MetricsReporter) RecordHealthCheckFailure(upgradeType, upgradeName string, checkIndex int) {
+func (m *Reporter) RecordHealthCheckFailure(upgradeType, upgradeName string, checkIndex int) {
 	healthCheckFailuresTotal.WithLabelValues(upgradeType, upgradeName, strconv.Itoa(checkIndex)).Inc()
 }
 
-func (m *MetricsReporter) RecordActiveJobs(upgradeType string, count int) {
+func (m *Reporter) RecordActiveJobs(upgradeType string, count int) {
 	upgradeJobsActive.WithLabelValues(upgradeType).Set(float64(count))
 }
 
-func (m *MetricsReporter) RecordJobDuration(upgradeType, nodeName, result string, duration float64) {
+func (m *Reporter) RecordJobDuration(upgradeType, nodeName, result string, duration float64) {
 	upgradeJobDuration.WithLabelValues(upgradeType, nodeName, result).Observe(duration)
 }
 
-func (m *MetricsReporter) RecordMaintenanceWindow(upgradeType, name string, active bool, nextOpenTimestamp *int64) {
+func (m *Reporter) RecordMaintenanceWindow(upgradeType, name string, active bool, nextOpenTimestamp *int64) {
 	if active {
 		maintenanceWindowActive.WithLabelValues(upgradeType, name).Set(1)
-		// Clear next open timestamp when inside window
 		maintenanceWindowNextOpenTimestamp.DeleteLabelValues(upgradeType, name)
 	} else {
 		maintenanceWindowActive.WithLabelValues(upgradeType, name).Set(0)
@@ -261,19 +244,16 @@ func (m *MetricsReporter) RecordMaintenanceWindow(upgradeType, name string, acti
 	}
 }
 
-// Cleanup removes all metrics for a specific upgrade (useful when upgrade is deleted)
-func (m *MetricsReporter) CleanupUpgradeMetrics(upgradeType, name string) {
+func (m *Reporter) CleanupUpgradeMetrics(upgradeType, name string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Clean up any pending timers
 	for key := range m.startTimes {
 		if strings.HasPrefix(key, upgradeType+":"+name+":") {
 			delete(m.startTimes, key)
 		}
 	}
 
-	// Clean up gauge metrics
 	switch upgradeType {
 	case UpgradeTypeTalos:
 		talosUpgradePhaseGauge.DeletePartialMatch(prometheus.Labels{"name": name})
@@ -284,7 +264,6 @@ func (m *MetricsReporter) CleanupUpgradeMetrics(upgradeType, name string) {
 		kubernetesUpgradePhaseGauge.DeletePartialMatch(prometheus.Labels{"name": name})
 	}
 
-	// Clean up maintenance window metrics
 	maintenanceWindowActive.DeleteLabelValues(upgradeType, name)
 	maintenanceWindowNextOpenTimestamp.DeleteLabelValues(upgradeType, name)
 }

@@ -1,4 +1,4 @@
-package controller
+package talosupgrade
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
+	"github.com/home-operations/tuppr/internal/controller/nodeutil"
+	"github.com/home-operations/tuppr/internal/metrics"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -71,15 +73,6 @@ func (m *mockHealthChecker) CheckHealth(ctx context.Context, healthChecks []tupp
 	return m.err
 }
 
-type mockVersionGetter struct {
-	version string
-	err     error
-}
-
-func (m *mockVersionGetter) GetCurrentKubernetesVersion(ctx context.Context) (string, error) {
-	return m.version, m.err
-}
-
 type fixedClock struct {
 	t time.Time
 }
@@ -88,7 +81,7 @@ func (f *fixedClock) Now() time.Time {
 	return f.t
 }
 
-func newScheme() *runtime.Scheme {
+func newTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
 	_ = tupprv1alpha1.AddToScheme(s)
 	_ = corev1.AddToScheme(s)
@@ -171,16 +164,16 @@ func newNode(name, ip string) *corev1.Node {
 	}
 }
 
-func newTalosReconciler(cl client.Client, scheme *runtime.Scheme, talosClient TalosClientInterface, healthChecker HealthCheckRunner) *TalosUpgradeReconciler {
-	return &TalosUpgradeReconciler{
+func newTalosReconciler(cl client.Client, scheme *runtime.Scheme, talosClient TalosClient, healthChecker HealthCheckRunner) *Reconciler {
+	return &Reconciler{
 		Client:              cl,
 		Scheme:              scheme,
 		TalosConfigSecret:   "test-talosconfig",
 		ControllerNamespace: "default",
 		TalosClient:         talosClient,
 		HealthChecker:       healthChecker,
-		MetricsReporter:     NewMetricsReporter(),
-		now:                 &realClock{},
+		MetricsReporter:     metrics.NewReporter(),
+		Now:                 &nodeutil.Clock{},
 		ImageChecker:        &mockImageChecker{availableImages: nil},
 	}
 }
@@ -194,7 +187,7 @@ func getTalosUpgrade(t *testing.T, cl client.Client, name string) *tupprv1alpha1
 	return &tu
 }
 
-func reconcileTalos(t *testing.T, r *TalosUpgradeReconciler, name string) ctrl.Result { //nolint:unparam
+func reconcileTalos(t *testing.T, r *Reconciler, name string) ctrl.Result { //nolint:unparam
 	t.Helper()
 	result, err := r.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: name},
@@ -206,7 +199,7 @@ func reconcileTalos(t *testing.T, r *TalosUpgradeReconciler, name string) ctrl.R
 }
 
 func TestTalosReconcile_AddsFinalizer(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade")
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu).WithStatusSubresource(tu).Build()
@@ -221,7 +214,7 @@ func TestTalosReconcile_AddsFinalizer(t *testing.T) {
 }
 
 func TestTalosReconcile_SuspendAnnotation(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withAnnotation(constants.SuspendAnnotation, "maintenance window"),
@@ -245,7 +238,7 @@ func TestTalosReconcile_SuspendAnnotation(t *testing.T) {
 }
 
 func TestTalosReconcile_ResetAnnotation(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhaseFailed),
@@ -281,7 +274,7 @@ func TestTalosReconcile_ResetAnnotation(t *testing.T) {
 }
 
 func TestTalosReconcile_NodeVersionOverride(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	// Global target is fakeTalosVersion (v1.12.0)
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
@@ -347,7 +340,7 @@ func TestTalosReconcile_NodeVersionOverride(t *testing.T) {
 }
 
 func TestTalosReconcile_NodeSchematicOverride(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhasePending),
@@ -409,7 +402,7 @@ func TestTalosReconcile_NodeSchematicOverride(t *testing.T) {
 }
 
 func TestTalosReconcile_GenerationChange(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withGeneration(2, 1),
@@ -441,7 +434,7 @@ func TestTalosReconcile_GenerationChange(t *testing.T) {
 }
 
 func TestTalosReconcile_BlockedByKubernetesUpgrade(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhasePending),
@@ -472,7 +465,7 @@ func TestTalosReconcile_BlockedByKubernetesUpgrade(t *testing.T) {
 }
 
 func TestTalosReconcile_FailedNodesSetPhaseFailed(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhasePending),
@@ -497,7 +490,7 @@ func TestTalosReconcile_FailedNodesSetPhaseFailed(t *testing.T) {
 }
 
 func TestTalosReconcile_HealthCheckFailure(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhasePending),
@@ -527,7 +520,7 @@ func TestTalosReconcile_HealthCheckFailure(t *testing.T) {
 }
 
 func TestTalosReconcile_AllNodesUpToDate(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhasePending),
@@ -555,7 +548,7 @@ func TestTalosReconcile_SingleNodeVersionCheckFailure(t *testing.T) {
 	// Regression test for https://github.com/home-operations/tuppr/issues/65
 	// On single-node clusters, if GetNodeVersion fails (e.g. TLS expired cert),
 	// the controller should retry instead of silently completing with 0 nodes.
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhasePending),
@@ -585,7 +578,7 @@ func TestTalosReconcile_SingleNodeVersionCheckFailure(t *testing.T) {
 func TestTalosReconcile_MultiNodePartialVersionCheckFailure(t *testing.T) {
 	// When one node's version check fails, the entire findNextNode should error
 	// and the controller should retry, not skip that node.
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhasePending),
@@ -615,7 +608,7 @@ func TestTalosReconcile_MultiNodePartialVersionCheckFailure(t *testing.T) {
 }
 
 func TestTalosReconcile_CreatesJobForNextNode(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhasePending),
@@ -657,7 +650,7 @@ func TestTalosReconcile_CreatesJobForNextNode(t *testing.T) {
 }
 
 func TestTalosReconcile_HandlesActiveJobRunning(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhaseInProgress),
@@ -693,7 +686,7 @@ func TestTalosReconcile_HandlesActiveJobRunning(t *testing.T) {
 }
 
 func TestTalosReconcile_HandlesJobSuccess(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhaseInProgress),
@@ -739,7 +732,7 @@ func TestTalosReconcile_HandlesJobSuccess(t *testing.T) {
 }
 
 func TestTalosReconcile_HandlesJobFailure(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhaseInProgress),
@@ -778,7 +771,7 @@ func TestTalosReconcile_HandlesJobFailure(t *testing.T) {
 }
 
 func TestTalosReconcile_JobVerificationFailure(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhaseInProgress),
@@ -816,7 +809,7 @@ func TestTalosReconcile_JobVerificationFailure(t *testing.T) {
 }
 
 func TestTalosReconcile_MultiNodeUpgradeOrdering(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhasePending),
@@ -856,7 +849,7 @@ func TestTalosReconcile_MultiNodeUpgradeOrdering(t *testing.T) {
 }
 
 func TestTalosReconcile_SkipsAlreadyUpgradedNodes(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhasePending),
@@ -892,7 +885,7 @@ func TestTalosReconcile_SkipsAlreadyUpgradedNodes(t *testing.T) {
 }
 
 func TestTalosReconcile_InProgressBypassesCoordination(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhaseInProgress),
@@ -921,7 +914,7 @@ func TestTalosReconcile_InProgressBypassesCoordination(t *testing.T) {
 }
 
 func TestTalosReconcile_Cleanup(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	now := metav1.Now()
 	tu := &tupprv1alpha1.TalosUpgrade{
 		ObjectMeta: metav1.ObjectMeta{
@@ -952,7 +945,7 @@ func TestTalosReconcile_Cleanup(t *testing.T) {
 }
 
 func TestTalosReconcile_MultiNodeFullLifecycle(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhasePending),
@@ -1071,7 +1064,7 @@ func TestTalosReconcile_MultiNodeFullLifecycle(t *testing.T) {
 }
 
 func TestTalosBuildJob_Properties(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade", withFinalizer)
 	tu.Spec.Talos.Version = fakeTalosVersion
 	tu.Spec.Policy.Placement = "hard"
@@ -1145,7 +1138,7 @@ func TestTalosBuildJob_Properties(t *testing.T) {
 }
 
 func TestTalosReconcile_HandleJobSuccess_NodeReady(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhaseInProgress),
@@ -1204,7 +1197,7 @@ func TestTalosReconcile_HandleJobSuccess_NodeReady(t *testing.T) {
 }
 
 func TestTalosReconcile_HandleJobSuccess_NodeNotReady_Requeues(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhaseInProgress),
@@ -1258,7 +1251,7 @@ func TestTalosReconcile_HandleJobSuccess_NodeNotReady_Requeues(t *testing.T) {
 }
 
 func TestTalosReconcile_HandleJobSuccess_VerificationFailed_Permanent(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhaseInProgress),
@@ -1307,7 +1300,7 @@ func TestTalosReconcile_HandleJobSuccess_VerificationFailed_Permanent(t *testing
 }
 
 func TestNodeNeedsUpgrade(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	r := newTalosReconciler(fake.NewClientBuilder().WithScheme(scheme).Build(), scheme, nil, nil)
 
 	tests := []struct {
@@ -1419,7 +1412,7 @@ func TestNodeNeedsUpgrade(t *testing.T) {
 }
 
 func TestTalosBuildJob_SoftPlacement(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade", withFinalizer)
 	tu.Spec.Policy.Placement = PlacementSoft
 	tc := &mockTalosClient{
@@ -1441,7 +1434,7 @@ func TestTalosBuildJob_SoftPlacement(t *testing.T) {
 }
 
 func TestTalosBuildTalosUpgradeImage(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade", withFinalizer)
 	tu.Spec.Talos.Version = fakeTalosVersion
 	node := newNode(fakeNodeA, "10.0.0.1")
@@ -1462,7 +1455,7 @@ func TestTalosBuildTalosUpgradeImage(t *testing.T) {
 }
 
 func TestTalosBuildTalosUpgradeImage_InvalidFormat(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade", withFinalizer)
 	node := newNode(fakeNodeA, "10.0.0.1")
 	tc := &mockTalosClient{
@@ -1488,7 +1481,7 @@ func TestGetActiveDeadlineSeconds(t *testing.T) {
 }
 
 func TestTalosUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	now := time.Date(2025, 6, 15, 10, 0, 0, 0, time.UTC)
 
 	// Window: every day at 02:00 UTC for 4 hours (outside current time)
@@ -1508,7 +1501,7 @@ func TestTalosUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tu).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
-	r.now = &fixedClock{now}
+	r.Now = &fixedClock{now}
 
 	result, err := r.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: "test"},
@@ -1537,7 +1530,7 @@ func TestTalosUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
 }
 
 func TestTalosUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	now := time.Date(2025, 6, 15, 3, 0, 0, 0, time.UTC) // Inside window
 
 	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
@@ -1567,7 +1560,7 @@ func TestTalosUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tu).WithLists(nodes).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
-	r.now = &fixedClock{now}
+	r.Now = &fixedClock{now}
 	// Inside window — should proceed with upgrade logic (find next node)
 	result, err := r.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: "test"},
@@ -1590,7 +1583,7 @@ func TestTalosUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
 }
 
 func TestTalosReconcile_WaitsForImageAvailability(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhasePending),
@@ -1640,7 +1633,7 @@ func TestTalosReconcile_WaitsForImageAvailability(t *testing.T) {
 }
 
 func TestTalosReconcile_ProceedsWhenImageAvailable(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
 		withPhase(constants.PhasePending),
@@ -1715,7 +1708,7 @@ func (m *mockImageChecker) Check(ctx context.Context, imageRef string) error {
 }
 
 func TestTalosBuildTalosUpgradeImage_WithSchematicAnnotation(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade", withFinalizer)
 	tu.Spec.Talos.Version = fakeTalosVersion // v1.12.0
 
@@ -1748,7 +1741,7 @@ func TestTalosBuildTalosUpgradeImage_WithSchematicAnnotation(t *testing.T) {
 }
 
 func TestTalosGetSortedNodes_FilteringAndSorting(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 
 	// Define nodes with varying labels and names
 	nodeA := newNode("node-alpha", "10.0.0.1")
@@ -1827,7 +1820,7 @@ func TestTalosGetSortedNodes_FilteringAndSorting(t *testing.T) {
 				WithObjects(nodeA, nodeB, nodeC).
 				Build()
 
-			r := &TalosUpgradeReconciler{
+			r := &Reconciler{
 				Client: cl,
 				Scheme: scheme,
 			}
@@ -1853,9 +1846,9 @@ func TestTalosGetSortedNodes_FilteringAndSorting(t *testing.T) {
 }
 
 func TestTalosGetSortedNodes_InvalidSelector(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	r := &TalosUpgradeReconciler{Client: cl}
+	r := &Reconciler{Client: cl}
 
 	// An invalid operator like "BadOperator" will cause LabelSelectorAsSelector to error
 	ns := &metav1.LabelSelector{

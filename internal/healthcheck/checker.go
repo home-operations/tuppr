@@ -1,4 +1,4 @@
-package controller
+package healthcheck
 
 import (
 	"context"
@@ -15,34 +15,38 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/metrics"
 )
 
-const (
-	// DefaultHealthCheckTimeout is the default timeout for health checks if not specified
-	DefaultHealthCheckTimeout = 10 * time.Minute
-)
+const DefaultHealthCheckTimeout = 10 * time.Minute
 
-type HealthCheckRunner interface {
-	CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1.HealthCheckSpec) error
+// MetricsRecorder defines the interface for metrics the health checker needs
+type MetricsRecorder interface {
+	RecordHealthCheckDuration(upgradeType, upgradeName string, duration float64)
+	RecordHealthCheckFailure(upgradeType, upgradeName string, checkIndex int)
 }
 
-// HealthChecker evaluates CEL-based health checks
-type HealthChecker struct {
+type Checker struct {
 	client.Client
-	MetricsReporter *MetricsReporter
+	MetricsReporter MetricsRecorder
 }
 
-// CheckHealth performs the health checks defined in the TalosUpgrade resource
-func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1.HealthCheckSpec) error {
+func NewChecker(c client.Client, mr MetricsRecorder) *Checker {
+	return &Checker{
+		Client:          c,
+		MetricsReporter: mr,
+	}
+}
+
+func (hc *Checker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1.HealthCheckSpec) error {
 	logger := log.FromContext(ctx)
 
 	if len(healthChecks) == 0 {
 		return nil
 	}
 
-	// Get upgrade info from context for metrics
-	upgradeType := ctx.Value(ContextKeyUpgradeType)
-	upgradeName := ctx.Value(ContextKeyUpgradeName)
+	upgradeType := ctx.Value(metrics.ContextKeyUpgradeType)
+	upgradeName := ctx.Value(metrics.ContextKeyUpgradeName)
 
 	startTime := time.Now()
 	defer func() {
@@ -58,14 +62,12 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1
 		}
 	}()
 
-	// Validate health checks first
 	if err := hc.validateHealthChecks(healthChecks); err != nil {
 		return fmt.Errorf("health check validation failed: %w", err)
 	}
 
 	logger.Info("Performing health checks", "count", len(healthChecks))
 
-	// Find the maximum timeout across all checks
 	maxTimeout := DefaultHealthCheckTimeout
 	for _, check := range healthChecks {
 		if check.Timeout != nil && check.Timeout.Duration > maxTimeout {
@@ -76,7 +78,6 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1
 	timeoutCtx, cancel := context.WithTimeout(ctx, maxTimeout)
 	defer cancel()
 
-	// Compile all CEL programs upfront
 	programs := make([]cel.Program, len(healthChecks))
 	for i, check := range healthChecks {
 		env, err := cel.NewEnv(
@@ -99,7 +100,6 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1
 		programs[i] = program
 	}
 
-	// Poll until ALL checks pass simultaneously
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
@@ -112,14 +112,12 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1
 			allPassed := true
 			var checkErrors []error
 
-			// Evaluate ALL checks in this iteration
 			for i, check := range healthChecks {
 				passed, err := hc.evaluateExpression(timeoutCtx, check, programs[i])
 				if err != nil {
 					checkErrors = append(checkErrors, fmt.Errorf("check %d evaluation error: %w", i, err))
 					allPassed = false
 
-					// Record health check failure metric
 					if upgradeType != nil && upgradeName != nil && hc.MetricsReporter != nil {
 						hc.MetricsReporter.RecordHealthCheckFailure(
 							upgradeType.(string),
@@ -139,7 +137,6 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1
 					)
 					allPassed = false
 
-					// Record health check failure metric
 					if upgradeType != nil && upgradeName != nil && hc.MetricsReporter != nil {
 						hc.MetricsReporter.RecordHealthCheckFailure(
 							upgradeType.(string),
@@ -165,22 +162,16 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1
 	}
 }
 
-// evaluateExpression evaluates the CEL expression against the current resource state
-func (hc *HealthChecker) evaluateExpression(ctx context.Context, check tupprv1alpha1.HealthCheckSpec, program cel.Program) (bool, error) {
-	// Get the resource(s)
+func (hc *Checker) evaluateExpression(ctx context.Context, check tupprv1alpha1.HealthCheckSpec, program cel.Program) (bool, error) {
 	gvk := schema.FromAPIVersionAndKind(check.APIVersion, check.Kind)
 
 	if check.Name != "" {
-		// Check specific resource
 		return hc.evaluateSpecificResource(ctx, check, program, gvk)
-	} else {
-		// Check all resources of this kind
-		return hc.evaluateAllResources(ctx, check, program, gvk)
 	}
+	return hc.evaluateAllResources(ctx, check, program, gvk)
 }
 
-// evaluateSpecificResource evaluates the expression against a specific resource
-func (hc *HealthChecker) evaluateSpecificResource(ctx context.Context, check tupprv1alpha1.HealthCheckSpec, program cel.Program, gvk schema.GroupVersionKind) (bool, error) {
+func (hc *Checker) evaluateSpecificResource(ctx context.Context, check tupprv1alpha1.HealthCheckSpec, program cel.Program, gvk schema.GroupVersionKind) (bool, error) {
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(gvk)
 
@@ -196,8 +187,7 @@ func (hc *HealthChecker) evaluateSpecificResource(ctx context.Context, check tup
 	return hc.runCELExpression(program, obj.Object)
 }
 
-// evaluateAllResources evaluates the expression against all resources of the kind
-func (hc *HealthChecker) evaluateAllResources(ctx context.Context, check tupprv1alpha1.HealthCheckSpec, program cel.Program, gvk schema.GroupVersionKind) (bool, error) {
+func (hc *Checker) evaluateAllResources(ctx context.Context, check tupprv1alpha1.HealthCheckSpec, program cel.Program, gvk schema.GroupVersionKind) (bool, error) {
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(gvk)
 
@@ -210,26 +200,22 @@ func (hc *HealthChecker) evaluateAllResources(ctx context.Context, check tupprv1
 		return false, fmt.Errorf("failed to list resources: %w", err)
 	}
 
-	// Check if all resources pass the health check
 	for _, item := range list.Items {
 		passed, err := hc.runCELExpression(program, item.Object)
 		if err != nil {
 			return false, fmt.Errorf("failed to evaluate CEL expression: %w", err)
 		}
 		if !passed {
-			return false, nil // At least one resource didn't pass
+			return false, nil
 		}
 	}
 
 	return true, nil
 }
 
-// runCELExpression executes the CEL program against the resource data
-func (hc *HealthChecker) runCELExpression(program cel.Program, resourceData map[string]any) (bool, error) {
-	// Clone the resource data to avoid mutations
+func (hc *Checker) runCELExpression(program cel.Program, resourceData map[string]any) (bool, error) {
 	safeData := maps.Clone(resourceData)
 
-	// Extract status field for convenience, default to empty map if missing
 	statusData := make(map[string]any)
 	if status, exists := safeData["status"]; exists {
 		if statusMap, ok := status.(map[string]any); ok {
@@ -238,8 +224,8 @@ func (hc *HealthChecker) runCELExpression(program cel.Program, resourceData map[
 	}
 
 	out, _, err := program.Eval(map[string]any{
-		"object": safeData,   // Full Kubernetes resource object
-		"status": statusData, // Just the status field for convenience
+		"object": safeData,
+		"status": statusData,
 	})
 	if err != nil {
 		return false, fmt.Errorf("CEL evaluation error: %w", err)
@@ -252,12 +238,10 @@ func (hc *HealthChecker) runCELExpression(program cel.Program, resourceData map[
 	return out.Value().(bool), nil
 }
 
-// validateHealthChecks validates health check expressions before execution
-func (hc *HealthChecker) validateHealthChecks(healthChecks []tupprv1alpha1.HealthCheckSpec) error {
+func (hc *Checker) validateHealthChecks(healthChecks []tupprv1alpha1.HealthCheckSpec) error {
 	var validationErrors []error
 
 	for i, check := range healthChecks {
-		// Check for required fields
 		if check.APIVersion == "" {
 			validationErrors = append(validationErrors, fmt.Errorf("health check %d: apiVersion is required", i))
 		}
@@ -268,7 +252,6 @@ func (hc *HealthChecker) validateHealthChecks(healthChecks []tupprv1alpha1.Healt
 			validationErrors = append(validationErrors, fmt.Errorf("health check %d: expr expression is required", i))
 		}
 
-		// Validate CEL expression syntax early - provide both variables
 		env, err := cel.NewEnv(
 			cel.Variable("object", cel.DynType),
 			cel.Variable("status", cel.DynType),

@@ -1,29 +1,29 @@
-package controller
+package maintenance
 
 import (
 	"time"
 
 	"github.com/home-operations/tuppr/api/v1alpha1"
-	cron "github.com/netresearch/go-cron"
+	"github.com/netresearch/go-cron"
 )
 
 var CronjobDefaultOption = cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow
 
-type MaintenanceWindowResult struct {
+type WindowResult struct {
 	Allowed          bool
 	NextWindowStart  *time.Time
 	CurrentWindowEnd *time.Time
 }
 
-func CheckMaintenanceWindow(spec *v1alpha1.MaintenanceSpec, now time.Time) (*MaintenanceWindowResult, error) {
+func CheckWindow(spec *v1alpha1.MaintenanceSpec, now time.Time) (*WindowResult, error) {
 	if spec == nil || len(spec.Windows) == 0 {
-		return &MaintenanceWindowResult{Allowed: true}, nil
+		return &WindowResult{Allowed: true}, nil
 	}
 
 	var earliestNext *time.Time
 
 	for _, window := range spec.Windows {
-		result, err := checkWindow(window, now)
+		result, err := checkSingleWindow(window, now)
 		if err != nil {
 			return nil, err
 		}
@@ -35,13 +35,13 @@ func CheckMaintenanceWindow(spec *v1alpha1.MaintenanceSpec, now time.Time) (*Mai
 		}
 	}
 
-	return &MaintenanceWindowResult{
+	return &WindowResult{
 		Allowed:         false,
 		NextWindowStart: earliestNext,
 	}, nil
 }
 
-func checkWindow(window v1alpha1.WindowSpec, now time.Time) (*MaintenanceWindowResult, error) {
+func checkSingleWindow(window v1alpha1.WindowSpec, now time.Time) (*WindowResult, error) {
 	location, err := time.LoadLocation(window.Timezone)
 	if err != nil {
 		return nil, err
@@ -58,7 +58,7 @@ func checkWindow(window v1alpha1.WindowSpec, now time.Time) (*MaintenanceWindowR
 	if !lastFire.IsZero() {
 		windowEnd := lastFire.Add(window.Duration.Duration)
 		if localNow.Before(windowEnd) {
-			return &MaintenanceWindowResult{
+			return &WindowResult{
 				Allowed:          true,
 				CurrentWindowEnd: &windowEnd,
 			}, nil
@@ -66,7 +66,7 @@ func checkWindow(window v1alpha1.WindowSpec, now time.Time) (*MaintenanceWindowR
 	}
 
 	next := sched.Next(localNow)
-	return &MaintenanceWindowResult{
+	return &WindowResult{
 		Allowed:         false,
 		NextWindowStart: &next,
 	}, nil

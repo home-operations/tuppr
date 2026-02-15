@@ -1,4 +1,4 @@
-package controller
+package healthcheck
 
 import (
 	"context"
@@ -7,16 +7,25 @@ import (
 
 	"github.com/google/cel-go/cel"
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/metrics"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+func newTestScheme() *runtime.Scheme {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = tupprv1alpha1.AddToScheme(scheme)
+	return scheme
+}
+
 func TestHealthChecker_CheckHealth_NoChecks(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	hc := &HealthChecker{Client: cl}
+	hc := &Checker{Client: cl}
 
 	err := hc.CheckHealth(context.Background(), nil)
 	if err != nil {
@@ -25,9 +34,9 @@ func TestHealthChecker_CheckHealth_NoChecks(t *testing.T) {
 }
 
 func TestHealthChecker_ValidateHealthChecks(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	hc := &HealthChecker{Client: cl}
+	hc := &Checker{Client: cl}
 
 	tests := []struct {
 		name    string
@@ -112,9 +121,9 @@ func TestHealthChecker_ValidateHealthChecks(t *testing.T) {
 }
 
 func TestHealthChecker_RunCELExpression(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	hc := &HealthChecker{Client: cl}
+	hc := &Checker{Client: cl}
 
 	tests := []struct {
 		name     string
@@ -206,7 +215,7 @@ func TestHealthChecker_RunCELExpression(t *testing.T) {
 }
 
 func TestHealthChecker_EvaluateSpecificResource(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
@@ -215,7 +224,7 @@ func TestHealthChecker_EvaluateSpecificResource(t *testing.T) {
 	obj.Object["data"] = map[string]any{"key": "value"}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(obj).Build()
-	hc := &HealthChecker{Client: cl}
+	hc := &Checker{Client: cl}
 
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "v1",
@@ -240,9 +249,9 @@ func TestHealthChecker_EvaluateSpecificResource(t *testing.T) {
 }
 
 func TestHealthChecker_EvaluateSpecificResource_NotFound(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	hc := &HealthChecker{Client: cl}
+	hc := &Checker{Client: cl}
 
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "v1",
@@ -264,7 +273,7 @@ func TestHealthChecker_EvaluateSpecificResource_NotFound(t *testing.T) {
 }
 
 func TestHealthChecker_EvaluateAllResources(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 
 	cm1 := &unstructured.Unstructured{}
 	cm1.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
@@ -279,7 +288,7 @@ func TestHealthChecker_EvaluateAllResources(t *testing.T) {
 	cm2.Object["data"] = map[string]any{"ready": "true"}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm1, cm2).Build()
-	hc := &HealthChecker{Client: cl}
+	hc := &Checker{Client: cl}
 
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "v1",
@@ -303,7 +312,7 @@ func TestHealthChecker_EvaluateAllResources(t *testing.T) {
 }
 
 func TestHealthChecker_EvaluateSpecificResource_FalseExpression(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
@@ -311,7 +320,7 @@ func TestHealthChecker_EvaluateSpecificResource_FalseExpression(t *testing.T) {
 	obj.SetNamespace("default")
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(obj).Build()
-	hc := &HealthChecker{Client: cl}
+	hc := &Checker{Client: cl}
 
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "v1",
@@ -336,7 +345,7 @@ func TestHealthChecker_EvaluateSpecificResource_FalseExpression(t *testing.T) {
 }
 
 func TestHealthChecker_EvaluateAllResources_OneFails(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 
 	cm1 := &unstructured.Unstructured{}
 	cm1.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
@@ -351,7 +360,7 @@ func TestHealthChecker_EvaluateAllResources_OneFails(t *testing.T) {
 	// No data field - will fail has(object.data)
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm1, cm2).Build()
-	hc := &HealthChecker{Client: cl}
+	hc := &Checker{Client: cl}
 
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "v1",
@@ -375,9 +384,9 @@ func TestHealthChecker_EvaluateAllResources_OneFails(t *testing.T) {
 }
 
 func TestHealthChecker_EvaluateAllResources_EmptyList(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	hc := &HealthChecker{Client: cl}
+	hc := &Checker{Client: cl}
 
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "v1",
@@ -401,7 +410,7 @@ func TestHealthChecker_EvaluateAllResources_EmptyList(t *testing.T) {
 }
 
 func TestHealthChecker_CheckHealth_WithMetrics(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 
 	cm := &unstructured.Unstructured{}
 	cm.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
@@ -409,8 +418,8 @@ func TestHealthChecker_CheckHealth_WithMetrics(t *testing.T) {
 	cm.SetNamespace("default")
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build()
-	reporter := NewMetricsReporter()
-	hc := &HealthChecker{Client: cl, MetricsReporter: reporter}
+	reporter := metrics.NewReporter()
+	hc := &Checker{Client: cl, MetricsReporter: reporter}
 
 	checks := []tupprv1alpha1.HealthCheckSpec{
 		{
@@ -423,8 +432,8 @@ func TestHealthChecker_CheckHealth_WithMetrics(t *testing.T) {
 		},
 	}
 
-	ctx := context.WithValue(context.Background(), ContextKeyUpgradeType, UpgradeTypeTalos)
-	ctx = context.WithValue(ctx, ContextKeyUpgradeName, "test-upgrade")
+	ctx := context.WithValue(context.Background(), metrics.ContextKeyUpgradeType, metrics.UpgradeTypeTalos)
+	ctx = context.WithValue(ctx, metrics.ContextKeyUpgradeName, "test-upgrade")
 
 	err := hc.CheckHealth(ctx, checks)
 	if err != nil {
@@ -433,9 +442,9 @@ func TestHealthChecker_CheckHealth_WithMetrics(t *testing.T) {
 }
 
 func TestHealthChecker_CheckHealth_InvalidExpression(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
-	hc := &HealthChecker{Client: cl}
+	hc := &Checker{Client: cl}
 
 	checks := []tupprv1alpha1.HealthCheckSpec{
 		{
@@ -452,7 +461,7 @@ func TestHealthChecker_CheckHealth_InvalidExpression(t *testing.T) {
 }
 
 func TestHealthChecker_CheckHealth_NilMetricsReporter(t *testing.T) {
-	scheme := newScheme()
+	scheme := newTestScheme()
 
 	cm := &unstructured.Unstructured{}
 	cm.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
@@ -460,7 +469,7 @@ func TestHealthChecker_CheckHealth_NilMetricsReporter(t *testing.T) {
 	cm.SetNamespace("default")
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build()
-	hc := &HealthChecker{Client: cl} // no MetricsReporter
+	hc := &Checker{Client: cl} // no MetricsReporter
 
 	checks := []tupprv1alpha1.HealthCheckSpec{
 		{
@@ -473,8 +482,8 @@ func TestHealthChecker_CheckHealth_NilMetricsReporter(t *testing.T) {
 		},
 	}
 
-	ctx := context.WithValue(context.Background(), ContextKeyUpgradeType, UpgradeTypeTalos)
-	ctx = context.WithValue(ctx, ContextKeyUpgradeName, "test-upgrade")
+	ctx := context.WithValue(context.Background(), metrics.ContextKeyUpgradeType, metrics.UpgradeTypeTalos)
+	ctx = context.WithValue(ctx, metrics.ContextKeyUpgradeName, "test-upgrade")
 
 	err := hc.CheckHealth(ctx, checks)
 	if err != nil {
