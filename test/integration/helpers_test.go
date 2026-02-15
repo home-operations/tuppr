@@ -27,6 +27,9 @@ func createTestNode(name, ip string) *corev1.Node {
 					Status: corev1.ConditionTrue,
 				},
 			},
+			NodeInfo: corev1.NodeSystemInfo{
+				KubeletVersion: "v1.33.0",
+			},
 		},
 	}
 }

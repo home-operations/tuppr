@@ -86,6 +86,12 @@ func newControllerNode(name, ip string) *corev1.Node { //nolint:unparam
 	}
 }
 
+func newControllerNodeWithVersion(name, ip, version string) *corev1.Node {
+	n := newControllerNode(name, ip)
+	n.Status.NodeInfo.KubeletVersion = version
+	return n
+}
+
 func newK8sReconciler(cl client.Client, vg VersionGetter, tc TalosClientInterface, hc HealthCheckRunner) *KubernetesUpgradeReconciler {
 	return &KubernetesUpgradeReconciler{
 		Client:              cl,
@@ -156,6 +162,43 @@ func TestK8sReconcile_SuspendAnnotation(t *testing.T) {
 	}
 	if updated.Status.Message == "" {
 		t.Fatal("expected non-empty suspension message")
+	}
+}
+
+func TestK8sReconcile_PartialUpgrade_PreventsCompletion(t *testing.T) {
+	scheme := newScheme()
+
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		withK8sPhase(constants.PhaseInProgress),
+	)
+
+	// Node A is upgraded
+	nodeA := newControllerNodeWithVersion("ctrl-1", "10.0.0.1", "v1.34.0")
+	// Node B is still on old version
+	nodeB := newControllerNodeWithVersion("ctrl-2", "10.0.0.2", "v1.33.0")
+
+	vg := &mockVersionGetter{version: "v1.34.0"}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku, nodeA, nodeB).WithStatusSubresource(ku).Build()
+
+	r := newK8sReconciler(cl, vg, &mockTalosClient{}, &mockHealthChecker{})
+
+	result := reconcileK8s(t, r, "test-upgrade")
+
+	if result.RequeueAfter != 30*time.Second {
+		t.Fatalf("expected 30s requeue (job creation), got: %v", result.RequeueAfter)
+	}
+
+	updated := getK8sUpgrade(t, cl, "test-upgrade")
+
+	if updated.Status.Phase == constants.PhaseCompleted {
+		t.Fatal("Regression! Controller marked upgrade as Completed despite Node B being old version")
+	}
+
+	if updated.Status.ControllerNode != "ctrl-2" {
+		t.Fatalf("expected controller to target ctrl-2, got %s", updated.Status.ControllerNode)
 	}
 }
 
@@ -245,12 +288,17 @@ func TestK8sReconcile_AlreadyAtTargetVersion(t *testing.T) {
 		withK8sFinalizer,
 		withK8sPhase(constants.PhasePending),
 	)
-	vg := &mockVersionGetter{version: "v1.34.0"} // matches target
+	node := newControllerNodeWithVersion("ctrl-1", "10.0.0.1", "v1.34.0")
+
+	vg := &mockVersionGetter{version: "v1.34.0"}
+
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku).WithStatusSubresource(ku).Build()
+		WithObjects(ku, node).WithStatusSubresource(ku).Build()
+
 	r := newK8sReconciler(cl, vg, &mockTalosClient{}, &mockHealthChecker{})
 
 	result := reconcileK8s(t, r, "test-upgrade")
+
 	if result.RequeueAfter != time.Hour {
 		t.Fatalf("expected 1h requeue when at target, got: %v", result.RequeueAfter)
 	}
@@ -267,10 +315,11 @@ func TestK8sReconcile_HealthCheckFailure(t *testing.T) {
 		withK8sFinalizer,
 		withK8sPhase(constants.PhasePending),
 	)
+	node := newControllerNodeWithVersion(fakeCrtl, "10.0.0.1", "v1.33.0")
 	vg := &mockVersionGetter{version: "v1.33.0"} // needs upgrade
 	hc := &mockHealthChecker{err: fmt.Errorf("cluster not healthy")}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku).WithStatusSubresource(ku).Build()
+		WithObjects(ku, node).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, vg, &mockTalosClient{}, hc)
 
 	result := reconcileK8s(t, r, "test-upgrade")
@@ -339,13 +388,9 @@ func TestK8sReconcile_NoControllerNode(t *testing.T) {
 	r := newK8sReconciler(cl, vg, &mockTalosClient{}, &mockHealthChecker{})
 
 	result := reconcileK8s(t, r, "test-upgrade")
-	if result.RequeueAfter != 5*time.Minute {
-		t.Fatalf("expected 5m requeue, got: %v", result.RequeueAfter)
-	}
 
-	updated := getK8sUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseFailed {
-		t.Fatalf("expected phase Failed when no controller node, got: %s", updated.Status.Phase)
+	if result.RequeueAfter != time.Minute {
+		t.Fatalf("expected 1m requeue when no control plane nodes found, got: %v", result.RequeueAfter)
 	}
 }
 
@@ -361,16 +406,8 @@ func TestK8sReconcile_VersionDetectionFailure(t *testing.T) {
 	r := newK8sReconciler(cl, vg, &mockTalosClient{}, &mockHealthChecker{})
 
 	result := reconcileK8s(t, r, "test-upgrade")
-	if result.RequeueAfter != 5*time.Minute {
-		t.Fatalf("expected 5m requeue, got: %v", result.RequeueAfter)
-	}
-
-	updated := getK8sUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseFailed {
-		t.Fatalf("expected phase Failed on version detection failure, got: %s", updated.Status.Phase)
-	}
-	if !strings.Contains(updated.Status.Message, "version") {
-		t.Fatalf("expected message about version detection, got: %s", updated.Status.Message)
+	if result.RequeueAfter != time.Minute {
+		t.Fatalf("expected 1m requeue, got: %v", result.RequeueAfter)
 	}
 }
 
@@ -455,6 +492,8 @@ func TestK8sReconcile_HandlesJobSuccess(t *testing.T) {
 		withK8sFinalizer,
 		withK8sPhase(constants.PhaseInProgress),
 	)
+	node := newControllerNodeWithVersion(fakeCrtl, "10.0.0.1", "v1.34.0")
+
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-upgrade-ctrl-1-abcd1234",
@@ -470,7 +509,7 @@ func TestK8sReconcile_HandlesJobSuccess(t *testing.T) {
 	// Version now matches target after successful upgrade
 	vg := &mockVersionGetter{version: "v1.34.0"}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku, job).WithStatusSubresource(ku).Build()
+		WithObjects(ku, node, job).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, vg, &mockTalosClient{}, &mockHealthChecker{})
 
 	result := reconcileK8s(t, r, "test-upgrade")
@@ -642,18 +681,23 @@ func TestK8sBuildJob_CustomImage(t *testing.T) {
 
 func TestK8sFindControllerNode(t *testing.T) {
 	scheme := newScheme()
-	ctrlNode := newControllerNode(fakeCrtl, "10.0.0.1")
+	ctrlNode := newControllerNodeWithVersion(fakeCrtl, "10.0.0.1", "v1.33.0")
+	upgradedNode := newControllerNodeWithVersion("ctrl-2", "10.0.0.3", "v1.34.0")
+
 	workerNode := newNode("worker-1", "10.0.0.2")
+
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ctrlNode, workerNode).Build()
+		WithObjects(ctrlNode, upgradedNode, workerNode).Build()
+
 	r := newK8sReconciler(cl, &mockVersionGetter{}, &mockTalosClient{}, &mockHealthChecker{})
 
-	name, ip, err := r.findControllerNode(context.Background())
+	name, ip, err := r.findControllerNode(context.Background(), "v1.34.0")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
 	if name != fakeCrtl || ip != "10.0.0.1" {
-		t.Fatalf("expected ctrl-1/10.0.0.1, got: %s/%s", name, ip)
+		t.Fatalf("expected to pick node needing upgrade (ctrl-1), got: %s/%s", name, ip)
 	}
 }
 
@@ -663,7 +707,7 @@ func TestK8sFindControllerNode_NoControlPlane(t *testing.T) {
 		WithObjects(newNode("worker-1", "10.0.0.2")).Build()
 	r := newK8sReconciler(cl, &mockVersionGetter{}, &mockTalosClient{}, &mockHealthChecker{})
 
-	_, _, err := r.findControllerNode(context.Background())
+	_, _, err := r.findControllerNode(context.Background(), "v1.34.0")
 	if err == nil {
 		t.Fatal("expected error when no control-plane node")
 	}

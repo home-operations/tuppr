@@ -188,29 +188,34 @@ func (r *KubernetesUpgradeReconciler) processUpgrade(ctx context.Context, kubern
 		logger.V(1).Info("Found active job, handling its status", "job", activeJob.Name)
 		return r.handleJobStatus(ctx, kubernetesUpgrade, activeJob)
 	}
-
-	// Check version and continue with upgrade logic...
-	currentVersion, err := r.VersionGetter.GetCurrentKubernetesVersion(ctx)
-	if err != nil {
-		logger.Error(err, "Failed to get current Kubernetes version")
-		if err := r.setPhase(ctx, kubernetesUpgrade, constants.PhaseFailed, "", fmt.Sprintf("Failed to get current version: %s", err.Error())); err != nil {
-			logger.Error(err, "Failed to update phase for version detection failure")
-		}
-		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
-	}
-
 	targetVersion := kubernetesUpgrade.Spec.Kubernetes.Version
 
-	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-		"currentVersion": currentVersion,
-		"targetVersion":  targetVersion,
-	}); err != nil {
-		logger.Error(err, "Failed to update version status")
+	currentVersion, err := r.VersionGetter.GetCurrentKubernetesVersion(ctx)
+	if err == nil {
+		if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
+			"currentVersion": currentVersion,
+			"targetVersion":  targetVersion,
+		}); err != nil {
+			logger.Error(err, "Failed to update version status")
+		}
 	}
 
-	if currentVersion == targetVersion {
-		logger.Info("Kubernetes is already at target version", "current", currentVersion, "target", targetVersion)
-		if err := r.setPhase(ctx, kubernetesUpgrade, constants.PhaseCompleted, "", fmt.Sprintf("Kubernetes already at target version %s", targetVersion)); err != nil {
+	allUpgraded, err := r.areAllControlPlaneNodesUpgraded(ctx, targetVersion)
+	if err != nil {
+		logger.Error(err, "Failed to verify control plane node versions")
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
+
+	if allUpgraded {
+		logger.Info("All control plane nodes verified at target version", "version", targetVersion)
+
+		// VIP Cache check
+		if currentVersion != targetVersion {
+			logger.Info("Nodes are updated but API server (VIP) still reports old version. Waiting for cache/LB update.")
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+
+		if err := r.setPhase(ctx, kubernetesUpgrade, constants.PhaseCompleted, "", fmt.Sprintf("Kubernetes successfully upgraded to %s", targetVersion)); err != nil {
 			logger.Error(err, "Failed to update completion phase")
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 		}
@@ -364,20 +369,23 @@ func (d *DiscoveryVersionGetter) GetCurrentKubernetesVersion(ctx context.Context
 }
 
 // findControllerNode finds the first available controller node
-func (r *KubernetesUpgradeReconciler) findControllerNode(ctx context.Context) (string, string, error) {
+func (r *KubernetesUpgradeReconciler) findControllerNode(ctx context.Context, targetVersion string) (string, string, error) {
 	nodeList := &corev1.NodeList{}
 	if err := r.List(ctx, nodeList); err != nil {
 		return "", "", fmt.Errorf("failed to list nodes: %w", err)
 	}
 
-	// Find first controller node
+	// Find first controller node that needs upgrade
 	for _, node := range nodeList.Items {
 		if _, isController := node.Labels["node-role.kubernetes.io/control-plane"]; isController {
-			nodeIP, err := GetNodeIP(&node)
-			if err != nil {
-				continue // Try next controller node
+			// If this node is NOT at the target version, it is our priority candidate
+			if node.Status.NodeInfo.KubeletVersion != targetVersion {
+				nodeIP, err := GetNodeIP(&node)
+				if err != nil {
+					continue
+				}
+				return node.Name, nodeIP, nil
 			}
-			return node.Name, nodeIP, nil
 		}
 	}
 
@@ -388,7 +396,8 @@ func (r *KubernetesUpgradeReconciler) findControllerNode(ctx context.Context) (s
 func (r *KubernetesUpgradeReconciler) startUpgrade(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	controllerNode, controllerIP, err := r.findControllerNode(ctx)
+	targetVersion := kubernetesUpgrade.Spec.Kubernetes.Version
+	controllerNode, controllerIP, err := r.findControllerNode(ctx, targetVersion)
 	if err != nil {
 		logger.Error(err, "Failed to find controller node")
 		if err := r.setPhase(ctx, kubernetesUpgrade, constants.PhaseFailed, "", fmt.Sprintf("Failed to find controller node: %s", err.Error())); err != nil {
@@ -645,18 +654,22 @@ func (r *KubernetesUpgradeReconciler) handleJobSuccess(ctx context.Context, kube
 	logger := log.FromContext(ctx)
 	logger.Info("Kubernetes upgrade job completed successfully", "job", job.Name)
 
+	targetVersion := kubernetesUpgrade.Spec.Kubernetes.Version
+
 	// Verify the upgrade worked by checking the current version
-	currentVersion, err := r.VersionGetter.GetCurrentKubernetesVersion(ctx)
+	allUpgraded, err := r.areAllControlPlaneNodesUpgraded(ctx, targetVersion)
 	if err != nil {
 		logger.Error(err, "Failed to verify Kubernetes upgrade")
 		return r.handleJobFailure(ctx, kubernetesUpgrade, job)
 	}
 
-	targetVersion := kubernetesUpgrade.Spec.Kubernetes.Version
-	if currentVersion != targetVersion {
-		logger.Error(fmt.Errorf("version mismatch after upgrade"), "Kubernetes upgrade verification failed",
-			"current", currentVersion, "target", targetVersion)
-		return r.handleJobFailure(ctx, kubernetesUpgrade, job)
+	if allUpgraded {
+		logger.Info("All control plane nodes are at target version", "version", targetVersion)
+		if err := r.setPhase(ctx, kubernetesUpgrade, constants.PhaseCompleted, "", fmt.Sprintf("Cluster successfully upgraded to %s", targetVersion)); err != nil {
+			logger.Error(err, "Failed to update completion phase")
+			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
+		}
+		return ctrl.Result{RequeueAfter: time.Hour}, nil
 	}
 
 	// Clean up the successful job immediately
@@ -667,16 +680,44 @@ func (r *KubernetesUpgradeReconciler) handleJobSuccess(ctx context.Context, kube
 	// Update status to completed
 	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
 		"phase":          constants.PhaseCompleted,
-		"currentVersion": currentVersion,
-		"message":        fmt.Sprintf("Successfully upgraded Kubernetes to %s", currentVersion),
+		"currentVersion": targetVersion,
+		"message":        fmt.Sprintf("Successfully upgraded Kubernetes to %s", targetVersion),
 		"jobName":        "",
 	}); err != nil {
 		logger.Error(err, "Failed to update completion status")
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 	}
 
-	logger.Info("Successfully completed Kubernetes upgrade and cleaned up job", "version", currentVersion)
+	logger.Info("Successfully completed Kubernetes upgrade and cleaned up job", "version", targetVersion)
 	return ctrl.Result{RequeueAfter: time.Hour}, nil // Check again in an hour
+}
+
+func (r *KubernetesUpgradeReconciler) areAllControlPlaneNodesUpgraded(ctx context.Context, targetVersion string) (bool, error) {
+	nodeList := &corev1.NodeList{}
+	opts := []client.ListOption{
+		client.MatchingLabels{"node-role.kubernetes.io/control-plane": ""},
+	}
+
+	if err := r.List(ctx, nodeList, opts...); err != nil {
+		return false, fmt.Errorf("failed to list control plane nodes: %w", err)
+	}
+
+	if len(nodeList.Items) == 0 {
+		return false, fmt.Errorf("no control plane nodes found")
+	}
+
+	for _, node := range nodeList.Items {
+		// KubeletVersion includes the 'v' prefix usually, ensuring we match the spec format
+		if node.Status.NodeInfo.KubeletVersion != targetVersion {
+			log.FromContext(ctx).Info("Control plane node not yet upgraded",
+				"node", node.Name,
+				"current", node.Status.NodeInfo.KubeletVersion,
+				"target", targetVersion)
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 // handleJobFailure marks the upgrade as failed
