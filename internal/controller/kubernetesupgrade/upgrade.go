@@ -64,7 +64,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 			nextTimestamp := maintenanceRes.NextWindowStart.Unix()
 			r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, false, &nextTimestamp)
 			if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-				"phase":                 tupprv1alpha1.JobPhasePending,
+				"phase":                 tupprv1alpha1.JobPhaseMaintenanceWindow,
 				"controllerNode":        "",
 				"message":               fmt.Sprintf("Waiting for maintenance window (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339)),
 				"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
