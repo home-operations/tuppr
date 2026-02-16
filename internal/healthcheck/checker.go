@@ -66,7 +66,7 @@ func (hc *Checker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1
 		return fmt.Errorf("health check validation failed: %w", err)
 	}
 
-	logger.Info("Performing health checks", "count", len(healthChecks))
+	logger.V(1).Info("Performing health checks", "count", len(healthChecks))
 
 	maxTimeout := DefaultHealthCheckTimeout
 	for _, check := range healthChecks {
@@ -153,7 +153,7 @@ func (hc *Checker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1
 			}
 
 			if allPassed {
-				logger.Info("All health checks passed simultaneously")
+				logger.V(1).Info("All health checks passed")
 				return nil
 			}
 

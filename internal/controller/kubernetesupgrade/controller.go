@@ -75,7 +75,7 @@ type Reconciler struct {
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Starting KubernetesUpgrade reconciliation", "kubernetesupgrade", req.Name)
+	logger.V(1).Info("Starting KubernetesUpgrade reconciliation", "kubernetesupgrade", req.Name)
 
 	var kubernetesUpgrade tupprv1alpha1.KubernetesUpgrade
 	if err := r.Get(ctx, client.ObjectKey{Name: req.Name}, &kubernetesUpgrade); err != nil {
@@ -96,7 +96,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 func (r *Reconciler) cleanup(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Cleaning up KubernetesUpgrade", "name", kubernetesUpgrade.Name)
+	logger.V(1).Info("Cleaning up KubernetesUpgrade", "name", kubernetesUpgrade.Name)
 
 	logger.V(1).Info("Removing finalizer", "name", kubernetesUpgrade.Name, "finalizer", KubernetesUpgradeFinalizer)
 	controllerutil.RemoveFinalizer(kubernetesUpgrade, KubernetesUpgradeFinalizer)
@@ -106,13 +106,13 @@ func (r *Reconciler) cleanup(ctx context.Context, kubernetesUpgrade *tupprv1alph
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Successfully cleaned up KubernetesUpgrade", "name", kubernetesUpgrade.Name)
+	logger.V(1).Info("Successfully cleaned up KubernetesUpgrade", "name", kubernetesUpgrade.Name)
 	return ctrl.Result{}, nil
 }
 
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	logger := ctrl.Log.WithName("setup")
-	logger.Info("Setting up KubernetesUpgrade controller with manager")
+	logger.V(1).Info("Setting up KubernetesUpgrade controller with manager")
 
 	if r.MetricsReporter == nil {
 		r.MetricsReporter = metrics.NewReporter()

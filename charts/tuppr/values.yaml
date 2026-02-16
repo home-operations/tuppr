@@ -150,6 +150,10 @@ affinity: {}
 
 # Controller-specific configuration
 controller:
+  # Log level for the controller
+  # Options: info, debug
+  logLevel: debug # TODO: Once there is a stable release, change this to info by default
+
   # Leader election configuration
   # Only one controller instance will be active at a time
   leaderElection:

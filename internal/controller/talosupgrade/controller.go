@@ -82,7 +82,7 @@ type Reconciler struct {
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Starting reconciliation", "talosupgrade", req.Name)
+	logger.V(1).Info("Starting reconciliation", "talosupgrade", req.Name)
 
 	var talosUpgrade tupprv1alpha1.TalosUpgrade
 	if err := r.Get(ctx, client.ObjectKey{Name: req.Name}, &talosUpgrade); err != nil {
@@ -163,7 +163,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 			logger.Error(err, "Failed to check for other active upgrades")
 			return ctrl.Result{RequeueAfter: time.Minute}, nil
 		} else if blocked {
-			logger.Info("Blocked by another upgrade", "reason", message)
+			logger.Info("Waiting for another upgrade to complete", "reason", message)
 			if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
 				logger.Error(err, "Failed to update phase for coordination wait")
 			}
@@ -180,7 +180,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 	}
 
 	if len(talosUpgrade.Status.FailedNodes) > 0 {
-		logger.Info("Upgrade has failed nodes, blocking further progress",
+		logger.Info("Upgrade stopped due to failed nodes",
 			"failedNodes", len(talosUpgrade.Status.FailedNodes))
 		message := fmt.Sprintf("Upgrade stopped due to %d failed nodes", len(talosUpgrade.Status.FailedNodes))
 		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseFailed, "", message); err != nil {
@@ -220,7 +220,7 @@ func (r *Reconciler) completeUpgrade(ctx context.Context, talosUpgrade *tupprv1a
 
 func (r *Reconciler) cleanup(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Cleaning up TalosUpgrade", "name", talosUpgrade.Name)
+	logger.V(1).Info("Cleaning up TalosUpgrade", "name", talosUpgrade.Name)
 
 	logger.V(1).Info("Removing finalizer", "name", talosUpgrade.Name, "finalizer", TalosUpgradeFinalizer)
 	controllerutil.RemoveFinalizer(talosUpgrade, TalosUpgradeFinalizer)
@@ -230,13 +230,13 @@ func (r *Reconciler) cleanup(ctx context.Context, talosUpgrade *tupprv1alpha1.Ta
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Successfully cleaned up TalosUpgrade", "name", talosUpgrade.Name)
+	logger.V(1).Info("Successfully cleaned up TalosUpgrade", "name", talosUpgrade.Name)
 	return ctrl.Result{}, nil
 }
 
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	logger := ctrl.Log.WithName("setup")
-	logger.Info("Setting up TalosUpgrade controller with manager")
+	logger.V(1).Info("Setting up TalosUpgrade controller with manager")
 
 	if r.MetricsReporter == nil {
 		r.MetricsReporter = metrics.NewReporter()
