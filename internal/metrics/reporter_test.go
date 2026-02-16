@@ -10,9 +10,11 @@ func TestPhaseToFloat64(t *testing.T) {
 		want  float64
 	}{
 		{"Pending", 0},
-		{"InProgress", 1},
-		{"Completed", 2},
-		{"Failed", 3},
+		{"Draining", 1},
+		{"Upgrading", 2},
+		{"Rebooting", 3},
+		{"Completed", 4},
+		{"Failed", 5},
 		{"Unknown", -1},
 		{"", -1},
 	}
@@ -30,9 +32,9 @@ func TestPhaseToFloat64(t *testing.T) {
 func TestMetricsReporter_CleanupRemovesTimers(t *testing.T) {
 	mr := NewReporter()
 
-	mr.StartPhaseTiming(UpgradeTypeTalos, "test-upgrade", "InProgress")
+	mr.StartPhaseTiming(UpgradeTypeTalos, "test-upgrade", "Upgrading")
 	mr.StartPhaseTiming(UpgradeTypeTalos, "test-upgrade", "Completed")
-	mr.StartPhaseTiming(UpgradeTypeTalos, "other-upgrade", "InProgress")
+	mr.StartPhaseTiming(UpgradeTypeTalos, "other-upgrade", "Upgrading")
 
 	mr.CleanupUpgradeMetrics(UpgradeTypeTalos, "test-upgrade")
 
@@ -40,11 +42,11 @@ func TestMetricsReporter_CleanupRemovesTimers(t *testing.T) {
 	defer mr.mu.RUnlock()
 
 	for key := range mr.startTimes {
-		if key == "talos:test-upgrade:InProgress" || key == "talos:test-upgrade:Completed" {
+		if key == "talos:test-upgrade:Upgrading" || key == "talos:test-upgrade:Completed" {
 			t.Fatalf("expected timer %q to be cleaned up", key)
 		}
 	}
-	if _, exists := mr.startTimes["talos:other-upgrade:InProgress"]; !exists {
+	if _, exists := mr.startTimes["talos:other-upgrade:Upgrading"]; !exists {
 		t.Fatal("expected other-upgrade timer to be preserved")
 	}
 }
@@ -52,20 +54,20 @@ func TestMetricsReporter_CleanupRemovesTimers(t *testing.T) {
 func TestMetricsReporter_EndPhaseTimingCleansUp(t *testing.T) {
 	mr := NewReporter()
 
-	mr.StartPhaseTiming(UpgradeTypeKubernetes, "k8s-upgrade", "InProgress")
+	mr.StartPhaseTiming(UpgradeTypeKubernetes, "k8s-upgrade", "Upgrading")
 
 	mr.mu.RLock()
-	if _, exists := mr.startTimes["kubernetes:k8s-upgrade:InProgress"]; !exists {
+	if _, exists := mr.startTimes["kubernetes:k8s-upgrade:Upgrading"]; !exists {
 		mr.mu.RUnlock()
 		t.Fatal("expected timer to exist after StartPhaseTiming")
 	}
 	mr.mu.RUnlock()
 
-	mr.EndPhaseTiming(UpgradeTypeKubernetes, "k8s-upgrade", "InProgress")
+	mr.EndPhaseTiming(UpgradeTypeKubernetes, "k8s-upgrade", "Upgrading")
 
 	mr.mu.RLock()
 	defer mr.mu.RUnlock()
-	if _, exists := mr.startTimes["kubernetes:k8s-upgrade:InProgress"]; exists {
+	if _, exists := mr.startTimes["kubernetes:k8s-upgrade:Upgrading"]; exists {
 		t.Fatal("expected timer to be removed after EndPhaseTiming")
 	}
 }

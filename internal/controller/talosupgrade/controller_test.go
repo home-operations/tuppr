@@ -111,7 +111,7 @@ func withFinalizer(tu *tupprv1alpha1.TalosUpgrade) {
 	controllerutil.AddFinalizer(tu, TalosUpgradeFinalizer)
 }
 
-func withPhase(phase string) func(*tupprv1alpha1.TalosUpgrade) {
+func withPhase(phase tupprv1alpha1.JobPhase) func(*tupprv1alpha1.TalosUpgrade) {
 	return func(tu *tupprv1alpha1.TalosUpgrade) {
 		tu.Status.Phase = phase
 		tu.Status.ObservedGeneration = tu.Generation
@@ -229,7 +229,7 @@ func TestTalosReconcile_SuspendAnnotation(t *testing.T) {
 	}
 
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhasePending {
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase Pending, got: %s", updated.Status.Phase)
 	}
 	if updated.Status.Message == "" {
@@ -241,7 +241,7 @@ func TestTalosReconcile_ResetAnnotation(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhaseFailed),
+		withPhase(tupprv1alpha1.JobPhaseFailed),
 		withAnnotation(constants.ResetAnnotation, "true"),
 		withFailedNodes(fakeNodeA),
 		withCompletedNodes(fakeNodeB),
@@ -259,7 +259,7 @@ func TestTalosReconcile_ResetAnnotation(t *testing.T) {
 	if _, exists := updated.Annotations[constants.ResetAnnotation]; exists {
 		t.Fatal("expected reset annotation to be removed")
 	}
-	if updated.Status.Phase != constants.PhasePending {
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase reset to Pending, got: %s", updated.Status.Phase)
 	}
 	if updated.Status.Message != "Reset requested via annotation" {
@@ -278,7 +278,7 @@ func TestTalosReconcile_NodeVersionOverride(t *testing.T) {
 	// Global target is fakeTalosVersion (v1.12.0)
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhasePending),
+		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 
 	// Node is already at v1.12.0 (matches global), so normally wouldn't upgrade.
@@ -343,7 +343,7 @@ func TestTalosReconcile_NodeSchematicOverride(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhasePending),
+		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 
 	node := newNode(fakeNodeA, "10.0.0.1")
@@ -408,7 +408,7 @@ func TestTalosReconcile_GenerationChange(t *testing.T) {
 		withGeneration(2, 1),
 		withCompletedNodes("node-old"),
 	)
-	tu.Status.Phase = constants.PhaseInProgress
+	tu.Status.Phase = tupprv1alpha1.JobPhaseUpgrading
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
@@ -419,7 +419,7 @@ func TestTalosReconcile_GenerationChange(t *testing.T) {
 	}
 
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhasePending {
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase reset to Pending, got: %s", updated.Status.Phase)
 	}
 	if updated.Status.Message != "Spec updated, restarting upgrade process" {
@@ -437,12 +437,12 @@ func TestTalosReconcile_BlockedByKubernetesUpgrade(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhasePending),
+		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 	ku := &tupprv1alpha1.KubernetesUpgrade{
 		ObjectMeta: metav1.ObjectMeta{Name: "k8s-upgrade", Generation: 1},
 		Status: tupprv1alpha1.KubernetesUpgradeStatus{
-			Phase:              constants.PhaseInProgress,
+			Phase:              tupprv1alpha1.JobPhaseUpgrading,
 			ObservedGeneration: 1,
 		},
 	}
@@ -456,7 +456,7 @@ func TestTalosReconcile_BlockedByKubernetesUpgrade(t *testing.T) {
 	}
 
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhasePending {
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase Pending while blocked, got: %s", updated.Status.Phase)
 	}
 	if updated.Status.Message == "" {
@@ -468,7 +468,7 @@ func TestTalosReconcile_FailedNodesSetPhaseFailed(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhasePending),
+		withPhase(tupprv1alpha1.JobPhasePending),
 		withFailedNodes(fakeNodeA),
 	)
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -481,7 +481,7 @@ func TestTalosReconcile_FailedNodesSetPhaseFailed(t *testing.T) {
 	}
 
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseFailed {
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
 		t.Fatalf("expected phase Failed when nodes have failed, got: %s", updated.Status.Phase)
 	}
 	if updated.Status.Message == "" {
@@ -493,7 +493,7 @@ func TestTalosReconcile_HealthCheckFailure(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhasePending),
+		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 	node := newNode(fakeNodeA, "10.0.0.1")
 	tc := &mockTalosClient{
@@ -511,7 +511,7 @@ func TestTalosReconcile_HealthCheckFailure(t *testing.T) {
 	}
 
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhasePending {
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase Pending during health check failure, got: %s", updated.Status.Phase)
 	}
 	if !strings.Contains(updated.Status.Message, "health") {
@@ -523,7 +523,7 @@ func TestTalosReconcile_AllNodesUpToDate(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhasePending),
+		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 	node := newNode(fakeNodeA, "10.0.0.1")
 	tc := &mockTalosClient{
@@ -536,7 +536,7 @@ func TestTalosReconcile_AllNodesUpToDate(t *testing.T) {
 	reconcileTalos(t, r, "test-upgrade")
 
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseCompleted {
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
 		t.Fatalf("expected phase Completed when all nodes at target, got: %s", updated.Status.Phase)
 	}
 	if !strings.Contains(updated.Status.Message, "Successfully upgraded") {
@@ -551,7 +551,7 @@ func TestTalosReconcile_SingleNodeVersionCheckFailure(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhasePending),
+		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 	node := newNode(fakeNodeA, "10.0.0.1")
 	tc := &mockTalosClient{
@@ -570,7 +570,7 @@ func TestTalosReconcile_SingleNodeVersionCheckFailure(t *testing.T) {
 
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
 	// Must NOT be Completed — the node was never checked successfully
-	if updated.Status.Phase == constants.PhaseCompleted {
+	if updated.Status.Phase == tupprv1alpha1.JobPhaseCompleted {
 		t.Fatal("expected phase to NOT be Completed when version check fails on single-node cluster")
 	}
 }
@@ -581,7 +581,7 @@ func TestTalosReconcile_MultiNodePartialVersionCheckFailure(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhasePending),
+		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 	nodeA := newNode(fakeNodeA, "10.0.0.1")
 	nodeB := newNode(fakeNodeB, "10.0.0.2")
@@ -602,7 +602,7 @@ func TestTalosReconcile_MultiNodePartialVersionCheckFailure(t *testing.T) {
 	}
 
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase == constants.PhaseCompleted {
+	if updated.Status.Phase == tupprv1alpha1.JobPhaseCompleted {
 		t.Fatal("expected phase to NOT be Completed when a node version check fails")
 	}
 }
@@ -611,7 +611,7 @@ func TestTalosReconcile_CreatesJobForNextNode(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhasePending),
+		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 	node := newNode(fakeNodeA, "10.0.0.1")
 	tc := &mockTalosClient{
@@ -641,8 +641,8 @@ func TestTalosReconcile_CreatesJobForNextNode(t *testing.T) {
 
 	// Verify status was updated to InProgress
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseInProgress {
-		t.Fatalf("expected phase InProgress after job creation, got: %s", updated.Status.Phase)
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseUpgrading {
+		t.Fatalf("expected phase Upgrading after job creation, got: %s", updated.Status.Phase)
 	}
 	if updated.Status.CurrentNode != fakeNodeA {
 		t.Fatalf("expected currentNode=node-1, got: %s", updated.Status.CurrentNode)
@@ -653,7 +653,7 @@ func TestTalosReconcile_HandlesActiveJobRunning(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhaseInProgress),
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -677,8 +677,8 @@ func TestTalosReconcile_HandlesActiveJobRunning(t *testing.T) {
 	}
 
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseInProgress {
-		t.Fatalf("expected phase InProgress while job running, got: %s", updated.Status.Phase)
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseUpgrading {
+		t.Fatalf("expected phase Upgrading while job running, got: %s", updated.Status.Phase)
 	}
 	if updated.Status.CurrentNode != fakeNodeA {
 		t.Fatalf("expected currentNode=node-1, got: %s", updated.Status.CurrentNode)
@@ -689,7 +689,7 @@ func TestTalosReconcile_HandlesJobSuccess(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhaseInProgress),
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	node := newNode(fakeNodeA, "10.0.0.1")
 	job := &batchv1.Job{
@@ -735,7 +735,7 @@ func TestTalosReconcile_HandlesJobFailure(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhaseInProgress),
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -759,7 +759,7 @@ func TestTalosReconcile_HandlesJobFailure(t *testing.T) {
 	}
 
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseFailed {
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
 		t.Fatalf("expected phase Failed, got: %s", updated.Status.Phase)
 	}
 	if len(updated.Status.FailedNodes) == 0 {
@@ -774,7 +774,7 @@ func TestTalosReconcile_JobVerificationFailure(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhaseInProgress),
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	node := newNode(fakeNodeA, "10.0.0.1")
 	job := &batchv1.Job{
@@ -803,7 +803,7 @@ func TestTalosReconcile_JobVerificationFailure(t *testing.T) {
 	}
 
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseFailed {
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
 		t.Fatalf("expected phase Failed after verification failure, got: %s", updated.Status.Phase)
 	}
 }
@@ -812,7 +812,7 @@ func TestTalosReconcile_MultiNodeUpgradeOrdering(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhasePending),
+		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 	node1 := newNode(fakeNodeA, "10.0.0.1")
 	node2 := newNode(fakeNodeB, "10.0.0.2")
@@ -852,7 +852,7 @@ func TestTalosReconcile_SkipsAlreadyUpgradedNodes(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhasePending),
+		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 	node1 := newNode(fakeNodeA, "10.0.0.1")
 	node2 := newNode(fakeNodeB, "10.0.0.2")
@@ -888,12 +888,12 @@ func TestTalosReconcile_InProgressBypassesCoordination(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhaseInProgress),
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	ku := &tupprv1alpha1.KubernetesUpgrade{
 		ObjectMeta: metav1.ObjectMeta{Name: "k8s-upgrade", Generation: 1},
 		Status: tupprv1alpha1.KubernetesUpgradeStatus{
-			Phase:              constants.PhaseInProgress,
+			Phase:              tupprv1alpha1.JobPhaseUpgrading,
 			ObservedGeneration: 1,
 		},
 	}
@@ -908,7 +908,7 @@ func TestTalosReconcile_InProgressBypassesCoordination(t *testing.T) {
 	}
 	// With no active job and no nodes, it should complete quickly
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase == constants.PhasePending {
+	if updated.Status.Phase == tupprv1alpha1.JobPhasePending {
 		t.Fatal("expected phase to not be Pending (should have bypassed coordination)")
 	}
 }
@@ -950,7 +950,7 @@ func TestTalosReconcile_UncordonsNodeAfterDrain(t *testing.T) {
 	// Upgrade with Drain enabled
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhaseInProgress),
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Force: ptr.To(true)}
 
@@ -1005,7 +1005,7 @@ func TestTalosReconcile_DoesNotUncordonWithoutDrainSpec(t *testing.T) {
 
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhaseInProgress),
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 
 	node := newNode(fakeNodeA, "10.0.0.1")
@@ -1049,7 +1049,7 @@ func TestTalosReconcile_MultiNodeFullLifecycle(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhasePending),
+		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 	nodeA := newNode(fakeNodeA, "10.0.0.1")
 	nodeB := newNode(fakeNodeB, "10.0.0.2")
@@ -1084,8 +1084,8 @@ func TestTalosReconcile_MultiNodeFullLifecycle(t *testing.T) {
 	}
 
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseInProgress {
-		t.Fatalf("step 1: expected phase InProgress, got: %s", updated.Status.Phase)
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseUpgrading {
+		t.Fatalf("step 1: expected phase Upgrading, got: %s", updated.Status.Phase)
 	}
 	if updated.Status.CurrentNode != fakeNodeA {
 		t.Fatalf("step 1: expected currentNode=node-a, got: %s", updated.Status.CurrentNode)
@@ -1153,7 +1153,7 @@ func TestTalosReconcile_MultiNodeFullLifecycle(t *testing.T) {
 	reconcileTalos(t, r, "test-upgrade")
 
 	updated = getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseCompleted {
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
 		t.Fatalf("step 5: expected phase Completed, got: %s", updated.Status.Phase)
 	}
 	if !strings.Contains(updated.Status.Message, "Successfully upgraded") {
@@ -1242,7 +1242,7 @@ func TestTalosReconcile_HandleJobSuccess_NodeReady(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhaseInProgress),
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	node := newNode(fakeNodeA, "10.0.0.1")
 
@@ -1280,7 +1280,7 @@ func TestTalosReconcile_HandleJobSuccess_NodeReady(t *testing.T) {
 	}
 
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhasePending {
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Errorf("expected phase Pending, got %s", updated.Status.Phase)
 	}
 
@@ -1301,7 +1301,7 @@ func TestTalosReconcile_HandleJobSuccess_NodeNotReady_Requeues(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhaseInProgress),
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	node := newNode(fakeNodeA, "10.0.0.1")
 
@@ -1338,8 +1338,8 @@ func TestTalosReconcile_HandleJobSuccess_NodeNotReady_Requeues(t *testing.T) {
 	}
 
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseInProgress {
-		t.Errorf("expected phase to stay InProgress, got %s", updated.Status.Phase)
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseRebooting {
+		t.Errorf("expected phase Rebooting, got %s", updated.Status.Phase)
 	}
 
 	var jobs batchv1.JobList
@@ -1355,7 +1355,7 @@ func TestTalosReconcile_HandleJobSuccess_VerificationFailed_Permanent(t *testing
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhaseInProgress),
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	node := newNode(fakeNodeA, "10.0.0.1")
 	job := &batchv1.Job{
@@ -1391,7 +1391,7 @@ func TestTalosReconcile_HandleJobSuccess_VerificationFailed_Permanent(t *testing
 	}
 
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseFailed {
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
 		t.Errorf("expected phase Failed, got %s", updated.Status.Phase)
 	}
 
@@ -1619,7 +1619,7 @@ func TestTalosUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
 	if err := cl.Get(context.Background(), types.NamespacedName{Name: "test"}, &updated); err != nil {
 		t.Fatalf("failed to get updated upgrade: %v", err)
 	}
-	if updated.Status.Phase != constants.PhasePending {
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase Pending, got %s", updated.Status.Phase)
 	}
 	if !strings.Contains(updated.Status.Message, "Waiting for maintenance window") {
@@ -1687,7 +1687,7 @@ func TestTalosReconcile_WaitsForImageAvailability(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhasePending),
+		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 	node := newNode(fakeNodeA, "10.0.0.1")
 
@@ -1725,7 +1725,7 @@ func TestTalosReconcile_WaitsForImageAvailability(t *testing.T) {
 
 	// Verify Status message
 	updated := getTalosUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhasePending {
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase Pending, got: %s", updated.Status.Phase)
 	}
 	if !strings.Contains(updated.Status.Message, "Waiting for image availability") {
@@ -1737,7 +1737,7 @@ func TestTalosReconcile_ProceedsWhenImageAvailable(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
 		withFinalizer,
-		withPhase(constants.PhasePending),
+		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 	node := newNode(fakeNodeA, "10.0.0.1")
 

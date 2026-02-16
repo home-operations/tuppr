@@ -7,7 +7,6 @@ import (
 	"time"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
-	"github.com/home-operations/tuppr/internal/constants"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -61,7 +60,7 @@ func withTalosVersion(v string) func(*tupprv1alpha1.TalosUpgrade) {
 	}
 }
 
-func withTalosPhase(phase string) func(*tupprv1alpha1.TalosUpgrade) {
+func withTalosPhase(phase tupprv1alpha1.JobPhase) func(*tupprv1alpha1.TalosUpgrade) {
 	return func(tu *tupprv1alpha1.TalosUpgrade) {
 		tu.Status.Phase = phase
 	}
@@ -261,9 +260,9 @@ func TestTalosUpgrade_ValidateCreate_ValidVersionFormats(t *testing.T) {
 }
 
 func TestTalosUpgrade_ValidateUpdate_RejectsSpecChangeWhileInProgress(t *testing.T) {
-	old := newTalosUpgrade("test", withTalosPhase(constants.PhaseInProgress))
+	old := newTalosUpgrade("test", withTalosPhase(tupprv1alpha1.JobPhaseUpgrading))
 	updated := newTalosUpgrade("test",
-		withTalosPhase(constants.PhaseInProgress),
+		withTalosPhase(tupprv1alpha1.JobPhaseUpgrading),
 		withTalosVersion("v1.12.0"),
 	)
 
@@ -279,8 +278,8 @@ func TestTalosUpgrade_ValidateUpdate_RejectsSpecChangeWhileInProgress(t *testing
 }
 
 func TestTalosUpgrade_ValidateUpdate_AllowsNoSpecChangeWhileInProgress(t *testing.T) {
-	old := newTalosUpgrade("test", withTalosPhase(constants.PhaseInProgress))
-	updated := newTalosUpgrade("test", withTalosPhase(constants.PhaseInProgress))
+	old := newTalosUpgrade("test", withTalosPhase(tupprv1alpha1.JobPhaseUpgrading))
+	updated := newTalosUpgrade("test", withTalosPhase(tupprv1alpha1.JobPhaseUpgrading))
 
 	v := newTalosValidator(old, talosConfigSecretWithKey("default", validTalosConfig()))
 
@@ -291,8 +290,8 @@ func TestTalosUpgrade_ValidateUpdate_AllowsNoSpecChangeWhileInProgress(t *testin
 }
 
 func TestTalosUpgrade_ValidateUpdate_AllowsSpecChangeWhenNotInProgress(t *testing.T) {
-	for _, phase := range []string{constants.PhasePending, constants.PhaseCompleted, constants.PhaseFailed, ""} {
-		t.Run("phase_"+phase, func(t *testing.T) {
+	for _, phase := range []tupprv1alpha1.JobPhase{tupprv1alpha1.JobPhasePending, tupprv1alpha1.JobPhaseCompleted, tupprv1alpha1.JobPhaseFailed, ""} {
+		t.Run("phase_"+string(phase), func(t *testing.T) {
 			old := newTalosUpgrade("test", withTalosPhase(phase))
 			updated := newTalosUpgrade("test", withTalosPhase(phase), withTalosVersion("v1.12.0"))
 
@@ -307,7 +306,7 @@ func TestTalosUpgrade_ValidateUpdate_AllowsSpecChangeWhenNotInProgress(t *testin
 }
 
 func TestTalosUpgrade_ValidateDelete_WarnsWhenInProgress(t *testing.T) {
-	tu := newTalosUpgrade("test", withTalosPhase(constants.PhaseInProgress))
+	tu := newTalosUpgrade("test", withTalosPhase(tupprv1alpha1.JobPhaseUpgrading))
 	v := newTalosValidator()
 
 	warnings, err := v.ValidateDelete(context.Background(), tu)
@@ -323,8 +322,8 @@ func TestTalosUpgrade_ValidateDelete_WarnsWhenInProgress(t *testing.T) {
 }
 
 func TestTalosUpgrade_ValidateDelete_NoWarningWhenIdle(t *testing.T) {
-	for _, phase := range []string{constants.PhasePending, constants.PhaseCompleted, constants.PhaseFailed, ""} {
-		t.Run("phase_"+phase, func(t *testing.T) {
+	for _, phase := range []tupprv1alpha1.JobPhase{tupprv1alpha1.JobPhasePending, tupprv1alpha1.JobPhaseCompleted, tupprv1alpha1.JobPhaseFailed, ""} {
+		t.Run("phase_"+string(phase), func(t *testing.T) {
 			tu := newTalosUpgrade("test", withTalosPhase(phase))
 			v := newTalosValidator()
 

@@ -1,13 +1,5 @@
 package constants
 
-// Phase constants
-const (
-	PhasePending    = "Pending"
-	PhaseInProgress = "InProgress"
-	PhaseCompleted  = "Completed"
-	PhaseFailed     = "Failed"
-)
-
 // Default image constants
 const (
 	DefaultTalosctlImage = "ghcr.io/siderolabs/talosctl"

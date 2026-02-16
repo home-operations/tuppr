@@ -139,8 +139,8 @@ func ValidateSingleton(ctx context.Context, c client.Client, kindName, currentNa
 }
 
 // ValidateUpdateInProgress checks if specs are changing while an upgrade is running
-func ValidateUpdateInProgress(oldPhase string, oldSpec, newSpec interface{}) error {
-	if oldPhase == constants.PhaseInProgress {
+func ValidateUpdateInProgress(oldPhase tupprv1alpha1.JobPhase, oldSpec, newSpec interface{}) error {
+	if oldPhase.IsActive() {
 		if !reflect.DeepEqual(oldSpec, newSpec) {
 			return fmt.Errorf("cannot update spec while upgrade is in progress (phase: %s)", oldPhase)
 		}

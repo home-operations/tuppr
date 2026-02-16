@@ -97,7 +97,7 @@ func withK8sFinalizer(ku *tupprv1alpha1.KubernetesUpgrade) {
 	controllerutil.AddFinalizer(ku, KubernetesUpgradeFinalizer)
 }
 
-func withK8sPhase(phase string) func(*tupprv1alpha1.KubernetesUpgrade) {
+func withK8sPhase(phase tupprv1alpha1.JobPhase) func(*tupprv1alpha1.KubernetesUpgrade) {
 	return func(ku *tupprv1alpha1.KubernetesUpgrade) {
 		ku.Status.Phase = phase
 		ku.Status.ObservedGeneration = ku.Generation
@@ -207,7 +207,7 @@ func TestK8sReconcile_SuspendAnnotation(t *testing.T) {
 	}
 
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhasePending {
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase Pending, got: %s", updated.Status.Phase)
 	}
 	if updated.Status.Message == "" {
@@ -220,7 +220,7 @@ func TestK8sReconcile_PartialUpgrade_PreventsCompletion(t *testing.T) {
 
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
-		withK8sPhase(constants.PhaseInProgress),
+		withK8sPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 
 	// Node A is upgraded
@@ -243,7 +243,7 @@ func TestK8sReconcile_PartialUpgrade_PreventsCompletion(t *testing.T) {
 
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
 
-	if updated.Status.Phase == constants.PhaseCompleted {
+	if updated.Status.Phase == tupprv1alpha1.JobPhaseCompleted {
 		t.Fatal("Regression! Controller marked upgrade as Completed despite Node B being old version")
 	}
 
@@ -256,7 +256,7 @@ func TestK8sReconcile_ResetAnnotation(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
-		withK8sPhase(constants.PhaseFailed),
+		withK8sPhase(tupprv1alpha1.JobPhaseFailed),
 		withK8sAnnotation(constants.ResetAnnotation, "true"),
 	)
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -272,7 +272,7 @@ func TestK8sReconcile_ResetAnnotation(t *testing.T) {
 	if _, exists := updated.Annotations[constants.ResetAnnotation]; exists {
 		t.Fatal("expected reset annotation to be removed")
 	}
-	if updated.Status.Phase != constants.PhasePending {
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase reset to Pending, got: %s", updated.Status.Phase)
 	}
 }
@@ -293,7 +293,7 @@ func TestK8sReconcile_GenerationChange(t *testing.T) {
 	}
 
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhasePending {
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase reset to Pending, got: %s", updated.Status.Phase)
 	}
 	if updated.Status.ObservedGeneration != 2 {
@@ -308,11 +308,11 @@ func TestK8sReconcile_BlockedByTalosUpgrade(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
-		withK8sPhase(constants.PhasePending),
+		withK8sPhase(tupprv1alpha1.JobPhasePending),
 	)
 	tu := newTalosUpgrade("talos-upgrade",
 		withFinalizer,
-		withPhase(constants.PhaseInProgress),
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, tu).WithStatusSubresource(ku, tu).Build()
@@ -324,7 +324,7 @@ func TestK8sReconcile_BlockedByTalosUpgrade(t *testing.T) {
 	}
 
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhasePending {
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase Pending while blocked, got: %s", updated.Status.Phase)
 	}
 	if updated.Status.Message == "" {
@@ -336,7 +336,7 @@ func TestK8sReconcile_AlreadyAtTargetVersion(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
-		withK8sPhase(constants.PhasePending),
+		withK8sPhase(tupprv1alpha1.JobPhasePending),
 	)
 	node := newControllerNodeWithVersion("ctrl-1", "10.0.0.1", "v1.34.0")
 
@@ -354,7 +354,7 @@ func TestK8sReconcile_AlreadyAtTargetVersion(t *testing.T) {
 	}
 
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseCompleted {
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
 		t.Fatalf("expected phase Completed, got: %s", updated.Status.Phase)
 	}
 }
@@ -363,7 +363,7 @@ func TestK8sReconcile_HealthCheckFailure(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
-		withK8sPhase(constants.PhasePending),
+		withK8sPhase(tupprv1alpha1.JobPhasePending),
 	)
 	node := newControllerNodeWithVersion(fakeCrtl, "10.0.0.1", "v1.33.0")
 	vg := &mockVersionGetter{version: "v1.33.0"} // needs upgrade
@@ -378,7 +378,7 @@ func TestK8sReconcile_HealthCheckFailure(t *testing.T) {
 	}
 
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhasePending {
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase Pending while health checks fail, got: %s", updated.Status.Phase)
 	}
 	if !strings.Contains(updated.Status.Message, "health") {
@@ -390,7 +390,7 @@ func TestK8sReconcile_StartsUpgrade(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
-		withK8sPhase(constants.PhasePending),
+		withK8sPhase(tupprv1alpha1.JobPhasePending),
 	)
 	ctrlNode := newControllerNode(fakeCrtl, "10.0.0.1")
 	vg := &mockVersionGetter{version: "v1.33.0"}
@@ -417,8 +417,8 @@ func TestK8sReconcile_StartsUpgrade(t *testing.T) {
 
 	// Verify status updated to InProgress
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseInProgress {
-		t.Fatalf("expected phase InProgress, got: %s", updated.Status.Phase)
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseUpgrading {
+		t.Fatalf("expected phase Upgrading, got: %s", updated.Status.Phase)
 	}
 	if updated.Status.ControllerNode != fakeCrtl {
 		t.Fatalf("expected controllerNode=ctrl-1, got: %s", updated.Status.ControllerNode)
@@ -429,7 +429,7 @@ func TestK8sReconcile_NoControllerNode(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
-		withK8sPhase(constants.PhasePending),
+		withK8sPhase(tupprv1alpha1.JobPhasePending),
 	)
 	workerNode := newNode("worker-1", "10.0.0.2")
 	vg := &mockVersionGetter{version: "v1.33.0"}
@@ -448,7 +448,7 @@ func TestK8sReconcile_VersionDetectionFailure(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
-		withK8sPhase(constants.PhasePending),
+		withK8sPhase(tupprv1alpha1.JobPhasePending),
 	)
 	vg := &mockVersionGetter{err: fmt.Errorf("connection refused")}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -465,7 +465,7 @@ func TestK8sReconcile_HandlesActiveJobRunning(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
-		withK8sPhase(constants.PhaseInProgress),
+		withK8sPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -489,8 +489,8 @@ func TestK8sReconcile_HandlesActiveJobRunning(t *testing.T) {
 	}
 
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseInProgress {
-		t.Fatalf("expected phase InProgress while job running, got: %s", updated.Status.Phase)
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseUpgrading {
+		t.Fatalf("expected phase Upgrading while job running, got: %s", updated.Status.Phase)
 	}
 	if updated.Status.JobName != "test-upgrade-ctrl-1-abcd1234" {
 		t.Fatalf("expected jobName to be set, got: %s", updated.Status.JobName)
@@ -501,7 +501,7 @@ func TestK8sReconcile_HandlesJobFailure(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
-		withK8sPhase(constants.PhaseInProgress),
+		withK8sPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -525,7 +525,7 @@ func TestK8sReconcile_HandlesJobFailure(t *testing.T) {
 	}
 
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseFailed {
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
 		t.Fatalf("expected phase Failed, got: %s", updated.Status.Phase)
 	}
 	if updated.Status.LastError == "" {
@@ -540,7 +540,7 @@ func TestK8sReconcile_HandlesJobSuccess(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
-		withK8sPhase(constants.PhaseInProgress),
+		withK8sPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	node := newControllerNodeWithVersion(fakeCrtl, "10.0.0.1", "v1.34.0")
 
@@ -568,7 +568,7 @@ func TestK8sReconcile_HandlesJobSuccess(t *testing.T) {
 	}
 
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseCompleted {
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
 		t.Fatalf("expected phase Completed, got: %s", updated.Status.Phase)
 	}
 }
@@ -577,7 +577,7 @@ func TestK8sReconcile_JobSuccessButVersionMismatch(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
-		withK8sPhase(constants.PhaseInProgress),
+		withK8sPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -603,7 +603,7 @@ func TestK8sReconcile_JobSuccessButVersionMismatch(t *testing.T) {
 	}
 
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != constants.PhaseFailed {
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
 		t.Fatalf("expected phase Failed after version mismatch, got: %s", updated.Status.Phase)
 	}
 }
@@ -643,11 +643,11 @@ func TestK8sReconcile_InProgressBypassesCoordination(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
-		withK8sPhase(constants.PhaseInProgress),
+		withK8sPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	tu := newTalosUpgrade("talos-upgrade",
 		withFinalizer,
-		withPhase(constants.PhaseInProgress),
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, tu).WithStatusSubresource(ku, tu).Build()
@@ -659,7 +659,7 @@ func TestK8sReconcile_InProgressBypassesCoordination(t *testing.T) {
 	}
 
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase == constants.PhasePending {
+	if updated.Status.Phase == tupprv1alpha1.JobPhasePending {
 		t.Fatal("expected phase to not be Pending (should have bypassed coordination)")
 	}
 }
@@ -761,7 +761,7 @@ func TestKubernetesUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
 	if err := cl.Get(context.Background(), types.NamespacedName{Name: "test"}, &updated); err != nil {
 		t.Fatalf("failed to get updated upgrade: %v", err)
 	}
-	if updated.Status.Phase != constants.PhasePending {
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase Pending, got %s", updated.Status.Phase)
 	}
 	if !strings.Contains(updated.Status.Message, "Waiting for maintenance window") {
@@ -850,7 +850,7 @@ func withFinalizer(tu *tupprv1alpha1.TalosUpgrade) {
 	controllerutil.AddFinalizer(tu, "tuppr.home-operations.com/talos-finalizer")
 }
 
-func withPhase(phase string) func(*tupprv1alpha1.TalosUpgrade) {
+func withPhase(phase tupprv1alpha1.JobPhase) func(*tupprv1alpha1.TalosUpgrade) {
 	return func(tu *tupprv1alpha1.TalosUpgrade) {
 		tu.Status.Phase = phase
 		tu.Status.ObservedGeneration = tu.Generation

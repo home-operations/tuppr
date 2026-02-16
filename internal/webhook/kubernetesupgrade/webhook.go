@@ -10,7 +10,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
-	"github.com/home-operations/tuppr/internal/constants"
 	"github.com/home-operations/tuppr/internal/webhook/validation"
 )
 
@@ -44,7 +43,7 @@ func (v *Validator) ValidateUpdate(ctx context.Context, old, k *tupprv1alpha1.Ku
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type
 func (v *Validator) ValidateDelete(ctx context.Context, k *tupprv1alpha1.KubernetesUpgrade) (admission.Warnings, error) {
-	if k.Status.Phase == constants.PhaseInProgress {
+	if k.Status.Phase.IsActive() {
 		return admission.Warnings{
 			fmt.Sprintf("Deleting KubernetesUpgrade '%s' while upgrade is in progress. This may leave the cluster in an inconsistent state.", k.Name),
 		}, nil

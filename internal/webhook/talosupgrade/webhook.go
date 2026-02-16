@@ -14,7 +14,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
-	"github.com/home-operations/tuppr/internal/constants"
 	"github.com/home-operations/tuppr/internal/webhook/validation"
 )
 
@@ -49,7 +48,7 @@ func (v *Validator) ValidateUpdate(ctx context.Context, old, t *tupprv1alpha1.Ta
 }
 
 func (v *Validator) ValidateDelete(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
-	if t.Status.Phase == constants.PhaseInProgress {
+	if t.Status.Phase.IsActive() {
 		return admission.Warnings{
 			fmt.Sprintf("Deleting TalosUpgrade '%s' while upgrade is in progress. This may leave nodes in an inconsistent state.", t.Name),
 		}, nil

@@ -50,7 +50,7 @@ func withKubernetesVersion(v string) func(*tupprv1alpha1.KubernetesUpgrade) {
 	}
 }
 
-func withK8sPhase(phase string) func(*tupprv1alpha1.KubernetesUpgrade) {
+func withK8sPhase(phase tupprv1alpha1.JobPhase) func(*tupprv1alpha1.KubernetesUpgrade) {
 	return func(ku *tupprv1alpha1.KubernetesUpgrade) {
 		ku.Status.Phase = phase
 	}
@@ -273,9 +273,9 @@ func TestKubernetesUpgrade_ValidateUpdate_SingletonAllowsSameResource(t *testing
 }
 
 func TestKubernetesUpgrade_ValidateUpdate_RejectsSpecChangeWhileInProgress(t *testing.T) {
-	old := newKubernetesUpgrade("test", withK8sPhase(constants.PhaseInProgress))
+	old := newKubernetesUpgrade("test", withK8sPhase(tupprv1alpha1.JobPhaseUpgrading))
 	updated := newKubernetesUpgrade("test",
-		withK8sPhase(constants.PhaseInProgress),
+		withK8sPhase(tupprv1alpha1.JobPhaseUpgrading),
 		withKubernetesVersion("v1.35.0"),
 	)
 
@@ -291,8 +291,8 @@ func TestKubernetesUpgrade_ValidateUpdate_RejectsSpecChangeWhileInProgress(t *te
 }
 
 func TestKubernetesUpgrade_ValidateUpdate_AllowsNoSpecChangeWhileInProgress(t *testing.T) {
-	old := newKubernetesUpgrade("test", withK8sPhase(constants.PhaseInProgress))
-	updated := newKubernetesUpgrade("test", withK8sPhase(constants.PhaseInProgress))
+	old := newKubernetesUpgrade("test", withK8sPhase(tupprv1alpha1.JobPhaseUpgrading))
+	updated := newKubernetesUpgrade("test", withK8sPhase(tupprv1alpha1.JobPhaseUpgrading))
 
 	v := newK8sValidator(old, talosConfigSecret("default", validTalosConfig()))
 
@@ -303,8 +303,8 @@ func TestKubernetesUpgrade_ValidateUpdate_AllowsNoSpecChangeWhileInProgress(t *t
 }
 
 func TestKubernetesUpgrade_ValidateUpdate_AllowsSpecChangeWhenNotInProgress(t *testing.T) {
-	for _, phase := range []string{constants.PhasePending, constants.PhaseCompleted, constants.PhaseFailed, ""} {
-		t.Run("phase_"+phase, func(t *testing.T) {
+	for _, phase := range []tupprv1alpha1.JobPhase{tupprv1alpha1.JobPhasePending, tupprv1alpha1.JobPhaseCompleted, tupprv1alpha1.JobPhaseFailed, ""} {
+		t.Run("phase_"+string(phase), func(t *testing.T) {
 			old := newKubernetesUpgrade("test", withK8sPhase(phase))
 			updated := newKubernetesUpgrade("test", withK8sPhase(phase), withKubernetesVersion("v1.35.0"))
 
@@ -319,7 +319,7 @@ func TestKubernetesUpgrade_ValidateUpdate_AllowsSpecChangeWhenNotInProgress(t *t
 }
 
 func TestKubernetesUpgrade_ValidateDelete_WarnsWhenInProgress(t *testing.T) {
-	ku := newKubernetesUpgrade("test", withK8sPhase(constants.PhaseInProgress))
+	ku := newKubernetesUpgrade("test", withK8sPhase(tupprv1alpha1.JobPhaseUpgrading))
 	v := newK8sValidator()
 
 	warnings, err := v.ValidateDelete(context.Background(), ku)
@@ -335,8 +335,8 @@ func TestKubernetesUpgrade_ValidateDelete_WarnsWhenInProgress(t *testing.T) {
 }
 
 func TestKubernetesUpgrade_ValidateDelete_NoWarningWhenIdle(t *testing.T) {
-	for _, phase := range []string{constants.PhasePending, constants.PhaseCompleted, constants.PhaseFailed, ""} {
-		t.Run("phase_"+phase, func(t *testing.T) {
+	for _, phase := range []tupprv1alpha1.JobPhase{tupprv1alpha1.JobPhasePending, tupprv1alpha1.JobPhaseCompleted, tupprv1alpha1.JobPhaseFailed, ""} {
+		t.Run("phase_"+string(phase), func(t *testing.T) {
 			ku := newKubernetesUpgrade("test", withK8sPhase(phase))
 			v := newK8sValidator()
 

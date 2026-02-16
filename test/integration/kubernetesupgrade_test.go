@@ -13,7 +13,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
-	"github.com/home-operations/tuppr/internal/constants"
 )
 
 var _ = Describe("KubernetesUpgrade Integration", func() {
@@ -169,8 +168,8 @@ var _ = Describe("KubernetesUpgrade Integration", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				// Version matches, so should complete or indicate no upgrade needed
 				g.Expect(k8sUpgrade.Status.Phase).To(Or(
-					Equal(constants.PhaseCompleted),
-					Equal(constants.PhasePending),
+					Equal(tupprv1alpha1.JobPhaseCompleted),
+					Equal(tupprv1alpha1.JobPhasePending),
 				))
 			}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
 
