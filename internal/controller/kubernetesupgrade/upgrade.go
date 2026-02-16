@@ -41,12 +41,12 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
 	}
 
-	if kubernetesUpgrade.Status.Phase == constants.PhaseCompleted || kubernetesUpgrade.Status.Phase == constants.PhaseFailed {
+	if kubernetesUpgrade.Status.Phase == tupprv1alpha1.JobPhaseCompleted || kubernetesUpgrade.Status.Phase == tupprv1alpha1.JobPhaseFailed {
 		logger.V(1).Info("Kubernetes upgrade already completed or failed", "phase", kubernetesUpgrade.Status.Phase)
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
 
-	if kubernetesUpgrade.Status.Phase != constants.PhaseInProgress {
+	if !kubernetesUpgrade.Status.Phase.IsActive() {
 		maintenanceRes, err := maintenance.CheckWindow(kubernetesUpgrade.Spec.Maintenance, now)
 		if err != nil {
 			return ctrl.Result{RequeueAfter: time.Second * 30}, err
@@ -59,7 +59,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 			nextTimestamp := maintenanceRes.NextWindowStart.Unix()
 			r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, false, &nextTimestamp)
 			if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-				"phase":                 constants.PhasePending,
+				"phase":                 tupprv1alpha1.JobPhasePending,
 				"controllerNode":        "",
 				"message":               fmt.Sprintf("Waiting for maintenance window (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339)),
 				"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
@@ -71,13 +71,13 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 		r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, true, nil)
 	}
 
-	if kubernetesUpgrade.Status.Phase != constants.PhaseInProgress {
+	if !kubernetesUpgrade.Status.Phase.IsActive() {
 		if blocked, message, err := coordination.IsAnotherUpgradeActive(ctx, r.Client, kubernetesUpgrade.Name, "kubernetes"); err != nil {
 			logger.Error(err, "Failed to check for other active upgrades")
 			return ctrl.Result{RequeueAfter: time.Minute}, nil
 		} else if blocked {
 			logger.Info("Blocked by another upgrade", "reason", message)
-			if err := r.setPhase(ctx, kubernetesUpgrade, constants.PhasePending, "", message); err != nil {
+			if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
 				logger.Error(err, "Failed to update phase for coordination wait")
 			}
 			return ctrl.Result{RequeueAfter: time.Minute * 2}, nil
@@ -120,7 +120,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
 
-		if err := r.setPhase(ctx, kubernetesUpgrade, constants.PhaseCompleted, "", fmt.Sprintf("Kubernetes successfully upgraded to %s", targetVersion)); err != nil {
+		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseCompleted, "", fmt.Sprintf("Kubernetes successfully upgraded to %s", targetVersion)); err != nil {
 			logger.Error(err, "Failed to update completion phase")
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 		}
@@ -134,7 +134,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 
 	if err := r.HealthChecker.CheckHealth(ctx, kubernetesUpgrade.Spec.HealthChecks); err != nil {
 		logger.Info("Health checks failed, will retry", "error", err.Error())
-		if err := r.setPhase(ctx, kubernetesUpgrade, constants.PhasePending, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
+		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
 			logger.Error(err, "Failed to update phase for health check")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
@@ -159,7 +159,7 @@ func (r *Reconciler) handleSuspendAnnotation(ctx context.Context, kubernetesUpgr
 		"kubernetesupgrade", kubernetesUpgrade.Name)
 
 	message := fmt.Sprintf("Controller suspended via annotation (value: %s) - remove annotation to resume", suspendValue)
-	if err := r.setPhase(ctx, kubernetesUpgrade, constants.PhasePending, "", message); err != nil {
+	if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
 		logger.Error(err, "Failed to update phase for suspension")
 		return true, err
 	}
@@ -196,7 +196,7 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, kubernetesUpgrad
 	}
 
 	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-		"phase":          constants.PhasePending,
+		"phase":          tupprv1alpha1.JobPhasePending,
 		"controllerNode": "",
 		"message":        "Reset requested via annotation",
 		"jobName":        "",
@@ -222,7 +222,7 @@ func (r *Reconciler) handleGenerationChange(ctx context.Context, kubernetesUpgra
 		"newVersion", kubernetesUpgrade.Spec.Kubernetes.Version)
 
 	return true, r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-		"phase":          constants.PhasePending,
+		"phase":          tupprv1alpha1.JobPhasePending,
 		"controllerNode": "",
 		"message":        fmt.Sprintf("Spec updated to %s, restarting upgrade process", kubernetesUpgrade.Spec.Kubernetes.Version),
 		"jobName":        "",

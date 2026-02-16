@@ -352,15 +352,15 @@ func TestValidateUpdateInProgress(t *testing.T) {
 	specB := tupprv1alpha1.TalosSpec{Version: "v1.1.0"}
 
 	// Case 1: Not in progress -> Change allowed
-	err := ValidateUpdateInProgress(constants.PhasePending, specA, specB)
+	err := ValidateUpdateInProgress(tupprv1alpha1.JobPhasePending, specA, specB)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	// Case 2: In progress -> Same spec -> Allowed
-	err = ValidateUpdateInProgress(constants.PhaseInProgress, specA, specA)
+	err = ValidateUpdateInProgress(tupprv1alpha1.JobPhaseUpgrading, specA, specA)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	// Case 3: In progress -> Different spec -> Denied
-	err = ValidateUpdateInProgress(constants.PhaseInProgress, specA, specB)
+	err = ValidateUpdateInProgress(tupprv1alpha1.JobPhaseUpgrading, specA, specB)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring("cannot update spec while upgrade is in progress"))
 }

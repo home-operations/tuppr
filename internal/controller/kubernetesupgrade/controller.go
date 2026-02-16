@@ -159,8 +159,8 @@ func (r *Reconciler) updateStatus(ctx context.Context, kubernetesUpgrade *tupprv
 	return r.Status().Patch(ctx, statusObj, client.RawPatch(types.MergePatchType, patchBytes))
 }
 
-func (r *Reconciler) setPhase(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, phase, controllerNode, message string) error {
-	r.MetricsReporter.RecordKubernetesUpgradePhase(kubernetesUpgrade.Name, phase)
+func (r *Reconciler) setPhase(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, phase tupprv1alpha1.JobPhase, controllerNode, message string) error {
+	r.MetricsReporter.RecordKubernetesUpgradePhase(kubernetesUpgrade.Name, string(phase))
 
 	return r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
 		"phase":          phase,

@@ -25,7 +25,7 @@ var (
 	talosUpgradePhaseGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "tuppr_talos_upgrade_phase",
-			Help: "Current phase of Talos upgrades (0=Pending, 1=InProgress, 2=Completed, 3=Failed)",
+			Help: "Current phase of Talos upgrades (0=Pending, 1=Draining, 2=Upgrading, 3=Rebooting, 4=Completed, 5=Failed)",
 		},
 		[]string{"name", "phase"},
 	)
@@ -66,7 +66,7 @@ var (
 	kubernetesUpgradePhaseGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "tuppr_kubernetes_upgrade_phase",
-			Help: "Current phase of Kubernetes upgrades (0=Pending, 1=InProgress, 2=Completed, 3=Failed)",
+			Help: "Current phase of Kubernetes upgrades (0=Pending, 1=Draining, 2=Upgrading, 3=Rebooting, 4=Completed, 5=Failed)",
 		},
 		[]string{"name", "phase"},
 	)
@@ -153,12 +153,16 @@ func phaseToFloat64(phase string) float64 {
 	switch phase {
 	case "Pending":
 		return 0
-	case "InProgress":
+	case "Draining":
 		return 1
-	case "Completed":
+	case "Upgrading":
 		return 2
-	case "Failed":
+	case "Rebooting":
 		return 3
+	case "Completed":
+		return 4
+	case "Failed":
+		return 5
 	default:
 		return -1
 	}

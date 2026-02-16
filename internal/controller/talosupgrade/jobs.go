@@ -46,7 +46,7 @@ func (r *Reconciler) handleJobStatus(ctx context.Context, talosUpgrade *tupprv1a
 
 	if job.Status.Succeeded == 0 && (job.Status.Failed == 0 || job.Status.Failed < *job.Spec.BackoffLimit) {
 		message := fmt.Sprintf("Upgrading node %s (job: %s)", nodeName, job.Name)
-		if err := r.setPhase(ctx, talosUpgrade, constants.PhaseInProgress, nodeName, message); err != nil {
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseUpgrading, nodeName, message); err != nil {
 			logger.Error(err, "Failed to update phase for active job", "job", job.Name, "node", nodeName)
 			return ctrl.Result{RequeueAfter: time.Second * 30}, err
 		}
@@ -73,6 +73,9 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, talosUpgrade *tupprv1
 
 	if !isReady {
 		logger.Info("Job finished, but node not yet ready. Requeuing...", "node", nodeName)
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseRebooting, nodeName, fmt.Sprintf("Node %s is rebooting", nodeName)); err != nil {
+			logger.Error(err, "Failed to update phase for rebooting", "node", nodeName)
+		}
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
@@ -106,7 +109,7 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, talosUpgrade *tupprv1
 	completedCount := len(talosUpgrade.Status.CompletedNodes) + 1
 	message := fmt.Sprintf("Node %s upgraded successfully, health checks passed (%d completed)", nodeName, completedCount)
 
-	if err := r.setPhase(ctx, talosUpgrade, constants.PhasePending, "", message); err != nil {
+	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
 		logger.Error(err, "Failed to update phase", "node", nodeName)
 		return ctrl.Result{}, err
 	}
@@ -132,7 +135,7 @@ func (r *Reconciler) handleJobFailure(ctx context.Context, talosUpgrade *tupprv1
 	failedCount := len(talosUpgrade.Status.FailedNodes) + 1
 	message := fmt.Sprintf("Node %s upgrade failed (%d failed) - stopping", nodeName, failedCount)
 
-	if err := r.setPhase(ctx, talosUpgrade, constants.PhaseFailed, "", message); err != nil {
+	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseFailed, "", message); err != nil {
 		logger.Error(err, "Failed to update phase", "node", nodeName)
 		return ctrl.Result{}, err
 	}
@@ -580,7 +583,7 @@ func (r *Reconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1a
 		nextTimestamp := maintenanceRes.NextWindowStart.Unix()
 		r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, false, &nextTimestamp)
 		if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
-			"phase":                 constants.PhasePending,
+			"phase":                 tupprv1alpha1.JobPhasePending,
 			"currentNode":           "",
 			"message":               fmt.Sprintf("Maintenance window closed between nodes, waiting (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339)),
 			"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
@@ -596,7 +599,7 @@ func (r *Reconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1a
 
 	if err := r.HealthChecker.CheckHealth(ctx, talosUpgrade.Spec.HealthChecks); err != nil {
 		logger.Info("Health checks failed, will retry", "error", err.Error())
-		if err := r.setPhase(ctx, talosUpgrade, constants.PhasePending, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
 			logger.Error(err, "Failed to update phase for health check")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
@@ -622,7 +625,7 @@ func (r *Reconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1a
 		logger.Info("Target image not yet available, waiting", "node", nextNode, "image", targetImage, "error", err.Error())
 
 		message := fmt.Sprintf("Waiting for image availability: %s", err.Error())
-		if err := r.setPhase(ctx, talosUpgrade, constants.PhasePending, nextNode, message); err != nil {
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, nextNode, message); err != nil {
 			logger.Error(err, "Failed to update phase while waiting for image")
 		}
 
@@ -633,6 +636,10 @@ func (r *Reconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1a
 
 	// Drain node before upgrade if drain spec is configured
 	if talosUpgrade.Spec.Drain != nil {
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseDraining, nextNode, fmt.Sprintf("Draining node %s", nextNode)); err != nil {
+			logger.Error(err, "Failed to update phase for draining", "node", nextNode)
+			return ctrl.Result{RequeueAfter: time.Second * 30}, err
+		}
 		logger.Info("Draining node before upgrade", "node", nextNode)
 		if err := r.drainNode(ctx, nextNode, talosUpgrade.Spec.Drain); err != nil {
 			logger.Error(err, "Failed to drain node", "node", nextNode)
@@ -647,7 +654,7 @@ func (r *Reconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1a
 	}
 
 	logger.Info("Successfully created upgrade job", "node", nextNode)
-	if err := r.setPhase(ctx, talosUpgrade, constants.PhaseInProgress, nextNode, fmt.Sprintf("Upgrading node %s", nextNode)); err != nil {
+	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseUpgrading, nextNode, fmt.Sprintf("Upgrading node %s", nextNode)); err != nil {
 		logger.Error(err, "Failed to update phase for node upgrade", "node", nextNode)
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
 	}

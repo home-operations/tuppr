@@ -30,7 +30,7 @@ func (r *Reconciler) handleSuspendAnnotation(ctx context.Context, talosUpgrade *
 		"talosupgrade", talosUpgrade.Name)
 
 	message := fmt.Sprintf("Controller suspended via annotation (value: %s) - remove annotation to resume", suspendValue)
-	if err := r.setPhase(ctx, talosUpgrade, constants.PhasePending, "", message); err != nil {
+	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
 		logger.Error(err, "Failed to update phase for suspension")
 		return true, err
 	}
@@ -67,7 +67,7 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, talosUpgrade *tu
 	}
 
 	if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
-		"phase":          constants.PhasePending,
+		"phase":          tupprv1alpha1.JobPhasePending,
 		"currentNode":    "",
 		"message":        "Reset requested via annotation",
 		"completedNodes": []string{},
@@ -91,7 +91,7 @@ func (r *Reconciler) handleGenerationChange(ctx context.Context, talosUpgrade *t
 		"observed", talosUpgrade.Status.ObservedGeneration)
 
 	return true, r.updateStatus(ctx, talosUpgrade, map[string]any{
-		"phase":          constants.PhasePending,
+		"phase":          tupprv1alpha1.JobPhasePending,
 		"currentNode":    "",
 		"message":        "Spec updated, restarting upgrade process",
 		"completedNodes": []string{},
