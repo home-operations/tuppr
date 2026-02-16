@@ -63,7 +63,7 @@ func (r *Reconciler) handleJobStatus(ctx context.Context, talosUpgrade *tupprv1a
 
 func (r *Reconciler) handleJobSuccess(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Job completed successfully", "node", nodeName)
+	logger.V(1).Info("Job completed, verifying node upgrade", "node", nodeName)
 
 	isReady, err := r.verifyNodeUpgrade(ctx, talosUpgrade, nodeName)
 	if err != nil {
@@ -72,7 +72,7 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, talosUpgrade *tupprv1
 	}
 
 	if !isReady {
-		logger.Info("Job finished, but node not yet ready. Requeuing...", "node", nodeName)
+		logger.V(1).Info("Node not yet ready after upgrade, waiting for reboot", "node", nodeName)
 		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseRebooting, nodeName, fmt.Sprintf("Node %s is rebooting", nodeName)); err != nil {
 			logger.Error(err, "Failed to update phase for rebooting", "node", nodeName)
 		}
@@ -82,7 +82,7 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, talosUpgrade *tupprv1
 	logger.Info("Node verified as upgraded and ready", "node", nodeName)
 
 	if talosUpgrade.Spec.Drain != nil {
-		logger.Info("Uncordoning node after successful upgrade", "node", nodeName)
+		logger.V(1).Info("Uncordoning node after successful upgrade", "node", nodeName)
 		node := &corev1.Node{}
 		if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
 			logger.Error(err, "Failed to get node for uncordon", "node", nodeName)
@@ -118,13 +118,14 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, talosUpgrade *tupprv1
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Successfully completed node upgrade and cleaned up job", "node", nodeName)
+	logger.Info("Node upgrade completed", "node", nodeName,
+		"completedNodes", completedCount)
 	return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 }
 
 func (r *Reconciler) handleJobFailure(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Job failed permanently", "node", nodeName)
+	logger.Info("Node upgrade failed", "node", nodeName)
 
 	if err := r.removeNodeUpgradingLabel(ctx, nodeName); err != nil {
 		logger.Error(err, "Failed to remove upgrading label from node", "node", nodeName)
@@ -148,7 +149,7 @@ func (r *Reconciler) handleJobFailure(ctx context.Context, talosUpgrade *tupprv1
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Successfully marked node as failed", "node", nodeName)
+	logger.V(1).Info("Recorded node failure", "node", nodeName, "failedNodes", failedCount)
 	return ctrl.Result{RequeueAfter: time.Minute * 10}, nil
 }
 
@@ -170,7 +171,7 @@ func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv
 
 	if err := r.TalosClient.CheckNodeReady(ctx, nodeIP, nodeName); err != nil {
 		if isTransientError(err) {
-			logger.Info("Node not ready yet, will retry", "node", nodeName, "error", err)
+			logger.V(1).Info("Node not ready yet, will retry", "node", nodeName, "error", err)
 			return false, nil
 		}
 		return false, err
@@ -179,7 +180,7 @@ func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv
 	currentVersion, err := r.TalosClient.GetNodeVersion(ctx, nodeIP)
 	if err != nil {
 		if isTransientError(err) {
-			logger.Info("Node not ready yet, will retry", "node", nodeName, "error", err)
+			logger.V(1).Info("Node not ready yet, will retry", "node", nodeName, "error", err)
 			return false, nil
 		}
 		return false, fmt.Errorf("failed to get current version from Talos for %s: %w", nodeName, err)
@@ -190,7 +191,7 @@ func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv
 			nodeName, currentVersion, targetVersion)
 	}
 
-	logger.Info("Node upgrade verification successful using Talos client",
+	logger.V(1).Info("Node upgrade verification successful",
 		"node", nodeName,
 		"version", currentVersion)
 	return true, nil
@@ -268,7 +269,7 @@ func (r *Reconciler) cleanupJobForNode(ctx context.Context, nodeName string) err
 
 	for _, job := range jobList.Items {
 		if job.Status.Succeeded > 0 {
-			logger.Info("Deleting successful job", "job", job.Name, "node", nodeName)
+			logger.V(1).Info("Deleting completed job", "job", job.Name, "node", nodeName)
 
 			deletePolicy := metav1.DeletePropagationForeground
 			if err := r.Delete(ctx, &job, &client.DeleteOptions{
@@ -539,7 +540,7 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 
 	if schematic, ok := node.Annotations[constants.SchematicAnnotation]; ok && schematic != "" {
 		imageBase = fmt.Sprintf("%s/%s", constants.DefaultFactoryURL, schematic)
-		logger.Info("Using schematic override from annotation", "node", nodeName, "schematic", schematic)
+		logger.V(1).Info("Using schematic override from annotation", "node", nodeName, "schematic", schematic)
 	} else {
 		nodeIP, err := nodeutil.GetNodeIP(node)
 		if err != nil {
@@ -560,7 +561,7 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 
 	targetImage := fmt.Sprintf("%s:%s", imageBase, targetVersion)
 
-	logger.Info("Built target image",
+	logger.V(1).Info("Built target image",
 		"node", nodeName,
 		"targetImage", targetImage,
 		"version", targetVersion)
@@ -609,7 +610,7 @@ func (r *Reconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1a
 		logger.Error(err, "Failed to update phase for health check")
 	}
 	if err := r.HealthChecker.CheckHealth(ctx, talosUpgrade.Spec.HealthChecks); err != nil {
-		logger.Info("Health checks failed, will retry", "error", err.Error())
+		logger.Info("Waiting for health checks to pass", "error", err.Error())
 		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
 			logger.Error(err, "Failed to update phase for health check")
 		}
@@ -631,9 +632,9 @@ func (r *Reconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1a
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
-	logger.Info("Verifying target image availability", "image", targetImage)
+	logger.V(1).Info("Verifying target image availability", "image", targetImage)
 	if err := r.ImageChecker.Check(ctx, targetImage); err != nil {
-		logger.Info("Target image not yet available, waiting", "node", nextNode, "image", targetImage, "error", err.Error())
+		logger.Info("Waiting for target image to become available", "node", nextNode, "image", targetImage, "error", err.Error())
 
 		message := fmt.Sprintf("Waiting for image availability: %s", err.Error())
 		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, nextNode, message); err != nil {
@@ -643,7 +644,7 @@ func (r *Reconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1a
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	}
 
-	logger.Info("Found next node to upgrade", "node", nextNode)
+	logger.Info("Found next node to upgrade", "node", nextNode, "image", targetImage)
 
 	// Drain node before upgrade if drain spec is configured
 	if talosUpgrade.Spec.Drain != nil {
@@ -656,7 +657,7 @@ func (r *Reconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1a
 			logger.Error(err, "Failed to drain node", "node", nextNode)
 			return ctrl.Result{RequeueAfter: time.Minute}, nil
 		}
-		logger.Info("Node drained successfully", "node", nextNode)
+		logger.V(1).Info("Node drained successfully", "node", nextNode)
 	}
 
 	if _, err := r.createJob(ctx, talosUpgrade, nextNode, targetImage); err != nil {
@@ -668,7 +669,6 @@ func (r *Reconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1a
 		logger.Error(err, "Failed to add upgrading label to node", "node", nextNode)
 	}
 
-	logger.Info("Successfully created upgrade job", "node", nextNode)
 	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseUpgrading, nextNode, fmt.Sprintf("Upgrading node %s", nextNode)); err != nil {
 		logger.Error(err, "Failed to update phase for node upgrade", "node", nextNode)
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
@@ -708,12 +708,12 @@ func (r *Reconciler) findNextNode(ctx context.Context, talosUpgrade *tupprv1alph
 		}
 
 		if needsUpgrade {
-			logger.Info("Node needs upgrade", "node", node.Name)
+			logger.V(1).Info("Node needs upgrade", "node", node.Name)
 			return node.Name, nil
 		}
 	}
 
-	logger.V(1).Info("No nodes need upgrade")
+	logger.V(1).Info("All nodes are up to date")
 	return "", nil
 }
 
@@ -759,7 +759,7 @@ func (r *Reconciler) nodeNeedsUpgrade(ctx context.Context, node *corev1.Node, cr
 	targetVersion := r.getTargetVersion(node, crdTargetVersion)
 
 	if currentVersion != targetVersion {
-		logger.Info("Node version mismatch detected",
+		logger.V(1).Info("Node version mismatch detected",
 			"node", node.Name,
 			"current", currentVersion,
 			"target", targetVersion)
@@ -773,7 +773,7 @@ func (r *Reconciler) nodeNeedsUpgrade(ctx context.Context, node *corev1.Node, cr
 		}
 
 		if !strings.Contains(currentImage, targetSchematic) {
-			logger.Info("Node schematic mismatch detected",
+			logger.V(1).Info("Node schematic mismatch detected",
 				"node", node.Name,
 				"currentImage", currentImage,
 				"targetSchematic", targetSchematic)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -55,6 +56,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var talosConfigSecret string
+	var logLevel string
 	var tlsOpts []func(*tls.Config)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -77,12 +79,19 @@ func main() {
 		"The DNS name of the webhook service (e.g. tuppr-webhook-service)")
 	flag.StringVar(&webhookSecretName, "webhook-secret-name", "",
 		"The name of the Secret to store webhook certificates")
+	flag.StringVar(&logLevel, "log-level", "info",
+		"Log level for the controller (debug, info)")
 
-	opts := zap.Options{
-		Development: true,
-	}
+	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	switch strings.ToLower(logLevel) {
+	case "debug":
+		opts.Development = true
+	default:
+		opts.Development = false
+	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 

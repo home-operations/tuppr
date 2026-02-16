@@ -41,6 +41,7 @@ spec:
           command:
             - /manager
           args:
+            - --log-level={{ .Values.controller.logLevel }}
             - --leader-elect={{ .Values.controller.leaderElection.enabled }}
             - --metrics-bind-address=:{{ .Values.controller.metrics.port }}
             - --health-probe-bind-address=:{{ .Values.controller.health.port }}
