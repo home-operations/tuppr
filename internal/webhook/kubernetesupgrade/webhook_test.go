@@ -1,4 +1,4 @@
-package webhook
+package kubernetesupgrade
 
 import (
 	"context"
@@ -75,7 +75,7 @@ func withK8sPullPolicy(p corev1.PullPolicy) func(*tupprv1alpha1.KubernetesUpgrad
 	}
 }
 
-func newK8sValidator(objects ...runtime.Object) *KubernetesUpgradeValidator {
+func newK8sValidator(objects ...runtime.Object) *Validator {
 	scheme := runtime.NewScheme()
 	_ = tupprv1alpha1.AddToScheme(scheme)
 	_ = corev1.AddToScheme(scheme)
@@ -85,7 +85,7 @@ func newK8sValidator(objects ...runtime.Object) *KubernetesUpgradeValidator {
 		WithRuntimeObjects(objects...).
 		Build()
 
-	return &KubernetesUpgradeValidator{
+	return &Validator{
 		Client:            c,
 		TalosConfigSecret: "talosconfig",
 		Namespace:         "default",
@@ -494,7 +494,7 @@ func containsWarning(warnings []string, substr string) bool {
 }
 
 func TestKubernetesUpgrade_ValidateCreate_MaintenanceWindowValid(t *testing.T) {
-	v := newK8sValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
 	ku := newKubernetesUpgrade("test", func(ku *tupprv1alpha1.KubernetesUpgrade) {
 		ku.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{
@@ -520,7 +520,7 @@ func TestKubernetesUpgrade_ValidateCreate_MaintenanceWindowValid(t *testing.T) {
 }
 
 func TestKubernetesUpgrade_ValidateCreate_MaintenanceWindowInvalidTimezone(t *testing.T) {
-	v := newK8sValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
 	ku := newKubernetesUpgrade("test", func(ku *tupprv1alpha1.KubernetesUpgrade) {
 		ku.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{

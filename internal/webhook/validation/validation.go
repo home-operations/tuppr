@@ -1,4 +1,4 @@
-package webhook
+package validation
 
 import (
 	"context"
@@ -16,13 +16,11 @@ import (
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
-	"github.com/home-operations/tuppr/internal/controller"
 	"github.com/netresearch/go-cron"
 	talosclientconfig "github.com/siderolabs/talos/pkg/machinery/client/config"
 )
 
 // ValidateTalosConfigSecret checks if the secret exists and contains valid Talos configuration
-// matching the exact error messages expected by tests.
 func ValidateTalosConfigSecret(ctx context.Context, c client.Client, name, namespace string) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("talos config secret name is empty")
@@ -174,13 +172,14 @@ func GenerateCommonWarnings(version string, checks []tupprv1alpha1.HealthCheckSp
 	return warnings
 }
 
-func validateMaintenanceWindows(spec *tupprv1alpha1.MaintenanceSpec) (admission.Warnings, error) {
+// ValidateMaintenanceWindows validates all maintenance windows
+func ValidateMaintenanceWindows(spec *tupprv1alpha1.MaintenanceSpec) (admission.Warnings, error) {
 	if spec == nil || len(spec.Windows) == 0 {
 		return nil, nil
 	}
 	var warnings admission.Warnings
 	for _, window := range spec.Windows {
-		warn, err := validateMaintenanceWindow(&window)
+		warn, err := ValidateMaintenanceWindow(&window)
 		if err != nil {
 			return nil, err
 		}
@@ -189,14 +188,15 @@ func validateMaintenanceWindows(spec *tupprv1alpha1.MaintenanceSpec) (admission.
 	return warnings, nil
 }
 
-func validateMaintenanceWindow(window *tupprv1alpha1.WindowSpec) (admission.Warnings, error) {
+// ValidateMaintenanceWindow validates a single maintenance window
+func ValidateMaintenanceWindow(window *tupprv1alpha1.WindowSpec) (admission.Warnings, error) {
 	var warnings admission.Warnings
 
 	_, err := time.LoadLocation(window.Timezone)
 	if err != nil {
 		return nil, err
 	}
-	specParser := cron.MustNewParser(controller.CronjobDefaultOption)
+	specParser := cron.MustNewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	_, err = specParser.Parse(window.Start)
 	if err != nil {

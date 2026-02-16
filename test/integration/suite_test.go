@@ -22,7 +22,8 @@ import (
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
-	"github.com/home-operations/tuppr/internal/controller"
+	"github.com/home-operations/tuppr/internal/controller/kubernetesupgrade"
+	"github.com/home-operations/tuppr/internal/controller/talosupgrade"
 )
 
 var (
@@ -120,7 +121,7 @@ var _ = BeforeSuite(func() {
 	mockVersion := sharedMockVersion
 
 	By("setting up TalosUpgrade controller with mocks")
-	talosReconciler := &controller.TalosUpgradeReconciler{
+	talosReconciler := &talosupgrade.Reconciler{
 		Client:              k8sManager.GetClient(),
 		Scheme:              k8sManager.GetScheme(),
 		TalosConfigSecret:   "tuppr",
@@ -132,7 +133,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	By("setting up KubernetesUpgrade controller with mocks")
-	k8sReconciler := &controller.KubernetesUpgradeReconciler{
+	k8sReconciler := &kubernetesupgrade.Reconciler{
 		Client:              k8sManager.GetClient(),
 		Scheme:              k8sManager.GetScheme(),
 		TalosConfigSecret:   "tuppr",
