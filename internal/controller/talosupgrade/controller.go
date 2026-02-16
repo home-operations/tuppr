@@ -123,8 +123,13 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
 	}
 
-	if talosUpgrade.Status.Phase == tupprv1alpha1.JobPhaseCompleted || talosUpgrade.Status.Phase == tupprv1alpha1.JobPhaseFailed {
-		logger.V(1).Info("Upgrade already completed or failed", "phase", talosUpgrade.Status.Phase)
+	if talosUpgrade.Status.Phase == tupprv1alpha1.JobPhaseCompleted {
+		logger.V(1).Info("Talos upgrade completed, skipping", "phase", talosUpgrade.Status.Phase)
+		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+	}
+
+	if talosUpgrade.Status.Phase == tupprv1alpha1.JobPhaseFailed {
+		logger.V(1).Info("Talos upgrade failed, skipping", "phase", talosUpgrade.Status.Phase)
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
 

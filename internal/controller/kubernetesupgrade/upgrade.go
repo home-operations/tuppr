@@ -41,8 +41,13 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
 	}
 
-	if kubernetesUpgrade.Status.Phase == tupprv1alpha1.JobPhaseCompleted || kubernetesUpgrade.Status.Phase == tupprv1alpha1.JobPhaseFailed {
-		logger.V(1).Info("Kubernetes upgrade already completed or failed", "phase", kubernetesUpgrade.Status.Phase)
+	if kubernetesUpgrade.Status.Phase == tupprv1alpha1.JobPhaseCompleted {
+		logger.V(1).Info("Kubernetes upgrade completed, skipping", "phase", kubernetesUpgrade.Status.Phase)
+		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+	}
+
+	if kubernetesUpgrade.Status.Phase == tupprv1alpha1.JobPhaseFailed {
+		logger.V(1).Info("Kubernetes upgrade failed, skipping", "phase", kubernetesUpgrade.Status.Phase)
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
 
