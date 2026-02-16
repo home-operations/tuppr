@@ -77,7 +77,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 	}
 
 	if !kubernetesUpgrade.Status.Phase.IsActive() {
-		if blocked, message, err := coordination.IsAnotherUpgradeActive(ctx, r.Client, kubernetesUpgrade.Name, "kubernetes"); err != nil {
+		if blocked, message, err := coordination.IsAnotherUpgradeActive(ctx, r.Client, kubernetesUpgrade.Name, coordination.UpgradeTypeKubernetes); err != nil {
 			logger.Error(err, "Failed to check for other active upgrades")
 			return ctrl.Result{RequeueAfter: time.Minute}, nil
 		} else if blocked {

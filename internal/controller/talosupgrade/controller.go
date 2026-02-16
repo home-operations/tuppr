@@ -159,7 +159,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 	}
 
 	if !talosUpgrade.Status.Phase.IsActive() {
-		if blocked, message, err := coordination.IsAnotherUpgradeActive(ctx, r.Client, talosUpgrade.Name, "talos"); err != nil {
+		if blocked, message, err := coordination.IsAnotherUpgradeActive(ctx, r.Client, talosUpgrade.Name, coordination.UpgradeTypeTalos); err != nil {
 			logger.Error(err, "Failed to check for other active upgrades")
 			return ctrl.Result{RequeueAfter: time.Minute}, nil
 		} else if blocked {
