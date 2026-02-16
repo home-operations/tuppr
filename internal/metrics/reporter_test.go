@@ -1,4 +1,4 @@
-package controller
+package metrics
 
 import (
 	"testing"
@@ -28,7 +28,7 @@ func TestPhaseToFloat64(t *testing.T) {
 }
 
 func TestMetricsReporter_CleanupRemovesTimers(t *testing.T) {
-	mr := NewMetricsReporter()
+	mr := NewReporter()
 
 	mr.StartPhaseTiming(UpgradeTypeTalos, "test-upgrade", "InProgress")
 	mr.StartPhaseTiming(UpgradeTypeTalos, "test-upgrade", "Completed")
@@ -50,7 +50,7 @@ func TestMetricsReporter_CleanupRemovesTimers(t *testing.T) {
 }
 
 func TestMetricsReporter_EndPhaseTimingCleansUp(t *testing.T) {
-	mr := NewMetricsReporter()
+	mr := NewReporter()
 
 	mr.StartPhaseTiming(UpgradeTypeKubernetes, "k8s-upgrade", "InProgress")
 
@@ -71,12 +71,12 @@ func TestMetricsReporter_EndPhaseTimingCleansUp(t *testing.T) {
 }
 
 func TestMetricsReporter_EndPhaseTimingNoopForMissingTimer(t *testing.T) {
-	mr := NewMetricsReporter()
+	mr := NewReporter()
 	mr.EndPhaseTiming(UpgradeTypeTalos, "nonexistent", "Pending")
 }
 
 func TestMetricsReporter_RecordMaintenanceWindow(t *testing.T) {
-	mr := NewMetricsReporter()
+	mr := NewReporter()
 
 	// Test active window
 	mr.RecordMaintenanceWindow(UpgradeTypeTalos, "test", true, nil)
@@ -91,7 +91,7 @@ func TestMetricsReporter_RecordMaintenanceWindow(t *testing.T) {
 }
 
 func TestMetricsReporter_CleanupMaintenanceWindowMetrics(t *testing.T) {
-	mr := NewMetricsReporter()
+	mr := NewReporter()
 
 	nextTimestamp := int64(1234567890)
 	mr.RecordMaintenanceWindow(UpgradeTypeTalos, "test", false, &nextTimestamp)

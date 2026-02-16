@@ -1,4 +1,4 @@
-package webhook
+package talosupgrade
 
 import (
 	"context"
@@ -15,12 +15,13 @@ import (
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
+	"github.com/home-operations/tuppr/internal/webhook/validation"
 )
 
 var taloslog = logf.Log.WithName("talos-resource")
 
-// TalosUpgradeValidator validates Talos resources
-type TalosUpgradeValidator struct {
+// Validator validates Talos resources
+type Validator struct {
 	Client            client.Client
 	TalosConfigSecret string
 	Namespace         string
@@ -29,25 +30,25 @@ type TalosUpgradeValidator struct {
 // +kubebuilder:webhook:path=/validate-tuppr-home-operations-com-v1alpha1-talosupgrade,mutating=false,failurePolicy=fail,sideEffects=None,groups=tuppr.home-operations.com,resources=talosupgrades,verbs=create;update,versions=v1alpha1,name=vtalosupgrade.kb.io,admissionReviewVersions=v1
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=talosupgrades,verbs=get;list;watch
 
-var _ admission.Validator[*tupprv1alpha1.TalosUpgrade] = &TalosUpgradeValidator{}
+var _ admission.Validator[*tupprv1alpha1.TalosUpgrade] = &Validator{}
 
 // ValidateCreate implements admission.Validator so a webhook will be registered for the type
-func (v *TalosUpgradeValidator) ValidateCreate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
+func (v *Validator) ValidateCreate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
 	taloslog.Info("validate create", "name", t.Name, "version", t.Spec.Talos.Version, "talosConfigSecret", v.TalosConfigSecret)
 	return v.validate(ctx, t)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type
-func (v *TalosUpgradeValidator) ValidateUpdate(ctx context.Context, old, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
+func (v *Validator) ValidateUpdate(ctx context.Context, old, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
 	taloslog.Info("validate update", "name", t.Name)
 
-	if err := ValidateUpdateInProgress(old.Status.Phase, old.Spec, t.Spec); err != nil {
+	if err := validation.ValidateUpdateInProgress(old.Status.Phase, old.Spec, t.Spec); err != nil {
 		return nil, err
 	}
 	return v.validate(ctx, t)
 }
 
-func (v *TalosUpgradeValidator) ValidateDelete(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
+func (v *Validator) ValidateDelete(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
 	if t.Status.Phase == constants.PhaseInProgress {
 		return admission.Warnings{
 			fmt.Sprintf("Deleting TalosUpgrade '%s' while upgrade is in progress. This may leave nodes in an inconsistent state.", t.Name),
@@ -56,7 +57,7 @@ func (v *TalosUpgradeValidator) ValidateDelete(ctx context.Context, t *tupprv1al
 	return nil, nil
 }
 
-func (v *TalosUpgradeValidator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
+func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
 	var warnings admission.Warnings
 
 	overlapWarnings, err := v.validateOverlaps(ctx, t)
@@ -67,19 +68,19 @@ func (v *TalosUpgradeValidator) validate(ctx context.Context, t *tupprv1alpha1.T
 		warnings = append(warnings, overlapWarnings...)
 	}
 
-	if _, err := ValidateTalosConfigSecret(ctx, v.Client, v.TalosConfigSecret, v.Namespace); err != nil {
+	if _, err := validation.ValidateTalosConfigSecret(ctx, v.Client, v.TalosConfigSecret, v.Namespace); err != nil {
 		return warnings, err
 	}
 
-	if err := ValidateVersionFormat(t.Spec.Talos.Version); err != nil {
+	if err := validation.ValidateVersionFormat(t.Spec.Talos.Version); err != nil {
 		return warnings, fmt.Errorf("invalid talos version: %w", err)
 	}
 
-	if err := ValidateHealthChecks(t.Spec.HealthChecks); err != nil {
+	if err := validation.ValidateHealthChecks(t.Spec.HealthChecks); err != nil {
 		return warnings, err
 	}
 
-	if err := ValidateTalosctlSpec(t.Spec.Talosctl); err != nil {
+	if err := validation.ValidateTalosctlSpec(t.Spec.Talosctl); err != nil {
 		return warnings, err
 	}
 
@@ -91,7 +92,7 @@ func (v *TalosUpgradeValidator) validate(ctx context.Context, t *tupprv1alpha1.T
 		return warnings, fmt.Errorf("invalid placement '%s'", t.Spec.Policy.Placement)
 	}
 
-	warnings = append(warnings, GenerateCommonWarnings(
+	warnings = append(warnings, validation.GenerateCommonWarnings(
 		t.Spec.Talos.Version,
 		t.Spec.HealthChecks,
 		t.Spec.Talosctl.Image.Tag,
@@ -111,7 +112,7 @@ func (v *TalosUpgradeValidator) validate(ctx context.Context, t *tupprv1alpha1.T
 	}
 
 	// Validate maintenance window if specified
-	if mwWarnings, err := validateMaintenanceWindows(t.Spec.Maintenance); err != nil {
+	if mwWarnings, err := validation.ValidateMaintenanceWindows(t.Spec.Maintenance); err != nil {
 		return warnings, fmt.Errorf("spec.maintenanceWindow validation failed: %w", err)
 	} else {
 		warnings = append(warnings, mwWarnings...)
@@ -123,7 +124,7 @@ func (v *TalosUpgradeValidator) validate(ctx context.Context, t *tupprv1alpha1.T
 
 // validateOverlaps checks if the new/updated TalosUpgrade targets nodes that are already
 // targeted by other existing TalosUpgrade resources.
-func (v *TalosUpgradeValidator) validateOverlaps(ctx context.Context, current *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
+func (v *Validator) validateOverlaps(ctx context.Context, current *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
 	var warnings admission.Warnings
 
 	currentNodes, err := v.getMatchingNodes(ctx, current.Spec.NodeSelector)
@@ -169,7 +170,7 @@ func (v *TalosUpgradeValidator) validateOverlaps(ctx context.Context, current *t
 }
 
 // getMatchingNodes returns a set of node names that match the given selector
-func (v *TalosUpgradeValidator) getMatchingNodes(ctx context.Context, labelSelector *metav1.LabelSelector) (map[string]bool, error) {
+func (v *Validator) getMatchingNodes(ctx context.Context, labelSelector *metav1.LabelSelector) (map[string]bool, error) {
 	var selector labels.Selector
 	var err error
 
@@ -205,7 +206,7 @@ func findNodeIntersection(setA, setB map[string]bool) []string {
 	return intersection
 }
 
-func (v *TalosUpgradeValidator) SetupWebhookWithManager(mgr ctrl.Manager) error {
+func (v *Validator) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, &tupprv1alpha1.TalosUpgrade{}).
 		WithValidator(v).
 		Complete()

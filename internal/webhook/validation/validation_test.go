@@ -1,4 +1,4 @@
-package webhook
+package validation
 
 import (
 	"context"
@@ -21,6 +21,19 @@ func newFakeClient(objs ...client.Object) client.Client {
 	_ = corev1.AddToScheme(scheme)
 	_ = tupprv1alpha1.AddToScheme(scheme)
 	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
+}
+
+// Helper to generate valid Talos config for tests
+func validTalosConfig() []byte {
+	return []byte(`context: default
+contexts:
+  default:
+    endpoints:
+      - https://10.0.0.1:50000
+    ca: ""
+    crt: ""
+    key: ""
+`)
 }
 
 func TestValidateTalosConfigSecret(t *testing.T) {
@@ -387,7 +400,7 @@ func mwWindow(start string, duration time.Duration, tz string) tupprv1alpha1.Win
 
 func TestValidateMaintenanceWindows_NilAndEmpty(t *testing.T) {
 	for _, s := range []*tupprv1alpha1.MaintenanceSpec{nil, {}} {
-		warnings, err := validateMaintenanceWindows(s)
+		warnings, err := ValidateMaintenanceWindows(s)
 		if err != nil || len(warnings) > 0 {
 			t.Fatalf("expected no error/warnings for nil or empty spec, got err=%v warnings=%v", err, warnings)
 		}
@@ -395,7 +408,7 @@ func TestValidateMaintenanceWindows_NilAndEmpty(t *testing.T) {
 }
 
 func TestValidateMaintenanceWindows_Valid(t *testing.T) {
-	warnings, err := validateMaintenanceWindows(mwSpec(mwWindow("0 2 * * 0", 4*time.Hour, "UTC")))
+	warnings, err := ValidateMaintenanceWindows(mwSpec(mwWindow("0 2 * * 0", 4*time.Hour, "UTC")))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -417,7 +430,7 @@ func TestValidateMaintenanceWindows_Rejections(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := validateMaintenanceWindows(tc.spec); err == nil {
+			if _, err := ValidateMaintenanceWindows(tc.spec); err == nil {
 				t.Fatal("expected error")
 			}
 		})
@@ -426,12 +439,12 @@ func TestValidateMaintenanceWindows_Rejections(t *testing.T) {
 
 func TestValidateMaintenanceWindows_DurationBoundaries(t *testing.T) {
 	// Exactly 7 days — should pass
-	if _, err := validateMaintenanceWindows(mwSpec(mwWindow("0 2 * * *", 168*time.Hour, "UTC"))); err != nil {
+	if _, err := ValidateMaintenanceWindows(mwSpec(mwWindow("0 2 * * *", 168*time.Hour, "UTC"))); err != nil {
 		t.Fatalf("expected 168h to be accepted, got: %v", err)
 	}
 
 	// Under 1 hour — should warn
-	warnings, err := validateMaintenanceWindows(mwSpec(mwWindow("0 2 * * *", 30*time.Minute, "UTC")))
+	warnings, err := ValidateMaintenanceWindows(mwSpec(mwWindow("0 2 * * *", 30*time.Minute, "UTC")))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

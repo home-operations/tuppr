@@ -1,26 +1,23 @@
-package controller
+package talos
 
 import (
 	"context"
 	"fmt"
 	"time"
 
+	"github.com/cosi-project/runtime/pkg/resource"
 	"github.com/siderolabs/go-retry/retry"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
 	"github.com/siderolabs/talos/pkg/machinery/client"
 	"github.com/siderolabs/talos/pkg/machinery/resources/config"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	"github.com/cosi-project/runtime/pkg/resource"
 )
 
-// TalosClient provides Talos SDK operations for gathering node information
-type TalosClient struct {
+type Client struct {
 	talos *client.Client
 }
 
-// NewTalosClient creates a new Talos client service using the mounted configuration
-func NewTalosClient(ctx context.Context) (*TalosClient, error) {
+func NewClient(ctx context.Context) (*Client, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Creating new Talos client")
 
@@ -31,11 +28,10 @@ func NewTalosClient(ctx context.Context) (*TalosClient, error) {
 	}
 
 	logger.V(1).Info("Successfully created Talos client")
-	return &TalosClient{talos: talosClient}, nil
+	return &Client{talos: talosClient}, nil
 }
 
-// GetNodeVersion retrieves the Talos version from a specific node
-func (s *TalosClient) GetNodeVersion(ctx context.Context, nodeIP string) (string, error) {
+func (s *Client) GetNodeVersion(ctx context.Context, nodeIP string) (string, error) {
 	nodeCtx := client.WithNode(ctx, nodeIP)
 	var resp *machine.VersionResponse
 
@@ -60,8 +56,7 @@ func (s *TalosClient) GetNodeVersion(ctx context.Context, nodeIP string) (string
 	return version.GetTag(), nil
 }
 
-// GetNodeMachineConfig retrieves the machine configuration from a specific node
-func (s *TalosClient) GetNodeMachineConfig(ctx context.Context, nodeIP string) (*config.MachineConfig, error) {
+func (s *Client) GetNodeMachineConfig(ctx context.Context, nodeIP string) (*config.MachineConfig, error) {
 	nodeCtx := client.WithNode(ctx, nodeIP)
 	var r resource.Resource
 
@@ -82,8 +77,7 @@ func (s *TalosClient) GetNodeMachineConfig(ctx context.Context, nodeIP string) (
 	return mc, nil
 }
 
-// GetNodeInstallImage retrieves the install image from a specific node's machine config
-func (s *TalosClient) GetNodeInstallImage(ctx context.Context, nodeIP string) (string, error) {
+func (s *Client) GetNodeInstallImage(ctx context.Context, nodeIP string) (string, error) {
 	mc, err := s.GetNodeMachineConfig(ctx, nodeIP)
 	if err != nil {
 		return "", err
@@ -97,9 +91,7 @@ func (s *TalosClient) GetNodeInstallImage(ctx context.Context, nodeIP string) (s
 	return image, nil
 }
 
-// CheckNodeReady  check to see if the node is back online.
-// It returns nil if the node is ready, or an error if it is currently unreachable or not ready.
-func (s *TalosClient) CheckNodeReady(ctx context.Context, nodeIP, nodeName string) error {
+func (s *Client) CheckNodeReady(ctx context.Context, nodeIP, nodeName string) error {
 	logger := log.FromContext(ctx)
 
 	logger.V(1).Info("Verifying Talos node readiness",
@@ -114,25 +106,26 @@ func (s *TalosClient) CheckNodeReady(ctx context.Context, nodeIP, nodeName strin
 	return nil
 }
 
-// refreshTalosClient recreates the client if the current one is stale
-func (s *TalosClient) refreshTalosClient(ctx context.Context) error {
+func (s *Client) refreshTalosClient(ctx context.Context) error {
 	if _, err := s.talos.Version(ctx); err != nil {
 		logger := log.FromContext(ctx)
 		logger.V(2).Info("Refreshing stale Talos client")
 
-		newClient, err := NewTalosClient(ctx)
+		newClient, err := NewClient(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to reinitialize talos client: %w", err)
 		}
 
-		s.talos.Close() //nolint:errcheck
+		err = s.talos.Close()
+		if err != nil {
+			return err
+		}
 		s.talos = newClient.talos
 	}
 	return nil
 }
 
-// executeWithRetry executes a function with retry logic and client refresh
-func (s *TalosClient) executeWithRetry(ctx context.Context, operation func() error) error {
+func (s *Client) executeWithRetry(ctx context.Context, operation func() error) error {
 	return retry.Constant(10*time.Second, retry.WithUnits(100*time.Millisecond)).Retry(func() error {
 		if err := operation(); err != nil {
 			if refreshErr := s.refreshTalosClient(ctx); refreshErr != nil {
@@ -144,13 +137,11 @@ func (s *TalosClient) executeWithRetry(ctx context.Context, operation func() err
 	})
 }
 
-// checkNodeReady performs comprehensive readiness checks
-func (s *TalosClient) checkNodeReady(ctx context.Context, nodeIP string) error {
+func (s *Client) checkNodeReady(ctx context.Context, nodeIP string) error {
 	nodeCtx := client.WithNode(ctx, nodeIP)
 	checkCtx, cancel := context.WithTimeout(nodeCtx, 10*time.Second)
 	defer cancel()
 
-	// Check API connectivity
 	if _, err := s.talos.Version(checkCtx); err != nil {
 		if refreshErr := s.refreshTalosClient(ctx); refreshErr != nil {
 			return fmt.Errorf("API check failed and client refresh failed: %w", err)
@@ -158,7 +149,6 @@ func (s *TalosClient) checkNodeReady(ctx context.Context, nodeIP string) error {
 		return fmt.Errorf("API not ready: %w", err)
 	}
 
-	// Verify machine config is accessible
 	if _, err := s.GetNodeMachineConfig(ctx, nodeIP); err != nil {
 		return fmt.Errorf("machine config not accessible: %w", err)
 	}

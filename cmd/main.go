@@ -25,8 +25,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	tupperv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
-	"github.com/home-operations/tuppr/internal/controller"
-	tupprwebhook "github.com/home-operations/tuppr/internal/webhook"
+	"github.com/home-operations/tuppr/internal/controller/kubernetesupgrade"
+	"github.com/home-operations/tuppr/internal/controller/talosupgrade"
+	kuberneteswebhook "github.com/home-operations/tuppr/internal/webhook/kubernetesupgrade"
+	taloswebhook "github.com/home-operations/tuppr/internal/webhook/talosupgrade"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -195,7 +197,7 @@ func main() {
 
 	setupLog.Info("Setting up controllers")
 
-	if err := (&controller.TalosUpgradeReconciler{
+	if err := (&talosupgrade.Reconciler{
 		Client:              mgr.GetClient(),
 		Scheme:              mgr.GetScheme(),
 		TalosConfigSecret:   talosConfigSecret,
@@ -204,7 +206,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "TalosUpgrade")
 		os.Exit(1)
 	}
-	if err := (&controller.KubernetesUpgradeReconciler{
+	if err := (&kubernetesupgrade.Reconciler{
 		Client:              mgr.GetClient(),
 		Scheme:              mgr.GetScheme(),
 		TalosConfigSecret:   talosConfigSecret,
@@ -220,7 +222,7 @@ func main() {
 		setupLog.Info("cert rotation setup complete, registering webhooks")
 
 		// +kubebuilder:scaffold:builder
-		if err := (&tupprwebhook.TalosUpgradeValidator{
+		if err := (&taloswebhook.Validator{
 			Client:            mgr.GetClient(),
 			TalosConfigSecret: talosConfigSecret,
 			Namespace:         controllerNamespace,
@@ -229,7 +231,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err := (&tupprwebhook.KubernetesUpgradeValidator{
+		if err := (&kuberneteswebhook.Validator{
 			Client:            mgr.GetClient(),
 			TalosConfigSecret: talosConfigSecret,
 			Namespace:         controllerNamespace,
