@@ -211,6 +211,7 @@ spec:
                   - Rebooting
                   - Completed
                   - Failed
+                  - MaintenanceWindow
                 - enum:
                   - Pending
                   - HealthChecking

@@ -761,8 +761,8 @@ func TestKubernetesUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
 	if err := cl.Get(context.Background(), types.NamespacedName{Name: "test"}, &updated); err != nil {
 		t.Fatalf("failed to get updated upgrade: %v", err)
 	}
-	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
-		t.Fatalf("expected phase Pending, got %s", updated.Status.Phase)
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseMaintenanceWindow {
+		t.Fatalf("expected phase MaintenanceWindow, got %s", updated.Status.Phase)
 	}
 	if !strings.Contains(updated.Status.Message, "Waiting for maintenance window") {
 		t.Fatalf("expected message about waiting for window, got: %s", updated.Status.Message)
