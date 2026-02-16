@@ -101,6 +101,10 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, talosUpgrade *tupprv1
 		logger.Error(err, "Failed to cleanup job, but continuing", "node", nodeName)
 	}
 
+	if err := r.removeNodeUpgradingLabel(ctx, nodeName); err != nil {
+		logger.Error(err, "Failed to remove upgrading label from node", "node", nodeName)
+	}
+
 	if err := r.addCompletedNode(ctx, talosUpgrade, nodeName); err != nil {
 		logger.Error(err, "Failed to add completed node", "node", nodeName)
 		return ctrl.Result{}, err
@@ -121,6 +125,10 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, talosUpgrade *tupprv1
 func (r *Reconciler) handleJobFailure(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Job failed permanently", "node", nodeName)
+
+	if err := r.removeNodeUpgradingLabel(ctx, nodeName); err != nil {
+		logger.Error(err, "Failed to remove upgrading label from node", "node", nodeName)
+	}
 
 	nodeStatus := tupprv1alpha1.NodeUpgradeStatus{
 		NodeName:  nodeName,
@@ -651,6 +659,10 @@ func (r *Reconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1a
 	if _, err := r.createJob(ctx, talosUpgrade, nextNode, targetImage); err != nil {
 		logger.Error(err, "Failed to create upgrade job", "node", nextNode)
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
+
+	if err := r.addNodeUpgradingLabel(ctx, nextNode); err != nil {
+		logger.Error(err, "Failed to add upgrading label to node", "node", nextNode)
 	}
 
 	logger.Info("Successfully created upgrade job", "node", nextNode)
