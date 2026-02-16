@@ -29,6 +29,11 @@ const (
 	DefaultFactoryURL = "factory.talos.dev/installer"
 )
 
+// Node label constants
+const (
+	NodeUpgradingLabel = "tuppr.home-operations.com/upgrading"
+)
+
 // Talos config secret constants
 const (
 	TalosSecretName = "talosconfig"

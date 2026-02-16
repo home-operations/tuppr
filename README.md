@@ -14,7 +14,8 @@ A Kubernetes controller for managing automated upgrades of Talos Linux and Kuber
 - 📋 **Comprehensive status tracking** with real-time progress reporting
 - ⚡ **Resilient job execution** with automatic retry and pod replacement
 - 📈 **Prometheus metrics** - detailed monitoring of upgrade progress and health
-- 🎯 **Per-node overrides** - use annotations to specify unique versions or schematics for specific nodes.
+- 🎯 **Per-node overrides** - use annotations to specify unique versions or schematics for specific nodes
+- 🏷️ **Node labeling** - automatic labels during upgrades for integration with remediation systems
 
 ## 🚀 Quick Start
 
