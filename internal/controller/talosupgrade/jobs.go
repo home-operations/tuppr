@@ -2,10 +2,16 @@ package talosupgrade
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -152,11 +158,19 @@ func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv
 	targetVersion := talosUpgrade.Spec.Talos.Version
 
 	if err := r.TalosClient.CheckNodeReady(ctx, nodeIP, nodeName); err != nil {
-		return false, nil
+		if isTransientError(err) {
+			logger.Info("Node not ready yet, will retry", "node", nodeName, "error", err)
+			return false, nil
+		}
+		return false, err
 	}
 
 	currentVersion, err := r.TalosClient.GetNodeVersion(ctx, nodeIP)
 	if err != nil {
+		if isTransientError(err) {
+			logger.Info("Node not ready yet, will retry", "node", nodeName, "error", err)
+			return false, nil
+		}
 		return false, fmt.Errorf("failed to get current version from Talos for %s: %w", nodeName, err)
 	}
 
@@ -169,6 +183,63 @@ func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv
 		"node", nodeName,
 		"version", currentVersion)
 	return true, nil
+}
+
+func isTransientError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check Standard Go Context Timeouts
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	// Check gRPC Status
+	if st, ok := status.FromError(err); ok {
+		switch st.Code() {
+		case codes.Unavailable, codes.ResourceExhausted, codes.DeadlineExceeded:
+			return true
+		default:
+			// If it's a valid gRPC error but NOT one of the above, it's likely permanent (e.g. Unauthenticated)
+			// We return false here to stop falling through to string matching.
+			return false
+		}
+	}
+
+	// Check Network Errors
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		if netErr.Timeout() {
+			return true
+		}
+	}
+
+	//  Check Syscall Errors (Connection issues)
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		switch errno {
+		case syscall.ECONNREFUSED, syscall.ECONNRESET, syscall.ETIMEDOUT, syscall.EPIPE:
+			return true
+		}
+	}
+
+	//  Fallback String Matching
+	errStr := strings.ToLower(err.Error())
+	transientIndicators := []string{
+		"connection refused",
+		"connection reset",
+		"i/o timeout",
+		"eof", // Often happens if server restarts mid-stream
+	}
+
+	for _, indicator := range transientIndicators {
+		if strings.Contains(errStr, indicator) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (r *Reconciler) cleanupJobForNode(ctx context.Context, nodeName string) error {
