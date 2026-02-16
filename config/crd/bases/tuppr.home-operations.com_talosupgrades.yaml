@@ -330,6 +330,7 @@ spec:
                 allOf:
                 - enum:
                   - Pending
+                  - HealthChecking
                   - Draining
                   - Upgrading
                   - Rebooting
@@ -337,6 +338,7 @@ spec:
                   - Failed
                 - enum:
                   - Pending
+                  - HealthChecking
                   - Draining
                   - Upgrading
                   - Rebooting

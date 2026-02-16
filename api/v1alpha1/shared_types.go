@@ -91,19 +91,20 @@ type WindowSpec struct {
 }
 
 // JobPhase represents the current phase of an upgrade job
-// +kubebuilder:validation:Enum=Pending;Draining;Upgrading;Rebooting;Completed;Failed
+// +kubebuilder:validation:Enum=Pending;HealthChecking;Draining;Upgrading;Rebooting;Completed;Failed
 type JobPhase string
 
 const (
-	JobPhasePending   JobPhase = "Pending"
-	JobPhaseDraining  JobPhase = "Draining"
-	JobPhaseUpgrading JobPhase = "Upgrading"
-	JobPhaseRebooting JobPhase = "Rebooting"
-	JobPhaseCompleted JobPhase = "Completed"
-	JobPhaseFailed    JobPhase = "Failed"
+	JobPhasePending        JobPhase = "Pending"
+	JobPhaseHealthChecking JobPhase = "HealthChecking"
+	JobPhaseDraining       JobPhase = "Draining"
+	JobPhaseUpgrading      JobPhase = "Upgrading"
+	JobPhaseRebooting      JobPhase = "Rebooting"
+	JobPhaseCompleted      JobPhase = "Completed"
+	JobPhaseFailed         JobPhase = "Failed"
 )
 
 // IsActive returns true if the phase represents an active upgrade operation
 func (p JobPhase) IsActive() bool {
-	return p == JobPhaseDraining || p == JobPhaseUpgrading || p == JobPhaseRebooting
+	return p == JobPhaseHealthChecking || p == JobPhaseDraining || p == JobPhaseUpgrading || p == JobPhaseRebooting
 }

@@ -605,9 +605,12 @@ func (r *Reconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1a
 	ctx = context.WithValue(ctx, metrics.ContextKeyUpgradeType, metrics.UpgradeTypeTalos)
 	ctx = context.WithValue(ctx, metrics.ContextKeyUpgradeName, talosUpgrade.Name)
 
+	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", "Running health checks"); err != nil {
+		logger.Error(err, "Failed to update phase for health check")
+	}
 	if err := r.HealthChecker.CheckHealth(ctx, talosUpgrade.Spec.HealthChecks); err != nil {
 		logger.Info("Health checks failed, will retry", "error", err.Error())
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
 			logger.Error(err, "Failed to update phase for health check")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
