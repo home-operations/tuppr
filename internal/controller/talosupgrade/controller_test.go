@@ -944,6 +944,107 @@ func TestTalosReconcile_Cleanup(t *testing.T) {
 	}
 }
 
+func TestTalosReconcile_UncordonsNodeAfterDrain(t *testing.T) {
+	scheme := newTestScheme()
+
+	// Upgrade with Drain enabled
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(constants.PhaseInProgress),
+	)
+	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Force: ptr.To(true)}
+
+	// Node that is currently Cordoned
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Spec.Unschedulable = true
+
+	// Successful Job
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-upgrade-node-a-12345",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app.kubernetes.io/name":                "talos-upgrade",
+				"tuppr.home-operations.com/target-node": fakeNodeA,
+			},
+		},
+		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
+		Status: batchv1.JobStatus{Succeeded: 1},
+	}
+
+	// Mock client successful version check
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{"10.0.0.1": fakeTalosVersion},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	// Run Reconcile
+	result := reconcileTalos(t, r, "test-upgrade")
+
+	if result.RequeueAfter != 5*time.Second {
+		t.Fatalf("expected 5s requeue (success), got %v", result.RequeueAfter)
+	}
+
+	// Verify Node is Uncordoned
+	updatedNode := &corev1.Node{}
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: fakeNodeA}, updatedNode); err != nil {
+		t.Fatalf("failed to get node: %v", err)
+	}
+
+	if updatedNode.Spec.Unschedulable {
+		t.Error("expected node to be uncordoned (unschedulable=false), but it is still true")
+	}
+}
+
+func TestTalosReconcile_DoesNotUncordonWithoutDrainSpec(t *testing.T) {
+	scheme := newTestScheme()
+
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(constants.PhaseInProgress),
+	)
+
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Spec.Unschedulable = true
+
+	// Successful Job
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-upgrade-node-a-12345",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app.kubernetes.io/name":                "talos-upgrade",
+				"tuppr.home-operations.com/target-node": fakeNodeA,
+			},
+		},
+		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
+		Status: batchv1.JobStatus{Succeeded: 1},
+	}
+
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{"10.0.0.1": fakeTalosVersion},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	reconcileTalos(t, r, "test-upgrade")
+
+	// Verify Node remains Cordoned
+	updatedNode := &corev1.Node{}
+	_ = cl.Get(context.Background(), types.NamespacedName{Name: fakeNodeA}, updatedNode)
+
+	if !updatedNode.Spec.Unschedulable {
+		t.Error("expected node to remain cordoned because Drain spec was nil")
+	}
+}
+
 func TestTalosReconcile_MultiNodeFullLifecycle(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
@@ -1863,5 +1964,101 @@ func TestTalosGetSortedNodes_InvalidSelector(t *testing.T) {
 	_, err := r.getSortedNodes(context.Background(), ns)
 	if err == nil {
 		t.Error("expected error for invalid nodeSelector, got nil")
+	}
+}
+
+func TestDrainNode_CordonsAndDrains(t *testing.T) {
+	scheme := newTestScheme()
+	node := newNode(fakeNodeA, "10.0.0.1")
+
+	// Add a running pod on the node
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "default",
+		},
+		Spec: corev1.PodSpec{
+			NodeName: fakeNodeA,
+		},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+		},
+	}
+
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{}
+
+	// Create client with field indexer for spec.nodeName
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithIndex(&corev1.Pod{}, "spec.nodeName", func(obj client.Object) []string {
+			return []string{obj.(*corev1.Pod).Spec.NodeName}
+		}).
+		WithObjects(node, pod).Build()
+	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+
+	// Test drainNode
+	err := r.drainNode(context.Background(), fakeNodeA, tu.Spec.Drain)
+	if err != nil {
+		t.Fatalf("drainNode() error = %v", err)
+	}
+
+	// Verify node is cordoned
+	var updatedNode corev1.Node
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: fakeNodeA}, &updatedNode); err != nil {
+		t.Fatalf("failed to get node: %v", err)
+	}
+
+	if !updatedNode.Spec.Unschedulable {
+		t.Error("expected node to be cordoned after drain")
+	}
+}
+
+func TestDrainNode_WithDisableEviction(t *testing.T) {
+	scheme := newTestScheme()
+	node := newNode(fakeNodeA, "10.0.0.1")
+
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{
+		DisableEviction: ptr.To(true),
+	}
+
+	// Create client with field indexer for spec.nodeName
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithIndex(&corev1.Pod{}, "spec.nodeName", func(obj client.Object) []string {
+			return []string{obj.(*corev1.Pod).Spec.NodeName}
+		}).
+		WithObjects(node).Build()
+	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+
+	// Test drainNode with disableEviction
+	err := r.drainNode(context.Background(), fakeNodeA, tu.Spec.Drain)
+	if err != nil {
+		t.Fatalf("drainNode() with disableEviction error = %v", err)
+	}
+
+	// Verify node is cordoned
+	var updatedNode corev1.Node
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: fakeNodeA}, &updatedNode); err != nil {
+		t.Fatalf("failed to get node: %v", err)
+	}
+
+	if !updatedNode.Spec.Unschedulable {
+		t.Error("expected node to be cordoned")
+	}
+}
+
+func TestDrainNode_InvalidNode(t *testing.T) {
+	scheme := newTestScheme()
+
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+
+	// Test drainNode on non-existent node
+	err := r.drainNode(context.Background(), "nonexistent-node", tu.Spec.Drain)
+	if err == nil {
+		t.Fatal("expected error for non-existent node, got nil")
 	}
 }

@@ -30,8 +30,39 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - nodes
   - pods
+  verbs:
+  - get
+  - list
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - pods/eviction
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
   - secrets
   verbs:
   - get
@@ -78,6 +109,7 @@ rules:
   - get
   - patch
   - update
+
 {{- if .Values.webhook.enabled }}
 # Self-signed certificate management
 - apiGroups:

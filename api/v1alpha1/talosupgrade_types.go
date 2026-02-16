@@ -51,6 +51,30 @@ type PolicySpec struct {
 	Timeout *metav1.Duration `json:"timeout,omitempty"`
 }
 
+type DrainSpec struct {
+	// DeleteLocalData causes the drain to continue even if there are pods using emptyDir
+	// (local data that will be deleted when the node is drained).
+	// +optional
+	DeleteLocalData *bool `json:"deleteLocalData,omitempty"`
+
+	// IgnoreDaemonSets ignores DaemonSet-managed pods.
+	// +optional
+	IgnoreDaemonSets *bool `json:"ignoreDaemonSets,omitempty"`
+
+	// Force continues even if there are pods that do not declare a controller.
+	// +optional
+	Force *bool `json:"force,omitempty"`
+
+	// DisableEviction forces drain to use delete, even if eviction is supported.
+	// +optional
+	DisableEviction *bool `json:"disableEviction,omitempty"`
+
+	// SkipWaitForDeleteTimeout specifies that if a pod DeletionTimestamp is older than N seconds,
+	// skip waiting for the pod. Seconds must be greater than 0 to skip.
+	// +optional
+	SkipWaitForDeleteTimeout *int `json:"skipWaitForDeleteTimeout,omitempty"`
+}
+
 // TalosUpgradeSpec defines the desired state of TalosUpgrade
 type TalosUpgradeSpec struct {
 	// HealthChecks defines a list of CEL-based health checks to perform before each node upgrade
@@ -76,6 +100,10 @@ type TalosUpgradeSpec struct {
 	// NodeSelector defines which nodes should be included in this upgrade.
 	// +optional
 	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
+
+	// Drain configuration for the node prior to upgrade
+	// +optional
+	Drain *DrainSpec `json:"drain,omitempty"`
 }
 
 // TalosUpgradeStatus defines the observed state of TalosUpgrade

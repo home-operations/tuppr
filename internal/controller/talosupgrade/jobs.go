@@ -21,6 +21,7 @@ import (
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
+	"github.com/home-operations/tuppr/internal/controller/drain"
 	"github.com/home-operations/tuppr/internal/controller/maintenance"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/metrics"
@@ -70,6 +71,22 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, talosUpgrade *tupprv1
 	}
 
 	logger.Info("Node verified as upgraded and ready", "node", nodeName)
+
+	if talosUpgrade.Spec.Drain != nil {
+		logger.Info("Uncordoning node after successful upgrade", "node", nodeName)
+		node := &corev1.Node{}
+		if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
+			logger.Error(err, "Failed to get node for uncordon", "node", nodeName)
+		} else {
+			// Only patch if currently unschedulable
+			if node.Spec.Unschedulable {
+				patch := []byte(`{"spec":{"unschedulable":false}}`)
+				if err := r.Patch(ctx, node, client.RawPatch(types.MergePatchType, patch)); err != nil {
+					logger.Error(err, "Failed to uncordon node", "node", nodeName)
+				}
+			}
+		}
+	}
 
 	if err := r.cleanupJobForNode(ctx, nodeName); err != nil {
 		logger.Error(err, "Failed to cleanup job, but continuing", "node", nodeName)
@@ -543,6 +560,16 @@ func (r *Reconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1a
 
 	logger.Info("Found next node to upgrade", "node", nextNode)
 
+	// Drain node before upgrade if drain spec is configured
+	if talosUpgrade.Spec.Drain != nil {
+		logger.Info("Draining node before upgrade", "node", nextNode)
+		if err := r.drainNode(ctx, nextNode, talosUpgrade.Spec.Drain); err != nil {
+			logger.Error(err, "Failed to drain node", "node", nextNode)
+			return ctrl.Result{RequeueAfter: time.Minute}, nil
+		}
+		logger.Info("Node drained successfully", "node", nextNode)
+	}
+
 	if _, err := r.createJob(ctx, talosUpgrade, nextNode, targetImage); err != nil {
 		logger.Error(err, "Failed to create upgrade job", "node", nextNode)
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
@@ -662,4 +689,26 @@ func (r *Reconciler) nodeNeedsUpgrade(ctx context.Context, node *corev1.Node, cr
 	}
 
 	return false, nil
+}
+
+func (r *Reconciler) drainNode(ctx context.Context, nodeName string, drainSpec *tupprv1alpha1.DrainSpec) error {
+	drainer := drain.NewDrainer(r.Client)
+
+	// Cordon the node first
+	if err := drainer.CordonNode(ctx, nodeName); err != nil {
+		return fmt.Errorf("failed to cordon node %s: %w", nodeName, err)
+	}
+
+	opts := drain.DrainOptions{
+		RespectPDBs: drainSpec.DisableEviction == nil || !*drainSpec.DisableEviction,
+		Timeout:     10 * time.Minute,
+		GracePeriod: nil,
+	}
+
+	// Drain the node
+	if err := drainer.DrainNode(ctx, nodeName, opts); err != nil {
+		return fmt.Errorf("failed to drain node %s: %w", nodeName, err)
+	}
+
+	return nil
 }
