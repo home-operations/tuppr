@@ -153,16 +153,18 @@ func phaseToFloat64(phase string) float64 {
 	switch phase {
 	case "Pending":
 		return 0
-	case "Draining":
+	case "HealthChecking":
 		return 1
-	case "Upgrading":
+	case "Draining":
 		return 2
-	case "Rebooting":
+	case "Upgrading":
 		return 3
-	case "Completed":
+	case "Rebooting":
 		return 4
-	case "Failed":
+	case "Completed":
 		return 5
+	case "Failed":
+		return 6
 	default:
 		return -1
 	}

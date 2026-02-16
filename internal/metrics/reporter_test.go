@@ -10,11 +10,12 @@ func TestPhaseToFloat64(t *testing.T) {
 		want  float64
 	}{
 		{"Pending", 0},
-		{"Draining", 1},
-		{"Upgrading", 2},
-		{"Rebooting", 3},
-		{"Completed", 4},
-		{"Failed", 5},
+		{"HealthChecking", 1},
+		{"Draining", 2},
+		{"Upgrading", 3},
+		{"Rebooting", 4},
+		{"Completed", 5},
+		{"Failed", 6},
 		{"Unknown", -1},
 		{"", -1},
 	}

@@ -109,7 +109,7 @@ type TalosUpgradeSpec struct {
 // TalosUpgradeStatus defines the observed state of TalosUpgrade
 type TalosUpgradeStatus struct {
 	// Phase represents the current phase of the upgrade
-	// +kubebuilder:validation:Enum=Pending;Draining;Upgrading;Rebooting;Completed;Failed
+	// +kubebuilder:validation:Enum=Pending;HealthChecking;Draining;Upgrading;Rebooting;Completed;Failed
 	// +optional
 	Phase JobPhase `json:"phase,omitempty"`
 
