@@ -98,6 +98,23 @@ spec:
       - {key: tuppr.home-operations.com/upgrade, operator: In, values: ["enabled"]}
       # Exclude control plane nodes from this specific plan
       - {key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}
+
+  # Configure drain behavior (optional)
+  drain:
+    # Continue even if there are pods using emptyDir (local data)
+    deleteLocalData: true
+
+    # Ignore DaemonSet-managed pods
+    ignoreDaemonSets: true
+
+    # Force drain even if pods do not declare a controller
+    force: true
+
+    # Optional: Force delete instead of eviction
+    # disableEviction: false
+
+    # Optional: Skip waiting for delete timeout (seconds)
+    # skipWaitForDeleteTimeout: 0
 ```
 
 #### Kubernetes Upgrades
