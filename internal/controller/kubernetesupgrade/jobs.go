@@ -70,7 +70,7 @@ func (r *Reconciler) handleJobStatus(ctx context.Context, kubernetesUpgrade *tup
 
 func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, job *batchv1.Job) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Kubernetes upgrade job completed successfully", "job", job.Name)
+	logger.V(1).Info("Kubernetes upgrade job completed, verifying", "job", job.Name)
 
 	targetVersion := kubernetesUpgrade.Spec.Kubernetes.Version
 
@@ -81,7 +81,7 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tu
 	}
 
 	if allUpgraded {
-		logger.Info("All control plane nodes are at target version", "version", targetVersion)
+		logger.Info("All control plane nodes at target version", "version", targetVersion)
 		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseCompleted, "", fmt.Sprintf("Cluster successfully upgraded to %s", targetVersion)); err != nil {
 			logger.Error(err, "Failed to update completion phase")
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
@@ -103,13 +103,13 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tu
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 	}
 
-	logger.Info("Successfully completed Kubernetes upgrade and cleaned up job", "version", targetVersion)
+	logger.Info("Kubernetes upgrade completed", "version", targetVersion)
 	return ctrl.Result{RequeueAfter: time.Hour}, nil
 }
 
 func (r *Reconciler) handleJobFailure(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, job *batchv1.Job) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Kubernetes upgrade job failed permanently", "job", job.Name)
+	logger.Info("Kubernetes upgrade job failed", "job", job.Name)
 
 	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
 		"phase":     tupprv1alpha1.JobPhaseFailed,
@@ -121,13 +121,13 @@ func (r *Reconciler) handleJobFailure(ctx context.Context, kubernetesUpgrade *tu
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 	}
 
-	logger.Info("Successfully marked Kubernetes upgrade as failed")
+	logger.V(1).Info("Recorded Kubernetes upgrade failure")
 	return ctrl.Result{RequeueAfter: time.Minute * 10}, nil
 }
 
 func (r *Reconciler) cleanupJob(ctx context.Context, job *batchv1.Job) error {
 	logger := log.FromContext(ctx)
-	logger.Info("Deleting successful Kubernetes upgrade job and its pods", "job", job.Name)
+	logger.V(1).Info("Deleting completed Kubernetes upgrade job", "job", job.Name)
 
 	deletePolicy := metav1.DeletePropagationForeground
 	if err := r.Delete(ctx, job, &client.DeleteOptions{

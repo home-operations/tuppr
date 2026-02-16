@@ -81,7 +81,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 			logger.Error(err, "Failed to check for other active upgrades")
 			return ctrl.Result{RequeueAfter: time.Minute}, nil
 		} else if blocked {
-			logger.Info("Blocked by another upgrade", "reason", message)
+			logger.Info("Waiting for another upgrade to complete", "reason", message)
 			if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
 				logger.Error(err, "Failed to update phase for coordination wait")
 			}
@@ -115,13 +115,13 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 	}
 
 	if allUpgraded {
-		logger.Info("All control plane nodes verified at target version", "version", targetVersion)
+		logger.V(1).Info("All control plane nodes verified at target version", "version", targetVersion)
 
 		if !strings.HasPrefix(currentVersion, "v") {
 			currentVersion = "v" + currentVersion
 		}
 		if currentVersion != targetVersion {
-			logger.Info("Nodes are updated but API server (VIP) still reports old version. Waiting for cache/LB update.")
+			logger.V(1).Info("Nodes are updated but API server still reports old version, waiting for propagation")
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
 
@@ -141,7 +141,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 		logger.Error(err, "Failed to update phase for health check")
 	}
 	if err := r.HealthChecker.CheckHealth(ctx, kubernetesUpgrade.Spec.HealthChecks); err != nil {
-		logger.Info("Health checks failed, will retry", "error", err.Error())
+		logger.Info("Waiting for health checks to pass", "error", err.Error())
 		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
 			logger.Error(err, "Failed to update phase for health check")
 		}
@@ -255,7 +255,7 @@ func (r *Reconciler) areAllControlPlaneNodesUpgraded(ctx context.Context, target
 
 	for _, node := range nodeList.Items {
 		if node.Status.NodeInfo.KubeletVersion != targetVersion {
-			log.FromContext(ctx).Info("Control plane node not yet upgraded",
+			log.FromContext(ctx).V(1).Info("Control plane node not yet upgraded",
 				"node", node.Name,
 				"current", node.Status.NodeInfo.KubeletVersion,
 				"target", targetVersion)
