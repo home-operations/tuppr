@@ -146,7 +146,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 			nextTimestamp := maintenanceRes.NextWindowStart.Unix()
 			r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, false, &nextTimestamp)
 			if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
-				"phase":                 tupprv1alpha1.JobPhasePending,
+				"phase":                 tupprv1alpha1.JobPhaseMaintenanceWindow,
 				"currentNode":           "",
 				"message":               fmt.Sprintf("Waiting for maintenance window (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339)),
 				"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),

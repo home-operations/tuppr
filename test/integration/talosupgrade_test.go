@@ -221,8 +221,15 @@ var _ = Describe("TalosUpgrade Integration", func() {
 				job = jobList.Items[0]
 			}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
 
-			job.Status.Succeeded = 1
-			Expect(k8sClient.Status().Update(ctx, &job)).To(Succeed())
+			Eventually(func(g Gomega) {
+				jobList := &batchv1.JobList{}
+				err := k8sClient.List(ctx, jobList, client.MatchingLabels{"app.kubernetes.io/name": "talos-upgrade"})
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(jobList.Items).To(HaveLen(1))
+				job = jobList.Items[0]
+				job.Status.Succeeded = 1
+				g.Expect(k8sClient.Status().Update(ctx, &job)).To(Succeed())
+			}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
 
 			mockTalos.SetNodeVersion("10.0.0.10", "v1.11.0")
 
