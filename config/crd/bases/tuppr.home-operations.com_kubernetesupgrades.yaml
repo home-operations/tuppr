@@ -202,12 +202,22 @@ spec:
                 format: int64
                 type: integer
               phase:
+                allOf:
+                - enum:
+                  - Pending
+                  - Draining
+                  - Upgrading
+                  - Rebooting
+                  - Completed
+                  - Failed
+                - enum:
+                  - Pending
+                  - Draining
+                  - Upgrading
+                  - Rebooting
+                  - Completed
+                  - Failed
                 description: Phase represents the current phase of the upgrade
-                enum:
-                - Pending
-                - InProgress
-                - Completed
-                - Failed
                 type: string
               retries:
                 description: Retries is the number of times the upgrade was attempted

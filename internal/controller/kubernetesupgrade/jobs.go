@@ -50,7 +50,7 @@ func (r *Reconciler) handleJobStatus(ctx context.Context, kubernetesUpgrade *tup
 	if job.Status.Succeeded == 0 && (job.Status.Failed == 0 || job.Status.Failed < *job.Spec.BackoffLimit) {
 		message := fmt.Sprintf("Upgrading Kubernetes to %s (job: %s)", kubernetesUpgrade.Spec.Kubernetes.Version, job.Name)
 		if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-			"phase":   constants.PhaseInProgress,
+			"phase":   tupprv1alpha1.JobPhaseUpgrading,
 			"message": message,
 			"jobName": job.Name,
 		}); err != nil {
@@ -82,7 +82,7 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tu
 
 	if allUpgraded {
 		logger.Info("All control plane nodes are at target version", "version", targetVersion)
-		if err := r.setPhase(ctx, kubernetesUpgrade, constants.PhaseCompleted, "", fmt.Sprintf("Cluster successfully upgraded to %s", targetVersion)); err != nil {
+		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseCompleted, "", fmt.Sprintf("Cluster successfully upgraded to %s", targetVersion)); err != nil {
 			logger.Error(err, "Failed to update completion phase")
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 		}
@@ -94,7 +94,7 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tu
 	}
 
 	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-		"phase":          constants.PhaseCompleted,
+		"phase":          tupprv1alpha1.JobPhaseCompleted,
 		"currentVersion": targetVersion,
 		"message":        fmt.Sprintf("Successfully upgraded Kubernetes to %s", targetVersion),
 		"jobName":        "",
@@ -112,7 +112,7 @@ func (r *Reconciler) handleJobFailure(ctx context.Context, kubernetesUpgrade *tu
 	logger.Info("Kubernetes upgrade job failed permanently", "job", job.Name)
 
 	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-		"phase":     constants.PhaseFailed,
+		"phase":     tupprv1alpha1.JobPhaseFailed,
 		"message":   "Kubernetes upgrade job failed permanently",
 		"lastError": "Job failed permanently",
 		"jobName":   job.Name,
@@ -147,7 +147,7 @@ func (r *Reconciler) startUpgrade(ctx context.Context, kubernetesUpgrade *tupprv
 	controllerNode, controllerIP, err := r.findControllerNode(ctx, targetVersion)
 	if err != nil {
 		logger.Error(err, "Failed to find controller node")
-		if err := r.setPhase(ctx, kubernetesUpgrade, constants.PhaseFailed, "", fmt.Sprintf("Failed to find controller node: %s", err.Error())); err != nil {
+		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseFailed, "", fmt.Sprintf("Failed to find controller node: %s", err.Error())); err != nil {
 			logger.Error(err, "Failed to update phase for controller node failure")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
@@ -158,7 +158,7 @@ func (r *Reconciler) startUpgrade(ctx context.Context, kubernetesUpgrade *tupprv
 	job, err := r.createJob(ctx, kubernetesUpgrade, controllerNode, controllerIP)
 	if err != nil {
 		logger.Error(err, "Failed to create Kubernetes upgrade job")
-		if err := r.setPhase(ctx, kubernetesUpgrade, constants.PhaseFailed, controllerNode, fmt.Sprintf("Failed to create job: %s", err.Error())); err != nil {
+		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseFailed, controllerNode, fmt.Sprintf("Failed to create job: %s", err.Error())); err != nil {
 			logger.Error(err, "Failed to update phase for job creation failure")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
@@ -167,7 +167,7 @@ func (r *Reconciler) startUpgrade(ctx context.Context, kubernetesUpgrade *tupprv
 	logger.Info("Successfully created Kubernetes upgrade job", "job", job.Name, "controllerNode", controllerNode)
 
 	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-		"phase":          constants.PhaseInProgress,
+		"phase":          tupprv1alpha1.JobPhaseUpgrading,
 		"controllerNode": controllerNode,
 		"jobName":        job.Name,
 		"message":        fmt.Sprintf("Upgrading Kubernetes to %s on controller node %s", kubernetesUpgrade.Spec.Kubernetes.Version, controllerNode),

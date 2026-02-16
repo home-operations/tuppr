@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
-	"github.com/home-operations/tuppr/internal/constants"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -47,19 +46,19 @@ func TestIsAnotherUpgradeActive(t *testing.T) {
 			existingObjects: []client.Object{
 				&tupprv1alpha1.KubernetesUpgrade{
 					ObjectMeta: metav1.ObjectMeta{Name: "k8s-upgrade"},
-					Status:     tupprv1alpha1.KubernetesUpgradeStatus{Phase: constants.PhasePending},
+					Status:     tupprv1alpha1.KubernetesUpgradeStatus{Phase: tupprv1alpha1.JobPhasePending},
 				},
 			},
 			wantBlocked: false,
 		},
 		{
-			name:        "Talos checks: K8s upgrade is InProgress (SHOULD block)",
+			name:        "Talos checks: K8s upgrade is Upgrading (SHOULD block)",
 			currentName: "talos-upgrade",
 			currentType: "talos",
 			existingObjects: []client.Object{
 				&tupprv1alpha1.KubernetesUpgrade{
 					ObjectMeta: metav1.ObjectMeta{Name: "k8s-upgrade"},
-					Status:     tupprv1alpha1.KubernetesUpgradeStatus{Phase: constants.PhaseInProgress},
+					Status:     tupprv1alpha1.KubernetesUpgradeStatus{Phase: tupprv1alpha1.JobPhaseUpgrading},
 				},
 			},
 			wantBlocked:     true,
@@ -68,13 +67,13 @@ func TestIsAnotherUpgradeActive(t *testing.T) {
 
 		// --- Scenarios where Talos is checking (Same-Type: Queuing) ---
 		{
-			name:        "Talos checks: Another Talos plan is InProgress (SHOULD block)",
+			name:        "Talos checks: Another Talos plan is Upgrading (SHOULD block)",
 			currentName: "talos-worker-west",
 			currentType: "talos",
 			existingObjects: []client.Object{
 				&tupprv1alpha1.TalosUpgrade{
 					ObjectMeta: metav1.ObjectMeta{Name: "talos-worker-east"},
-					Status:     tupprv1alpha1.TalosUpgradeStatus{Phase: constants.PhaseInProgress},
+					Status:     tupprv1alpha1.TalosUpgradeStatus{Phase: tupprv1alpha1.JobPhaseUpgrading},
 				},
 			},
 			wantBlocked:     true,
@@ -87,19 +86,19 @@ func TestIsAnotherUpgradeActive(t *testing.T) {
 			existingObjects: []client.Object{
 				&tupprv1alpha1.TalosUpgrade{
 					ObjectMeta: metav1.ObjectMeta{Name: "talos-worker-east"},
-					Status:     tupprv1alpha1.TalosUpgradeStatus{Phase: constants.PhasePending},
+					Status:     tupprv1alpha1.TalosUpgradeStatus{Phase: tupprv1alpha1.JobPhasePending},
 				},
 			},
 			wantBlocked: false,
 		},
 		{
-			name:        "Talos checks: Self is InProgress (Should NOT block)",
+			name:        "Talos checks: Self is Upgrading (Should NOT block)",
 			currentName: "talos-worker-west",
 			currentType: "talos",
 			existingObjects: []client.Object{
 				&tupprv1alpha1.TalosUpgrade{
 					ObjectMeta: metav1.ObjectMeta{Name: "talos-worker-west"},
-					Status:     tupprv1alpha1.TalosUpgradeStatus{Phase: constants.PhaseInProgress},
+					Status:     tupprv1alpha1.TalosUpgradeStatus{Phase: tupprv1alpha1.JobPhaseUpgrading},
 				},
 			},
 			wantBlocked: false,
@@ -114,13 +113,13 @@ func TestIsAnotherUpgradeActive(t *testing.T) {
 			wantBlocked:     false,
 		},
 		{
-			name:        "K8s checks: Talos upgrade is InProgress (SHOULD block)",
+			name:        "K8s checks: Talos upgrade is Upgrading (SHOULD block)",
 			currentName: "k8s-upgrade",
 			currentType: "kubernetes",
 			existingObjects: []client.Object{
 				&tupprv1alpha1.TalosUpgrade{
 					ObjectMeta: metav1.ObjectMeta{Name: "talos-upgrade"},
-					Status:     tupprv1alpha1.TalosUpgradeStatus{Phase: constants.PhaseInProgress},
+					Status:     tupprv1alpha1.TalosUpgradeStatus{Phase: tupprv1alpha1.JobPhaseUpgrading},
 				},
 			},
 			wantBlocked:     true,
@@ -133,7 +132,7 @@ func TestIsAnotherUpgradeActive(t *testing.T) {
 			existingObjects: []client.Object{
 				&tupprv1alpha1.TalosUpgrade{
 					ObjectMeta: metav1.ObjectMeta{Name: "talos-upgrade"},
-					Status:     tupprv1alpha1.TalosUpgradeStatus{Phase: constants.PhasePending},
+					Status:     tupprv1alpha1.TalosUpgradeStatus{Phase: tupprv1alpha1.JobPhasePending},
 				},
 			},
 			wantBlocked:     true,

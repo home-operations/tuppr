@@ -34,9 +34,9 @@ type KubernetesUpgradeSpec struct {
 // KubernetesUpgradeStatus defines the observed state of KubernetesUpgrade
 type KubernetesUpgradeStatus struct {
 	// Phase represents the current phase of the upgrade
-	// +kubebuilder:validation:Enum=Pending;InProgress;Completed;Failed
+	// +kubebuilder:validation:Enum=Pending;Draining;Upgrading;Rebooting;Completed;Failed
 	// +optional
-	Phase string `json:"phase,omitempty"`
+	Phase JobPhase `json:"phase,omitempty"`
 
 	// ControllerNode is the controller node being used for the upgrade
 	// +optional

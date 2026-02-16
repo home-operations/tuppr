@@ -17,7 +17,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
-	"github.com/home-operations/tuppr/internal/constants"
 	"github.com/home-operations/tuppr/internal/controller/coordination"
 	"github.com/home-operations/tuppr/internal/controller/maintenance"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
@@ -124,12 +123,17 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
 	}
 
-	if talosUpgrade.Status.Phase == constants.PhaseCompleted || talosUpgrade.Status.Phase == constants.PhaseFailed {
-		logger.V(1).Info("Upgrade already completed or failed", "phase", talosUpgrade.Status.Phase)
+	if talosUpgrade.Status.Phase == tupprv1alpha1.JobPhaseCompleted {
+		logger.V(1).Info("Talos upgrade completed, skipping", "phase", talosUpgrade.Status.Phase)
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
 
-	if talosUpgrade.Status.Phase != constants.PhaseInProgress {
+	if talosUpgrade.Status.Phase == tupprv1alpha1.JobPhaseFailed {
+		logger.V(1).Info("Talos upgrade failed, skipping", "phase", talosUpgrade.Status.Phase)
+		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+	}
+
+	if !talosUpgrade.Status.Phase.IsActive() {
 		maintenanceRes, err := maintenance.CheckWindow(talosUpgrade.Spec.Maintenance, now)
 		if err != nil {
 			return ctrl.Result{RequeueAfter: time.Second * 30}, err
@@ -142,7 +146,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 			nextTimestamp := maintenanceRes.NextWindowStart.Unix()
 			r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, false, &nextTimestamp)
 			if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
-				"phase":                 constants.PhasePending,
+				"phase":                 tupprv1alpha1.JobPhasePending,
 				"currentNode":           "",
 				"message":               fmt.Sprintf("Waiting for maintenance window (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339)),
 				"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
@@ -154,13 +158,13 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 		r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, true, nil)
 	}
 
-	if talosUpgrade.Status.Phase != constants.PhaseInProgress {
+	if !talosUpgrade.Status.Phase.IsActive() {
 		if blocked, message, err := coordination.IsAnotherUpgradeActive(ctx, r.Client, talosUpgrade.Name, "talos"); err != nil {
 			logger.Error(err, "Failed to check for other active upgrades")
 			return ctrl.Result{RequeueAfter: time.Minute}, nil
 		} else if blocked {
 			logger.Info("Blocked by another upgrade", "reason", message)
-			if err := r.setPhase(ctx, talosUpgrade, constants.PhasePending, "", message); err != nil {
+			if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
 				logger.Error(err, "Failed to update phase for coordination wait")
 			}
 			return ctrl.Result{RequeueAfter: time.Minute * 2}, nil
@@ -179,7 +183,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 		logger.Info("Upgrade has failed nodes, blocking further progress",
 			"failedNodes", len(talosUpgrade.Status.FailedNodes))
 		message := fmt.Sprintf("Upgrade stopped due to %d failed nodes", len(talosUpgrade.Status.FailedNodes))
-		if err := r.setPhase(ctx, talosUpgrade, constants.PhaseFailed, "", message); err != nil {
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseFailed, "", message); err != nil {
 			logger.Error(err, "Failed to update phase for failed nodes")
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 		}
@@ -195,13 +199,14 @@ func (r *Reconciler) completeUpgrade(ctx context.Context, talosUpgrade *tupprv1a
 	completedCount := len(talosUpgrade.Status.CompletedNodes)
 	failedCount := len(talosUpgrade.Status.FailedNodes)
 
-	var phase, message string
+	var phase tupprv1alpha1.JobPhase
+	var message string
 	if failedCount > 0 {
-		phase = constants.PhaseFailed
+		phase = tupprv1alpha1.JobPhaseFailed
 		message = fmt.Sprintf("Completed with failures: %d successful, %d failed", completedCount, failedCount)
 		logger.Info("Upgrade completed with failures", "completed", completedCount, "failed", failedCount)
 	} else {
-		phase = constants.PhaseCompleted
+		phase = tupprv1alpha1.JobPhaseCompleted
 		message = fmt.Sprintf("Successfully upgraded %d nodes", completedCount)
 		logger.Info("Upgrade completed successfully", "nodes", completedCount)
 	}
@@ -273,8 +278,8 @@ func (r *Reconciler) updateStatus(ctx context.Context, talosUpgrade *tupprv1alph
 	return r.Status().Patch(ctx, statusObj, client.RawPatch(types.MergePatchType, patchBytes))
 }
 
-func (r *Reconciler) setPhase(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase, currentNode, message string) error {
-	r.MetricsReporter.RecordTalosUpgradePhase(talosUpgrade.Name, phase)
+func (r *Reconciler) setPhase(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, currentNode, message string) error {
+	r.MetricsReporter.RecordTalosUpgradePhase(talosUpgrade.Name, string(phase))
 
 	totalNodes, _ := r.getTotalNodeCount(ctx)
 	r.MetricsReporter.RecordTalosUpgradeNodes(
