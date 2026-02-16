@@ -248,6 +248,45 @@ How it works:
 - The controller checks if a node version or schematic matches the annotation instead of the global TalosUpgrade spec.
 - If an inconsistency is found, an upgrade job is triggered for that node using the override values.
 
+## ⚠️ Safe Talos Upgrade Paths
+
+Talos Linux has specific [supported upgrade paths](https://www.talos.dev/latest/talos-guides/upgrading-talos/#supported-upgrade-paths). You should always upgrade through each minor version sequentially rather than skipping minor versions. For example, upgrading from Talos v1.0 to v1.2.4 requires:
+
+1. Upgrade from v1.0.x to the **latest patch** of v1.0 (e.g., v1.0.6)
+2. Upgrade from v1.0.6 to the **latest patch** of v1.1 (e.g., v1.1.2)
+3. Upgrade from v1.1.2 to v1.2.4
+
+Tuppr does **not** automatically enforce safe upgrade paths — it will upgrade directly to whatever version you specify in the `TalosUpgrade` resource. It is your responsibility to ensure the target version is a valid upgrade from your current version.
+
+### Recommended: Use Renovate for Safe Version Bumps
+
+[Renovate](https://docs.renovatebot.com/) can automate version updates in your GitOps repository while respecting safe upgrade boundaries. Configure it to separate major/minor and minor/patch PRs so you can step through each version sequentially:
+
+```json
+{
+  "packageRules": [
+    {
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["ghcr.io/siderolabs/installer"],
+      "separateMajorMinor": true,
+      "separateMinorPatch": true
+    }
+  ]
+}
+```
+
+- [`separateMajorMinor`](https://docs.renovatebot.com/configuration-options/#separatemajorminor) — creates separate PRs for major vs minor bumps
+- [`separateMinorPatch`](https://docs.renovatebot.com/configuration-options/#separateminorpatch) — creates separate PRs for minor vs patch bumps
+
+This way, Renovate will propose incremental version bumps that you can merge one at a time, ensuring you follow the supported upgrade path. Combine this with the `renovate` comment in your `TalosUpgrade` spec:
+
+```yaml
+spec:
+  talos:
+    # renovate: datasource=docker depName=ghcr.io/siderolabs/installer
+    version: v1.11.0
+```
+
 ## 📊 Monitoring & Metrics
 
 ### Prometheus Metrics
