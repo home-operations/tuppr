@@ -137,9 +137,12 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 
 	logger.Info("Kubernetes upgrade needed", "current", currentVersion, "target", targetVersion)
 
+	if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", "Running health checks"); err != nil {
+		logger.Error(err, "Failed to update phase for health check")
+	}
 	if err := r.HealthChecker.CheckHealth(ctx, kubernetesUpgrade.Spec.HealthChecks); err != nil {
 		logger.Info("Health checks failed, will retry", "error", err.Error())
-		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
+		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
 			logger.Error(err, "Failed to update phase for health check")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute}, nil

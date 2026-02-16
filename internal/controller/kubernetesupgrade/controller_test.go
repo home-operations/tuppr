@@ -378,8 +378,8 @@ func TestK8sReconcile_HealthCheckFailure(t *testing.T) {
 	}
 
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
-		t.Fatalf("expected phase Pending while health checks fail, got: %s", updated.Status.Phase)
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseHealthChecking {
+		t.Fatalf("expected phase HealthChecking while health checks fail, got: %s", updated.Status.Phase)
 	}
 	if !strings.Contains(updated.Status.Message, "health") {
 		t.Fatalf("expected message about health checks, got: %s", updated.Status.Message)
