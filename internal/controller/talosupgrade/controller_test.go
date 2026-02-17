@@ -685,6 +685,56 @@ func TestTalosReconcile_HandlesActiveJobRunning(t *testing.T) {
 	}
 }
 
+func TestTalosReconcile_HandlesActiveJobRunning_NodeNotReady_Rebooting(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
+	)
+	// Node exists but is NotReady (simulating a reboot)
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: fakeNodeA,
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{Type: corev1.NodeInternalIP, Address: "10.0.0.1"},
+			},
+			Conditions: []corev1.NodeCondition{
+				{Type: corev1.NodeReady, Status: corev1.ConditionFalse},
+			},
+		},
+	}
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-upgrade-node-a-abcd1234",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app.kubernetes.io/name":                "talos-upgrade",
+				"tuppr.home-operations.com/target-node": fakeNodeA,
+			},
+		},
+		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
+		Status: batchv1.JobStatus{Active: 1},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+
+	result := reconcileTalos(t, r, "test-upgrade")
+	if result.RequeueAfter != 30*time.Second {
+		t.Fatalf("expected 30s requeue for active job with rebooting node, got: %v", result.RequeueAfter)
+	}
+
+	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseRebooting {
+		t.Fatalf("expected phase Rebooting when node is NotReady during active job, got: %s", updated.Status.Phase)
+	}
+	if updated.Status.CurrentNode != fakeNodeA {
+		t.Fatalf("expected currentNode=%s, got: %s", fakeNodeA, updated.Status.CurrentNode)
+	}
+}
+
 func TestTalosReconcile_HandlesJobSuccess(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
