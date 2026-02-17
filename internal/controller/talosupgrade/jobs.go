@@ -45,12 +45,23 @@ func (r *Reconciler) handleJobStatus(ctx context.Context, talosUpgrade *tupprv1a
 		"backoffLimit", *job.Spec.BackoffLimit)
 
 	if job.Status.Succeeded == 0 && (job.Status.Failed == 0 || job.Status.Failed < *job.Spec.BackoffLimit) {
+		phase := tupprv1alpha1.JobPhaseUpgrading
 		message := fmt.Sprintf("Upgrading node %s (job: %s)", nodeName, job.Name)
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseUpgrading, nodeName, message); err != nil {
+
+		// Check if the node is NotReady, which indicates it is rebooting
+		node := &corev1.Node{}
+		if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err == nil {
+			if !isNodeReady(node) {
+				phase = tupprv1alpha1.JobPhaseRebooting
+				message = fmt.Sprintf("Node %s is rebooting", nodeName)
+			}
+		}
+
+		if err := r.setPhase(ctx, talosUpgrade, phase, nodeName, message); err != nil {
 			logger.Error(err, "Failed to update phase for active job", "job", job.Name, "node", nodeName)
 			return ctrl.Result{RequeueAfter: time.Second * 30}, err
 		}
-		logger.V(1).Info("Job is still active", "job", job.Name, "node", nodeName)
+		logger.V(1).Info("Job is still active", "job", job.Name, "node", nodeName, "phase", phase)
 		return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 	}
 
@@ -195,6 +206,16 @@ func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv
 		"node", nodeName,
 		"version", currentVersion)
 	return true, nil
+}
+
+// isNodeReady returns true if the node has a Ready condition set to True.
+func isNodeReady(node *corev1.Node) bool {
+	for _, cond := range node.Status.Conditions {
+		if cond.Type == corev1.NodeReady {
+			return cond.Status == corev1.ConditionTrue
+		}
+	}
+	return false
 }
 
 func isTransientError(err error) bool {
