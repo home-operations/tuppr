@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	corev1 "k8s.io/api/core/v1"
 )
 
 func TestIsTransientError(t *testing.T) {
@@ -129,6 +130,62 @@ func TestIsTransientError(t *testing.T) {
 			got := isTransientError(tt.err)
 			if got != tt.want {
 				t.Errorf("isTransientError(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsNodeReady(t *testing.T) {
+	tests := []struct {
+		name string
+		node *corev1.Node
+		want bool
+	}{
+		{
+			name: "node with Ready=True is ready",
+			node: &corev1.Node{
+				Status: corev1.NodeStatus{
+					Conditions: []corev1.NodeCondition{
+						{Type: corev1.NodeReady, Status: corev1.ConditionTrue},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "node with Ready=False is not ready",
+			node: &corev1.Node{
+				Status: corev1.NodeStatus{
+					Conditions: []corev1.NodeCondition{
+						{Type: corev1.NodeReady, Status: corev1.ConditionFalse},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "node with Ready=Unknown is not ready",
+			node: &corev1.Node{
+				Status: corev1.NodeStatus{
+					Conditions: []corev1.NodeCondition{
+						{Type: corev1.NodeReady, Status: corev1.ConditionUnknown},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "node with no conditions is not ready",
+			node: &corev1.Node{},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isNodeReady(tt.node)
+			if got != tt.want {
+				t.Errorf("isNodeReady() = %v, want %v", got, tt.want)
 			}
 		})
 	}
