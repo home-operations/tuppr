@@ -1,0 +1,7 @@
+[tools]
+kubectl = "1.35.1"
+talosctl = "1.12.4"
+helm = "4.1.1"
+stern = "1.33.1"
+jq = "1.8.1"
+opentofu = "1.11.4"
