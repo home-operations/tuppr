@@ -1,0 +1,7 @@
+apiVersion: tuppr.home-operations.com/v1alpha1
+kind: TalosUpgrade
+metadata:
+  name: e2e-talos-upgrade
+spec:
+  talos:
+    version: ${TALOS_TO_VERSION}
