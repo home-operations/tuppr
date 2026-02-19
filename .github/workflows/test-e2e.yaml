@@ -20,6 +20,7 @@ jobs:
       TF_VAR_hcloud_token: ${{ secrets.HETZNER_API_TOKEN }}
       TF_VAR_control_plane_count: ${{ matrix.controllers }}
       TF_VAR_worker_count: ${{ matrix.workers }}
+      TF_VAR_run_id: ${{ github.run_id }}
     defaults:
       run:
         working-directory: test/e2e-hetzner

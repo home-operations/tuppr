@@ -17,7 +17,7 @@ export TF_VAR_hcloud_token="your-hetzner-token"
 
 **Optional:**
 ```bash
-export TF_VAR_run_id="custom-id"              # Default: $GITHUB_RUN_ID or "local"
+export TF_VAR_run_id="custom-id"              # Default: "local"
 export TF_VAR_control_plane_count=3           # Default: 3
 export TF_VAR_worker_count=0                  # Default: 0
 export TF_VAR_talos_bootstrap_version=v1.11.0 # Default: v1.11.0
