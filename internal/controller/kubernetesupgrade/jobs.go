@@ -263,7 +263,7 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 			if talosctlTag == "" {
 				talosctlTag = constants.DefaultTalosctlTag
 
-				logger.Error(err, "Failed to get Talos version from API after retries",
+				logger.Error(err, "Failed to get Talos version from API after retries, using fallback version for talosctl",
 					"node", controllerNode,
 					"controllerIP", controllerIP,
 					"fallbackVersion", talosctlTag,
