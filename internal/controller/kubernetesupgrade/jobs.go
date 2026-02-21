@@ -269,6 +269,7 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 					"fallbackVersion", talosctlTag,
 				)
 			}
+		}
 	}
 	talosctlImage := talosctlRepo + ":" + talosctlTag
 
