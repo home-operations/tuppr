@@ -1,0 +1,44 @@
+name: End-to-end tests
+on:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  e2e-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # TODO: Full matrix once hetzner limits are lifted
+        # controllers: [1, 3]
+        # workers: [0, 3]
+        include:
+          - controllers: 3
+            workers: 0
+          - controllers: 1
+            workers: 1
+    env:
+      TF_VAR_hcloud_token: ${{ secrets.HETZNER_API_TOKEN }}
+      TF_VAR_control_plane_count: ${{ matrix.controllers }}
+      TF_VAR_worker_count: ${{ matrix.workers }}
+      TF_VAR_run_id: ${{ github.run_id }}
+    defaults:
+      run:
+        working-directory: test/e2e-hetzner
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup tools
+        uses: jdx/mise-action@6d1e696aa24c1aa1bcc1adea0212707c71ab78a8 # v3.6.1
+        with:
+          working_directory: test/e2e-hetzner
+
+      - run: tofu -chdir=tofu init
+
+      - run: tofu -chdir=tofu apply -auto-approve
+
+      - run: mise exec -- ./test.sh
+        working-directory: test/e2e-hetzner
+
+      - run: tofu -chdir=tofu destroy -auto-approve
+        if: always()
