@@ -3,7 +3,6 @@ package constants
 // Default image constants
 const (
 	DefaultTalosctlImage = "ghcr.io/siderolabs/talosctl"
-	DefaultTalosctlTag   = "latest"
 )
 
 // Annotation keys
