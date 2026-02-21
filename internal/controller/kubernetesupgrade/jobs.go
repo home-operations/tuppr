@@ -236,17 +236,40 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 
 	talosctlTag := kubernetesUpgrade.Spec.Talosctl.Image.Tag
 	if talosctlTag == "" {
-		if currentVersion, err := r.TalosClient.GetNodeVersion(ctx, controllerIP); err == nil && currentVersion != "" {
-			talosctlTag = currentVersion
-			logger.V(1).Info("Using current node version for talosctl compatibility",
-				"node", controllerNode, "currentVersion", currentVersion)
-		} else {
-			talosctlTag = constants.DefaultTalosctlTag
-			logger.V(1).Info("Could not detect current version, using fallback version for talosctl",
-				"node", controllerNode, "version", talosctlTag)
-		}
-	}
+		var currentVersion string
+		var err error
 
+		for attempt := 1; attempt <= 3; attempt++ {
+			currentVersion, err = r.TalosClient.GetNodeVersion(ctx, controllerIP)
+			if err == nil && currentVersion != "" {
+				talosctlTag = currentVersion
+				logger.V(1).Info("Using current node version for talosctl compatibility",
+					"node", controllerNode,
+					"controllerIP", controllerIP,
+					"currentVersion", currentVersion,
+					"attempt", attempt,
+				)
+				break
+			}
+			if attempt < 3 {
+				logger.V(1).Info("Failed to get Talos version, retrying",
+					"node", controllerNode,
+					"controllerIP", controllerIP,
+					"attempt", attempt,
+					"error", err,
+				)
+				time.Sleep(5 * time.Second)
+			}
+			if talosctlTag == "" {
+				talosctlTag = constants.DefaultTalosctlTag
+
+				logger.Error(err, "Failed to get Talos version from API after retries",
+					"node", controllerNode,
+					"controllerIP", controllerIP,
+					"fallbackVersion", talosctlTag,
+				)
+			}
+	}
 	talosctlImage := talosctlRepo + ":" + talosctlTag
 
 	args := []string{
