@@ -65,6 +65,9 @@ var _ = Describe("KubernetesUpgrade Integration", func() {
 
 	Context("K8s upgrade lifecycle", func() {
 		It("should handle a basic Kubernetes upgrade", func() {
+			By("configuring talos version for the node")
+			mockTalos.SetNodeVersion("10.0.0.20", "v1.33.0")
+
 			By("creating a KubernetesUpgrade resource")
 			k8sUpgrade := &tupprv1alpha1.KubernetesUpgrade{
 				ObjectMeta: metav1.ObjectMeta{
@@ -78,11 +81,41 @@ var _ = Describe("KubernetesUpgrade Integration", func() {
 			}
 			Expect(k8sClient.Create(ctx, k8sUpgrade)).To(Succeed())
 
-			By("verifying the upgrade is processed")
+			By("verifying the upgrade job is created with the correct talosctl image")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "k8s-test-upgrade"}, k8sUpgrade)
+				jobList := &batchv1.JobList{}
+				g.Expect(k8sClient.List(ctx, jobList)).To(Succeed())
+				g.Expect(jobList.Items).NotTo(BeEmpty())
+				container := jobList.Items[0].Spec.Template.Spec.Containers[0]
+				g.Expect(container.Image).To(Equal("ghcr.io/siderolabs/talosctl:v1.33.0"))
+			}, 30*time.Second, 1*time.Second).Should(Succeed())
+
+			By("cleaning up")
+			Expect(k8sClient.Delete(ctx, k8sUpgrade)).To(Succeed())
+		})
+
+		It("should set phase to Failed when talosctl version detection fails", func() {
+			By("not configuring any talos version for the node (simulating API failure)")
+			// mockTalos was Reset() in BeforeEach — GetNodeVersion will return an error
+
+			By("creating a KubernetesUpgrade resource targeting a higher version")
+			k8sUpgrade := &tupprv1alpha1.KubernetesUpgrade{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "k8s-version-detect-fail",
+				},
+				Spec: tupprv1alpha1.KubernetesUpgradeSpec{
+					Kubernetes: tupprv1alpha1.KubernetesSpec{
+						Version: "v1.34.0",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, k8sUpgrade)).To(Succeed())
+
+			By("verifying the upgrade phase is set to Failed")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: "k8s-version-detect-fail"}, k8sUpgrade)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(k8sUpgrade.Status.Phase).NotTo(BeEmpty())
+				g.Expect(k8sUpgrade.Status.Phase).To(Equal(tupprv1alpha1.JobPhaseFailed))
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 			By("cleaning up")

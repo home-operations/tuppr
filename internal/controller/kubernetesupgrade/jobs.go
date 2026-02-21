@@ -203,7 +203,10 @@ func (r *Reconciler) findControllerNode(ctx context.Context, targetVersion strin
 func (r *Reconciler) createJob(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, controllerNode, controllerIP string) (*batchv1.Job, error) {
 	logger := log.FromContext(ctx)
 
-	job := r.buildJob(ctx, kubernetesUpgrade, controllerNode, controllerIP)
+	job, err := r.buildJob(ctx, kubernetesUpgrade, controllerNode, controllerIP)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build job: %w", err)
+	}
 	if err := controllerutil.SetControllerReference(kubernetesUpgrade, job, r.Scheme); err != nil {
 		return nil, fmt.Errorf("failed to set controller reference: %w", err)
 	}
@@ -217,7 +220,7 @@ func (r *Reconciler) createJob(ctx context.Context, kubernetesUpgrade *tupprv1al
 	return job, nil
 }
 
-func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, controllerNode, controllerIP string) *batchv1.Job {
+func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, controllerNode, controllerIP string) (*batchv1.Job, error) {
 	logger := log.FromContext(ctx)
 
 	jobName := nodeutil.GenerateSafeJobName(kubernetesUpgrade.Name, controllerNode)
@@ -236,15 +239,13 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 
 	talosctlTag := kubernetesUpgrade.Spec.Talosctl.Image.Tag
 	if talosctlTag == "" {
-		if currentVersion, err := r.TalosClient.GetNodeVersion(ctx, controllerIP); err == nil && currentVersion != "" {
-			talosctlTag = currentVersion
-			logger.V(1).Info("Using current node version for talosctl compatibility",
-				"node", controllerNode, "currentVersion", currentVersion)
-		} else {
-			talosctlTag = constants.DefaultTalosctlTag
-			logger.V(1).Info("Could not detect current version, using fallback version for talosctl",
-				"node", controllerNode, "version", talosctlTag)
+		currentVersion, err := r.TalosClient.GetNodeVersion(ctx, controllerIP)
+		if err != nil || currentVersion == "" {
+			return nil, fmt.Errorf("failed to detect talosctl version for node %s: %w", controllerNode, err)
 		}
+		talosctlTag = currentVersion
+		logger.V(1).Info("Using current node version for talosctl compatibility",
+			"node", controllerNode, "currentVersion", currentVersion)
 	}
 
 	talosctlImage := talosctlRepo + ":" + talosctlTag
@@ -344,5 +345,5 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 				},
 			},
 		},
-	}
+	}, nil
 }

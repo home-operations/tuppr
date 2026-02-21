@@ -19,7 +19,10 @@ func TestK8sBuildJob_Properties(t *testing.T) {
 		WithObjects(ku, newControllerNode(fakeCrtl, "10.0.0.1")).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, &mockVersionGetter{}, tc, &mockHealthChecker{})
 
-	job := r.buildJob(context.Background(), ku, fakeCrtl, "10.0.0.1")
+	job, err := r.buildJob(context.Background(), ku, fakeCrtl, "10.0.0.1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if job.Labels["app.kubernetes.io/name"] != "kubernetes-upgrade" {
 		t.Fatalf("expected kubernetes-upgrade label, got: %s", job.Labels["app.kubernetes.io/name"])
@@ -63,7 +66,10 @@ func TestK8sBuildJob_CustomImage(t *testing.T) {
 		WithObjects(ku, newControllerNode(fakeCrtl, "10.0.0.1")).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, &mockVersionGetter{}, &mockTalosClient{}, &mockHealthChecker{})
 
-	job := r.buildJob(context.Background(), ku, fakeCrtl, "10.0.0.1")
+	job, err := r.buildJob(context.Background(), ku, fakeCrtl, "10.0.0.1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	container := job.Spec.Template.Spec.Containers[0]
 	if container.Image != "my-registry.io/talosctl:v1.9.0" {
 		t.Fatalf("expected custom image, got: %s", container.Image)

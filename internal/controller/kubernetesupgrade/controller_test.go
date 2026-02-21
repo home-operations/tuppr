@@ -233,7 +233,8 @@ func TestK8sReconcile_PartialUpgrade_PreventsCompletion(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, nodeA, nodeB).WithStatusSubresource(ku).Build()
 
-	r := newK8sReconciler(cl, vg, &mockTalosClient{}, &mockHealthChecker{})
+	tc := &mockTalosClient{nodeVersions: map[string]string{"10.0.0.2": "v1.33.0"}}
+	r := newK8sReconciler(cl, vg, tc, &mockHealthChecker{})
 
 	result := reconcileK8s(t, r, "test-upgrade")
 
@@ -394,9 +395,10 @@ func TestK8sReconcile_StartsUpgrade(t *testing.T) {
 	)
 	ctrlNode := newControllerNode(fakeCrtl, "10.0.0.1")
 	vg := &mockVersionGetter{version: "v1.33.0"}
+	tc := &mockTalosClient{nodeVersions: map[string]string{"10.0.0.1": "v1.33.0"}}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, ctrlNode).WithStatusSubresource(ku).Build()
-	r := newK8sReconciler(cl, vg, &mockTalosClient{}, &mockHealthChecker{})
+	r := newK8sReconciler(cl, vg, tc, &mockHealthChecker{})
 
 	result := reconcileK8s(t, r, "test-upgrade")
 	if result.RequeueAfter != 30*time.Second {
@@ -698,7 +700,7 @@ func TestK8sFindControllerNode_NoControlPlane(t *testing.T) {
 	}
 }
 
-func TestK8sBuildJob_FallbackTag(t *testing.T) {
+func TestK8sBuildJob_VersionDetectionFailure(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade", withK8sFinalizer)
 	tc := &mockTalosClient{getVersionErr: fmt.Errorf("connection refused")}
@@ -706,11 +708,12 @@ func TestK8sBuildJob_FallbackTag(t *testing.T) {
 		WithObjects(ku, newControllerNode(fakeCrtl, "10.0.0.1")).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, &mockVersionGetter{}, tc, &mockHealthChecker{})
 
-	job := r.buildJob(context.Background(), ku, fakeCrtl, "10.0.0.1")
-	container := job.Spec.Template.Spec.Containers[0]
-	expectedImage := "ghcr.io/siderolabs/talosctl:latest"
-	if container.Image != expectedImage {
-		t.Fatalf("expected fallback image %s, got: %s", expectedImage, container.Image)
+	_, err := r.buildJob(context.Background(), ku, fakeCrtl, "10.0.0.1")
+	if err == nil {
+		t.Fatal("expected error when version detection fails, got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to detect talosctl version") {
+		t.Fatalf("expected version detection error message, got: %v", err)
 	}
 }
 
