@@ -61,8 +61,16 @@ The test script:
 ### 4. Cleanup
 
 ```bash
-cd tofu
-tofu destroy
+export HCLOUD_TOKEN="your-hetzner-token"
+CLUSTER_NAME=$(tofu -chdir=tofu output -raw cluster_name)
+./cleanup.sh "cluster=${CLUSTER_NAME}"
+```
+
+Or clean up all resources from a specific branch:
+
+```bash
+export HCLOUD_TOKEN="your-hetzner-token"
+./cleanup.sh "branch=main"
 ```
 
 ## Variables Reference

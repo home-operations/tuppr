@@ -10,6 +10,12 @@ variable "run_id" {
   default     = ""
 }
 
+variable "branch_name" {
+  description = "Git branch name for resource tracking and cleanup"
+  type        = string
+  default     = ""
+}
+
 variable "control_plane_count" {
   description = "Number of control plane nodes"
   type        = number
@@ -80,8 +86,10 @@ locals {
   config_dir   = var.config_dir != "" ? var.config_dir : "/tmp/tuppr-e2e-${local.run_id}"
 
   common_labels = {
+    cluster             = local.cluster_name
     managed-by          = "tuppr-e2e"
     run-id              = local.run_id
+    branch              = var.branch_name
     control-plane-count = tostring(var.control_plane_count)
     worker-count        = tostring(var.worker_count)
   }
