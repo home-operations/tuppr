@@ -4,7 +4,22 @@ on:
   pull_request:
 
 jobs:
+  cleanup-previous:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: test/e2e-hetzner
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Cleanup previous runs on this branch
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
+        run: ./cleanup.sh "branch=${{ github.head_ref || github.ref_name }}"
+
   e2e-test:
+    needs: cleanup-previous
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -21,6 +36,7 @@ jobs:
       TF_VAR_control_plane_count: ${{ matrix.controllers }}
       TF_VAR_worker_count: ${{ matrix.workers }}
       TF_VAR_run_id: ${{ github.run_id }}
+      TF_VAR_branch_name: ${{ github.head_ref || github.ref_name }}
     defaults:
       run:
         working-directory: test/e2e-hetzner
@@ -40,5 +56,14 @@ jobs:
       - run: mise exec -- ./test.sh
         working-directory: test/e2e-hetzner
 
-      - run: tofu -chdir=tofu destroy -auto-approve
+      - name: Cleanup all resources
         if: always()
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
+        run: |
+          CLUSTER_NAME=$(echo "local.cluster_name" | tofu -chdir=tofu console | tr -d '"')
+          if [[ -z "$CLUSTER_NAME" ]]; then
+            echo "ERROR: Could not determine cluster name - resources may be orphaned!"
+            exit 1
+          fi
+          ./cleanup.sh "cluster=${CLUSTER_NAME}"
