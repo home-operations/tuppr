@@ -8,10 +8,10 @@ on:
     paths:
       - charts/**
       - test/**
+      - Dockerfile
       - go.mod
       - go.sum
-      - *.go
-      - Dockerfile
+      - **.go
   workflow_dispatch:
 
 jobs:
