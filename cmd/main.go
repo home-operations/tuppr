@@ -173,13 +173,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, "spec.nodeName", func(obj client.Object) []string {
-		pod, ok := obj.(*corev1.Pod)
-		if !ok || pod.Spec.NodeName == "" {
-			return nil
-		}
-		return []string{pod.Spec.NodeName}
-	}); err != nil {
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&corev1.Pod{},
+		"spec.nodeName",
+		func(obj client.Object) []string {
+			pod, ok := obj.(*corev1.Pod)
+			if !ok || pod.Spec.NodeName == "" {
+				return nil
+			}
+			return []string{pod.Spec.NodeName}
+		},
+	); err != nil {
 		setupLog.Error(err, "unable to create index", "field", "Pod.spec.nodeName")
 		os.Exit(1)
 	}
