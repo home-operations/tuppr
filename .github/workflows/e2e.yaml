@@ -72,7 +72,7 @@ jobs:
         env:
           HCLOUD_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
         run: |
-          CLUSTER_NAME=$(echo "local.cluster_name" | tofu -chdir=tofu console | tr -d '"')
+          CLUSTER_NAME=$(echo "local.cluster_name" | tofu -chdir=tofu -state=ignore.state console | tr -d '"')
           if [[ -z "$CLUSTER_NAME" ]]; then
             echo "ERROR: Could not determine cluster name - resources may be orphaned!"
             exit 1
