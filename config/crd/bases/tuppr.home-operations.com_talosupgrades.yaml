@@ -327,25 +327,16 @@ spec:
                 format: int64
                 type: integer
               phase:
-                allOf:
-                - enum:
-                  - Pending
-                  - HealthChecking
-                  - Draining
-                  - Upgrading
-                  - Rebooting
-                  - Completed
-                  - Failed
-                  - MaintenanceWindow
-                - enum:
-                  - Pending
-                  - HealthChecking
-                  - Draining
-                  - Upgrading
-                  - Rebooting
-                  - Completed
-                  - Failed
                 description: Phase represents the current phase of the upgrade
+                enum:
+                - Pending
+                - HealthChecking
+                - Draining
+                - Upgrading
+                - Rebooting
+                - Completed
+                - Failed
+                - MaintenanceWindow
                 type: string
             type: object
         type: object
