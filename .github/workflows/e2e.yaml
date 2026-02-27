@@ -11,7 +11,7 @@ on:
       - Dockerfile
       - go.mod
       - go.sum
-      - **.go
+      - "**.go"
   workflow_dispatch:
 
 jobs:
