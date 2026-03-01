@@ -41,6 +41,9 @@ module "talos_cluster" {
   talos_control_plane_extra_config_patches = [
     yamlencode({
       machine = {
+        network = {
+          nameservers = ["1.1.1.1", "8.8.8.8"]
+        }
         features = {
           kubernetesTalosAPIAccess = {
             enabled                     = true
@@ -52,6 +55,16 @@ module "talos_cluster" {
       cluster = {
         controlPlane = {
           endpoint = "https://${hcloud_load_balancer.kube_api.ipv4}:6443"
+        }
+      }
+    })
+  ]
+
+  talos_worker_extra_config_patches = [
+    yamlencode({
+      machine = {
+        network = {
+          nameservers = ["1.1.1.1", "8.8.8.8"]
         }
       }
     })
