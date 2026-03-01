@@ -89,7 +89,7 @@ locals {
     cluster             = local.cluster_name
     managed-by          = "tuppr-e2e"
     run-id              = local.run_id
-    branch              = var.branch_name
+    branch              = replace(var.branch_name, "/", "-")
     control-plane-count = tostring(var.control_plane_count)
     worker-count        = tostring(var.worker_count)
   }
