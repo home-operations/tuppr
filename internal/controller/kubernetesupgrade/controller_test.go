@@ -575,6 +575,57 @@ func TestK8sReconcile_HandlesJobSuccess(t *testing.T) {
 	}
 }
 
+func TestK8sReconcile_JobSuccess_PartialUpgrade_ContinuesToNextNode(t *testing.T) {
+	scheme := newTestScheme()
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		withK8sPhase(tupprv1alpha1.JobPhaseUpgrading),
+	)
+	nodeA := newControllerNodeWithVersion("ctrl-1", "10.0.0.1", "v1.34.0")
+	nodeB := newControllerNodeWithVersion("ctrl-2", "10.0.0.2", "v1.33.0")
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-upgrade-ctrl-1-abcd1234",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app.kubernetes.io/name":                "kubernetes-upgrade",
+				"tuppr.home-operations.com/target-node": "ctrl-1",
+			},
+		},
+		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
+		Status: batchv1.JobStatus{Succeeded: 1},
+	}
+	vg := &mockVersionGetter{version: "v1.34.0"}
+	tc := &mockTalosClient{nodeVersions: map[string]string{"10.0.0.2": "v1.33.0"}}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku, nodeA, nodeB, job).WithStatusSubresource(ku).Build()
+	r := newK8sReconciler(cl, vg, tc, &mockHealthChecker{})
+
+	result := reconcileK8s(t, r, "test-upgrade")
+	if result.RequeueAfter != 10*time.Second {
+		t.Fatalf("expected 10s requeue to continue to next node, got: %v", result.RequeueAfter)
+	}
+	updated := getK8sUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase == tupprv1alpha1.JobPhaseCompleted {
+		t.Fatal("controller marked upgrade Completed despite ctrl-2 still on old version")
+	}
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseUpgrading {
+		t.Fatalf("expected phase Upgrading, got: %s", updated.Status.Phase)
+	}
+	if updated.Status.JobName != "" {
+		t.Fatalf("expected jobName cleared, got: %s", updated.Status.JobName)
+	}
+
+	result = reconcileK8s(t, r, "test-upgrade")
+	if result.RequeueAfter != 30*time.Second {
+		t.Fatalf("expected 30s requeue after creating job for ctrl-2, got: %v", result.RequeueAfter)
+	}
+	updated = getK8sUpgrade(t, cl, "test-upgrade")
+	if updated.Status.ControllerNode != "ctrl-2" {
+		t.Fatalf("expected next job targeting ctrl-2, got: %s", updated.Status.ControllerNode)
+	}
+}
+
 func TestK8sReconcile_JobSuccessButVersionMismatch(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",
