@@ -1733,6 +1733,53 @@ func TestTalosUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
 	}
 }
 
+func TestTalosReconcile_MaintenanceWindowBetweenNodes(t *testing.T) {
+	scheme := newTestScheme()
+	now := time.Date(2025, 6, 15, 10, 0, 0, 0, time.UTC)
+
+	tu := newTalosUpgrade("test",
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
+		withCompletedNodes(fakeNodeA),
+		func(tu *tupprv1alpha1.TalosUpgrade) {
+			tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
+				Windows: []tupprv1alpha1.WindowSpec{
+					{
+						Start:    "0 2 * * *",
+						Duration: metav1.Duration{Duration: 4 * time.Hour},
+						Timezone: "UTC",
+					},
+				},
+			}
+		},
+	)
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tu).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+	r.Now = &fixedClock{now}
+
+	result, err := r.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "test"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequeueAfter == 0 {
+		t.Fatal("expected requeue when outside maintenance window")
+	}
+
+	updated := getTalosUpgrade(t, cl, "test")
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseMaintenanceWindow {
+		t.Fatalf("expected phase MaintenanceWindow between nodes, got: %s", updated.Status.Phase)
+	}
+	if !strings.Contains(updated.Status.Message, "between nodes") {
+		t.Fatalf("expected inter-node message, got: %s", updated.Status.Message)
+	}
+	if updated.Status.NextMaintenanceWindow == nil {
+		t.Fatal("expected nextMaintenanceWindow to be set")
+	}
+}
+
 func TestTalosReconcile_WaitsForImageAvailability(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
