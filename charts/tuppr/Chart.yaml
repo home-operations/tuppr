@@ -4,7 +4,7 @@ name: tuppr
 description: A Helm chart for tuppr - Talos Linux Upgrade Controller
 type: application
 version: 0.0.0
-appVersion: 0.0.0
+appVersion: "0.0.0"
 home: https://github.com/home-operations/tuppr
 sources:
   - https://github.com/home-operations/tuppr
