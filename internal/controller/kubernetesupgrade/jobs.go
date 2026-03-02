@@ -93,18 +93,18 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tu
 		logger.Error(err, "Failed to cleanup job, but continuing", "job", job.Name)
 	}
 
+	logger.Info("Node upgraded, continuing to next control plane node", "version", targetVersion)
 	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-		"phase":          tupprv1alpha1.JobPhaseCompleted,
-		"currentVersion": targetVersion,
-		"message":        fmt.Sprintf("Successfully upgraded Kubernetes to %s", targetVersion),
+		"phase":          tupprv1alpha1.JobPhaseUpgrading,
+		"controllerNode": "",
+		"message":        fmt.Sprintf("Upgrading Kubernetes to %s, continuing to next node", targetVersion),
 		"jobName":        "",
 	}); err != nil {
-		logger.Error(err, "Failed to update completion status")
+		logger.Error(err, "Failed to update status after partial upgrade")
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 	}
 
-	logger.Info("Kubernetes upgrade completed", "version", targetVersion)
-	return ctrl.Result{RequeueAfter: time.Hour}, nil
+	return ctrl.Result{RequeueAfter: time.Second * 10}, nil
 }
 
 func (r *Reconciler) handleJobFailure(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, job *batchv1.Job) (ctrl.Result, error) {
