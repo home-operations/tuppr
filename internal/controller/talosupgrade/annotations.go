@@ -7,11 +7,11 @@ import (
 	"slices"
 
 	batchv1 "k8s.io/api/batch/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
+	"github.com/home-operations/tuppr/internal/controller/jobs"
 )
 
 func (r *Reconciler) handleSuspendAnnotation(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (bool, error) {
@@ -100,16 +100,12 @@ func (r *Reconciler) handleGenerationChange(ctx context.Context, talosUpgrade *t
 }
 
 func (r *Reconciler) findActiveJob(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (*batchv1.Job, string, error) {
-	jobList := &batchv1.JobList{}
-	if err := r.List(ctx, jobList,
-		client.InNamespace(r.ControllerNamespace),
-		client.MatchingLabels{
-			"app.kubernetes.io/name": "talos-upgrade",
-		}); err != nil {
+	jobList, err := jobs.ListJobsByLabel(ctx, r.Client, r.ControllerNamespace, "talos-upgrade")
+	if err != nil {
 		return nil, "", err
 	}
 
-	for _, job := range jobList.Items {
+	for _, job := range jobList {
 		nodeName := job.Labels["tuppr.home-operations.com/target-node"]
 
 		if slices.Contains(talosUpgrade.Status.CompletedNodes, nodeName) {
