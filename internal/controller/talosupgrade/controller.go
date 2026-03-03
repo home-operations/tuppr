@@ -109,8 +109,6 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 
 	logger.V(1).Info("Starting upgrade processing")
 
-	now := r.Now.Now()
-
 	if suspended, err := r.handleSuspendAnnotation(ctx, talosUpgrade); err != nil || suspended {
 		return ctrl.Result{RequeueAfter: time.Minute * 30}, err
 	}
@@ -123,51 +121,17 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
 	}
 
-	if talosUpgrade.Status.Phase == tupprv1alpha1.JobPhaseCompleted {
-		logger.V(1).Info("Talos upgrade completed, skipping", "phase", talosUpgrade.Status.Phase)
-		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
-	}
-
-	if talosUpgrade.Status.Phase == tupprv1alpha1.JobPhaseFailed {
-		logger.V(1).Info("Talos upgrade failed, skipping", "phase", talosUpgrade.Status.Phase)
+	if talosUpgrade.Status.Phase.IsTerminal() {
+		logger.V(1).Info("Talos upgrade in terminal state, skipping", "phase", talosUpgrade.Status.Phase)
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
 
 	if !talosUpgrade.Status.Phase.IsActive() {
-		maintenanceRes, err := maintenance.CheckWindow(talosUpgrade.Spec.Maintenance, now)
-		if err != nil {
-			return ctrl.Result{RequeueAfter: time.Second * 30}, err
+		if result, done, err := r.checkMaintenanceWindow(ctx, talosUpgrade); done {
+			return result, err
 		}
-		if !maintenanceRes.Allowed {
-			requeueAfter := time.Until(*maintenanceRes.NextWindowStart)
-			if requeueAfter > 5*time.Minute {
-				requeueAfter = 5 * time.Minute
-			}
-			nextTimestamp := maintenanceRes.NextWindowStart.Unix()
-			r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, false, &nextTimestamp)
-			if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
-				"phase":                 tupprv1alpha1.JobPhaseMaintenanceWindow,
-				"currentNode":           "",
-				"message":               fmt.Sprintf("Waiting for maintenance window (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339)),
-				"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
-			}); err != nil {
-				logger.Error(err, "Failed to update status for maintenance window")
-			}
-			return ctrl.Result{RequeueAfter: requeueAfter}, nil
-		}
-		r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, true, nil)
-	}
-
-	if !talosUpgrade.Status.Phase.IsActive() {
-		if blocked, message, err := coordination.IsAnotherUpgradeActive(ctx, r.Client, talosUpgrade.Name, coordination.UpgradeTypeTalos); err != nil {
-			logger.Error(err, "Failed to check for other active upgrades")
-			return ctrl.Result{RequeueAfter: time.Minute}, nil
-		} else if blocked {
-			logger.Info("Waiting for another upgrade to complete", "reason", message)
-			if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
-				logger.Error(err, "Failed to update phase for coordination wait")
-			}
-			return ctrl.Result{RequeueAfter: time.Minute * 2}, nil
+		if result, done := r.checkCoordination(ctx, talosUpgrade); done {
+			return result, nil
 		}
 	}
 
@@ -191,6 +155,52 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 	}
 
 	return r.processNextNode(ctx, talosUpgrade)
+}
+
+func (r *Reconciler) checkMaintenanceWindow(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, bool, error) {
+	logger := log.FromContext(ctx)
+
+	maintenanceRes, err := maintenance.CheckWindow(talosUpgrade.Spec.Maintenance, r.Now.Now())
+	if err != nil {
+		return ctrl.Result{RequeueAfter: time.Second * 30}, true, err
+	}
+	if !maintenanceRes.Allowed {
+		requeueAfter := time.Until(*maintenanceRes.NextWindowStart)
+		if requeueAfter > 5*time.Minute {
+			requeueAfter = 5 * time.Minute
+		}
+		nextTimestamp := maintenanceRes.NextWindowStart.Unix()
+		r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, false, &nextTimestamp)
+		if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
+			"phase":                 tupprv1alpha1.JobPhaseMaintenanceWindow,
+			"currentNode":           "",
+			"message":               fmt.Sprintf("Waiting for maintenance window (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339)),
+			"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
+		}); err != nil {
+			logger.Error(err, "Failed to update status for maintenance window")
+		}
+		return ctrl.Result{RequeueAfter: requeueAfter}, true, nil
+	}
+	r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, true, nil)
+	return ctrl.Result{}, false, nil
+}
+
+func (r *Reconciler) checkCoordination(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, bool) {
+	logger := log.FromContext(ctx)
+
+	blocked, message, err := coordination.IsAnotherUpgradeActive(ctx, r.Client, talosUpgrade.Name, coordination.UpgradeTypeTalos)
+	if err != nil {
+		logger.Error(err, "Failed to check for other active upgrades")
+		return ctrl.Result{RequeueAfter: time.Minute}, true
+	}
+	if blocked {
+		logger.Info("Waiting for another upgrade to complete", "reason", message)
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
+			logger.Error(err, "Failed to update phase for coordination wait")
+		}
+		return ctrl.Result{RequeueAfter: time.Minute * 2}, true
+	}
+	return ctrl.Result{}, false
 }
 
 func (r *Reconciler) completeUpgrade(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {

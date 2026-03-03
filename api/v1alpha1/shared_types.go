@@ -109,3 +109,8 @@ const (
 func (p JobPhase) IsActive() bool {
 	return p == JobPhaseHealthChecking || p == JobPhaseDraining || p == JobPhaseUpgrading || p == JobPhaseRebooting
 }
+
+// IsTerminal returns true if the phase is a terminal state (no further processing)
+func (p JobPhase) IsTerminal() bool {
+	return p == JobPhaseCompleted || p == JobPhaseFailed
+}
