@@ -111,6 +111,7 @@ func (r *Reconciler) cleanup(ctx context.Context, talosUpgrade *tupprv1alpha1.Ta
 		return ctrl.Result{}, err
 	}
 
+	r.MetricsReporter.CleanupUpgradeMetrics(metrics.UpgradeTypeTalos, talosUpgrade.Name)
 	logger.V(1).Info("Successfully cleaned up TalosUpgrade", "name", talosUpgrade.Name)
 	return ctrl.Result{}, nil
 }
