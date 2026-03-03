@@ -3,7 +3,6 @@ package kubernetesupgrade
 import (
 	"context"
 	"fmt"
-	"maps"
 	"strings"
 	"time"
 
@@ -14,9 +13,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
-	"github.com/home-operations/tuppr/internal/constants"
 	"github.com/home-operations/tuppr/internal/controller/coordination"
 	"github.com/home-operations/tuppr/internal/controller/maintenance"
+	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/metrics"
 )
 
@@ -162,92 +161,64 @@ func (r *Reconciler) checkCoordination(ctx context.Context, kubernetesUpgrade *t
 	return ctrl.Result{}, false
 }
 
-func (r *Reconciler) handleSuspendAnnotation(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade) (bool, error) {
-	if kubernetesUpgrade.Annotations == nil {
-		return false, nil
-	}
-
-	suspendValue, isSuspended := kubernetesUpgrade.Annotations[constants.SuspendAnnotation]
-	if !isSuspended {
-		return false, nil
-	}
-
+func (r *Reconciler) startUpgrade(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Suspend annotation found, controller is suspended",
-		"suspendValue", suspendValue,
-		"kubernetesupgrade", kubernetesUpgrade.Name)
 
-	message := fmt.Sprintf("Controller suspended via annotation (value: %s) - remove annotation to resume", suspendValue)
-	if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
-		logger.Error(err, "Failed to update phase for suspension")
-		return true, err
+	targetVersion := kubernetesUpgrade.Spec.Kubernetes.Version
+	controllerNode, controllerIP, err := r.findControllerNode(ctx, targetVersion)
+	if err != nil {
+		logger.Error(err, "Failed to find controller node")
+		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseFailed, "", fmt.Sprintf("Failed to find controller node: %s", err.Error())); err != nil {
+			logger.Error(err, "Failed to update phase for controller node failure")
+		}
+		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
 
-	logger.V(1).Info("Controller suspended, no further processing will occur",
-		"kubernetesupgrade", kubernetesUpgrade.Name,
-		"suspendValue", suspendValue)
+	logger.Info("Starting Kubernetes upgrade", "controllerNode", controllerNode, "controllerIP", controllerIP)
 
-	return true, nil
-}
-
-func (r *Reconciler) handleResetAnnotation(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade) (bool, error) {
-	if kubernetesUpgrade.Annotations == nil {
-		return false, nil
+	job, err := r.createJob(ctx, kubernetesUpgrade, controllerNode, controllerIP)
+	if err != nil {
+		logger.Error(err, "Failed to create Kubernetes upgrade job")
+		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseFailed, controllerNode, fmt.Sprintf("Failed to create job: %s", err.Error())); err != nil {
+			logger.Error(err, "Failed to update phase for job creation failure")
+		}
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
-	resetValue, hasReset := kubernetesUpgrade.Annotations[constants.ResetAnnotation]
-	if !hasReset {
-		return false, nil
-	}
-
-	logger := log.FromContext(ctx)
-	logger.Info("Reset annotation found, clearing Kubernetes upgrade state", "resetValue", resetValue)
-
-	newAnnotations := maps.Clone(kubernetesUpgrade.Annotations)
-	maps.DeleteFunc(newAnnotations, func(k, v string) bool {
-		return k == constants.ResetAnnotation
-	})
-
-	kubernetesUpgrade.Annotations = newAnnotations
-	if err := r.Update(ctx, kubernetesUpgrade); err != nil {
-		logger.Error(err, "Failed to remove reset annotation")
-		return false, err
-	}
+	logger.Info("Successfully created Kubernetes upgrade job", "job", job.Name, "controllerNode", controllerNode)
 
 	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-		"phase":          tupprv1alpha1.JobPhasePending,
-		"controllerNode": "",
-		"message":        "Reset requested via annotation",
-		"jobName":        "",
-		"retries":        0,
-		"lastError":      "",
+		"phase":          tupprv1alpha1.JobPhaseUpgrading,
+		"controllerNode": controllerNode,
+		"jobName":        job.Name,
+		"message":        fmt.Sprintf("Upgrading Kubernetes to %s on controller node %s", kubernetesUpgrade.Spec.Kubernetes.Version, controllerNode),
 	}); err != nil {
-		logger.Error(err, "Failed to reset status after annotation")
-		return false, err
+		logger.Error(err, "Failed to update status for job creation")
+		return ctrl.Result{RequeueAfter: time.Second * 30}, err
 	}
 
-	return true, nil
+	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 }
 
-func (r *Reconciler) handleGenerationChange(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade) (bool, error) {
-	if kubernetesUpgrade.Status.ObservedGeneration >= kubernetesUpgrade.Generation {
-		return false, nil
+func (r *Reconciler) findControllerNode(ctx context.Context, targetVersion string) (string, string, error) {
+	nodeList := &corev1.NodeList{}
+	if err := r.List(ctx, nodeList); err != nil {
+		return "", "", fmt.Errorf("failed to list nodes: %w", err)
 	}
 
-	logger := log.FromContext(ctx)
-	logger.Info("Spec generation changed, resetting Kubernetes upgrade process",
-		"generation", kubernetesUpgrade.Generation,
-		"observed", kubernetesUpgrade.Status.ObservedGeneration,
-		"newVersion", kubernetesUpgrade.Spec.Kubernetes.Version)
+	for _, node := range nodeList.Items {
+		if _, isController := node.Labels["node-role.kubernetes.io/control-plane"]; isController {
+			if node.Status.NodeInfo.KubeletVersion != targetVersion {
+				nodeIP, err := nodeutil.GetNodeIP(&node)
+				if err != nil {
+					continue
+				}
+				return node.Name, nodeIP, nil
+			}
+		}
+	}
 
-	return true, r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-		"phase":          tupprv1alpha1.JobPhasePending,
-		"controllerNode": "",
-		"message":        fmt.Sprintf("Spec updated to %s, restarting upgrade process", kubernetesUpgrade.Spec.Kubernetes.Version),
-		"jobName":        "",
-		"retries":        0,
-		"lastError":      "",
-	})
+	return "", "", fmt.Errorf("no controller node found with node-role.kubernetes.io/control-plane label")
 }
 
 func (r *Reconciler) areAllControlPlaneNodesUpgraded(ctx context.Context, targetVersion string) (bool, error) {
