@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
@@ -171,13 +172,15 @@ func phaseToFloat64(phase string) float64 {
 }
 
 type Reporter struct {
-	mu         sync.RWMutex
-	startTimes map[string]*prometheus.Timer
+	mu            sync.RWMutex
+	startTimes    map[string]*prometheus.Timer
+	jobStartTimes map[string]time.Time
 }
 
 func NewReporter() *Reporter {
 	return &Reporter{
-		startTimes: make(map[string]*prometheus.Timer),
+		startTimes:    make(map[string]*prometheus.Timer),
+		jobStartTimes: make(map[string]time.Time),
 	}
 }
 
@@ -238,6 +241,22 @@ func (m *Reporter) RecordJobDuration(upgradeType, nodeName, result string, durat
 	upgradeJobDuration.WithLabelValues(upgradeType, nodeName, result).Observe(duration)
 }
 
+func (m *Reporter) StartJobTiming(upgradeType, upgradeName, nodeName string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.jobStartTimes[upgradeType+":"+upgradeName+":"+nodeName] = time.Now()
+}
+
+func (m *Reporter) EndJobTiming(upgradeType, upgradeName, nodeName, result string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := upgradeType + ":" + upgradeName + ":" + nodeName
+	if start, ok := m.jobStartTimes[key]; ok {
+		upgradeJobDuration.WithLabelValues(upgradeType, nodeName, result).Observe(time.Since(start).Seconds())
+		delete(m.jobStartTimes, key)
+	}
+}
+
 func (m *Reporter) RecordMaintenanceWindow(upgradeType, name string, active bool, nextOpenTimestamp *int64) {
 	if active {
 		maintenanceWindowActive.WithLabelValues(upgradeType, name).Set(1)
@@ -254,9 +273,15 @@ func (m *Reporter) CleanupUpgradeMetrics(upgradeType, name string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	prefix := upgradeType + ":" + name + ":"
 	for key := range m.startTimes {
-		if strings.HasPrefix(key, upgradeType+":"+name+":") {
+		if strings.HasPrefix(key, prefix) {
 			delete(m.startTimes, key)
+		}
+	}
+	for key := range m.jobStartTimes {
+		if strings.HasPrefix(key, prefix) {
+			delete(m.jobStartTimes, key)
 		}
 	}
 

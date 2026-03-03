@@ -20,6 +20,7 @@ import (
 	"github.com/home-operations/tuppr/internal/constants"
 	"github.com/home-operations/tuppr/internal/controller/jobs"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
+	"github.com/home-operations/tuppr/internal/metrics"
 )
 
 func (r *Reconciler) findActiveJob(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (*batchv1.Job, string, error) {
@@ -143,6 +144,8 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, talosUpgrade *tupprv1
 		return ctrl.Result{}, err
 	}
 
+	r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, nodeName, "success")
+	r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeTalos, 0)
 	logger.Info("Node upgrade completed", "node", nodeName,
 		"completedNodes", completedCount)
 	return ctrl.Result{RequeueAfter: time.Second * 5}, nil
@@ -174,6 +177,8 @@ func (r *Reconciler) handleJobFailure(ctx context.Context, talosUpgrade *tupprv1
 		return ctrl.Result{}, err
 	}
 
+	r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, nodeName, "failure")
+	r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeTalos, 0)
 	logger.V(1).Info("Recorded node failure", "node", nodeName, "failedNodes", failedCount)
 	return ctrl.Result{RequeueAfter: time.Minute * 10}, nil
 }
@@ -240,6 +245,8 @@ func (r *Reconciler) createJob(ctx context.Context, talosUpgrade *tupprv1alpha1.
 	}
 
 	logger.Info("Successfully created upgrade job", "job", job.Name, "node", nodeName)
+	r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeTalos, 1)
+	r.MetricsReporter.StartJobTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, nodeName)
 	return job, nil
 }
 

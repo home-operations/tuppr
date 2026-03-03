@@ -106,6 +106,7 @@ func (r *Reconciler) cleanup(ctx context.Context, kubernetesUpgrade *tupprv1alph
 		return ctrl.Result{}, err
 	}
 
+	r.MetricsReporter.CleanupUpgradeMetrics(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name)
 	logger.V(1).Info("Successfully cleaned up KubernetesUpgrade", "name", kubernetesUpgrade.Name)
 	return ctrl.Result{}, nil
 }
