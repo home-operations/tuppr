@@ -7,34 +7,20 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
+	"github.com/home-operations/tuppr/internal/controller/jobs"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 )
 
 func (r *Reconciler) findActiveJob(ctx context.Context) (*batchv1.Job, error) {
-	jobList := &batchv1.JobList{}
-	if err := r.List(ctx, jobList,
-		client.InNamespace(r.ControllerNamespace),
-		client.MatchingLabels{
-			"app.kubernetes.io/name": "kubernetes-upgrade",
-		}); err != nil {
-		return nil, err
-	}
-
-	for _, job := range jobList.Items {
-		return &job, nil
-	}
-
-	return nil, nil
+	return jobs.FindActiveJobByLabel(ctx, r.Client, r.ControllerNamespace, "kubernetes-upgrade")
 }
 
 func (r *Reconciler) handleJobStatus(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, job *batchv1.Job) (ctrl.Result, error) {
@@ -126,18 +112,7 @@ func (r *Reconciler) handleJobFailure(ctx context.Context, kubernetesUpgrade *tu
 }
 
 func (r *Reconciler) cleanupJob(ctx context.Context, job *batchv1.Job) error {
-	logger := log.FromContext(ctx)
-	logger.V(1).Info("Deleting completed Kubernetes upgrade job", "job", job.Name)
-
-	deletePolicy := metav1.DeletePropagationForeground
-	if err := r.Delete(ctx, job, &client.DeleteOptions{
-		PropagationPolicy: &deletePolicy,
-	}); err != nil {
-		logger.Error(err, "Failed to delete successful job", "job", job.Name)
-		return err
-	}
-
-	return nil
+	return jobs.DeleteJob(ctx, r.Client, job)
 }
 
 func (r *Reconciler) startUpgrade(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade) (ctrl.Result, error) {
@@ -284,65 +259,15 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: labels,
 				},
-				Spec: corev1.PodSpec{
-					RestartPolicy:                 corev1.RestartPolicyNever,
-					TerminationGracePeriodSeconds: ptr.To(int64(KubernetesJobGracePeriod)),
-					PriorityClassName:             "system-node-critical",
-					SecurityContext: &corev1.PodSecurityContext{
-						RunAsNonRoot: ptr.To(true),
-						RunAsUser:    ptr.To(int64(65532)),
-						RunAsGroup:   ptr.To(int64(65532)),
-						FSGroup:      ptr.To(int64(65532)),
-						SeccompProfile: &corev1.SeccompProfile{
-							Type: corev1.SeccompProfileTypeRuntimeDefault,
-						},
-					},
-					Tolerations: []corev1.Toleration{
-						{
-							Operator: corev1.TolerationOpExists,
-						},
-					},
-					Containers: []corev1.Container{{
-						Name:            "upgrade-k8s",
-						Image:           talosctlImage,
-						ImagePullPolicy: pullPolicy,
-						Args:            args,
-						Env: []corev1.EnvVar{{
-							Name:  "TALOSCONFIG",
-							Value: "/var/run/secrets/talos.dev/talosconfig",
-						}},
-						SecurityContext: &corev1.SecurityContext{
-							AllowPrivilegeEscalation: ptr.To(false),
-							ReadOnlyRootFilesystem:   ptr.To(true),
-							Capabilities: &corev1.Capabilities{
-								Drop: []corev1.Capability{"ALL"},
-							},
-						},
-						Resources: corev1.ResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceCPU:    resource.MustParse("10m"),
-								corev1.ResourceMemory: resource.MustParse("64Mi"),
-							},
-							Limits: corev1.ResourceList{
-								corev1.ResourceMemory: resource.MustParse("512Mi"),
-							},
-						},
-						VolumeMounts: []corev1.VolumeMount{{
-							Name:      constants.TalosSecretName,
-							MountPath: "/var/run/secrets/talos.dev",
-							ReadOnly:  true,
-						}},
-					}},
-					Volumes: []corev1.Volume{{
-						Name: constants.TalosSecretName,
-						VolumeSource: corev1.VolumeSource{
-							Secret: &corev1.SecretVolumeSource{
-								SecretName:  r.TalosConfigSecret,
-								DefaultMode: ptr.To(int32(0420)),
-							},
-						},
-					}},
-				},
+				Spec: jobs.BuildTalosctlPodSpec(jobs.PodSpecOptions{
+					ContainerName:     "upgrade-k8s",
+					Image:             talosctlImage,
+					PullPolicy:        pullPolicy,
+					Args:              args,
+					TalosConfigSecret: r.TalosConfigSecret,
+					GracePeriod:       KubernetesJobGracePeriod,
+					Affinity:          nil,
+				}),
 			},
 		},
 	}, nil
