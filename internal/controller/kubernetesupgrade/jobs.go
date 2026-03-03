@@ -115,66 +115,6 @@ func (r *Reconciler) cleanupJob(ctx context.Context, job *batchv1.Job) error {
 	return jobs.DeleteJob(ctx, r.Client, job)
 }
 
-func (r *Reconciler) startUpgrade(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
-	targetVersion := kubernetesUpgrade.Spec.Kubernetes.Version
-	controllerNode, controllerIP, err := r.findControllerNode(ctx, targetVersion)
-	if err != nil {
-		logger.Error(err, "Failed to find controller node")
-		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseFailed, "", fmt.Sprintf("Failed to find controller node: %s", err.Error())); err != nil {
-			logger.Error(err, "Failed to update phase for controller node failure")
-		}
-		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
-	}
-
-	logger.Info("Starting Kubernetes upgrade", "controllerNode", controllerNode, "controllerIP", controllerIP)
-
-	job, err := r.createJob(ctx, kubernetesUpgrade, controllerNode, controllerIP)
-	if err != nil {
-		logger.Error(err, "Failed to create Kubernetes upgrade job")
-		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseFailed, controllerNode, fmt.Sprintf("Failed to create job: %s", err.Error())); err != nil {
-			logger.Error(err, "Failed to update phase for job creation failure")
-		}
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
-	}
-
-	logger.Info("Successfully created Kubernetes upgrade job", "job", job.Name, "controllerNode", controllerNode)
-
-	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-		"phase":          tupprv1alpha1.JobPhaseUpgrading,
-		"controllerNode": controllerNode,
-		"jobName":        job.Name,
-		"message":        fmt.Sprintf("Upgrading Kubernetes to %s on controller node %s", kubernetesUpgrade.Spec.Kubernetes.Version, controllerNode),
-	}); err != nil {
-		logger.Error(err, "Failed to update status for job creation")
-		return ctrl.Result{RequeueAfter: time.Second * 30}, err
-	}
-
-	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
-}
-
-func (r *Reconciler) findControllerNode(ctx context.Context, targetVersion string) (string, string, error) {
-	nodeList := &corev1.NodeList{}
-	if err := r.List(ctx, nodeList); err != nil {
-		return "", "", fmt.Errorf("failed to list nodes: %w", err)
-	}
-
-	for _, node := range nodeList.Items {
-		if _, isController := node.Labels["node-role.kubernetes.io/control-plane"]; isController {
-			if node.Status.NodeInfo.KubeletVersion != targetVersion {
-				nodeIP, err := nodeutil.GetNodeIP(&node)
-				if err != nil {
-					continue
-				}
-				return node.Name, nodeIP, nil
-			}
-		}
-	}
-
-	return "", "", fmt.Errorf("no controller node found with node-role.kubernetes.io/control-plane label")
-}
-
 func (r *Reconciler) createJob(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, controllerNode, controllerIP string) (*batchv1.Job, error) {
 	logger := log.FromContext(ctx)
 
