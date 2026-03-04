@@ -236,7 +236,7 @@ monitoring:
     # Pod target labels to copy from pods
     podTargetLabels: []
 
-  prometheusRules:
+  prometheusRule:
     # Create PrometheusRule resource for alerting rules
     enabled: false
     # Annotations for PrometheusRule
