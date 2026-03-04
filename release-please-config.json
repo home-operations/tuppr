@@ -10,7 +10,8 @@
       "include-component-in-tag": false,
       "include-v-in-tag": false,
       "include-v-in-release-name": false,
-      "always-update": true
+      "always-update": true,
+      "draft": true
     }
   },
   "changelog-sections": [
