@@ -2,48 +2,31 @@ package metrics
 
 import (
 	"testing"
-
-	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
-func TestRecordUpgradePhase(t *testing.T) {
-	mr := NewReporter()
-
-	for _, phase := range talosPhases {
-		mr.RecordTalosUpgradePhase("talos-test", phase)
-		for _, p := range talosPhases {
-			got := testutil.ToFloat64(talosUpgradePhaseGauge.WithLabelValues("talos-test", p))
-			want := 0.0
-			if p == phase {
-				want = 1.0
-			}
-			if got != want {
-				t.Errorf("RecordTalosUpgradePhase(%q): phase label %q = %v, want %v", phase, p, got, want)
-			}
-		}
+func TestPhaseToFloat64(t *testing.T) {
+	tests := []struct {
+		phase string
+		want  float64
+	}{
+		{"Pending", 0},
+		{"HealthChecking", 1},
+		{"Draining", 2},
+		{"Upgrading", 3},
+		{"Rebooting", 4},
+		{"Completed", 5},
+		{"Failed", 6},
+		{"Unknown", -1},
+		{"", -1},
 	}
 
-	for _, phase := range kubernetesPhases {
-		mr.RecordKubernetesUpgradePhase("k8s-test", phase)
-		for _, p := range kubernetesPhases {
-			got := testutil.ToFloat64(kubernetesUpgradePhaseGauge.WithLabelValues("k8s-test", p))
-			want := 0.0
-			if p == phase {
-				want = 1.0
+	for _, tt := range tests {
+		t.Run(tt.phase, func(t *testing.T) {
+			got := phaseToFloat64(tt.phase)
+			if got != tt.want {
+				t.Fatalf("phaseToFloat64(%q) = %v, want %v", tt.phase, got, tt.want)
 			}
-			if got != want {
-				t.Errorf("RecordKubernetesUpgradePhase(%q): phase label %q = %v, want %v", phase, p, got, want)
-			}
-		}
-	}
-
-	// Unknown phase: all labels must be 0 (no active phase)
-	mr.RecordTalosUpgradePhase("talos-test", "Unknown")
-	for _, p := range talosPhases {
-		got := testutil.ToFloat64(talosUpgradePhaseGauge.WithLabelValues("talos-test", p))
-		if got != 0.0 {
-			t.Errorf("RecordTalosUpgradePhase(\"Unknown\"): phase label %q = %v, want 0", p, got)
-		}
+		})
 	}
 }
 
@@ -104,6 +87,7 @@ func TestMetricsReporter_RecordMaintenanceWindow(t *testing.T) {
 	// Test blocked window
 	nextTimestamp := int64(1234567890)
 	mr.RecordMaintenanceWindow(UpgradeTypeKubernetes, "k8s-test", false, &nextTimestamp)
+	// Metric should be set to 0, next timestamp should be set
 
 	// Test nil nextTimestamp when blocked
 	mr.RecordMaintenanceWindow(UpgradeTypeTalos, "test2", false, nil)

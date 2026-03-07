@@ -296,38 +296,26 @@ Tuppr exposes comprehensive Prometheus metrics for monitoring upgrade progress, 
 #### Talos Upgrade Metrics
 
 ```prometheus
-# Current phase of a Talos upgrade (state-set: exactly one phase label is 1, all others 0)
-tuppr_talos_upgrade_phase{name="cluster",phase="Pending"} 0
-tuppr_talos_upgrade_phase{name="cluster",phase="HealthChecking"} 0
-tuppr_talos_upgrade_phase{name="cluster",phase="Draining"} 1
-tuppr_talos_upgrade_phase{name="cluster",phase="Upgrading"} 0
-tuppr_talos_upgrade_phase{name="cluster",phase="Rebooting"} 0
-tuppr_talos_upgrade_phase{name="cluster",phase="MaintenanceWindow"} 0
-tuppr_talos_upgrade_phase{name="cluster",phase="Completed"} 0
-tuppr_talos_upgrade_phase{name="cluster",phase="Failed"} 0
+# Current phase of Talos upgrades (0=Pending, 1=InProgress, 2=Completed, 3=Failed)
+tuppr_talos_upgrade_phase{name="cluster", phase="InProgress"} 1
 
 # Node counts for Talos upgrades
-tuppr_talos_upgrade_nodes{name="cluster"} 5
+tuppr_talos_upgrade_nodes_total{name="cluster"} 5
 tuppr_talos_upgrade_nodes_completed{name="cluster"} 3
 tuppr_talos_upgrade_nodes_failed{name="cluster"} 0
 
 # Duration of Talos upgrade phases (histogram)
-tuppr_talos_upgrade_duration_seconds{name="cluster",phase="Draining"}
+tuppr_talos_upgrade_duration_seconds{name="cluster", phase="InProgress"}
 ```
 
 #### Kubernetes Upgrade Metrics
 
 ```prometheus
-# Current phase of a Kubernetes upgrade (state-set: exactly one phase label is 1, all others 0)
-tuppr_kubernetes_upgrade_phase{name="kubernetes",phase="Pending"} 0
-tuppr_kubernetes_upgrade_phase{name="kubernetes",phase="HealthChecking"} 0
-tuppr_kubernetes_upgrade_phase{name="kubernetes",phase="Upgrading"} 0
-tuppr_kubernetes_upgrade_phase{name="kubernetes",phase="MaintenanceWindow"} 0
-tuppr_kubernetes_upgrade_phase{name="kubernetes",phase="Completed"} 1
-tuppr_kubernetes_upgrade_phase{name="kubernetes",phase="Failed"} 0
+# Current phase of Kubernetes upgrades (0=Pending, 1=InProgress, 2=Completed, 3=Failed)
+tuppr_kubernetes_upgrade_phase{name="kubernetes", phase="Completed"} 2
 
 # Duration of Kubernetes upgrade phases (histogram)
-tuppr_kubernetes_upgrade_duration_seconds{name="kubernetes",phase="Upgrading"}
+tuppr_kubernetes_upgrade_duration_seconds{name="kubernetes", phase="InProgress"}
 ```
 
 #### Health Check Metrics
@@ -365,12 +353,11 @@ tuppr_maintenance_window_next_open_timestamp{upgrade_type="talos", name="talos"}
 #### Upgrade Progress Panel
 
 ```promql
-# Show the currently active phase (returns only the series with value 1)
-tuppr_talos_upgrade_phase == 1
-tuppr_kubernetes_upgrade_phase == 1
+# Upgrade phase status
+tuppr_talos_upgrade_phase or tuppr_kubernetes_upgrade_phase
 
 # Node upgrade progress for Talos
-tuppr_talos_upgrade_nodes_completed / tuppr_talos_upgrade_nodes * 100
+tuppr_talos_upgrade_nodes_completed / tuppr_talos_upgrade_nodes_total * 100
 
 # Health check success rate
 rate(tuppr_health_check_failures_total[5m]) == 0
@@ -398,7 +385,7 @@ groups:
   - name: tuppr
     rules:
       - alert: TupprUpgradeFailed
-        expr: tuppr_talos_upgrade_phase{phase="Failed"} == 1 or tuppr_kubernetes_upgrade_phase{phase="Failed"} == 1
+        expr: tuppr_talos_upgrade_phase{phase="Failed"} == 3 or tuppr_kubernetes_upgrade_phase{phase="Failed"} == 3
         for: 0m
         labels:
           severity: critical
@@ -409,17 +396,17 @@ groups:
       - alert: TupprUpgradeStuck
         expr: |
           (
-            tuppr_talos_upgrade_phase{phase="Upgrading"} == 1 and
+            tuppr_talos_upgrade_phase{phase="InProgress"} == 1 and
             increase(tuppr_talos_upgrade_nodes_completed[30m]) == 0
           ) or (
-            tuppr_kubernetes_upgrade_phase{phase="Upgrading"} == 1
+            tuppr_kubernetes_upgrade_phase{phase="InProgress"} == 1
           )
         for: 30m
         labels:
           severity: warning
         annotations:
           summary: "Tuppr upgrade appears stuck"
-          description: "Upgrade {{ $labels.name }} has been upgrading for 30+ minutes without progress"
+          description: "Upgrade {{ $labels.name }} has been in progress for 30+ minutes without completing nodes"
 
       - alert: TupprHealthCheckFailures
         expr: rate(tuppr_health_check_failures_total[5m]) > 0.1

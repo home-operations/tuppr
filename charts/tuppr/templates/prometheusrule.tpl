@@ -37,7 +37,7 @@ spec:
 
         # Fires when the upgrade object itself is in Failed phase.
         - alert: TalosUpgradeFailed
-          expr: tuppr_talos_upgrade_phase{phase="Failed"} == 1
+          expr: tuppr_talos_upgrade_phase{phase="Failed"} > 0
           for: 1m
           labels:
             severity: critical
@@ -53,7 +53,7 @@ spec:
         # something is genuinely stuck (crashed pod, unresponsive node, etc.).
         - alert: TalosUpgradeStuck
           expr: >-
-            tuppr_talos_upgrade_phase{phase=~"Upgrading|Rebooting|Draining|HealthChecking"} == 1
+            tuppr_talos_upgrade_phase{phase=~"Upgrading|Rebooting|Draining|HealthChecking"} > 0
           for: {{ .Values.monitoring.prometheusRule.stuckDuration | default "1h" }}
           labels:
             severity: warning
@@ -71,7 +71,7 @@ spec:
       rules:
         # Fires when the Kubernetes upgrade object itself is in Failed phase.
         - alert: KubernetesUpgradeFailed
-          expr: tuppr_kubernetes_upgrade_phase{phase="Failed"} == 1
+          expr: tuppr_kubernetes_upgrade_phase{phase="Failed"} > 0
           for: 1m
           labels:
             severity: critical
@@ -86,7 +86,7 @@ spec:
         # A full control-plane upgrade typically completes in under 30 min.
         - alert: KubernetesUpgradeStuck
           expr: >-
-            tuppr_kubernetes_upgrade_phase{phase=~"Upgrading|HealthChecking"} == 1
+            tuppr_kubernetes_upgrade_phase{phase=~"Upgrading|HealthChecking"} > 0
           for: 45m
           labels:
             severity: warning
