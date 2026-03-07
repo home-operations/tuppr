@@ -8,11 +8,35 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+
+	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 )
 
 const (
 	UpgradeTypeTalos      = "talos"
 	UpgradeTypeKubernetes = "kubernetes"
+)
+
+// Complete phase lists for the state-set gauge: all labels are always present (0 or 1).
+var (
+	talosPhases = []string{
+		string(tupprv1alpha1.JobPhasePending),
+		string(tupprv1alpha1.JobPhaseHealthChecking),
+		string(tupprv1alpha1.JobPhaseDraining),
+		string(tupprv1alpha1.JobPhaseUpgrading),
+		string(tupprv1alpha1.JobPhaseRebooting),
+		string(tupprv1alpha1.JobPhaseMaintenanceWindow),
+		string(tupprv1alpha1.JobPhaseCompleted),
+		string(tupprv1alpha1.JobPhaseFailed),
+	}
+	kubernetesPhases = []string{
+		string(tupprv1alpha1.JobPhasePending),
+		string(tupprv1alpha1.JobPhaseHealthChecking),
+		string(tupprv1alpha1.JobPhaseUpgrading),
+		string(tupprv1alpha1.JobPhaseMaintenanceWindow),
+		string(tupprv1alpha1.JobPhaseCompleted),
+		string(tupprv1alpha1.JobPhaseFailed),
+	}
 )
 
 type ContextKey string
@@ -26,14 +50,14 @@ var (
 	talosUpgradePhaseGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "tuppr_talos_upgrade_phase",
-			Help: "Current phase of Talos upgrades (0=Pending, 1=Draining, 2=Upgrading, 3=Rebooting, 4=Completed, 5=Failed)",
+			Help: "Current phase of a Talos upgrade, labelled by phase name. Only one phase label is active (value=1) at a time. Possible phases: Pending, HealthChecking, Draining, Upgrading, Rebooting, MaintenanceWindow, Completed, Failed.",
 		},
 		[]string{"name", "phase"},
 	)
 
-	talosUpgradeNodesTotal = prometheus.NewGaugeVec(
+	talosUpgradeNodes = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "tuppr_talos_upgrade_nodes_total",
+			Name: "tuppr_talos_upgrade_nodes",
 			Help: "Total number of nodes in Talos upgrade",
 		},
 		[]string{"name"},
@@ -67,7 +91,7 @@ var (
 	kubernetesUpgradePhaseGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "tuppr_kubernetes_upgrade_phase",
-			Help: "Current phase of Kubernetes upgrades (0=Pending, 1=Draining, 2=Upgrading, 3=Rebooting, 4=Completed, 5=Failed)",
+			Help: "Current phase of a Kubernetes upgrade, labelled by phase name. Only one phase label is active (value=1) at a time. Possible phases: Pending, HealthChecking, Upgrading, MaintenanceWindow, Completed, Failed.",
 		},
 		[]string{"name", "phase"},
 	)
@@ -135,7 +159,7 @@ var (
 func init() {
 	metrics.Registry.MustRegister(
 		talosUpgradePhaseGauge,
-		talosUpgradeNodesTotal,
+		talosUpgradeNodes,
 		talosUpgradeNodesCompleted,
 		talosUpgradeNodesFailed,
 		talosUpgradeDuration,
@@ -148,27 +172,6 @@ func init() {
 		maintenanceWindowActive,
 		maintenanceWindowNextOpenTimestamp,
 	)
-}
-
-func phaseToFloat64(phase string) float64 {
-	switch phase {
-	case "Pending":
-		return 0
-	case "HealthChecking":
-		return 1
-	case "Draining":
-		return 2
-	case "Upgrading":
-		return 3
-	case "Rebooting":
-		return 4
-	case "Completed":
-		return 5
-	case "Failed":
-		return 6
-	default:
-		return -1
-	}
 }
 
 type Reporter struct {
@@ -185,19 +188,29 @@ func NewReporter() *Reporter {
 }
 
 func (m *Reporter) RecordTalosUpgradePhase(name, phase string) {
-	talosUpgradePhaseGauge.DeletePartialMatch(prometheus.Labels{"name": name})
-	talosUpgradePhaseGauge.WithLabelValues(name, phase).Set(phaseToFloat64(phase))
+	for _, p := range talosPhases {
+		val := 0.0
+		if p == phase {
+			val = 1.0
+		}
+		talosUpgradePhaseGauge.WithLabelValues(name, p).Set(val)
+	}
 }
 
 func (m *Reporter) RecordTalosUpgradeNodes(name string, total, completed, failed int) {
-	talosUpgradeNodesTotal.WithLabelValues(name).Set(float64(total))
+	talosUpgradeNodes.WithLabelValues(name).Set(float64(total))
 	talosUpgradeNodesCompleted.WithLabelValues(name).Set(float64(completed))
 	talosUpgradeNodesFailed.WithLabelValues(name).Set(float64(failed))
 }
 
 func (m *Reporter) RecordKubernetesUpgradePhase(name, phase string) {
-	kubernetesUpgradePhaseGauge.DeletePartialMatch(prometheus.Labels{"name": name})
-	kubernetesUpgradePhaseGauge.WithLabelValues(name, phase).Set(phaseToFloat64(phase))
+	for _, p := range kubernetesPhases {
+		val := 0.0
+		if p == phase {
+			val = 1.0
+		}
+		kubernetesUpgradePhaseGauge.WithLabelValues(name, p).Set(val)
+	}
 }
 
 func (m *Reporter) StartPhaseTiming(upgradeType, name, phase string) {
@@ -287,12 +300,16 @@ func (m *Reporter) CleanupUpgradeMetrics(upgradeType, name string) {
 
 	switch upgradeType {
 	case UpgradeTypeTalos:
-		talosUpgradePhaseGauge.DeletePartialMatch(prometheus.Labels{"name": name})
-		talosUpgradeNodesTotal.DeleteLabelValues(name)
+		for _, phase := range talosPhases {
+			talosUpgradePhaseGauge.DeleteLabelValues(name, phase)
+		}
+		talosUpgradeNodes.DeleteLabelValues(name)
 		talosUpgradeNodesCompleted.DeleteLabelValues(name)
 		talosUpgradeNodesFailed.DeleteLabelValues(name)
 	case UpgradeTypeKubernetes:
-		kubernetesUpgradePhaseGauge.DeletePartialMatch(prometheus.Labels{"name": name})
+		for _, phase := range kubernetesPhases {
+			kubernetesUpgradePhaseGauge.DeleteLabelValues(name, phase)
+		}
 	}
 
 	maintenanceWindowActive.DeleteLabelValues(upgradeType, name)

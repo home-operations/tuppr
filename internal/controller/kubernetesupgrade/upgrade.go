@@ -129,6 +129,7 @@ func (r *Reconciler) checkMaintenanceWindow(ctx context.Context, kubernetesUpgra
 		}
 		nextTimestamp := maintenanceRes.NextWindowStart.Unix()
 		r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, false, &nextTimestamp)
+		prevPhase := kubernetesUpgrade.Status.Phase
 		if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
 			"phase":                 tupprv1alpha1.JobPhaseMaintenanceWindow,
 			"controllerNode":        "",
@@ -136,6 +137,9 @@ func (r *Reconciler) checkMaintenanceWindow(ctx context.Context, kubernetesUpgra
 			"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
 		}); err != nil {
 			logger.Error(err, "Failed to update status for maintenance window")
+		} else {
+			kubernetesUpgrade.Status.Phase = tupprv1alpha1.JobPhaseMaintenanceWindow
+			r.recordPhaseTransition(kubernetesUpgrade, prevPhase, tupprv1alpha1.JobPhaseMaintenanceWindow)
 		}
 		return ctrl.Result{RequeueAfter: requeueAfter}, true, nil
 	}
@@ -187,6 +191,7 @@ func (r *Reconciler) startUpgrade(ctx context.Context, kubernetesUpgrade *tupprv
 
 	logger.Info("Successfully created Kubernetes upgrade job", "job", job.Name, "controllerNode", controllerNode)
 
+	prevPhase := kubernetesUpgrade.Status.Phase
 	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
 		"phase":          tupprv1alpha1.JobPhaseUpgrading,
 		"controllerNode": controllerNode,
@@ -196,6 +201,8 @@ func (r *Reconciler) startUpgrade(ctx context.Context, kubernetesUpgrade *tupprv
 		logger.Error(err, "Failed to update status for job creation")
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
 	}
+	kubernetesUpgrade.Status.Phase = tupprv1alpha1.JobPhaseUpgrading
+	r.recordPhaseTransition(kubernetesUpgrade, prevPhase, tupprv1alpha1.JobPhaseUpgrading)
 
 	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 }
