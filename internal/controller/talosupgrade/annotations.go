@@ -63,6 +63,11 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, talosUpgrade *tu
 		return false, err
 	}
 
+	prevPhase := talosUpgrade.Status.Phase
+	totalNodes, err := r.getTotalNodeCount(ctx)
+	if err != nil {
+		logger.Error(err, "Failed to get total node count for metrics")
+	}
 	if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
 		"phase":          tupprv1alpha1.JobPhasePending,
 		"currentNode":    "",
@@ -73,6 +78,9 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, talosUpgrade *tu
 		logger.Error(err, "Failed to reset status after annotation")
 		return false, err
 	}
+	talosUpgrade.Status.Phase = tupprv1alpha1.JobPhasePending
+	r.recordPhaseTransition(talosUpgrade, prevPhase, tupprv1alpha1.JobPhasePending)
+	r.MetricsReporter.RecordTalosUpgradeNodes(talosUpgrade.Name, totalNodes, 0, 0)
 
 	return true, nil
 }
@@ -87,11 +95,22 @@ func (r *Reconciler) handleGenerationChange(ctx context.Context, talosUpgrade *t
 		"generation", talosUpgrade.Generation,
 		"observed", talosUpgrade.Status.ObservedGeneration)
 
-	return true, r.updateStatus(ctx, talosUpgrade, map[string]any{
+	prevPhase := talosUpgrade.Status.Phase
+	totalNodes, err := r.getTotalNodeCount(ctx)
+	if err != nil {
+		logger.Error(err, "Failed to get total node count for metrics")
+	}
+	if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
 		"phase":          tupprv1alpha1.JobPhasePending,
 		"currentNode":    "",
 		"message":        "Spec updated, restarting upgrade process",
 		"completedNodes": []string{},
 		"failedNodes":    []tupprv1alpha1.NodeUpgradeStatus{},
-	})
+	}); err != nil {
+		return false, err
+	}
+	talosUpgrade.Status.Phase = tupprv1alpha1.JobPhasePending
+	r.recordPhaseTransition(talosUpgrade, prevPhase, tupprv1alpha1.JobPhasePending)
+	r.MetricsReporter.RecordTalosUpgradeNodes(talosUpgrade.Name, totalNodes, 0, 0)
+	return true, nil
 }
