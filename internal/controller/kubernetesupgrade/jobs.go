@@ -36,7 +36,6 @@ func (r *Reconciler) handleJobStatus(ctx context.Context, kubernetesUpgrade *tup
 
 	if job.Status.Succeeded == 0 && (job.Status.Failed == 0 || job.Status.Failed < *job.Spec.BackoffLimit) {
 		message := fmt.Sprintf("Upgrading Kubernetes to %s (job: %s)", kubernetesUpgrade.Spec.Kubernetes.Version, job.Name)
-		prevPhase := kubernetesUpgrade.Status.Phase
 		if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
 			"phase":   tupprv1alpha1.JobPhaseUpgrading,
 			"message": message,
@@ -45,8 +44,6 @@ func (r *Reconciler) handleJobStatus(ctx context.Context, kubernetesUpgrade *tup
 			logger.Error(err, "Failed to update phase for active job", "job", job.Name)
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 		}
-		kubernetesUpgrade.Status.Phase = tupprv1alpha1.JobPhaseUpgrading
-		r.recordPhaseTransition(kubernetesUpgrade, prevPhase, tupprv1alpha1.JobPhaseUpgrading)
 		logger.V(1).Info("Kubernetes upgrade job is still active", "job", job.Name)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
@@ -86,8 +83,9 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tu
 		logger.Error(err, "Failed to cleanup job, but continuing", "job", job.Name)
 	}
 
+	r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, nodeName, "success")
+	r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeKubernetes, 0)
 	logger.Info("Node upgraded, continuing to next control plane node", "version", targetVersion)
-	prevPhase := kubernetesUpgrade.Status.Phase
 	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
 		"phase":          tupprv1alpha1.JobPhaseUpgrading,
 		"controllerNode": "",
@@ -97,10 +95,6 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tu
 		logger.Error(err, "Failed to update status after partial upgrade")
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 	}
-	kubernetesUpgrade.Status.Phase = tupprv1alpha1.JobPhaseUpgrading
-	r.recordPhaseTransition(kubernetesUpgrade, prevPhase, tupprv1alpha1.JobPhaseUpgrading)
-	r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, nodeName, "success")
-	r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeKubernetes, 0)
 
 	return ctrl.Result{RequeueAfter: time.Second * 10}, nil
 }
@@ -110,7 +104,9 @@ func (r *Reconciler) handleJobFailure(ctx context.Context, kubernetesUpgrade *tu
 	logger.Info("Kubernetes upgrade job failed", "job", job.Name)
 
 	nodeName := job.Labels["tuppr.home-operations.com/target-node"]
-	prevPhase := kubernetesUpgrade.Status.Phase
+	r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, nodeName, "failure")
+	r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeKubernetes, 0)
+
 	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
 		"phase":     tupprv1alpha1.JobPhaseFailed,
 		"message":   "Kubernetes upgrade job failed permanently",
@@ -120,10 +116,6 @@ func (r *Reconciler) handleJobFailure(ctx context.Context, kubernetesUpgrade *tu
 		logger.Error(err, "Failed to update failure status")
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 	}
-	kubernetesUpgrade.Status.Phase = tupprv1alpha1.JobPhaseFailed
-	r.recordPhaseTransition(kubernetesUpgrade, prevPhase, tupprv1alpha1.JobPhaseFailed)
-	r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, nodeName, "failure")
-	r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeKubernetes, 0)
 
 	logger.V(1).Info("Recorded Kubernetes upgrade failure")
 	return ctrl.Result{RequeueAfter: time.Minute * 10}, nil

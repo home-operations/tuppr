@@ -161,39 +161,21 @@ func (r *Reconciler) updateStatus(ctx context.Context, talosUpgrade *tupprv1alph
 }
 
 func (r *Reconciler) setPhase(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, currentNode, message string) error {
-	prevPhase := talosUpgrade.Status.Phase
+	r.MetricsReporter.RecordTalosUpgradePhase(talosUpgrade.Name, string(phase))
 
-	totalNodes, err := r.getTotalNodeCount(ctx)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to get total node count for metrics")
-	}
-
-	if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
-		"phase":       phase,
-		"currentNode": currentNode,
-		"message":     message,
-	}); err != nil {
-		return err
-	}
-	talosUpgrade.Status.Phase = phase
-	r.recordPhaseTransition(talosUpgrade, prevPhase, phase)
+	totalNodes, _ := r.getTotalNodeCount(ctx)
 	r.MetricsReporter.RecordTalosUpgradeNodes(
 		talosUpgrade.Name,
 		totalNodes,
 		len(talosUpgrade.Status.CompletedNodes),
 		len(talosUpgrade.Status.FailedNodes),
 	)
-	return nil
-}
 
-func (r *Reconciler) recordPhaseTransition(talosUpgrade *tupprv1alpha1.TalosUpgrade, fromPhase, toPhase tupprv1alpha1.JobPhase) {
-	r.MetricsReporter.RecordTalosUpgradePhase(talosUpgrade.Name, string(toPhase))
-	if fromPhase != toPhase {
-		if fromPhase != "" {
-			r.MetricsReporter.EndPhaseTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, string(fromPhase))
-		}
-		r.MetricsReporter.StartPhaseTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, string(toPhase))
-	}
+	return r.updateStatus(ctx, talosUpgrade, map[string]any{
+		"phase":       phase,
+		"currentNode": currentNode,
+		"message":     message,
+	})
 }
 
 func (r *Reconciler) addCompletedNode(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) error {
