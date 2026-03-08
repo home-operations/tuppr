@@ -161,13 +161,28 @@ func (r *Reconciler) updateStatus(ctx context.Context, kubernetesUpgrade *tupprv
 }
 
 func (r *Reconciler) setPhase(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, phase tupprv1alpha1.JobPhase, controllerNode, message string) error {
-	r.MetricsReporter.RecordKubernetesUpgradePhase(kubernetesUpgrade.Name, string(phase))
+	prevPhase := kubernetesUpgrade.Status.Phase
 
-	return r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
+	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
 		"phase":          phase,
 		"controllerNode": controllerNode,
 		"message":        message,
-	})
+	}); err != nil {
+		return err
+	}
+	kubernetesUpgrade.Status.Phase = phase
+	r.recordPhaseTransition(kubernetesUpgrade, prevPhase, phase)
+	return nil
+}
+
+func (r *Reconciler) recordPhaseTransition(kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, fromPhase, toPhase tupprv1alpha1.JobPhase) {
+	r.MetricsReporter.RecordKubernetesUpgradePhase(kubernetesUpgrade.Name, string(toPhase))
+	if fromPhase != toPhase {
+		if fromPhase != "" {
+			r.MetricsReporter.EndPhaseTiming(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, string(fromPhase))
+		}
+		r.MetricsReporter.StartPhaseTiming(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, string(toPhase))
+	}
 }
 
 type DiscoveryVersionGetter struct{}
