@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.1](https://github.com/home-operations/tuppr/compare/0.1.0...0.1.1) (2026-03-09)
+
+
+### Bug Fixes
+
+* **helm:** add missing brackets in prometheus rule template ([#177](https://github.com/home-operations/tuppr/issues/177)) ([b12bcb6](https://github.com/home-operations/tuppr/commit/b12bcb6b267dff00f25352bf8e920b5ae6241c45))
+
+
+### Miscellaneous Chores
+
+* change draft configuration to draft-pull-request ([238b2fb](https://github.com/home-operations/tuppr/commit/238b2fb105da5f17e06d0f74255587a840073926))
+
 ## [0.1.0](https://github.com/home-operations/tuppr/compare/0.0.80...0.1.0) (2026-03-09)
 
 
