@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.1.0](https://github.com/home-operations/tuppr/compare/0.0.80...0.1.0) (2026-03-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **github-action:** Update action docker/build-push-action (v6.19.2 → v7.0.0) ([#170](https://github.com/home-operations/tuppr/issues/170))
+* **github-action:** Update action docker/metadata-action (v5.10.0 → v6.0.0) ([#169](https://github.com/home-operations/tuppr/issues/169))
+* **github-action:** Update action docker/setup-buildx-action (v3.12.0 → v4.0.0) ([#166](https://github.com/home-operations/tuppr/issues/166))
+* **github-action:** Update action docker/login-action (v3.7.0 → v4.0.0) ([#161](https://github.com/home-operations/tuppr/issues/161))
+
+### Features
+
+* **monitoring:** add prometheus rule to helm charts to alert failed upgrade ([#163](https://github.com/home-operations/tuppr/issues/163)) ([7cccece](https://github.com/home-operations/tuppr/commit/7cccece5e302335743b59a4d42276a697e362659))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/netresearch/go-cron (v0.13.0 → v0.13.1) ([#173](https://github.com/home-operations/tuppr/issues/173)) ([928f4c6](https://github.com/home-operations/tuppr/commit/928f4c6148cbc046686dd30db9291d153aba36ce))
+* **deps:** update module github.com/siderolabs/talos/pkg/machinery (v1.12.4 → v1.12.5) ([#174](https://github.com/home-operations/tuppr/issues/174)) ([47c3bf9](https://github.com/home-operations/tuppr/commit/47c3bf979c6c26a570107a503e68b846a273b67f))
+* **deps:** update module google.golang.org/grpc (v1.79.1 → v1.79.2) ([#171](https://github.com/home-operations/tuppr/issues/171)) ([d218224](https://github.com/home-operations/tuppr/commit/d21822432ba2a56806e7c529521e685ef5822cdb))
+* **deps:** update module sigs.k8s.io/controller-runtime (v0.23.1 → v0.23.2) ([#167](https://github.com/home-operations/tuppr/issues/167)) ([6a812d8](https://github.com/home-operations/tuppr/commit/6a812d837659badbb8dfa23d68bda148e5958488))
+* **deps:** update module sigs.k8s.io/controller-runtime (v0.23.2 → v0.23.3) ([#168](https://github.com/home-operations/tuppr/issues/168)) ([b9a876a](https://github.com/home-operations/tuppr/commit/b9a876a68ecf86a9c647ef496fafcd3f97bede41))
+* **metrics:** replace numeric phase encoding with state-set gauge pattern ([69f3940](https://github.com/home-operations/tuppr/commit/69f39402b911c0e7081fca8e29a10c83fa4c3068))
+* **metrics:** replace numeric phase encoding with state-set gauge pattern ([#172](https://github.com/home-operations/tuppr/issues/172)) ([67a72ee](https://github.com/home-operations/tuppr/commit/67a72ee1a11b50ab0b0bb4a8c0ec14edbfa71c7c))
+* **mise:** update tool go (1.26.0 → 1.26.1) ([8da7632](https://github.com/home-operations/tuppr/commit/8da7632b67b1dcaba41d395a110e9470394a5d50))
+
+
+### Miscellaneous Chores
+
+* set release please PRs to draft ([1119902](https://github.com/home-operations/tuppr/commit/11199023672cb4fb3d3a41d8d6bfb559617f6c7d))
+
+
+### Continuous Integration
+
+* **github-action:** Update action docker/build-push-action (v6.19.2 → v7.0.0) ([#170](https://github.com/home-operations/tuppr/issues/170)) ([75054f8](https://github.com/home-operations/tuppr/commit/75054f873e0d497ef6fb28dad2bc9b3bd90bd95c))
+* **github-action:** Update action docker/login-action (v3.7.0 → v4.0.0) ([#161](https://github.com/home-operations/tuppr/issues/161)) ([c51a0df](https://github.com/home-operations/tuppr/commit/c51a0df6f0670a5438da03146229148440711c9e))
+* **github-action:** Update action docker/metadata-action (v5.10.0 → v6.0.0) ([#169](https://github.com/home-operations/tuppr/issues/169)) ([6833297](https://github.com/home-operations/tuppr/commit/683329738aec5b274543c231c7b91191113c0f42))
+* **github-action:** Update action docker/setup-buildx-action (v3.12.0 → v4.0.0) ([#166](https://github.com/home-operations/tuppr/issues/166)) ([9f1c9f9](https://github.com/home-operations/tuppr/commit/9f1c9f9ef63657793b0feb66d87affeee073bf69))
+
 ## [0.0.80](https://github.com/home-operations/tuppr/compare/0.0.79...0.0.80) (2026-03-03)
 
 
