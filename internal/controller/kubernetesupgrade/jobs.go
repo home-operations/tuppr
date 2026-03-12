@@ -112,10 +112,11 @@ func (r *Reconciler) handleJobFailure(ctx context.Context, kubernetesUpgrade *tu
 	nodeName := job.Labels["tuppr.home-operations.com/target-node"]
 	prevPhase := kubernetesUpgrade.Status.Phase
 	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-		"phase":     tupprv1alpha1.JobPhaseFailed,
-		"message":   "Kubernetes upgrade job failed permanently",
-		"lastError": "Job failed permanently",
-		"jobName":   job.Name,
+		"phase":              tupprv1alpha1.JobPhaseFailed,
+		"message":            "Kubernetes upgrade job failed permanently",
+		"lastError":          "Job failed permanently",
+		"jobName":            job.Name,
+		"observedGeneration": kubernetesUpgrade.Generation - 1,
 	}); err != nil {
 		logger.Error(err, "Failed to update failure status")
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, err
