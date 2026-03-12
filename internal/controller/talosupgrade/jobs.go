@@ -177,6 +177,12 @@ func (r *Reconciler) handleJobFailure(ctx context.Context, talosUpgrade *tupprv1
 		return ctrl.Result{}, err
 	}
 
+	if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
+		"observedGeneration": talosUpgrade.Generation - 1,
+	}); err != nil {
+		logger.Error(err, "Failed to reset observedGeneration for retry", "node", nodeName)
+	}
+
 	r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, nodeName, "failure")
 	r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeTalos, 0)
 	logger.V(1).Info("Recorded node failure", "node", nodeName, "failedNodes", failedCount)

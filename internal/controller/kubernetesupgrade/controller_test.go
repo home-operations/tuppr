@@ -536,6 +536,39 @@ func TestK8sReconcile_HandlesJobFailure(t *testing.T) {
 	if updated.Status.JobName == "" {
 		t.Fatal("expected jobName to be preserved on failure")
 	}
+	if updated.Status.ObservedGeneration >= ku.Generation {
+		t.Fatalf("expected observedGeneration < generation after failure (so controller retries), got observedGeneration=%d generation=%d",
+			updated.Status.ObservedGeneration, ku.Generation)
+	}
+}
+
+func TestK8sReconcile_FailedState_ResetsOnRetry(t *testing.T) {
+	scheme := newTestScheme()
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		func(ku *tupprv1alpha1.KubernetesUpgrade) {
+			ku.Status.Phase = tupprv1alpha1.JobPhaseFailed
+			ku.Status.ObservedGeneration = ku.Generation - 1
+			ku.Status.LastError = "Job failed permanently"
+		},
+	)
+	// No job present (TTL cleaned it up before the 10-minute requeue fired)
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku).WithStatusSubresource(ku).Build()
+	r := newK8sReconciler(cl, &mockVersionGetter{}, &mockTalosClient{}, &mockHealthChecker{})
+
+	result := reconcileK8s(t, r, "test-upgrade")
+	if result.RequeueAfter != 30*time.Second {
+		t.Fatalf("expected 30s requeue after generation-change reset, got: %v", result.RequeueAfter)
+	}
+
+	updated := getK8sUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
+		t.Fatalf("expected phase reset to Pending so upgrade is retried, got: %s", updated.Status.Phase)
+	}
+	if updated.Status.ObservedGeneration != ku.Generation {
+		t.Fatalf("expected observedGeneration=%d after reset, got: %d", ku.Generation, updated.Status.ObservedGeneration)
+	}
 }
 
 func TestK8sReconcile_HandlesJobSuccess(t *testing.T) {

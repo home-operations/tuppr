@@ -818,6 +818,37 @@ func TestTalosReconcile_HandlesJobFailure(t *testing.T) {
 	if updated.Status.FailedNodes[0].NodeName != fakeNodeA {
 		t.Fatalf("expected failed node name node-1, got: %s", updated.Status.FailedNodes[0].NodeName)
 	}
+	if updated.Status.ObservedGeneration >= tu.Generation {
+		t.Fatalf("expected observedGeneration < generation after failure (so controller retries), got observedGeneration=%d generation=%d",
+			updated.Status.ObservedGeneration, tu.Generation)
+	}
+}
+
+func TestTalosReconcile_FailedState_ResetsOnRetry(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		func(tu *tupprv1alpha1.TalosUpgrade) {
+			tu.Status.Phase = tupprv1alpha1.JobPhaseFailed
+			tu.Status.ObservedGeneration = tu.Generation - 1
+		},
+	)
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+
+	result := reconcileTalos(t, r, "test-upgrade")
+	if result.RequeueAfter != 30*time.Second {
+		t.Fatalf("expected 30s requeue after generation-change reset, got: %v", result.RequeueAfter)
+	}
+
+	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
+		t.Fatalf("expected phase reset to Pending so upgrade is retried, got: %s", updated.Status.Phase)
+	}
+	if updated.Status.ObservedGeneration != tu.Generation {
+		t.Fatalf("expected observedGeneration=%d after reset, got: %d", tu.Generation, updated.Status.ObservedGeneration)
+	}
 }
 
 func TestTalosReconcile_JobVerificationFailure(t *testing.T) {

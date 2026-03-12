@@ -142,7 +142,9 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *Reconciler) updateStatus(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, updates map[string]any) error {
-	updates["observedGeneration"] = kubernetesUpgrade.Generation
+	if _, ok := updates["observedGeneration"]; !ok {
+		updates["observedGeneration"] = kubernetesUpgrade.Generation
+	}
 	updates["lastUpdated"] = metav1.Now()
 
 	patch := map[string]any{

@@ -147,7 +147,9 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *Reconciler) updateStatus(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, updates map[string]any) error {
-	updates["observedGeneration"] = talosUpgrade.Generation
+	if _, ok := updates["observedGeneration"]; !ok {
+		updates["observedGeneration"] = talosUpgrade.Generation
+	}
 	updates["lastUpdated"] = metav1.Now()
 
 	patch := map[string]any{"status": updates}
