@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/home-operations/tuppr/compare/0.1.1...0.1.2) (2026-03-12)
+
+
+### Bug Fixes
+
+* **controller:** reset observedGeneration on job failure to allow retry ([#178](https://github.com/home-operations/tuppr/issues/178)) ([5e4ef5b](https://github.com/home-operations/tuppr/commit/5e4ef5b81ce47539b36ef57a7a245af3d93e15be))
+
 ## [0.1.1](https://github.com/home-operations/tuppr/compare/0.1.0...0.1.1) (2026-03-09)
 
 
