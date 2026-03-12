@@ -10,7 +10,7 @@ require (
 	github.com/netresearch/go-cron v0.13.1
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
-	github.com/open-policy-agent/cert-controller v0.15.0
+	github.com/open-policy-agent/cert-controller v0.16.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/siderolabs/go-retry v0.3.3
 	github.com/siderolabs/talos/pkg/machinery v1.12.5
@@ -137,9 +137,9 @@ require (
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.35.0 // indirect
-	k8s.io/apiserver v0.35.0 // indirect
-	k8s.io/component-base v0.35.0 // indirect
+	k8s.io/apiextensions-apiserver v0.35.2 // indirect
+	k8s.io/apiserver v0.35.2 // indirect
+	k8s.io/component-base v0.35.2 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.2 // indirect
