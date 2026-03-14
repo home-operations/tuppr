@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.0](https://github.com/home-operations/tuppr/compare/0.1.2...0.2.0) (2026-03-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* **github-action:** Update action actions/create-github-app-token (v2.2.2 → v3.0.0) ([#184](https://github.com/home-operations/tuppr/issues/184))
+* **github-action:** Update action jdx/mise-action (v3.6.3 → v4.0.0) ([#183](https://github.com/home-operations/tuppr/issues/183))
+
+### Features
+
+* **deps:** update module github.com/open-policy-agent/cert-controller (v0.15.0 → v0.16.0) ([#181](https://github.com/home-operations/tuppr/issues/181)) ([f747a7f](https://github.com/home-operations/tuppr/commit/f747a7f869cfc2c2d000f0bd6283e56a09b37b99))
+
+
+### Continuous Integration
+
+* **github-action:** Update action actions/create-github-app-token (v2.2.2 → v3.0.0) ([#184](https://github.com/home-operations/tuppr/issues/184)) ([ec9b3da](https://github.com/home-operations/tuppr/commit/ec9b3da1295be08b0a1157c4ce842b2849891c22))
+* **github-action:** Update action jdx/mise-action (v3.6.3 → v4.0.0) ([#183](https://github.com/home-operations/tuppr/issues/183)) ([a3253db](https://github.com/home-operations/tuppr/commit/a3253dba881d9ee0aa2126d6d61b86b7de6ddcdd))
+
 ## [0.1.2](https://github.com/home-operations/tuppr/compare/0.1.1...0.1.2) (2026-03-12)
 
 
