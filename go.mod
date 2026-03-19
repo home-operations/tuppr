@@ -13,7 +13,7 @@ require (
 	github.com/open-policy-agent/cert-controller v0.16.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/siderolabs/go-retry v0.3.3
-	github.com/siderolabs/talos/pkg/machinery v1.12.5
+	github.com/siderolabs/talos/pkg/machinery v1.12.6
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/grpc v1.79.3
 	k8s.io/api v0.35.3
