@@ -38,16 +38,22 @@ variable "worker_count" {
   }
 }
 
+variable "talos_iso_id_x86" {
+  description = "Hetzner ISO ID for Talos Linux x86 image"
+  type        = number
+  default     = 125127
+}
+
 variable "talos_bootstrap_version" {
   description = "Initial Talos Linux version to deploy"
   type        = string
-  default     = "v1.11.0"
+  default     = "v1.12.4"
 }
 
 variable "talos_upgrade_version" {
   description = "Target Talos Linux version for upgrade testing"
   type        = string
-  default     = "v1.12.4"
+  default     = "v1.12.6"
 }
 
 variable "k8s_bootstrap_version" {
