@@ -62,6 +62,11 @@ jobs:
 
       - run: tofu -chdir=tofu init
 
+      # The module's hcloud_image data source has a count expression that
+      # depends on imager_image.talos_x86.image_id (known only after apply),
+      # so materialize the snapshot first.
+      - run: tofu -chdir=tofu apply -auto-approve -target=imager_image.talos_x86
+
       - run: tofu -chdir=tofu apply -auto-approve
 
       - run: mise exec -- ./test.sh
@@ -78,3 +83,7 @@ jobs:
             exit 1
           fi
           ./cleanup.sh "cluster=${CLUSTER_NAME}"
+          # cleanup.sh deletes labelled servers/LBs/networks; prune the
+          # imager_image snapshot too (cleanup.sh doesn't handle images).
+          hcloud image list -t snapshot -l managed-by=tuppr-e2e \
+            -o noheader -o columns=id | xargs -r -I{} hcloud image delete {}

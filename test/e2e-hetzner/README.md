@@ -20,7 +20,7 @@ export TF_VAR_hcloud_token="your-hetzner-token"
 export TF_VAR_run_id="custom-id"              # Default: "local"
 export TF_VAR_control_plane_count=3           # Default: 3
 export TF_VAR_worker_count=0                  # Default: 0
-export TF_VAR_talos_bootstrap_version=v1.11.0 # Default: v1.11.0
+export TF_VAR_talos_bootstrap_version=v1.12.4 # Default: v1.12.4
 export TF_VAR_k8s_bootstrap_version=v1.34.0   # Default: v1.34.0
 export CONTROLLER_IMAGE="custom-image:tag"    # Default: builds from source
 ```
@@ -30,6 +30,9 @@ export CONTROLLER_IMAGE="custom-image:tag"    # Default: builds from source
 ```bash
 cd tofu
 tofu init
+# The module's hcloud_image data source can't resolve until the snapshot
+# exists, so create the snapshot first:
+tofu apply -target=imager_image.talos_x86
 tofu apply
 ```
 
@@ -81,8 +84,8 @@ export HCLOUD_TOKEN="your-hetzner-token"
 | `run_id` | string | `"local"` | Unique run identifier |
 | `control_plane_count` | number | `3` | Number of control plane nodes (1-10) |
 | `worker_count` | number | `0` | Number of worker nodes (0-20) |
-| `talos_bootstrap_version` | string | `"v1.11.0"` | Initial Talos version |
-| `talos_upgrade_version` | string | `"v1.12.4"` | Target Talos version |
+| `talos_bootstrap_version` | string | `"v1.12.4"` | Initial Talos version |
+| `talos_upgrade_version` | string | `"v1.12.6"` | Target Talos version |
 | `k8s_bootstrap_version` | string | `"v1.34.0"` | Initial Kubernetes version |
 | `k8s_upgrade_version` | string | `"v1.35.0"` | Target Kubernetes version |
 | `server_type` | string | `"cx23"` | Hetzner server type |

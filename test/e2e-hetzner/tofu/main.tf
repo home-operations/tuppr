@@ -1,3 +1,17 @@
+resource "imager_image" "talos_x86" {
+  image_url    = "https://factory.talos.dev/image/${var.talos_schematic_id}/${var.talos_bootstrap_version}/hcloud-amd64.raw.xz"
+  architecture = "x86"
+  location     = var.location
+
+  description = "Talos ${var.talos_bootstrap_version} (tuppr-e2e)"
+
+  labels = {
+    managed-by    = "tuppr-e2e"
+    talos-version = var.talos_bootstrap_version
+    schematic     = substr(var.talos_schematic_id, 0, 12)
+  }
+}
+
 module "talos_cluster" {
   source  = "hcloud-talos/talos/hcloud"
   version = "3.1.1"
@@ -8,8 +22,8 @@ module "talos_cluster" {
   talos_version      = var.talos_bootstrap_version
   kubernetes_version = var.k8s_bootstrap_version
 
-  talos_iso_id_x86 = 122630
-  disable_arm = true
+  talos_image_id_x86 = imager_image.talos_x86.image_id
+  disable_arm        = true
 
   hcloud_token = var.hcloud_token
 
@@ -41,6 +55,11 @@ module "talos_cluster" {
   talos_control_plane_extra_config_patches = [
     yamlencode({
       machine = {
+        install = {
+          # Pin to the factory schematic that bakes talos.platform=hcloud into
+          # the installed system, so Talos upgrades preserve hcloud mode.
+          image = "factory.talos.dev/installer/${var.talos_schematic_id}:${var.talos_bootstrap_version}"
+        }
         network = {
           nameservers = ["1.1.1.1", "8.8.8.8"]
         }
@@ -63,6 +82,9 @@ module "talos_cluster" {
   talos_worker_extra_config_patches = [
     yamlencode({
       machine = {
+        install = {
+          image = "factory.talos.dev/installer/${var.talos_schematic_id}:${var.talos_bootstrap_version}"
+        }
         network = {
           nameservers = ["1.1.1.1", "8.8.8.8"]
         }

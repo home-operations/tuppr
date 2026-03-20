@@ -38,16 +38,29 @@ variable "worker_count" {
   }
 }
 
+variable "talos_schematic_id" {
+  description = "Talos Image Factory schematic ID for the hcloud installer/image"
+  type        = string
+  # Corresponds to:
+  #   customization:
+  #     extraKernelArgs:
+  #       - talos.platform=hcloud
+  # The kernel arg is required so Talos stays in hcloud platform mode across
+  # upgrades (the installer image used for upgrade bakes its kernel args into
+  # the installed system's boot config).
+  default = "cc1be48f01f4bf4367226c4a20eeaf4651f62fc64cfe17f8576ede9fbe14a336"
+}
+
 variable "talos_bootstrap_version" {
   description = "Initial Talos Linux version to deploy"
   type        = string
-  default     = "v1.11.0"
+  default     = "v1.12.4"
 }
 
 variable "talos_upgrade_version" {
   description = "Target Talos Linux version for upgrade testing"
   type        = string
-  default     = "v1.12.4"
+  default     = "v1.12.6"
 }
 
 variable "k8s_bootstrap_version" {
