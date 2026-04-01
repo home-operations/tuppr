@@ -1,0 +1,41 @@
+suite: webhook
+templates:
+  - webhook.tpl
+tests:
+  - it: should create ValidatingWebhookConfiguration when enabled
+    documentIndex: 0
+    asserts:
+      - isKind:
+          of: ValidatingWebhookConfiguration
+
+  - it: should create webhook Service when enabled
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.ports[0].port
+          value: 443
+
+  - it: should use custom webhook port as target
+    set:
+      webhook.port: 8443
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 8443
+
+  - it: should not create resources when disabled
+    set:
+      webhook.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should have two webhook entries
+    documentIndex: 0
+    asserts:
+      - lengthEqual:
+          path: webhooks
+          count: 2

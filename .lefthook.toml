@@ -20,3 +20,11 @@ stage_fixed = true
 run = "yamlfmt {staged_files}"
 glob = ["*.yaml"]
 stage_fixed = true
+
+[pre-commit.commands.helm-lint]
+run = "make helm-lint"
+glob = ["charts/**"]
+
+[pre-commit.commands.helm-test]
+run = "make helm-test"
+glob = ["charts/**"]
