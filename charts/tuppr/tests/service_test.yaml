@@ -1,0 +1,26 @@
+suite: service
+templates:
+  - service.tpl
+tests:
+  - it: should create metrics service when enabled
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.type
+          value: ClusterIP
+
+  - it: should use correct metrics port
+    set:
+      controller.metrics.port: 9090
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 9090
+
+  - it: should not create service when metrics disabled
+    set:
+      controller.metrics.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

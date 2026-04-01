@@ -1,0 +1,73 @@
+suite: rbac
+templates:
+  - rbac.tpl
+tests:
+  - it: should create ClusterRole by default
+    documentIndex: 0
+    asserts:
+      - isKind:
+          of: ClusterRole
+
+  - it: should create ClusterRoleBinding
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: ClusterRoleBinding
+      - equal:
+          path: roleRef.kind
+          value: ClusterRole
+
+  - it: should create leader election Role when enabled
+    documentIndex: 2
+    asserts:
+      - isKind:
+          of: Role
+
+  - it: should create leader election RoleBinding when enabled
+    documentIndex: 3
+    asserts:
+      - isKind:
+          of: RoleBinding
+
+  - it: should not create any resources when rbac disabled
+    set:
+      rbac.create: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should not create leader election resources when disabled
+    set:
+      controller.leaderElection.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: should include webhook RBAC rules when webhook enabled
+    set:
+      webhook.enabled: true
+    documentIndex: 0
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - admissionregistration.k8s.io
+            resources:
+              - validatingwebhookconfigurations
+            verbs:
+              - get
+              - list
+              - watch
+              - patch
+              - update
+
+  - it: should add annotations
+    set:
+      rbac.annotations:
+        foo: bar
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.annotations.foo
+          value: bar

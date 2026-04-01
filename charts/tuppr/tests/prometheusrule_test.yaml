@@ -1,0 +1,36 @@
+suite: prometheusrule
+templates:
+  - prometheusrule.tpl
+capabilities:
+  apiVersions:
+    - monitoring.coreos.com/v1
+tests:
+  - it: should not create PrometheusRule by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should create PrometheusRule when enabled
+    set:
+      monitoring.prometheusRule.enabled: true
+    asserts:
+      - isKind:
+          of: PrometheusRule
+
+  - it: should have three rule groups
+    set:
+      monitoring.prometheusRule.enabled: true
+    asserts:
+      - lengthEqual:
+          path: spec.groups
+          count: 3
+
+  - it: should add extra labels
+    set:
+      monitoring.prometheusRule.enabled: true
+      monitoring.prometheusRule.labels:
+        role: alert-rules
+    asserts:
+      - equal:
+          path: metadata.labels.role
+          value: alert-rules

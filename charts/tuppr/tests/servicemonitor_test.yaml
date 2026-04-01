@@ -1,0 +1,34 @@
+suite: servicemonitor
+templates:
+  - servicemonitor.tpl
+tests:
+  - it: should not create ServiceMonitor by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should create ServiceMonitor when enabled
+    set:
+      monitoring.serviceMonitor.enabled: true
+    asserts:
+      - isKind:
+          of: ServiceMonitor
+
+  - it: should use custom interval
+    set:
+      monitoring.serviceMonitor.enabled: true
+      monitoring.serviceMonitor.interval: 15s
+    asserts:
+      - equal:
+          path: spec.endpoints[0].interval
+          value: 15s
+
+  - it: should add extra labels
+    set:
+      monitoring.serviceMonitor.enabled: true
+      monitoring.serviceMonitor.labels:
+        prometheus: kube-prometheus
+    asserts:
+      - equal:
+          path: metadata.labels.prometheus
+          value: kube-prometheus
