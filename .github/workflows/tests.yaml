@@ -47,10 +47,8 @@ jobs:
 
       - name: Setup Helm
         uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
-        with:
-          version: v3.19.0
 
       - name: Run helm unit tests
         run: |
-          helm plugin install https://github.com/helm-unittest/helm-unittest --verify=false
+          helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.0.3 --verify=false
           helm unittest charts/tuppr
