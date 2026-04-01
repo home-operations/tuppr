@@ -105,11 +105,26 @@ tests:
             operator: Exists
             effect: NoSchedule
 
-  - it: should use system-node-critical priority class
+  - it: should use system-node-critical priority class by default
     asserts:
       - equal:
           path: spec.template.spec.priorityClassName
           value: system-node-critical
+
+  - it: should use custom priority class
+    set:
+      priorityClassName: my-custom-priority
+    asserts:
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: my-custom-priority
+
+  - it: should not set priority class when empty
+    set:
+      priorityClassName: ""
+    asserts:
+      - notExists:
+          path: spec.template.spec.priorityClassName
 
   - it: should pass extra env vars
     set:

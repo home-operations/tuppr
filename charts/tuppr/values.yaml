@@ -121,6 +121,9 @@ volumeMounts: []
 #   mountPath: "/etc/foo"
 #   readOnly: true
 
+# Priority class name for pod scheduling
+priorityClassName: system-node-critical
+
 # Node selector for pod assignment
 nodeSelector: {}
 # Example:
