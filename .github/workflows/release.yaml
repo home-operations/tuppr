@@ -1,5 +1,5 @@
 ---
-name: Build
+name: Release
 on:
   release:
     types:
@@ -18,6 +18,7 @@ jobs:
             arch: arm64
     concurrency:
       group: ${{ github.workflow }}-${{ matrix.arch }}
+      cancel-in-progress: true
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -50,6 +51,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           tags: ghcr.io/${{ github.repository }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
@@ -102,13 +105,11 @@ jobs:
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
-        if: github.event_name != 'pull_request'
         run: |
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
 
       - name: Inspect image
-        if: github.event_name != 'pull_request'
         run: |
           docker buildx imagetools inspect ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}
 

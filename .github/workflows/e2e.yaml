@@ -32,6 +32,7 @@ jobs:
   e2e-test:
     needs: cleanup-previous
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         # TODO: Full matrix once hetzner limits are lifted
