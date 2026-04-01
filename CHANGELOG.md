@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.1.3](https://github.com/home-operations/tuppr/compare/0.1.2...0.1.3) (2026-04-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* **github-action:** Update action azure/setup-helm (v4.3.1 → v5.0.0) ([#191](https://github.com/home-operations/tuppr/issues/191))
+* **github-action:** Update action actions/create-github-app-token (v2.2.2 → v3.0.0) ([#184](https://github.com/home-operations/tuppr/issues/184))
+* **github-action:** Update action jdx/mise-action (v3.6.3 → v4.0.0) ([#183](https://github.com/home-operations/tuppr/issues/183))
+
+### Features
+
+* **deps:** update module github.com/open-policy-agent/cert-controller (v0.15.0 → v0.16.0) ([#181](https://github.com/home-operations/tuppr/issues/181)) ([f747a7f](https://github.com/home-operations/tuppr/commit/f747a7f869cfc2c2d000f0bd6283e56a09b37b99))
+
+
+### Bug Fixes
+
+* **deps:** update kubernetes packages (v0.35.2 → v0.35.3) ([#187](https://github.com/home-operations/tuppr/issues/187)) ([499e804](https://github.com/home-operations/tuppr/commit/499e804aad59ebcf78ecbb2a179ccafe88358a5b))
+* **deps:** update module github.com/cosi-project/runtime (v1.14.0 → v1.14.1) ([#192](https://github.com/home-operations/tuppr/issues/192)) ([4289459](https://github.com/home-operations/tuppr/commit/4289459e14d53da7c64288a2cb82aefe81f32761))
+* **deps:** update module github.com/google/go-containerregistry (v0.21.2 → v0.21.3) ([#185](https://github.com/home-operations/tuppr/issues/185)) ([831fe23](https://github.com/home-operations/tuppr/commit/831fe233e328ae0573a701e4fc56e68370643de6))
+* **deps:** update module github.com/siderolabs/talos/pkg/machinery (v1.12.5 → v1.12.6) ([#188](https://github.com/home-operations/tuppr/issues/188)) ([6d99117](https://github.com/home-operations/tuppr/commit/6d9911733eef801c9e5366990c2deebc400dd763))
+* **deps:** update module google.golang.org/grpc (v1.79.2 → v1.79.3) ([#186](https://github.com/home-operations/tuppr/issues/186)) ([7c91009](https://github.com/home-operations/tuppr/commit/7c91009746f05d0c457d8e163de0f4b5c1c2ade5))
+
+
+### Miscellaneous Chores
+
+* **charts:** expose priorityClassName ([678d288](https://github.com/home-operations/tuppr/commit/678d288a405f122717a9903fd75dd992b096d964))
+* **deps:** update k8s.io/utils digest (b8788ab → 28399d8) ([#189](https://github.com/home-operations/tuppr/issues/189)) ([584968f](https://github.com/home-operations/tuppr/commit/584968f07de565de35855315aad7731227df6f53))
+* release 0.1.3 ([9259009](https://github.com/home-operations/tuppr/commit/925900965c667883a67df5fce6b40635a222cf3a))
+
+
+### Continuous Integration
+
+* **github-action:** Update action actions/create-github-app-token (v2.2.2 → v3.0.0) ([#184](https://github.com/home-operations/tuppr/issues/184)) ([ec9b3da](https://github.com/home-operations/tuppr/commit/ec9b3da1295be08b0a1157c4ce842b2849891c22))
+* **github-action:** Update action azure/setup-helm (v4.3.1 → v5.0.0) ([#191](https://github.com/home-operations/tuppr/issues/191)) ([23b760a](https://github.com/home-operations/tuppr/commit/23b760a3d62227ef991f3ff7bb58172bcec2e244))
+* **github-action:** Update action jdx/mise-action (v3.6.3 → v4.0.0) ([#183](https://github.com/home-operations/tuppr/issues/183)) ([a3253db](https://github.com/home-operations/tuppr/commit/a3253dba881d9ee0aa2126d6d61b86b7de6ddcdd))
+
 ## [0.1.2](https://github.com/home-operations/tuppr/compare/0.1.1...0.1.2) (2026-03-12)
 
 
