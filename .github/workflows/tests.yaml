@@ -10,6 +10,10 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Run on Ubuntu
@@ -23,10 +27,13 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Running Unit Tests
-        run: |-
+      - name: Check go.mod tidiness
+        run: |
           go mod tidy
-          make test
+          git diff --exit-code go.mod go.sum
+
+      - name: Running Unit Tests
+        run: make test
 
       - name: Running Integration Tests
         run: make test-integration
@@ -39,7 +46,9 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup Helm
-        uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112 # v5.0.0
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+        with:
+          version: v3.19.0
 
       - name: Run helm unit tests
         run: |
