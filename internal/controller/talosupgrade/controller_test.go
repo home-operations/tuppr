@@ -73,6 +73,20 @@ func (m *mockHealthChecker) CheckHealth(ctx context.Context, healthChecks []tupp
 	return m.err
 }
 
+type mockNotifier struct {
+	calls       int
+	lastTitle   string
+	lastMessage string
+	sendErr     error
+}
+
+func (m *mockNotifier) Send(title, message string) error {
+	m.calls++
+	m.lastTitle = title
+	m.lastMessage = message
+	return m.sendErr
+}
+
 type fixedClock struct {
 	t time.Time
 }
@@ -1887,6 +1901,8 @@ func TestTalosReconcile_ProceedsWhenImageAvailable(t *testing.T) {
 
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 	r.ImageChecker = ic
+	notifier := &mockNotifier{}
+	r.Notifier = notifier
 	// Run Reconcile
 	result := reconcileTalos(t, r, "test-upgrade")
 
@@ -1914,6 +1930,53 @@ func TestTalosReconcile_ProceedsWhenImageAvailable(t *testing.T) {
 	}
 	if !foundImageArg {
 		t.Fatalf("job does not contain expected image arg: %s", expectedArg)
+	}
+
+	if notifier.calls != 1 {
+		t.Fatalf("expected one start notification, got %d", notifier.calls)
+	}
+	if notifier.lastTitle != "Tuppr Upgrade Started" {
+		t.Fatalf("expected start notification title, got %q", notifier.lastTitle)
+	}
+	if notifier.lastMessage != "Node "+fakeNodeA+" is upgrading Talos from v1.10.0 -> "+fakeTalosVersion {
+		t.Fatalf("expected start notification message for %s, got %q", fakeNodeA, notifier.lastMessage)
+	}
+}
+
+func TestTalosReconcile_DoesNotSendDuplicateStartNotificationWithActiveJob(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhasePending),
+	)
+	node := newNode(fakeNodeA, "10.0.0.1")
+
+	targetImage := "factory.talos.dev/installer/abc:" + fakeTalosVersion
+
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{"10.0.0.1": "v1.10.0"},
+		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/abc:v1.10.0"},
+	}
+
+	ic := &mockImageChecker{
+		availableImages: map[string]bool{
+			targetImage: true,
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+	r.ImageChecker = ic
+	notifier := &mockNotifier{}
+	r.Notifier = notifier
+
+	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, "test-upgrade")
+
+	if notifier.calls != 1 {
+		t.Fatalf("expected only one start notification while job is active, got %d", notifier.calls)
 	}
 }
 
