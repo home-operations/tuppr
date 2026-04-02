@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.4](https://github.com/home-operations/tuppr/compare/0.1.3...0.1.4) (2026-04-02)
+
+
+### Bug Fixes
+
+* **ci:** fix helm lint and pin version ([42f40a9](https://github.com/home-operations/tuppr/commit/42f40a997d950fbf301d0b02e602fcaafe7835c6))
+* **deps:** update module github.com/netresearch/go-cron (v0.13.1 → v0.13.4) ([#196](https://github.com/home-operations/tuppr/issues/196)) ([7fbfaab](https://github.com/home-operations/tuppr/commit/7fbfaabddf1bd6525e728ff92b3036fd5db8b1a8))
+
+
+### Miscellaneous Chores
+
+* **ci:** tidy up github actions ([3397887](https://github.com/home-operations/tuppr/commit/339788728cb7dbfe7f15159fd3fee52c7bd647a9))
+
 ## [0.1.3](https://github.com/home-operations/tuppr/compare/0.1.2...0.1.3) (2026-04-01)
 
 
