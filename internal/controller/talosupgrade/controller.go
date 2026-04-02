@@ -21,6 +21,7 @@ import (
 	"github.com/home-operations/tuppr/internal/healthcheck"
 	"github.com/home-operations/tuppr/internal/image"
 	"github.com/home-operations/tuppr/internal/metrics"
+	"github.com/home-operations/tuppr/internal/notification"
 	"github.com/home-operations/tuppr/internal/talos"
 )
 
@@ -76,6 +77,7 @@ type Reconciler struct {
 	MetricsReporter     *metrics.Reporter
 	Now                 Now
 	ImageChecker        ImageChecker
+	Notifier            notification.Notifier
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {

@@ -31,6 +31,7 @@ import (
 	tupperv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/controller/kubernetesupgrade"
 	"github.com/home-operations/tuppr/internal/controller/talosupgrade"
+	"github.com/home-operations/tuppr/internal/notification"
 	kuberneteswebhook "github.com/home-operations/tuppr/internal/webhook/kubernetesupgrade"
 	taloswebhook "github.com/home-operations/tuppr/internal/webhook/talosupgrade"
 	// +kubebuilder:scaffold:imports
@@ -104,6 +105,11 @@ func main() {
 		controllerNamespace = "tuppr-system" // Default namespace
 	}
 
+	notificationURL := os.Getenv("NOTIFICATION_URL")
+	notifier := &notification.ShoutrrrNotifier{
+		URL: notificationURL,
+	}
+
 	if metricsServiceName == "" {
 		metricsServiceName = "tuppr-metrics-service"
 	}
@@ -111,6 +117,9 @@ func main() {
 	setupLog.Info("Starting tuppr controller manager",
 		"talosconfig-secret", talosConfigSecret,
 		"controller-namespace", controllerNamespace)
+	setupLog.Info("Notification configuration loaded",
+		"notifications_enabled", notificationURL != "",
+	)
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -230,6 +239,7 @@ func main() {
 		Scheme:              mgr.GetScheme(),
 		TalosConfigSecret:   talosConfigSecret,
 		ControllerNamespace: controllerNamespace,
+		Notifier:            notifier,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TalosUpgrade")
 		os.Exit(1)
