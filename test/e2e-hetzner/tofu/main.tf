@@ -8,7 +8,7 @@ module "talos_cluster" {
   talos_version      = var.talos_bootstrap_version
   kubernetes_version = var.k8s_bootstrap_version
 
-  talos_iso_id_x86 = 122630
+  talos_iso_id_x86 = var.talos_iso_id_x86
   disable_arm = true
 
   hcloud_token = var.hcloud_token
