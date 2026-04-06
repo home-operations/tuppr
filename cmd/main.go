@@ -106,9 +106,7 @@ func main() {
 	}
 
 	notificationURL := os.Getenv("NOTIFICATION_URL")
-	notifier := &notification.ShoutrrrNotifier{
-		URL: notificationURL,
-	}
+	notifier, notificationsEnabled := initNotifier(notificationURL)
 
 	if metricsServiceName == "" {
 		metricsServiceName = "tuppr-metrics-service"
@@ -118,7 +116,7 @@ func main() {
 		"talosconfig-secret", talosConfigSecret,
 		"controller-namespace", controllerNamespace)
 	setupLog.Info("Notification configuration loaded",
-		"notifications_enabled", notificationURL != "",
+		"notifications_enabled", notificationsEnabled,
 	)
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
@@ -297,4 +295,14 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func initNotifier(notificationURL string) (notification.Notifier, bool) {
+	if notificationURL == "" {
+		return nil, false
+	}
+
+	return &notification.ShoutrrrNotifier{
+		URL: notificationURL,
+	}, true
 }

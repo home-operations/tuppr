@@ -3,8 +3,8 @@ package notification
 import (
 	"errors"
 
-	"github.com/containrrr/shoutrrr"
-	"github.com/containrrr/shoutrrr/pkg/types"
+	"github.com/nicholas-fedor/shoutrrr"
+	"github.com/nicholas-fedor/shoutrrr/pkg/types"
 )
 
 // ShoutrrrNotifier sends notifications through a configured Shoutrrr URL.

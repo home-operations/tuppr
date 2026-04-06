@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/containrrr/shoutrrr/pkg/types"
+	"github.com/nicholas-fedor/shoutrrr/pkg/types"
 )
 
 type fakeShoutrrrSender struct {
