@@ -106,7 +106,7 @@ func main() {
 	}
 
 	notificationURL := os.Getenv("NOTIFICATION_URL")
-	notifier, notificationsEnabled := initNotifier(notificationURL)
+	notifier, notificationsEnabled := newNotifier(notificationURL)
 
 	if metricsServiceName == "" {
 		metricsServiceName = "tuppr-metrics-service"
@@ -115,9 +115,11 @@ func main() {
 	setupLog.Info("Starting tuppr controller manager",
 		"talosconfig-secret", talosConfigSecret,
 		"controller-namespace", controllerNamespace)
-	setupLog.Info("Notification configuration loaded",
-		"notifications_enabled", notificationsEnabled,
-	)
+	if notificationsEnabled {
+		setupLog.Info("Notification configuration loaded",
+			"notifications_enabled", true,
+		)
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -297,7 +299,7 @@ func main() {
 	}
 }
 
-func initNotifier(notificationURL string) (notification.Notifier, bool) {
+func newNotifier(notificationURL string) (notification.Notifier, bool) {
 	if notificationURL == "" {
 		return nil, false
 	}
