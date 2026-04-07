@@ -9,28 +9,35 @@ import (
 
 // ShoutrrrNotifier sends notifications through a configured Shoutrrr URL.
 type ShoutrrrNotifier struct {
-	URL string
+	sender    shoutrrrSender
+	senderErr error
 }
 
 type shoutrrrSender interface {
 	Send(message string, params *types.Params) []error
 }
 
-// shourtrrrSenderFactory is overridden in tests.
-var shoutrrrSenderFactory = newShoutrrrSender
-
-func newShoutrrrSender(url string) (shoutrrrSender, error) {
-	return shoutrrr.CreateSender(url)
-}
-
-func (s *ShoutrrrNotifier) Send(title, message string) error {
-	if s.URL == "" {
+// NewShoutrrrNotifier constructs a notifier or returns nil when notifications are disabled.
+func NewShoutrrrNotifier(notificationURL string) Notifier {
+	if notificationURL == "" {
 		return nil
 	}
 
-	sender, err := shoutrrrSenderFactory(s.URL)
-	if err != nil {
-		return err
+	sender, err := shoutrrr.CreateSender(notificationURL)
+
+	return &ShoutrrrNotifier{
+		sender:    sender,
+		senderErr: err,
+	}
+}
+
+func (s *ShoutrrrNotifier) Send(title, message string) error {
+	if s.senderErr != nil {
+		return s.senderErr
+	}
+
+	if s.sender == nil {
+		return nil
 	}
 
 	params := types.Params{}
@@ -38,5 +45,5 @@ func (s *ShoutrrrNotifier) Send(title, message string) error {
 		params.SetTitle(title)
 	}
 
-	return errors.Join(sender.Send(message, &params)...)
+	return errors.Join(s.sender.Send(message, &params)...)
 }

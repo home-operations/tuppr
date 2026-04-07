@@ -106,9 +106,8 @@ func main() {
 	}
 
 	notificationURL := os.Getenv("NOTIFICATION_URL")
-	notifier := newNotifier(notificationURL)
+	notifier := notification.NewShoutrrrNotifier(notificationURL)
 	notificationsEnabled := notifier != nil
-	notifierInterface := asNotifierInterface(notifier)
 
 	if metricsServiceName == "" {
 		metricsServiceName = "tuppr-metrics-service"
@@ -236,13 +235,12 @@ func main() {
 
 	setupLog.Info("Setting up controllers")
 
-	// ensure interface is nil when notifier is nil
 	if err := (&talosupgrade.Reconciler{
 		Client:              mgr.GetClient(),
 		Scheme:              mgr.GetScheme(),
 		TalosConfigSecret:   talosConfigSecret,
 		ControllerNamespace: controllerNamespace,
-		Notifier:            notifierInterface,
+		Notifier:            notifier,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TalosUpgrade")
 		os.Exit(1)
@@ -300,22 +298,4 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
-}
-
-func newNotifier(notificationURL string) *notification.ShoutrrrNotifier {
-	if notificationURL == "" {
-		return nil
-	}
-
-	return &notification.ShoutrrrNotifier{
-		URL: notificationURL,
-	}
-}
-
-func asNotifierInterface(notifier *notification.ShoutrrrNotifier) notification.Notifier {
-	if notifier == nil {
-		return nil
-	}
-
-	return notifier
 }

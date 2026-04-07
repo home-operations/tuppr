@@ -19,26 +19,15 @@ func (f *fakeShoutrrrSender) Send(message string, params *types.Params) []error 
 	return f.errs
 }
 
-func TestShoutrrrSend_EmptyURLSkips(t *testing.T) {
-	n := &ShoutrrrNotifier{}
-
-	if err := n.Send("Test", "Hello from Tuppr Dev"); err != nil {
-		t.Fatalf("expected empty URL to skip without error, got %v", err)
+func TestNewShoutrrrNotifier_EmptyURLReturnsNil(t *testing.T) {
+	if notifier := NewShoutrrrNotifier(""); notifier != nil {
+		t.Fatalf("expected nil notifier for empty URL, got %T", notifier)
 	}
 }
 
 func TestShoutrrrSend_ForwardsTitleInParams(t *testing.T) {
-	originalFactory := shoutrrrSenderFactory
-	t.Cleanup(func() {
-		shoutrrrSenderFactory = originalFactory
-	})
-
 	fakeSender := &fakeShoutrrrSender{}
-	shoutrrrSenderFactory = func(string) (shoutrrrSender, error) {
-		return fakeSender, nil
-	}
-
-	n := &ShoutrrrNotifier{URL: "ntfy://example/topic"}
+	n := &ShoutrrrNotifier{sender: fakeSender}
 
 	if err := n.Send("Tuppr Upgrade Started", "Node a is upgrading"); err != nil {
 		t.Fatalf("expected send to succeed, got %v", err)
@@ -61,17 +50,8 @@ func TestShoutrrrSend_ForwardsTitleInParams(t *testing.T) {
 }
 
 func TestShoutrrrSend_ReturnsSenderErrors(t *testing.T) {
-	originalFactory := shoutrrrSenderFactory
-	t.Cleanup(func() {
-		shoutrrrSenderFactory = originalFactory
-	})
-
 	fakeSender := &fakeShoutrrrSender{errs: []error{errors.New("boom")}}
-	shoutrrrSenderFactory = func(string) (shoutrrrSender, error) {
-		return fakeSender, nil
-	}
-
-	n := &ShoutrrrNotifier{URL: "ntfy://example/topic"}
+	n := &ShoutrrrNotifier{sender: fakeSender}
 
 	if err := n.Send("Tuppr Upgrade Started", "Node a is upgrading"); err == nil {
 		t.Fatal("expected sender errors to be returned")
