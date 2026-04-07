@@ -16,7 +16,10 @@ type shoutrrrSender interface {
 	Send(message string, params *types.Params) []error
 }
 
-var newShoutrrrSender = func(url string) (shoutrrrSender, error) {
+// shourtrrrSenderFactory is overridden in tests.
+var shoutrrrSenderFactory = newShoutrrrSender
+
+func newShoutrrrSender(url string) (shoutrrrSender, error) {
 	return shoutrrr.CreateSender(url)
 }
 
@@ -25,7 +28,7 @@ func (s *ShoutrrrNotifier) Send(title, message string) error {
 		return nil
 	}
 
-	sender, err := newShoutrrrSender(s.URL)
+	sender, err := shoutrrrSenderFactory(s.URL)
 	if err != nil {
 		return err
 	}

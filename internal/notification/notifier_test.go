@@ -28,13 +28,13 @@ func TestShoutrrrSend_EmptyURLSkips(t *testing.T) {
 }
 
 func TestShoutrrrSend_ForwardsTitleInParams(t *testing.T) {
-	originalFactory := newShoutrrrSender
+	originalFactory := shoutrrrSenderFactory
 	t.Cleanup(func() {
-		newShoutrrrSender = originalFactory
+		shoutrrrSenderFactory = originalFactory
 	})
 
 	fakeSender := &fakeShoutrrrSender{}
-	newShoutrrrSender = func(string) (shoutrrrSender, error) {
+	shoutrrrSenderFactory = func(string) (shoutrrrSender, error) {
 		return fakeSender, nil
 	}
 
@@ -61,13 +61,13 @@ func TestShoutrrrSend_ForwardsTitleInParams(t *testing.T) {
 }
 
 func TestShoutrrrSend_ReturnsSenderErrors(t *testing.T) {
-	originalFactory := newShoutrrrSender
+	originalFactory := shoutrrrSenderFactory
 	t.Cleanup(func() {
-		newShoutrrrSender = originalFactory
+		shoutrrrSenderFactory = originalFactory
 	})
 
 	fakeSender := &fakeShoutrrrSender{errs: []error{errors.New("boom")}}
-	newShoutrrrSender = func(string) (shoutrrrSender, error) {
+	shoutrrrSenderFactory = func(string) (shoutrrrSender, error) {
 		return fakeSender, nil
 	}
 
