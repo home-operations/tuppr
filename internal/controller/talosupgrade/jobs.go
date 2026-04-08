@@ -251,6 +251,27 @@ func (r *Reconciler) createJob(ctx context.Context, talosUpgrade *tupprv1alpha1.
 	}
 
 	logger.Info("Successfully created upgrade job", "job", job.Name, "node", nodeName)
+	if r.Notifier != nil {
+		message := fmt.Sprintf("Starting upgrade for node %s", nodeName)
+		targetVersion := r.getTargetVersion(targetNode, talosUpgrade.Spec.Talos.Version)
+		currentVersion, err := r.TalosClient.GetNodeVersion(ctx, nodeIP)
+		if err != nil {
+			logger.V(1).Info("Failed to determine current Talos version for notification", "error", err, "job", job.Name, "node", nodeName)
+		} else {
+			message = fmt.Sprintf(
+				"Node %s is upgrading Talos from %s -> %s",
+				nodeName,
+				currentVersion,
+				targetVersion,
+			)
+		}
+		if err := r.Notifier.Send(
+			"Tuppr Upgrade Started",
+			message,
+		); err != nil {
+			logger.V(1).Info("Failed to send start notification", "error", err, "job", job.Name, "node", nodeName)
+		}
+	}
 	r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeTalos, 1)
 	r.MetricsReporter.StartJobTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, nodeName)
 	return job, nil
