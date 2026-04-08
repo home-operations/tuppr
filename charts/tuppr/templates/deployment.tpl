@@ -60,6 +60,13 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            {{- if and .Values.notification.enabled .Values.notification.secretName }}
+            - name: NOTIFICATION_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.notification.secretName }}
+                  key: {{ .Values.notification.secretKey }}
+            {{- end }}
             {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

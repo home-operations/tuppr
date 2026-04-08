@@ -62,6 +62,12 @@ env: []
 # - name: FOO
 #   value: bar
 
+# Notification configuration
+notification:
+  enabled: false
+  secretName: ""
+  secretKey: url
+
 # Container security context
 securityContext:
   allowPrivilegeEscalation: false
