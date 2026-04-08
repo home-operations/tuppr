@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.4](https://github.com/home-operations/tuppr/compare/0.1.3...0.1.4) (2026-04-08)
+
+
+### Features
+
+* **deps:** update module github.com/google/cel-go (v0.27.0 → v0.28.0) ([#199](https://github.com/home-operations/tuppr/issues/199)) ([ff82096](https://github.com/home-operations/tuppr/commit/ff82096c2d8a59594ce959252fd36da16b990c0c))
+
+
+### Bug Fixes
+
+* **ci:** fix helm lint and pin version ([42f40a9](https://github.com/home-operations/tuppr/commit/42f40a997d950fbf301d0b02e602fcaafe7835c6))
+* **deps:** update module github.com/google/go-containerregistry (v0.21.3 → v0.21.4) ([#198](https://github.com/home-operations/tuppr/issues/198)) ([013da09](https://github.com/home-operations/tuppr/commit/013da09e5feab50a2c29cd56e95f94ce97933301))
+* **deps:** update module github.com/netresearch/go-cron (v0.13.1 → v0.13.4) ([#196](https://github.com/home-operations/tuppr/issues/196)) ([7fbfaab](https://github.com/home-operations/tuppr/commit/7fbfaabddf1bd6525e728ff92b3036fd5db8b1a8))
+* **mise:** update tool go (1.26.1 → 1.26.2) ([66ba006](https://github.com/home-operations/tuppr/commit/66ba00674115ebf32dd4325771d39446a01f0ae1))
+
+
+### Miscellaneous Chores
+
+* **ci:** tidy up github actions ([3397887](https://github.com/home-operations/tuppr/commit/339788728cb7dbfe7f15159fd3fee52c7bd647a9))
+
 ## [0.1.3](https://github.com/home-operations/tuppr/compare/0.1.2...0.1.3) (2026-04-01)
 
 
