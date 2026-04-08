@@ -204,14 +204,14 @@ spec:
               phase:
                 description: Phase represents the current phase of the upgrade
                 enum:
-                  - Pending
-                  - HealthChecking
-                  - Draining
-                  - Upgrading
-                  - Rebooting
-                  - Completed
-                  - Failed
-                  - MaintenanceWindow
+                - Pending
+                - HealthChecking
+                - Draining
+                - Upgrading
+                - Rebooting
+                - Completed
+                - Failed
+                - MaintenanceWindow
                 type: string
               retries:
                 description: Retries is the number of times the upgrade was attempted
