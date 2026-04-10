@@ -104,6 +104,13 @@ type TalosUpgradeSpec struct {
 	// Drain configuration for the node prior to upgrade
 	// +optional
 	Drain *DrainSpec `json:"drain,omitempty"`
+
+	// Parallelism is the number of nodes to upgrade concurrently in each batch.
+	// Defaults to 1 (sequential upgrades). Must be >= 1 and <= the number of matching nodes.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:default=1
+	// +optional
+	Parallelism *int32 `json:"parallelism,omitempty"`
 }
 
 // TalosUpgradeStatus defines the observed state of TalosUpgrade
@@ -112,9 +119,13 @@ type TalosUpgradeStatus struct {
 	// +optional
 	Phase JobPhase `json:"phase,omitempty"`
 
-	// CurrentNode is the node currently being upgraded
+	// CurrentNode is the node currently being upgraded (first node in batch for backwards compatibility)
 	// +optional
 	CurrentNode string `json:"currentNode,omitempty"`
+
+	// CurrentNodes is the list of nodes currently being upgraded in the active batch
+	// +optional
+	CurrentNodes []string `json:"currentNodes,omitempty"`
 
 	// CompletedNodes are nodes that have been successfully upgraded
 	// +optional

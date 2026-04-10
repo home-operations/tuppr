@@ -91,6 +91,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, r.Update(ctx, &kubernetesUpgrade)
 	}
 
+	if r.TalosClient == nil {
+		talosClient, err := talos.NewClient(ctx)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to create talos client: %w", err)
+		}
+		r.TalosClient = talosClient
+	}
+
 	return r.processUpgrade(ctx, &kubernetesUpgrade)
 }
 
@@ -124,13 +132,8 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.VersionGetter == nil {
 		r.VersionGetter = &DiscoveryVersionGetter{}
 	}
-	if r.TalosClient == nil {
-		talosClient, err := talos.NewClient(context.Background())
-		if err != nil {
-			return fmt.Errorf("failed to create talos client: %w", err)
-		}
-		r.TalosClient = talosClient
-	}
+	// TalosClient is created lazily on first reconciliation, not at setup time,
+	// so the controller can start even when the Talos API is unreachable.
 	if r.Now == nil {
 		r.Now = &nodeutil.Clock{}
 	}

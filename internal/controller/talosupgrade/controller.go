@@ -64,9 +64,10 @@ type Now interface {
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=kubernetesupgrades,verbs=get;list;watch
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=create;get;list;patch;update;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=validatingwebhookconfigurations,verbs=get;list;patch;update;watch
 
 type Reconciler struct {
 	client.Client
@@ -99,6 +100,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, r.Update(ctx, &talosUpgrade)
 	}
 
+	if r.TalosClient == nil {
+		talosClient, err := talos.NewClient(ctx)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to create talos client: %w", err)
+		}
+		r.TalosClient = talosClient
+	}
+
 	return r.processUpgrade(ctx, &talosUpgrade)
 }
 
@@ -129,13 +138,8 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.HealthChecker == nil {
 		r.HealthChecker = healthcheck.NewChecker(mgr.GetClient(), r.MetricsReporter)
 	}
-	if r.TalosClient == nil {
-		talosClient, err := talos.NewClient(context.Background())
-		if err != nil {
-			return fmt.Errorf("failed to create talos client: %w", err)
-		}
-		r.TalosClient = talosClient
-	}
+	// TalosClient is created lazily on first reconciliation, not at setup time,
+	// so the controller can start even when the Talos API is unreachable.
 	if r.Now == nil {
 		r.Now = &nodeutil.Clock{}
 	}
@@ -166,6 +170,14 @@ func (r *Reconciler) updateStatus(ctx context.Context, talosUpgrade *tupprv1alph
 }
 
 func (r *Reconciler) setPhase(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, currentNode, message string) error {
+	var currentNodes []string
+	if currentNode != "" {
+		currentNodes = []string{currentNode}
+	}
+	return r.setPhaseWithNodes(ctx, talosUpgrade, phase, currentNodes, message)
+}
+
+func (r *Reconciler) setPhaseWithNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, currentNodes []string, message string) error {
 	prevPhase := talosUpgrade.Status.Phase
 
 	totalNodes, err := r.getTotalNodeCount(ctx)
@@ -173,14 +185,21 @@ func (r *Reconciler) setPhase(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 		log.FromContext(ctx).Error(err, "Failed to get total node count for metrics")
 	}
 
+	currentNode := ""
+	if len(currentNodes) > 0 {
+		currentNode = currentNodes[0]
+	}
+
 	if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
-		"phase":       phase,
-		"currentNode": currentNode,
-		"message":     message,
+		"phase":        phase,
+		"currentNode":  currentNode,
+		"currentNodes": currentNodes,
+		"message":      message,
 	}); err != nil {
 		return err
 	}
 	talosUpgrade.Status.Phase = phase
+	talosUpgrade.Status.CurrentNodes = currentNodes
 	r.recordPhaseTransition(talosUpgrade, prevPhase, phase)
 	r.MetricsReporter.RecordTalosUpgradeNodes(
 		talosUpgrade.Name,
@@ -202,9 +221,18 @@ func (r *Reconciler) recordPhaseTransition(talosUpgrade *tupprv1alpha1.TalosUpgr
 }
 
 func (r *Reconciler) addCompletedNode(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) error {
+	talosUpgrade.Status.CompletedNodes = append(talosUpgrade.Status.CompletedNodes, nodeName)
 	return r.updateStatus(ctx, talosUpgrade, map[string]any{
-		"completedNodes": append(talosUpgrade.Status.CompletedNodes, nodeName),
+		"completedNodes": talosUpgrade.Status.CompletedNodes,
 	})
+}
+
+// getParallelism returns the effective parallelism value, defaulting to 1.
+func getParallelism(spec tupprv1alpha1.TalosUpgradeSpec) int {
+	if spec.Parallelism != nil && *spec.Parallelism > 0 {
+		return int(*spec.Parallelism)
+	}
+	return 1
 }
 
 func (r *Reconciler) addFailedNode(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeStatus tupprv1alpha1.NodeUpgradeStatus) error {

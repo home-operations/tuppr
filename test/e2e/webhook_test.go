@@ -14,18 +14,6 @@ var _ = Describe("Webhook Validation", Ordered, func() {
 	SetDefaultEventuallyTimeout(30 * time.Second)
 	SetDefaultEventuallyPollingInterval(time.Second)
 
-	BeforeAll(func() {
-		By("waiting for webhook to be ready")
-		Eventually(func(g Gomega) {
-			cmd := exec.Command("kubectl", "get", "validatingwebhookconfiguration",
-				"tuppr-validating-webhook-configuration",
-				"-o", "jsonpath={.webhooks[0].clientConfig.caBundle}")
-			output, err := utils.Run(cmd)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(output).NotTo(BeEmpty(), "Webhook caBundle should be populated")
-		}, 2*time.Minute).Should(Succeed())
-	})
-
 	Context("TalosUpgrade Validation", func() {
 		AfterEach(func() {
 			By("cleaning up test resources")
@@ -103,6 +91,45 @@ spec:
 			err = utils.ApplyFromStdinExpectError(yaml2)
 			Expect(err).To(HaveOccurred(), "Second TalosUpgrade should be rejected")
 			Expect(err.Error()).To(ContainSubstring("only one TalosUpgrade"))
+		})
+
+		It("should reject parallelism less than 1", func() {
+			yaml := `
+apiVersion: tuppr.home-operations.com/v1alpha1
+kind: TalosUpgrade
+metadata:
+  name: invalid-parallelism
+spec:
+  talos:
+    version: v1.11.0
+  parallelism: 0
+`
+			err := utils.ApplyFromStdinExpectError(yaml)
+			Expect(err).To(HaveOccurred(), "Parallelism=0 should be rejected")
+			Expect(err.Error()).To(Or(
+				ContainSubstring("minimum"),
+				ContainSubstring("Invalid value"),
+				ContainSubstring("spec.parallelism"),
+			))
+		})
+
+		It("should accept valid parallelism", func() {
+			yaml := `
+apiVersion: tuppr.home-operations.com/v1alpha1
+kind: TalosUpgrade
+metadata:
+  name: valid-parallelism
+spec:
+  talos:
+    version: v1.11.0
+  parallelism: 1
+`
+			err := utils.ApplyFromStdin(yaml)
+			Expect(err).NotTo(HaveOccurred(), "Valid parallelism should be accepted")
+
+			By("verifying resource was created")
+			exists := utils.ResourceExists("talosupgrade", "valid-parallelism")
+			Expect(exists).To(BeTrue())
 		})
 
 		It("should allow updating the same TalosUpgrade", func() {

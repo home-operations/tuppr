@@ -195,6 +195,14 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              parallelism:
+                default: 1
+                description: |-
+                  Parallelism is the number of nodes to upgrade concurrently in each batch.
+                  Defaults to 1 (sequential upgrades). Must be >= 1 and <= the number of matching nodes.
+                format: int32
+                minimum: 1
+                type: integer
               policy:
                 description: Policy configures upgrade behavior
                 properties:
@@ -283,8 +291,15 @@ spec:
                   type: string
                 type: array
               currentNode:
-                description: CurrentNode is the node currently being upgraded
+                description: CurrentNode is the node currently being upgraded (first
+                  node in batch for backwards compatibility)
                 type: string
+              currentNodes:
+                description: CurrentNodes is the list of nodes currently being upgraded
+                  in the active batch
+                items:
+                  type: string
+                type: array
               failedNodes:
                 description: FailedNodes are nodes that failed to upgrade
                 items:

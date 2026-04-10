@@ -109,6 +109,12 @@ func withDebug(d bool) func(*tupprv1alpha1.TalosUpgrade) {
 	}
 }
 
+func withParallelism(p int32) func(*tupprv1alpha1.TalosUpgrade) {
+	return func(tu *tupprv1alpha1.TalosUpgrade) {
+		tu.Spec.Parallelism = &p
+	}
+}
+
 func newTalosValidator(objects ...runtime.Object) *Validator {
 	scheme := runtime.NewScheme()
 	_ = tupprv1alpha1.AddToScheme(scheme)
@@ -135,6 +141,20 @@ func talosConfigSecretWithKey(ns string, data []byte) *corev1.Secret { //nolint:
 		Data: map[string][]byte{
 			"config": data,
 		},
+	}
+}
+
+func TestTalosUpgrade_ValidateCreate_SingletonConstraint(t *testing.T) {
+	existing := newTalosUpgrade("existing-upgrade")
+	v := newTalosValidator(existing, talosConfigSecretWithKey("default", validTalosConfig()))
+	tu := newTalosUpgrade("new-upgrade")
+
+	_, err := v.ValidateCreate(context.Background(), tu)
+	if err == nil {
+		t.Fatal("expected error when second TalosUpgrade is created")
+	}
+	if !strings.Contains(err.Error(), "only one TalosUpgrade") {
+		t.Errorf("expected singleton error, got: %v", err)
 	}
 }
 
@@ -726,6 +746,81 @@ func TestTalosUpgrade_ValidateCreate_MaintenanceWindowShortDuration(t *testing.T
 	}
 }
 
+func TestTalosUpgrade_ValidateCreate_ParallelismValid(t *testing.T) {
+	node1 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}
+	node2 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-2"}}
+	node3 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-3"}}
+
+	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()), node1, node2, node3)
+	tu := newTalosUpgrade("test-upgrade", withParallelism(2))
+
+	warnings, err := v.ValidateCreate(context.Background(), tu)
+	if err != nil {
+		t.Fatalf("expected no error for valid parallelism=2 with 3 nodes, got: %v", err)
+	}
+	if !containsWarning(warnings, "Parallelism set to 2") {
+		t.Errorf("expected warning about parallelism, got: %v", warnings)
+	}
+}
+
+func TestTalosUpgrade_ValidateCreate_ParallelismExceedsNodes(t *testing.T) {
+	node1 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}
+	node2 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-2"}}
+
+	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()), node1, node2)
+	tu := newTalosUpgrade("test-upgrade", withParallelism(5))
+
+	_, err := v.ValidateCreate(context.Background(), tu)
+	if err == nil {
+		t.Fatal("expected error when parallelism exceeds node count")
+	}
+	if !strings.Contains(err.Error(), "exceeds number of matching nodes") {
+		t.Errorf("expected error about exceeding node count, got: %v", err)
+	}
+}
+
+func TestTalosUpgrade_ValidateCreate_ParallelismZero(t *testing.T) {
+	node1 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}
+
+	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()), node1)
+	var p int32 = 0
+	tu := newTalosUpgrade("test-upgrade")
+	tu.Spec.Parallelism = &p
+
+	_, err := v.ValidateCreate(context.Background(), tu)
+	if err == nil {
+		t.Fatal("expected error for parallelism=0")
+	}
+	if !strings.Contains(err.Error(), "must be >= 1") {
+		t.Errorf("expected error about minimum value, got: %v", err)
+	}
+}
+
+func TestTalosUpgrade_ValidateCreate_ParallelismNil(t *testing.T) {
+	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	tu := newTalosUpgrade("test-upgrade")
+	// parallelism is nil (default)
+
+	_, err := v.ValidateCreate(context.Background(), tu)
+	if err != nil {
+		t.Fatalf("expected no error for nil parallelism, got: %v", err)
+	}
+}
+
+func TestTalosUpgrade_ValidateCreate_ParallelismEqualsNodeCount(t *testing.T) {
+	node1 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}
+	node2 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-2"}}
+	node3 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-3"}}
+
+	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()), node1, node2, node3)
+	tu := newTalosUpgrade("test-upgrade", withParallelism(3))
+
+	_, err := v.ValidateCreate(context.Background(), tu)
+	if err != nil {
+		t.Fatalf("expected no error for parallelism=nodeCount, got: %v", err)
+	}
+}
+
 // Helper to create a node with labels for testing overlaps
 func newWebhookNode(name string, labels map[string]string) *corev1.Node {
 	return &corev1.Node{
@@ -761,7 +856,7 @@ func TestTalosUpgrade_ValidateOverlaps(t *testing.T) {
 		// Initialize validator with existing resources AND the nodes
 		v := newTalosValidator(secret, existingPlan, node1, node2, node3)
 
-		warnings, err := v.ValidateCreate(context.Background(), newPlan)
+		warnings, err := v.validateOverlaps(context.Background(), newPlan)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -788,7 +883,7 @@ func TestTalosUpgrade_ValidateOverlaps(t *testing.T) {
 
 		v := newTalosValidator(secret, existingPlan, node1, node2, node3)
 
-		warnings, err := v.ValidateCreate(context.Background(), newPlan)
+		warnings, err := v.validateOverlaps(context.Background(), newPlan)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -818,4 +913,25 @@ func TestTalosUpgrade_ValidateOverlaps(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestTalosUpgrade_ValidateCreate_ParallelismWithNodeSelector(t *testing.T) {
+	node1 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1", Labels: map[string]string{"tier": "worker"}}}
+	node2 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-2", Labels: map[string]string{"tier": "worker"}}}
+	node3 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-3", Labels: map[string]string{"tier": "control-plane"}}}
+
+	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()), node1, node2, node3)
+	tu := newTalosUpgrade("test-upgrade", withParallelism(3))
+	tu.Spec.NodeSelector = &metav1.LabelSelector{
+		MatchLabels: map[string]string{"tier": "worker"},
+	}
+
+	// parallelism=3 but only 2 nodes match the selector
+	_, err := v.ValidateCreate(context.Background(), tu)
+	if err == nil {
+		t.Fatal("expected error when parallelism exceeds matching nodes with selector")
+	}
+	if !strings.Contains(err.Error(), "exceeds number of matching nodes (2)") {
+		t.Errorf("expected error about 2 matching nodes, got: %v", err)
+	}
 }
