@@ -64,10 +64,9 @@ type Now interface {
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=kubernetesupgrades,verbs=get;list;watch
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=create;get;list;patch;update;watch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
-// +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=validatingwebhookconfigurations,verbs=get;list;patch;update;watch
 
 type Reconciler struct {
 	client.Client
@@ -100,14 +99,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, r.Update(ctx, &talosUpgrade)
 	}
 
-	if r.TalosClient == nil {
-		talosClient, err := talos.NewClient(ctx)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to create talos client: %w", err)
-		}
-		r.TalosClient = talosClient
-	}
-
 	return r.processUpgrade(ctx, &talosUpgrade)
 }
 
@@ -138,8 +129,13 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.HealthChecker == nil {
 		r.HealthChecker = healthcheck.NewChecker(mgr.GetClient(), r.MetricsReporter)
 	}
-	// TalosClient is created lazily on first reconciliation, not at setup time,
-	// so the controller can start even when the Talos API is unreachable.
+	if r.TalosClient == nil {
+		talosClient, err := talos.NewClient(context.Background())
+		if err != nil {
+			return fmt.Errorf("failed to create talos client: %w", err)
+		}
+		r.TalosClient = talosClient
+	}
 	if r.Now == nil {
 		r.Now = &nodeutil.Clock{}
 	}

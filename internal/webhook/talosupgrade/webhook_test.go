@@ -144,20 +144,6 @@ func talosConfigSecretWithKey(ns string, data []byte) *corev1.Secret { //nolint:
 	}
 }
 
-func TestTalosUpgrade_ValidateCreate_SingletonConstraint(t *testing.T) {
-	existing := newTalosUpgrade("existing-upgrade")
-	v := newTalosValidator(existing, talosConfigSecretWithKey("default", validTalosConfig()))
-	tu := newTalosUpgrade("new-upgrade")
-
-	_, err := v.ValidateCreate(context.Background(), tu)
-	if err == nil {
-		t.Fatal("expected error when second TalosUpgrade is created")
-	}
-	if !strings.Contains(err.Error(), "only one TalosUpgrade") {
-		t.Errorf("expected singleton error, got: %v", err)
-	}
-}
-
 func TestTalosUpgrade_ValidateCreate_ValidResource(t *testing.T) {
 	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
 	tu := newTalosUpgrade("test-upgrade")
@@ -856,7 +842,7 @@ func TestTalosUpgrade_ValidateOverlaps(t *testing.T) {
 		// Initialize validator with existing resources AND the nodes
 		v := newTalosValidator(secret, existingPlan, node1, node2, node3)
 
-		warnings, err := v.validateOverlaps(context.Background(), newPlan)
+		warnings, err := v.ValidateCreate(context.Background(), newPlan)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -883,7 +869,7 @@ func TestTalosUpgrade_ValidateOverlaps(t *testing.T) {
 
 		v := newTalosValidator(secret, existingPlan, node1, node2, node3)
 
-		warnings, err := v.validateOverlaps(context.Background(), newPlan)
+		warnings, err := v.ValidateCreate(context.Background(), newPlan)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

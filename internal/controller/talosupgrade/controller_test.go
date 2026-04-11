@@ -2321,10 +2321,6 @@ func TestDrainNode_InvalidNode(t *testing.T) {
 	}
 }
 
-// =========================================================================
-// Batch parallelism tests
-// =========================================================================
-
 func TestTalosReconcile_BatchParallelism2_CreatesMultipleJobs(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",

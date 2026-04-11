@@ -1,4 +1,0 @@
----
-resources:
-  - manifests.yaml
-  - webhook_service.yaml

@@ -15,16 +15,13 @@ namePrefix: tuppr-
 #  pairs:
 #    someName: someValue
 
-configurations:
-  - kustomizeconfig.yaml
-
 resources:
   - ../crd
   - ../rbac
   - ../manager
   # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in
   # crd/kustomization.yaml
-  - ../webhook
+  #- ../webhook
   # [PROMETHEUS] To enable prometheus monitor, uncomment all sections with 'PROMETHEUS'.
   #- ../prometheus
   # [METRICS] Expose the controller manager metrics service.
@@ -43,8 +40,8 @@ patches:
     target:
       kind: Deployment
 
-  # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in
-  # crd/kustomization.yaml
-  - path: manager_webhook_patch.yaml
-    target:
-      kind: Deployment
+# [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in
+# crd/kustomization.yaml
+#- path: manager_webhook_patch.yaml
+#  target:
+#    kind: Deployment

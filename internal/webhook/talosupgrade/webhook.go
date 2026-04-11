@@ -59,11 +59,6 @@ func (v *Validator) ValidateDelete(ctx context.Context, t *tupprv1alpha1.TalosUp
 func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
 	var warnings admission.Warnings
 
-	list := &tupprv1alpha1.TalosUpgradeList{}
-	if err := validation.ValidateSingleton(ctx, v.Client, "TalosUpgrade", t.Name, list); err != nil {
-		return warnings, err
-	}
-
 	overlapWarnings, err := v.validateOverlaps(ctx, t)
 	if err != nil {
 		// We fail open if we can't check overlaps (e.g. API error), but log it
