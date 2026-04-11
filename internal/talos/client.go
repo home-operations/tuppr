@@ -2,6 +2,7 @@ package talos
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/siderolabs/go-retry/retry"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
 	"github.com/siderolabs/talos/pkg/machinery/client"
+	"github.com/siderolabs/talos/pkg/machinery/config/configpatcher"
 	"github.com/siderolabs/talos/pkg/machinery/resources/config"
 	"google.golang.org/grpc"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -17,6 +19,7 @@ import (
 type talosClient interface {
 	Version(ctx context.Context, opts ...grpc.CallOption) (*machine.VersionResponse, error)
 	COSIGet(ctx context.Context, namespace, typ, id string) (resource.Resource, error)
+	ApplyConfiguration(ctx context.Context, req *machine.ApplyConfigurationRequest, opts ...grpc.CallOption) (*machine.ApplyConfigurationResponse, error)
 	Close() error
 }
 
@@ -130,6 +133,50 @@ func (s *Client) GetNodeInstallImage(ctx context.Context, nodeIP string) (string
 	}
 
 	return image, nil
+}
+
+func (s *Client) PatchNodeInstallImage(ctx context.Context, nodeIP, newImage string) error {
+	mc, err := s.GetNodeMachineConfig(ctx, nodeIP)
+	if err != nil {
+		return fmt.Errorf("failed to patch install image on node %s: %w", nodeIP, err)
+	}
+
+	jsonPatch, err := json.Marshal([]map[string]string{
+		{"op": "add", "path": "/machine/install/image", "value": newImage},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal config patch: %w", err)
+	}
+
+	patch, err := configpatcher.LoadPatch(jsonPatch)
+	if err != nil {
+		return fmt.Errorf("failed to load config patch: %w", err)
+	}
+
+	output, err := configpatcher.Apply(configpatcher.WithConfig(mc.Provider()), []configpatcher.Patch{patch})
+	if err != nil {
+		return fmt.Errorf("failed to apply config patch: %w", err)
+	}
+
+	patchedBytes, err := output.Bytes()
+	if err != nil {
+		return fmt.Errorf("failed to serialize patched config: %w", err)
+	}
+
+	nodeCtx := client.WithNode(ctx, nodeIP)
+
+	err = s.executeWithRetry(ctx, func() error {
+		_, err := s.talos.ApplyConfiguration(nodeCtx, &machine.ApplyConfigurationRequest{
+			Data: patchedBytes,
+			Mode: machine.ApplyConfigurationRequest_NO_REBOOT,
+		})
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("failed to apply configuration to node %s: %w", nodeIP, err)
+	}
+
+	return nil
 }
 
 func (s *Client) CheckNodeReady(ctx context.Context, nodeIP, nodeName string) error {

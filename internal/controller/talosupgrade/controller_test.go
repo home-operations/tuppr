@@ -39,6 +39,8 @@ type mockTalosClient struct {
 	checkReadyErr error
 	getVersionErr error
 	getInstallErr error
+	patchCalls    []string
+	patchImageErr error
 }
 
 func (m *mockTalosClient) GetNodeVersion(ctx context.Context, nodeIP string) (string, error) {
@@ -63,6 +65,11 @@ func (m *mockTalosClient) GetNodeInstallImage(ctx context.Context, nodeIP string
 		return img, nil
 	}
 	return "", fmt.Errorf("install image not found for %s", nodeIP)
+}
+
+func (m *mockTalosClient) PatchNodeInstallImage(ctx context.Context, nodeIP, newImage string) error {
+	m.patchCalls = append(m.patchCalls, nodeIP)
+	return m.patchImageErr
 }
 
 type mockHealthChecker struct {
@@ -769,7 +776,8 @@ func TestTalosReconcile_HandlesJobSuccess(t *testing.T) {
 		Status: batchv1.JobStatus{Succeeded: 1},
 	}
 	tc := &mockTalosClient{
-		nodeVersions: map[string]string{"10.0.0.1": fakeTalosVersion}, // matches target
+		nodeVersions:  map[string]string{"10.0.0.1": fakeTalosVersion}, // matches target
+		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/abc:" + fakeTalosVersion},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
@@ -785,6 +793,11 @@ func TestTalosReconcile_HandlesJobSuccess(t *testing.T) {
 		t.Fatalf("expected node-1 in CompletedNodes, got: %v", updated.Status.CompletedNodes)
 	}
 
+	// Verify install image was synced
+	if len(tc.patchCalls) != 1 || tc.patchCalls[0] != "10.0.0.1" {
+		t.Fatalf("expected PatchNodeInstallImage called for 10.0.0.1, got: %v", tc.patchCalls)
+	}
+
 	// Verify job was cleaned up
 	var jobList batchv1.JobList
 	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
@@ -792,6 +805,47 @@ func TestTalosReconcile_HandlesJobSuccess(t *testing.T) {
 	}
 	if len(jobList.Items) != 0 {
 		t.Fatalf("expected job to be cleaned up after success, got %d jobs", len(jobList.Items))
+	}
+}
+
+func TestTalosReconcile_HandleJobSuccess_PatchInstallImageFails_Continues(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
+	)
+	node := newNode(fakeNodeA, "10.0.0.1")
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-upgrade-node-1-abcd1234",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app.kubernetes.io/name":                "talos-upgrade",
+				"tuppr.home-operations.com/target-node": fakeNodeA,
+			},
+		},
+		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
+		Status: batchv1.JobStatus{Succeeded: 1},
+	}
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{"10.0.0.1": fakeTalosVersion},
+		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/abc:" + fakeTalosVersion},
+		patchImageErr: fmt.Errorf("permission denied"),
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	result := reconcileTalos(t, r, "test-upgrade")
+
+	// Should still succeed despite patch failure
+	if result.RequeueAfter != 5*time.Second {
+		t.Fatalf("expected 5s requeue, got: %v", result.RequeueAfter)
+	}
+
+	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	if !slices.Contains(updated.Status.CompletedNodes, fakeNodeA) {
+		t.Fatalf("expected node in CompletedNodes despite patch failure, got: %v", updated.Status.CompletedNodes)
 	}
 }
 
@@ -1359,6 +1413,7 @@ func TestTalosReconcile_HandleJobSuccess_NodeReady(t *testing.T) {
 
 	tc := &mockTalosClient{
 		nodeVersions:  map[string]string{"10.0.0.1": fakeTalosVersion},
+		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/abc:" + fakeTalosVersion},
 		checkReadyErr: nil, // Node is ready
 	}
 
@@ -1381,6 +1436,11 @@ func TestTalosReconcile_HandleJobSuccess_NodeReady(t *testing.T) {
 
 	if len(updated.Status.CompletedNodes) != 1 || updated.Status.CompletedNodes[0] != fakeNodeA {
 		t.Errorf("expected node-a in completed nodes, got %v", updated.Status.CompletedNodes)
+	}
+
+	// Verify install image was synced
+	if len(tc.patchCalls) != 1 || tc.patchCalls[0] != "10.0.0.1" {
+		t.Errorf("expected PatchNodeInstallImage called for 10.0.0.1, got: %v", tc.patchCalls)
 	}
 
 	var jobs batchv1.JobList

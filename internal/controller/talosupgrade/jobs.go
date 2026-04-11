@@ -107,6 +107,12 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, talosUpgrade *tupprv1
 
 	logger.Info("Node verified as upgraded and ready", "node", nodeName)
 
+	if err := r.syncNodeInstallImage(ctx, talosUpgrade, nodeName); err != nil {
+		logger.Error(err, "Failed to sync install image in machine config, continuing", "node", nodeName)
+	} else {
+		logger.Info("Synced machine config install image", "node", nodeName)
+	}
+
 	if talosUpgrade.Spec.Drain != nil {
 		logger.V(1).Info("Uncordoning node after successful upgrade", "node", nodeName)
 		node := &corev1.Node{}
@@ -420,6 +426,25 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 			},
 		},
 	}
+}
+
+func (r *Reconciler) syncNodeInstallImage(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) error {
+	node := &corev1.Node{}
+	if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
+		return fmt.Errorf("failed to get node %s: %w", nodeName, err)
+	}
+
+	nodeIP, err := nodeutil.GetNodeIP(node)
+	if err != nil {
+		return fmt.Errorf("failed to get node IP for %s: %w", nodeName, err)
+	}
+
+	targetImage, err := r.buildTalosUpgradeImage(ctx, talosUpgrade, nodeName)
+	if err != nil {
+		return fmt.Errorf("failed to build target image for %s: %w", nodeName, err)
+	}
+
+	return r.TalosClient.PatchNodeInstallImage(ctx, nodeIP, targetImage)
 }
 
 func getActiveDeadlineSeconds(timeout time.Duration) int64 {

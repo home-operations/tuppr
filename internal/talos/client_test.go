@@ -3,10 +3,13 @@ package talos
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/cosi-project/runtime/pkg/resource"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
+	"github.com/siderolabs/talos/pkg/machinery/config/configloader"
 	"github.com/siderolabs/talos/pkg/machinery/resources/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,6 +26,8 @@ type mockTalosClient struct {
 	cosiGetCalls    int
 	closed          bool
 	cosiResource    resource.Resource
+	applyConfigReq  *machine.ApplyConfigurationRequest
+	applyConfigErr  error
 }
 
 func (m *mockTalosClient) Version(_ context.Context, _ ...grpc.CallOption) (*machine.VersionResponse, error) {
@@ -45,6 +50,11 @@ func (m *mockTalosClient) COSIGet(_ context.Context, _, _, _ string) (resource.R
 		return nil, m.cosiGetErr
 	}
 	return m.cosiResource, nil
+}
+
+func (m *mockTalosClient) ApplyConfiguration(_ context.Context, req *machine.ApplyConfigurationRequest, _ ...grpc.CallOption) (*machine.ApplyConfigurationResponse, error) {
+	m.applyConfigReq = req
+	return &machine.ApplyConfigurationResponse{}, m.applyConfigErr
 }
 
 func (m *mockTalosClient) Close() error {
@@ -427,4 +437,84 @@ func TestClient_CheckNodeReady_Integration(t *testing.T) {
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, mock.versionCalls, 1)
 	assert.GreaterOrEqual(t, mock.cosiGetCalls, 1)
+}
+
+func makeMachineConfig(t *testing.T, image string) *config.MachineConfig {
+	t.Helper()
+
+	cfgYAML := fmt.Sprintf("version: v1alpha1\nmachine:\n  install:\n    image: %q\n", image)
+
+	provider, err := configloader.NewFromBytes([]byte(cfgYAML))
+	require.NoError(t, err)
+
+	return config.NewMachineConfig(provider)
+}
+
+func TestClient_PatchNodeInstallImage_Success(t *testing.T) {
+	ctx := context.Background()
+	oldImage := "factory.talos.dev/installer/abc:v1.11.0"
+	newImage := "factory.talos.dev/installer/abc:v1.12.0"
+
+	mc := makeMachineConfig(t, oldImage)
+	mock := &mockTalosClient{
+		versionResp:  makeVersionResponse("v1.12.0"),
+		cosiResource: mc,
+	}
+
+	c := &Client{
+		talos:         mock,
+		newClientFunc: func(ctx context.Context) (talosClient, error) { return mock, nil },
+	}
+
+	err := c.PatchNodeInstallImage(ctx, "10.0.0.1", newImage)
+
+	require.NoError(t, err)
+	require.NotNil(t, mock.applyConfigReq)
+	assert.Equal(t, machine.ApplyConfigurationRequest_NO_REBOOT, mock.applyConfigReq.Mode)
+	assert.True(t, strings.Contains(string(mock.applyConfigReq.Data), newImage),
+		"patched config should contain new image")
+	assert.False(t, strings.Contains(string(mock.applyConfigReq.Data), oldImage),
+		"patched config should not contain old image")
+}
+
+func TestClient_PatchNodeInstallImage_GetConfigError(t *testing.T) {
+	ctx := context.Background()
+
+	mock := &mockTalosClient{
+		versionResp:  makeVersionResponse("v1.12.0"),
+		cosiGetErr:   errors.New("connection refused"),
+		cosiResource: nil,
+	}
+
+	c := &Client{
+		talos:         mock,
+		newClientFunc: func(ctx context.Context) (talosClient, error) { return mock, nil },
+	}
+
+	err := c.PatchNodeInstallImage(ctx, "10.0.0.1", "factory.talos.dev/installer/abc:v1.12.0")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to patch install image")
+	assert.Nil(t, mock.applyConfigReq, "should not call ApplyConfiguration on config fetch error")
+}
+
+func TestClient_PatchNodeInstallImage_ApplyError(t *testing.T) {
+	ctx := context.Background()
+	mc := makeMachineConfig(t, "factory.talos.dev/installer/abc:v1.11.0")
+
+	mock := &mockTalosClient{
+		versionResp:    makeVersionResponse("v1.12.0"),
+		cosiResource:   mc,
+		applyConfigErr: errors.New("permission denied"),
+	}
+
+	c := &Client{
+		talos:         mock,
+		newClientFunc: func(ctx context.Context) (talosClient, error) { return mock, nil },
+	}
+
+	err := c.PatchNodeInstallImage(ctx, "10.0.0.1", "factory.talos.dev/installer/abc:v1.12.0")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to apply configuration")
 }

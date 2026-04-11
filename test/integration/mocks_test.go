@@ -62,6 +62,13 @@ func (m *mockTalosClient) SetNodeInstallImage(nodeIP, image string) {
 	m.installImages[nodeIP] = image
 }
 
+func (m *mockTalosClient) PatchNodeInstallImage(ctx context.Context, nodeIP, newImage string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.installImages[nodeIP] = newImage
+	return nil
+}
+
 func (m *mockTalosClient) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
