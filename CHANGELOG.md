@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.5](https://github.com/home-operations/tuppr/compare/0.1.4...0.1.5) (2026-04-11)
+
+
+### Features
+
+* **deps:** update module google.golang.org/grpc (v1.79.3 → v1.80.0) ([#193](https://github.com/home-operations/tuppr/issues/193)) ([e4b5bb3](https://github.com/home-operations/tuppr/commit/e4b5bb3987a0a2a9316f748e8c8f5fca49bc6db6))
+* **talos:** sync machine.install.image in stored config after upgrade ([75b539a](https://github.com/home-operations/tuppr/commit/75b539a9e36a9d060baaf421c2cb263d51f84092))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/google/go-containerregistry (v0.21.4 → v0.21.5) ([#202](https://github.com/home-operations/tuppr/issues/202)) ([149de93](https://github.com/home-operations/tuppr/commit/149de938c44cf6ee69cdef97a7047467653dc0e3))
+* **mise:** update tool helm (4.1.3 → 4.1.4) ([a049a31](https://github.com/home-operations/tuppr/commit/a049a31eee0085922277f90f754c7c2c48d04a49))
+
+
+### Miscellaneous Chores
+
+* refactor renovate workflow to use gh CLI commands ([54b0aba](https://github.com/home-operations/tuppr/commit/54b0aba6129854bb402f67ac3efde00c25e3f124))
+
 ## [0.1.4](https://github.com/home-operations/tuppr/compare/0.1.3...0.1.4) (2026-04-08)
 
 
