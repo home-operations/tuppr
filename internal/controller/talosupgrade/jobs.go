@@ -154,7 +154,9 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 
 	// Process failed jobs
 	for _, nodeName := range failedNodes {
-		r.processSingleJobFailure(ctx, talosUpgrade, nodeName)
+		if err := r.processSingleJobFailure(ctx, talosUpgrade, nodeName); err != nil {
+			return ctrl.Result{RequeueAfter: time.Minute}, err
+		}
 	}
 
 	// Determine final batch outcome
@@ -255,7 +257,7 @@ func (r *Reconciler) processSingleJobSuccess(ctx context.Context, talosUpgrade *
 }
 
 // processSingleJobFailure handles a single failed job: cleanup labels, record failure.
-func (r *Reconciler) processSingleJobFailure(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) {
+func (r *Reconciler) processSingleJobFailure(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Node upgrade failed", "node", nodeName)
 
@@ -270,9 +272,11 @@ func (r *Reconciler) processSingleJobFailure(ctx context.Context, talosUpgrade *
 
 	if err := r.addFailedNode(ctx, talosUpgrade, nodeStatus); err != nil {
 		logger.Error(err, "Failed to add failed node", "node", nodeName)
+		return err
 	}
 
 	r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, nodeName, "failure")
+	return nil
 }
 
 func (r *Reconciler) cleanupJobForNode(ctx context.Context, nodeName string) error {
