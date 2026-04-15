@@ -545,8 +545,8 @@ kubectl scale deployment tuppr --replicas=1 -n system-upgrade
 | Feature | TalosUpgrade | KubernetesUpgrade |
 |---------|--------------|-------------------|
 | **Scope** | Talos nodes | Kubernetes cluster |
-| **Multiple CRs** | ❌ Only one per cluster | ❌ Only one per cluster |
-| **Execution** | Sequential or parallel (configurable via `spec.parallelism`) | Single controller node |
+| **Multiple CRs** | ✅ Multiple allowed (queued) | ❌ Only one per cluster |
+| **Execution** | Sequential or parallel within a plan (configurable via `spec.parallelism`); only one plan executes at a time | Single controller node |
 | **Reboot Required** | ✅ Yes | ❌ No |
 | **Health Checks** | ✅ Before each node | ✅ Before upgrade |
 | **Concurrent Execution** | ❌ Blocked by other upgrades | ❌ Blocked by other upgrades |
@@ -556,7 +556,7 @@ kubectl scale deployment tuppr --replicas=1 -n system-upgrade
 ### Important Resource Constraints
 
 
-- **TalosUpgrade**: You can define multiple TalosUpgrade resources to target different groups of nodes (e.g., "workers-west" vs "workers-east"). While multiple plans can exist simultaneously, only one plan will execute at a time (First-Come, First-Served). The controller automatically queues subsequent plans to ensure safe, sequential orchestration across the cluster. Within a single plan, use `spec.parallelism` to upgrade multiple nodes concurrently.
+- **TalosUpgrade**: Multiple `TalosUpgrade` resources are allowed per cluster and can target different groups of nodes (for example, "workers-west" vs "workers-east"). However, only one `TalosUpgrade` plan executes at a time on a first-come, first-served basis. The controller queues subsequent plans to ensure safe, sequential orchestration across the cluster. Within a single plan, use `spec.parallelism` to upgrade multiple nodes concurrently.
 
 - **KubernetesUpgrade**: Only **one** `KubernetesUpgrade` resource is allowed per cluster. This constraint exists because Kubernetes upgrades affect the entire cluster, and multiple concurrent upgrades would conflict with each other. The admission webhook will reject attempts to create additional `KubernetesUpgrade` resources.
 

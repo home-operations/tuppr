@@ -188,7 +188,10 @@ var _ = Describe("TalosUpgrade Integration", func() {
 			By("waiting for 2 upgrade jobs to be created")
 			Eventually(func(g Gomega) {
 				jobList := &batchv1.JobList{}
-				err := k8sClient.List(ctx, jobList, client.MatchingLabels{"app.kubernetes.io/name": "talos-upgrade"})
+				err := k8sClient.List(ctx, jobList, client.MatchingLabels{
+					"app.kubernetes.io/name":     "talos-upgrade",
+					"app.kubernetes.io/instance": "batch-test",
+				})
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(jobList.Items).To(HaveLen(2))
 

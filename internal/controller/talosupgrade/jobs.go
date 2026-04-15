@@ -59,7 +59,6 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 	logger := log.FromContext(ctx)
 
 	var stillRunning []string
-	var succeededJobs []batchv1.Job
 	var succeededNodes []string
 	var failedNodes []string
 
@@ -75,7 +74,6 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 			"backoffLimit", *job.Spec.BackoffLimit)
 
 		if job.Status.Succeeded > 0 {
-			succeededJobs = append(succeededJobs, job)
 			succeededNodes = append(succeededNodes, nodeName)
 		} else if job.Status.Failed >= *job.Spec.BackoffLimit {
 			failedNodes = append(failedNodes, nodeName)
@@ -118,8 +116,7 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 	// All jobs are done — process results
 
 	// Process succeeded jobs
-	for i, nodeName := range succeededNodes {
-		_ = succeededJobs[i] // keep reference in sync
+	for _, nodeName := range succeededNodes {
 		result, err := r.processSingleJobSuccess(ctx, talosUpgrade, nodeName)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -144,7 +141,7 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 
 	// Determine final batch outcome
 	if len(failedNodes) > 0 {
-		failedCount := len(talosUpgrade.Status.FailedNodes)
+		failedCount := len(failedNodes)
 		message := fmt.Sprintf("Batch upgrade stopped: %d nodes failed - stopping", failedCount)
 
 		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseFailed, "", message); err != nil {
