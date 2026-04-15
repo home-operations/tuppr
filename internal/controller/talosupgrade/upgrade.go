@@ -263,12 +263,22 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 			logger.Error(err, "Failed to update phase for draining")
 			return ctrl.Result{RequeueAfter: time.Second * 30}, err
 		}
+		var drainedNodes []string
 		for _, ni := range batch {
 			logger.Info("Draining node before upgrade", "node", ni.nodeName)
 			if err := r.drainNode(ctx, ni.nodeName, talosUpgrade.Spec.Drain); err != nil {
-				logger.Error(err, "Failed to drain node", "node", ni.nodeName)
+				logger.Error(err, "Failed to drain node, rolling back already-drained nodes in batch", "node", ni.nodeName)
+				drainer := drain.NewDrainer(r.Client)
+				for _, drained := range drainedNodes {
+					if uncordonErr := drainer.UncordonNode(ctx, drained); uncordonErr != nil {
+						logger.Error(uncordonErr, "Failed to uncordon node during rollback", "node", drained)
+					} else {
+						logger.Info("Rolled back drain for node", "node", drained)
+					}
+				}
 				return ctrl.Result{RequeueAfter: time.Minute}, nil
 			}
+			drainedNodes = append(drainedNodes, ni.nodeName)
 			logger.V(1).Info("Node drained successfully", "node", ni.nodeName)
 		}
 	}

@@ -21,6 +21,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -1214,6 +1215,68 @@ func TestTalosReconcile_DoesNotUncordonWithoutDrainSpec(t *testing.T) {
 
 	if !updatedNode.Spec.Unschedulable {
 		t.Error("expected node to remain cordoned because Drain spec was nil")
+	}
+}
+
+func TestTalosReconcile_DrainRollbackOnBatchFailure(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhasePending),
+		withParallelism(2),
+	)
+	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Force: ptr.To(true)}
+
+	nodeA := newNode(fakeNodeA, "10.0.0.1")
+	nodeB := newNode(fakeNodeB, "10.0.0.2")
+
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{
+			"10.0.0.1": "v1.10.0",
+			"10.0.0.2": "v1.10.0",
+		},
+		installImages: map[string]string{
+			"10.0.0.1": "factory.talos.dev/installer:v1.10.0",
+			"10.0.0.2": "factory.talos.dev/installer:v1.10.0",
+		},
+	}
+
+	// Make CordonNode fail for node-b by intercepting its Update call.
+	// Node-a is drained first (alphabetical order), so this simulates a
+	// mid-batch failure after node-a was already cordoned.
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithIndex(&corev1.Pod{}, "spec.nodeName", func(obj client.Object) []string {
+			return []string{obj.(*corev1.Pod).Spec.NodeName}
+		}).
+		WithObjects(tu, nodeA, nodeB).WithStatusSubresource(tu).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+				if node, ok := obj.(*corev1.Node); ok && node.Name == fakeNodeB {
+					return fmt.Errorf("simulated cordon failure for %s", fakeNodeB)
+				}
+				return c.Update(ctx, obj, opts...)
+			},
+		}).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+	reconcileTalos(t, r, "test-upgrade")
+
+	// Node-a was cordoned before the failure — rollback must have uncordoned it.
+	updatedNodeA := &corev1.Node{}
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: fakeNodeA}, updatedNodeA); err != nil {
+		t.Fatalf("failed to get node-a: %v", err)
+	}
+	if updatedNodeA.Spec.Unschedulable {
+		t.Error("expected node-a to be uncordoned after drain rollback, but it is still cordoned")
+	}
+
+	// No upgrade jobs should have been created.
+	var jobList batchv1.JobList
+	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+		t.Fatalf("failed to list jobs: %v", err)
+	}
+	if len(jobList.Items) != 0 {
+		t.Fatalf("expected no jobs after drain rollback, got %d", len(jobList.Items))
 	}
 }
 
