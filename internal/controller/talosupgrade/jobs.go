@@ -128,22 +128,28 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 	// All jobs are done — process results
 
 	// Process succeeded jobs
+	var rebootingNodes []string
 	for _, nodeName := range succeededNodes {
 		result, err := r.processSingleJobSuccess(ctx, talosUpgrade, nodeName)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		if result == jobResultRebooting {
-			// Node not ready yet — wait for it
-			if err := r.setPhaseWithNodes(ctx, talosUpgrade, tupprv1alpha1.JobPhaseRebooting, activeNodes, fmt.Sprintf("Waiting for node %s to finish rebooting", nodeName)); err != nil {
-				logger.Error(err, "Failed to update phase for rebooting", "node", nodeName)
-			}
-			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
-		}
-		if result == jobResultFailed {
+		switch result {
+		case jobResultRebooting:
+			rebootingNodes = append(rebootingNodes, nodeName)
+		case jobResultFailed:
 			// Verification failed — treat as failure
 			failedNodes = append(failedNodes, nodeName)
 		}
+	}
+
+	// If any nodes are still rebooting, wait for all of them before proceeding
+	if len(rebootingNodes) > 0 {
+		message := fmt.Sprintf("Waiting for %d node(s) to finish rebooting", len(rebootingNodes))
+		if err := r.setPhaseWithNodes(ctx, talosUpgrade, tupprv1alpha1.JobPhaseRebooting, activeNodes, message); err != nil {
+			logger.Error(err, "Failed to update phase for rebooting")
+		}
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
 	// Process failed jobs
