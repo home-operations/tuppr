@@ -689,6 +689,8 @@ func TestTalosReconcile_HandlesActiveJobRunning(t *testing.T) {
 			Namespace: "default",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":                "talos-upgrade",
+				"app.kubernetes.io/instance":            "test-upgrade",
+				"app.kubernetes.io/part-of":             "tuppr",
 				"tuppr.home-operations.com/target-node": fakeNodeA,
 			},
 		},
@@ -739,6 +741,8 @@ func TestTalosReconcile_HandlesActiveJobRunning_NodeNotReady_Rebooting(t *testin
 			Namespace: "default",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":                "talos-upgrade",
+				"app.kubernetes.io/instance":            "test-upgrade",
+				"app.kubernetes.io/part-of":             "tuppr",
 				"tuppr.home-operations.com/target-node": fakeNodeA,
 			},
 		},
@@ -776,6 +780,8 @@ func TestTalosReconcile_HandlesJobSuccess(t *testing.T) {
 			Namespace: "default",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":                "talos-upgrade",
+				"app.kubernetes.io/instance":            "test-upgrade",
+				"app.kubernetes.io/part-of":             "tuppr",
 				"tuppr.home-operations.com/target-node": fakeNodeA,
 			},
 		},
@@ -828,6 +834,8 @@ func TestTalosReconcile_HandleJobSuccess_PatchInstallImageFails_Continues(t *tes
 			Namespace: "default",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":                "talos-upgrade",
+				"app.kubernetes.io/instance":            "test-upgrade",
+				"app.kubernetes.io/part-of":             "tuppr",
 				"tuppr.home-operations.com/target-node": fakeNodeA,
 			},
 		},
@@ -868,6 +876,8 @@ func TestTalosReconcile_HandlesJobFailure(t *testing.T) {
 			Namespace: "default",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":                "talos-upgrade",
+				"app.kubernetes.io/instance":            "test-upgrade",
+				"app.kubernetes.io/part-of":             "tuppr",
 				"tuppr.home-operations.com/target-node": fakeNodeA,
 			},
 		},
@@ -939,6 +949,8 @@ func TestTalosReconcile_JobVerificationFailure(t *testing.T) {
 			Namespace: "default",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":                "talos-upgrade",
+				"app.kubernetes.io/instance":            "test-upgrade",
+				"app.kubernetes.io/part-of":             "tuppr",
 				"tuppr.home-operations.com/target-node": fakeNodeA,
 			},
 		},
@@ -1121,6 +1133,8 @@ func TestTalosReconcile_UncordonsNodeAfterDrain(t *testing.T) {
 			Namespace: "default",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":                "talos-upgrade",
+				"app.kubernetes.io/instance":            "test-upgrade",
+				"app.kubernetes.io/part-of":             "tuppr",
 				"tuppr.home-operations.com/target-node": fakeNodeA,
 			},
 		},
@@ -1174,6 +1188,8 @@ func TestTalosReconcile_DoesNotUncordonWithoutDrainSpec(t *testing.T) {
 			Namespace: "default",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":                "talos-upgrade",
+				"app.kubernetes.io/instance":            "test-upgrade",
+				"app.kubernetes.io/part-of":             "tuppr",
 				"tuppr.home-operations.com/target-node": fakeNodeA,
 			},
 		},
@@ -1409,6 +1425,8 @@ func TestTalosReconcile_HandleJobSuccess_NodeReady(t *testing.T) {
 			Namespace: "default",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":                "talos-upgrade",
+				"app.kubernetes.io/instance":            "test-upgrade",
+				"app.kubernetes.io/part-of":             "tuppr",
 				"tuppr.home-operations.com/target-node": fakeNodeA,
 			},
 		},
@@ -1473,6 +1491,8 @@ func TestTalosReconcile_HandleJobSuccess_NodeNotReady_Requeues(t *testing.T) {
 			Namespace: "default",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":                "talos-upgrade",
+				"app.kubernetes.io/instance":            "test-upgrade",
+				"app.kubernetes.io/part-of":             "tuppr",
 				"tuppr.home-operations.com/target-node": fakeNodeA,
 			},
 		},
@@ -1526,6 +1546,8 @@ func TestTalosReconcile_HandleJobSuccess_VerificationFailed_Permanent(t *testing
 			Namespace: "default",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":                "talos-upgrade",
+				"app.kubernetes.io/instance":            "test-upgrade",
+				"app.kubernetes.io/part-of":             "tuppr",
 				"tuppr.home-operations.com/target-node": fakeNodeA,
 			},
 		},
@@ -2573,6 +2595,8 @@ func TestTalosReconcile_BatchActiveJobsStillRunning(t *testing.T) {
 			Namespace: "default",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":                "talos-upgrade",
+				"app.kubernetes.io/instance":            "test-upgrade",
+				"app.kubernetes.io/part-of":             "tuppr",
 				"tuppr.home-operations.com/target-node": fakeNodeA,
 			},
 		},
@@ -2585,6 +2609,8 @@ func TestTalosReconcile_BatchActiveJobsStillRunning(t *testing.T) {
 			Namespace: "default",
 			Labels: map[string]string{
 				"app.kubernetes.io/name":                "talos-upgrade",
+				"app.kubernetes.io/instance":            "test-upgrade",
+				"app.kubernetes.io/part-of":             "tuppr",
 				"tuppr.home-operations.com/target-node": fakeNodeB,
 			},
 		},

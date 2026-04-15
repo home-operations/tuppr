@@ -34,7 +34,19 @@ func (r *Reconciler) findActiveJobs(ctx context.Context, talosUpgrade *tupprv1al
 	var activeNodes []string
 
 	for _, job := range jobList {
-		nodeName := job.Labels["tuppr.home-operations.com/target-node"]
+		nodeName, ok := job.Labels["tuppr.home-operations.com/target-node"]
+		if !ok || nodeName == "" {
+			continue
+		}
+		instanceName := job.Labels["app.kubernetes.io/instance"]
+		controllerOwner := metav1.GetControllerOf(&job)
+		ownedByTalosUpgrade := controllerOwner != nil &&
+			controllerOwner.Kind == "TalosUpgrade" &&
+			controllerOwner.Name == talosUpgrade.Name &&
+			controllerOwner.UID == talosUpgrade.UID
+		if instanceName != talosUpgrade.Name && !ownedByTalosUpgrade {
+			continue
+		}
 
 		if slices.Contains(talosUpgrade.Status.CompletedNodes, nodeName) {
 			continue

@@ -232,8 +232,9 @@ func getParallelism(spec tupprv1alpha1.TalosUpgradeSpec) int {
 }
 
 func (r *Reconciler) addFailedNode(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeStatus tupprv1alpha1.NodeUpgradeStatus) error {
+	talosUpgrade.Status.FailedNodes = append(talosUpgrade.Status.FailedNodes, nodeStatus)
 	return r.updateStatus(ctx, talosUpgrade, map[string]any{
-		"failedNodes": append(talosUpgrade.Status.FailedNodes, nodeStatus),
+		"failedNodes": talosUpgrade.Status.FailedNodes,
 	})
 }
 
