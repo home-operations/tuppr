@@ -307,7 +307,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: "no-drain-test"}, talosUpgrade)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(talosUpgrade.Status.CurrentNode).To(Equal("drain-test-node"))
-			}, 30*time.Second, 500*time.Millisecond).Should(Succeed())
+			}, 30*time.Second, 100*time.Millisecond).Should(Succeed())
 
 			By("verifying node is NOT cordoned (remains schedulable)")
 			var node corev1.Node

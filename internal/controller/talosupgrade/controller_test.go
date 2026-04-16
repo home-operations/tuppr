@@ -2849,3 +2849,83 @@ func TestFindNextNodes_SkipsCompletedAndFailed(t *testing.T) {
 		t.Fatalf("expected only [node-c], got: %v", nodes)
 	}
 }
+
+func TestFindNextNodes_ControllerNodeLast(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhasePending),
+	)
+	nodeA := newNode(fakeNodeA, "10.0.0.1")
+	nodeB := newNode(fakeNodeB, "10.0.0.2")
+	nodeC := newNode(fakeNodeC, "10.0.0.3")
+
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{
+			"10.0.0.1": "v1.10.0",
+			"10.0.0.2": "v1.10.0",
+			"10.0.0.3": "v1.10.0",
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, nodeA, nodeB, nodeC).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+	r.ControllerNodeName = fakeNodeA
+
+	// Request 2 — controller node (node-a) should be excluded from this batch
+	nodes, err := r.findNextNodes(context.Background(), tu, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(nodes) != 2 {
+		t.Fatalf("expected 2 nodes, got %d: %v", len(nodes), nodes)
+	}
+	if nodes[0] != fakeNodeB || nodes[1] != fakeNodeC {
+		t.Fatalf("expected [node-b, node-c], got: %v", nodes)
+	}
+
+	// Request all 3 — controller node should come last
+	nodes, err = r.findNextNodes(context.Background(), tu, 3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(nodes) != 3 {
+		t.Fatalf("expected 3 nodes, got %d: %v", len(nodes), nodes)
+	}
+	if nodes[2] != fakeNodeA {
+		t.Fatalf("expected controller node %s last, got: %v", fakeNodeA, nodes)
+	}
+}
+
+func TestFindNextNodes_ControllerNodeOnly(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhasePending),
+		withCompletedNodes(fakeNodeB, fakeNodeC),
+	)
+	nodeA := newNode(fakeNodeA, "10.0.0.1")
+	nodeB := newNode(fakeNodeB, "10.0.0.2")
+	nodeC := newNode(fakeNodeC, "10.0.0.3")
+
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{
+			"10.0.0.1": "v1.10.0",
+			"10.0.0.2": "v1.10.0",
+			"10.0.0.3": "v1.10.0",
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, nodeA, nodeB, nodeC).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+	r.ControllerNodeName = fakeNodeA
+
+	// Only controller node left — it must still be returned
+	nodes, err := r.findNextNodes(context.Background(), tu, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(nodes) != 1 || nodes[0] != fakeNodeA {
+		t.Fatalf("expected [node-a], got: %v", nodes)
+	}
+}
