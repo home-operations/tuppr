@@ -7,7 +7,7 @@ require (
 	github.com/google/cel-go v0.28.0
 	github.com/google/go-containerregistry v0.21.5
 	github.com/google/uuid v1.6.0
-	github.com/netresearch/go-cron v0.13.4
+	github.com/netresearch/go-cron v0.14.0
 	github.com/nicholas-fedor/shoutrrr v0.14.3
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
