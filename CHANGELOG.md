@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.6](https://github.com/home-operations/tuppr/compare/0.1.5...0.1.6) (2026-04-17)
+
+
+### Features
+
+* **deps:** update module github.com/netresearch/go-cron (v0.13.4 → v0.14.0) ([#205](https://github.com/home-operations/tuppr/issues/205)) ([519314c](https://github.com/home-operations/tuppr/commit/519314c5cd4ae57080d3739a8748ca11abb4059d))
+* **talosupgrade:** add parallelism support for concurrent node upgrades ([#201](https://github.com/home-operations/tuppr/issues/201)) ([7b476f0](https://github.com/home-operations/tuppr/commit/7b476f0ae7bd24fa5701e24dc53626743da7e601))
+
+
+### Bug Fixes
+
+* **deps:** update kubernetes monorepo (v0.35.3 → v0.35.4) ([#203](https://github.com/home-operations/tuppr/issues/203)) ([16970c4](https://github.com/home-operations/tuppr/commit/16970c4adc7ebadcb04d62abaa83888cc1255e4b))
+
 ## [0.1.5](https://github.com/home-operations/tuppr/compare/0.1.4...0.1.5) (2026-04-11)
 
 
