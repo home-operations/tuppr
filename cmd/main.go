@@ -105,6 +105,9 @@ func main() {
 		controllerNamespace = "tuppr-system" // Default namespace
 	}
 
+	// Get controller node name from environment (injected via downward API)
+	controllerNodeName := os.Getenv("CONTROLLER_NODE_NAME")
+
 	notificationURL := os.Getenv("NOTIFICATION_URL")
 	notifier := notification.NewShoutrrrNotifier(notificationURL)
 	notificationsEnabled := notifier != nil
@@ -240,6 +243,7 @@ func main() {
 		Scheme:              mgr.GetScheme(),
 		TalosConfigSecret:   talosConfigSecret,
 		ControllerNamespace: controllerNamespace,
+		ControllerNodeName:  controllerNodeName,
 		Notifier:            notifier,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TalosUpgrade")
@@ -250,6 +254,7 @@ func main() {
 		Scheme:              mgr.GetScheme(),
 		TalosConfigSecret:   talosConfigSecret,
 		ControllerNamespace: controllerNamespace,
+		ControllerNodeName:  controllerNodeName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KubernetesUpgrade")
 		os.Exit(1)

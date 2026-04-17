@@ -64,12 +64,12 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 		}
 	}
 
-	if activeJob, activeNode, err := r.findActiveJob(ctx, talosUpgrade); err != nil {
+	if activeJobs, activeNodes, err := r.findActiveJobs(ctx, talosUpgrade); err != nil {
 		logger.Error(err, "Failed to find active jobs")
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
-	} else if activeJob != nil {
-		logger.V(1).Info("Found active job, handling its status", "job", activeJob.Name, "node", activeNode)
-		return r.handleJobStatus(ctx, talosUpgrade, activeNode, activeJob)
+	} else if len(activeJobs) > 0 {
+		logger.V(1).Info("Found active jobs, handling batch status", "count", len(activeJobs), "nodes", activeNodes)
+		return r.handleBatchJobStatus(ctx, talosUpgrade, activeJobs, activeNodes)
 	}
 
 	if len(talosUpgrade.Status.FailedNodes) > 0 {
@@ -83,7 +83,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
 
-	return r.processNextNode(ctx, talosUpgrade)
+	return r.processNextBatch(ctx, talosUpgrade)
 }
 
 func (r *Reconciler) checkMaintenanceWindow(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, bool, error) {
@@ -166,7 +166,7 @@ func (r *Reconciler) completeUpgrade(ctx context.Context, talosUpgrade *tupprv1a
 	return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 }
 
-func (r *Reconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {
+func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	maintenanceRes, err := maintenance.CheckWindow(talosUpgrade.Spec.Maintenance, r.Now.Now())
@@ -189,6 +189,7 @@ func (r *Reconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1a
 		if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
 			"phase":                 tupprv1alpha1.JobPhaseMaintenanceWindow,
 			"currentNode":           "",
+			"currentNodes":          []string{},
 			"message":               fmt.Sprintf("Maintenance window closed between nodes, waiting (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339)),
 			"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
 		}); err != nil {
@@ -216,78 +217,110 @@ func (r *Reconciler) processNextNode(ctx context.Context, talosUpgrade *tupprv1a
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
-	nextNode, err := r.findNextNode(ctx, talosUpgrade)
+	parallelism := getParallelism(talosUpgrade.Spec)
+	nextNodes, err := r.findNextNodes(ctx, talosUpgrade, parallelism)
 	if err != nil {
-		logger.Error(err, "Failed to find next node to upgrade")
+		logger.Error(err, "Failed to find next nodes to upgrade")
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
-	if nextNode == "" {
+	if len(nextNodes) == 0 {
 		return r.completeUpgrade(ctx, talosUpgrade)
 	}
-	targetImage, err := r.buildTalosUpgradeImage(ctx, talosUpgrade, nextNode)
-	if err != nil {
-		logger.Error(err, "Failed to determine target image", "node", nextNode)
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
+
+	// Build and verify images for all nodes in this batch
+	type nodeImage struct {
+		nodeName string
+		image    string
 	}
+	var batch []nodeImage
 
-	logger.V(1).Info("Verifying target image availability", "image", targetImage)
-	if err := r.ImageChecker.Check(ctx, targetImage); err != nil {
-		logger.Info("Waiting for target image to become available", "node", nextNode, "image", targetImage, "error", err.Error())
-
-		message := fmt.Sprintf("Waiting for image availability: %s", err.Error())
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, nextNode, message); err != nil {
-			logger.Error(err, "Failed to update phase while waiting for image")
-		}
-
-		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
-	}
-
-	logger.Info("Found next node to upgrade", "node", nextNode, "image", targetImage)
-
-	// Drain node before upgrade if drain spec is configured
-	if talosUpgrade.Spec.Drain != nil {
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseDraining, nextNode, fmt.Sprintf("Draining node %s", nextNode)); err != nil {
-			logger.Error(err, "Failed to update phase for draining", "node", nextNode)
-			return ctrl.Result{RequeueAfter: time.Second * 30}, err
-		}
-		logger.Info("Draining node before upgrade", "node", nextNode)
-		if err := r.drainNode(ctx, nextNode, talosUpgrade.Spec.Drain); err != nil {
-			logger.Error(err, "Failed to drain node", "node", nextNode)
+	for _, nodeName := range nextNodes {
+		targetImage, err := r.buildTalosUpgradeImage(ctx, talosUpgrade, nodeName)
+		if err != nil {
+			logger.Error(err, "Failed to determine target image", "node", nodeName)
 			return ctrl.Result{RequeueAfter: time.Minute}, nil
 		}
-		logger.V(1).Info("Node drained successfully", "node", nextNode)
+
+		logger.V(1).Info("Verifying target image availability", "node", nodeName, "image", targetImage)
+		if err := r.ImageChecker.Check(ctx, targetImage); err != nil {
+			logger.Info("Waiting for target image to become available", "node", nodeName, "image", targetImage, "error", err.Error())
+			message := fmt.Sprintf("Waiting for image availability for node %s: %s", nodeName, err.Error())
+			if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, nodeName, message); err != nil {
+				logger.Error(err, "Failed to update phase while waiting for image")
+			}
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+		}
+
+		batch = append(batch, nodeImage{nodeName: nodeName, image: targetImage})
 	}
 
-	if _, err := r.createJob(ctx, talosUpgrade, nextNode, targetImage); err != nil {
-		logger.Error(err, "Failed to create upgrade job", "node", nextNode)
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	logger.Info("Starting batch upgrade", "nodes", nextNodes, "batchSize", len(batch))
+
+	// Drain all nodes in batch before creating any jobs
+	if talosUpgrade.Spec.Drain != nil {
+		if err := r.setPhaseWithNodes(ctx, talosUpgrade, tupprv1alpha1.JobPhaseDraining, nextNodes, fmt.Sprintf("Draining %d nodes", len(nextNodes))); err != nil {
+			logger.Error(err, "Failed to update phase for draining")
+			return ctrl.Result{RequeueAfter: time.Second * 30}, err
+		}
+		var drainedNodes []string
+		for _, ni := range batch {
+			logger.Info("Draining node before upgrade", "node", ni.nodeName)
+			if err := r.drainNode(ctx, ni.nodeName, talosUpgrade.Spec.Drain); err != nil {
+				logger.Error(err, "Failed to drain node, rolling back already-drained nodes in batch", "node", ni.nodeName)
+				drainer := drain.NewDrainer(r.Client)
+				for _, drained := range drainedNodes {
+					if uncordonErr := drainer.UncordonNode(ctx, drained); uncordonErr != nil {
+						logger.Error(uncordonErr, "Failed to uncordon node during rollback", "node", drained)
+					} else {
+						logger.Info("Rolled back drain for node", "node", drained)
+					}
+				}
+				return ctrl.Result{RequeueAfter: time.Minute}, nil
+			}
+			drainedNodes = append(drainedNodes, ni.nodeName)
+			logger.V(1).Info("Node drained successfully", "node", ni.nodeName)
+		}
 	}
 
-	if err := r.addNodeUpgradingLabel(ctx, nextNode); err != nil {
-		logger.Error(err, "Failed to add upgrading label to node", "node", nextNode)
+	// Create jobs for all nodes in batch
+	for _, ni := range batch {
+		if _, err := r.createJob(ctx, talosUpgrade, ni.nodeName, ni.image); err != nil {
+			logger.Error(err, "Failed to create upgrade job", "node", ni.nodeName)
+			return ctrl.Result{RequeueAfter: time.Minute}, nil
+		}
+
+		if err := r.addNodeUpgradingLabel(ctx, ni.nodeName); err != nil {
+			logger.Error(err, "Failed to add upgrading label to node", "node", ni.nodeName)
+		}
 	}
 
-	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseUpgrading, nextNode, fmt.Sprintf("Upgrading node %s", nextNode)); err != nil {
-		logger.Error(err, "Failed to update phase for node upgrade", "node", nextNode)
+	if err := r.setPhaseWithNodes(ctx, talosUpgrade, tupprv1alpha1.JobPhaseUpgrading, nextNodes, fmt.Sprintf("Upgrading %d nodes", len(nextNodes))); err != nil {
+		logger.Error(err, "Failed to update phase for batch upgrade")
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
 	}
 	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 }
 
-func (r *Reconciler) findNextNode(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (string, error) {
+// findNextNodes returns up to `count` node names that need upgrading, sorted alphabetically.
+func (r *Reconciler) findNextNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, count int) ([]string, error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Finding next node to upgrade", "talosupgrade", talosUpgrade.Name)
+	logger.V(1).Info("Finding next nodes to upgrade", "talosupgrade", talosUpgrade.Name, "count", count)
 
 	nodes, err := r.getSortedNodes(ctx, talosUpgrade.Spec.NodeSelector)
 	if err != nil {
 		logger.Error(err, "Failed to get nodes")
-		return "", err
+		return nil, err
 	}
 
 	crdTargetVersion := talosUpgrade.Spec.Talos.Version
+	var result []string
 
 	for i := range nodes {
+		if len(result) >= count {
+			break
+		}
+
 		node := &nodes[i]
 
 		if slices.Contains(talosUpgrade.Status.CompletedNodes, node.Name) {
@@ -303,17 +336,19 @@ func (r *Reconciler) findNextNode(ctx context.Context, talosUpgrade *tupprv1alph
 		needsUpgrade, err := r.nodeNeedsUpgrade(ctx, node, crdTargetVersion)
 		if err != nil {
 			logger.Error(err, "Failed to check if node needs upgrade", "node", node.Name)
-			return "", fmt.Errorf("failed to check node %s: %w", node.Name, err)
+			return nil, fmt.Errorf("failed to check node %s: %w", node.Name, err)
 		}
 
 		if needsUpgrade {
 			logger.V(1).Info("Node needs upgrade", "node", node.Name)
-			return node.Name, nil
+			result = append(result, node.Name)
 		}
 	}
 
-	logger.V(1).Info("All nodes are up to date")
-	return "", nil
+	if len(result) == 0 {
+		logger.V(1).Info("All nodes are up to date")
+	}
+	return result, nil
 }
 
 func (r *Reconciler) getSortedNodes(ctx context.Context, nodeSelector *metav1.LabelSelector) ([]corev1.Node, error) {
@@ -335,7 +370,17 @@ func (r *Reconciler) getSortedNodes(ctx context.Context, nodeSelector *metav1.La
 	}
 
 	nodes := nodeList.Items
+	controllerNode := r.ControllerNodeName
 	slices.SortFunc(nodes, func(a, b corev1.Node) int {
+		// if present, always keep controller node as last item
+		if controllerNode != "" {
+			if a.Name == controllerNode {
+				return 1
+			}
+			if b.Name == controllerNode {
+				return -1
+			}
+		}
 		return strings.Compare(a.Name, b.Name)
 	})
 

@@ -153,6 +153,111 @@ var _ = Describe("TalosUpgrade Integration", func() {
 		})
 	})
 
+	Context("Batch parallel upgrade", func() {
+		var testNode2 *corev1.Node
+
+		BeforeEach(func() {
+			// Create a second node for batch tests
+			testNode2 = createTestNode("test-node-2", "10.0.0.11")
+			Expect(k8sClient.Create(ctx, testNode2)).To(Succeed())
+
+			mockTalos.SetNodeVersion("10.0.0.11", "v1.10.0")
+			mockTalos.SetNodeInstallImage("10.0.0.11", "ghcr.io/siderolabs/installer:v1.10.0")
+		})
+
+		AfterEach(func() {
+			_ = k8sClient.Delete(ctx, testNode2)
+		})
+
+		It("should create multiple jobs when parallelism > 1", func() {
+			By("creating a TalosUpgrade with parallelism=2")
+			var parallelism int32 = 2
+			talosUpgrade := &tupprv1alpha1.TalosUpgrade{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "batch-test",
+				},
+				Spec: tupprv1alpha1.TalosUpgradeSpec{
+					Talos: tupprv1alpha1.TalosSpec{
+						Version: "v1.11.0",
+					},
+					Parallelism: &parallelism,
+				},
+			}
+			Expect(k8sClient.Create(ctx, talosUpgrade)).To(Succeed())
+
+			By("waiting for 2 upgrade jobs to be created")
+			Eventually(func(g Gomega) {
+				jobList := &batchv1.JobList{}
+				err := k8sClient.List(ctx, jobList, client.MatchingLabels{
+					"app.kubernetes.io/name":     "talos-upgrade",
+					"app.kubernetes.io/instance": "batch-test",
+				})
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(jobList.Items).To(HaveLen(2))
+
+				// Verify they target different nodes
+				nodes := map[string]bool{}
+				for _, job := range jobList.Items {
+					nodes[job.Labels["tuppr.home-operations.com/target-node"]] = true
+				}
+				g.Expect(nodes).To(HaveLen(2))
+			}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
+
+			By("verifying both nodes have upgrading labels")
+			Eventually(func(g Gomega) {
+				var node1 corev1.Node
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: "test-node"}, &node1)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(node1.Labels).To(HaveKey("tuppr.home-operations.com/upgrading"))
+
+				var node2 corev1.Node
+				err = k8sClient.Get(ctx, types.NamespacedName{Name: "test-node-2"}, &node2)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(node2.Labels).To(HaveKey("tuppr.home-operations.com/upgrading"))
+			}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
+
+			By("marking both jobs as succeeded")
+			jobList := &batchv1.JobList{}
+			Eventually(func(g Gomega) {
+				err := k8sClient.List(ctx, jobList, client.MatchingLabels{"app.kubernetes.io/name": "talos-upgrade"})
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(jobList.Items).To(HaveLen(2))
+			}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
+
+			for i := range jobList.Items {
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name: jobList.Items[i].Name, Namespace: jobList.Items[i].Namespace,
+					}, &jobList.Items[i])
+					g.Expect(err).NotTo(HaveOccurred())
+					jobList.Items[i].Status.Succeeded = 1
+					g.Expect(k8sClient.Status().Update(ctx, &jobList.Items[i])).To(Succeed())
+				}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
+			}
+
+			mockTalos.SetNodeVersion("10.0.0.10", "v1.11.0")
+			mockTalos.SetNodeVersion("10.0.0.11", "v1.11.0")
+
+			By("verifying both nodes are in completedNodes")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: "batch-test"}, talosUpgrade)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(talosUpgrade.Status.CompletedNodes).To(ContainElement("test-node"))
+				g.Expect(talosUpgrade.Status.CompletedNodes).To(ContainElement("test-node-2"))
+			}, 30*time.Second, 1*time.Second).Should(Succeed())
+
+			By("verifying upgrade completes")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: "batch-test"}, talosUpgrade)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(talosUpgrade.Status.Phase).To(Equal(tupprv1alpha1.JobPhaseCompleted))
+			}, 30*time.Second, 1*time.Second).Should(Succeed())
+
+			By("cleaning up")
+			Expect(k8sClient.Delete(ctx, talosUpgrade)).To(Succeed())
+		})
+	})
+
 	Context("Node labeling", func() {
 		It("should add upgrading label when job is created", func() {
 			By("creating a TalosUpgrade resource")

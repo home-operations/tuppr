@@ -66,6 +66,7 @@ type Reconciler struct {
 	Scheme              *runtime.Scheme
 	TalosConfigSecret   string
 	ControllerNamespace string
+	ControllerNodeName  string
 	HealthChecker       HealthCheckRunner
 	TalosClient         TalosClient
 	MetricsReporter     *metrics.Reporter

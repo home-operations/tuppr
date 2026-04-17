@@ -60,6 +60,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: CONTROLLER_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
             {{- if and .Values.notification.enabled .Values.notification.secretName }}
             - name: NOTIFICATION_URL
               valueFrom:
