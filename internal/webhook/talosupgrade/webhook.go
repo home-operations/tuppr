@@ -117,6 +117,13 @@ func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade)
 		warnings = append(warnings, mwWarnings...)
 	}
 
+	// Validate parallelism
+	if pWarnings, err := v.validateParallelism(ctx, t); err != nil {
+		return warnings, err
+	} else {
+		warnings = append(warnings, pWarnings...)
+	}
+
 	taloslog.Info("talos plan validation successful", "name", t.Name, "version", t.Spec.Talos.Version)
 	return warnings, nil
 }
@@ -203,6 +210,38 @@ func findNodeIntersection(setA, setB map[string]bool) []string {
 	}
 	slices.Sort(intersection)
 	return intersection
+}
+
+// validateParallelism checks that parallelism is within valid bounds.
+func (v *Validator) validateParallelism(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
+	if t.Spec.Parallelism == nil {
+		return nil, nil
+	}
+
+	p := *t.Spec.Parallelism
+	if p < 1 {
+		return nil, fmt.Errorf("spec.parallelism must be >= 1, got %d", p)
+	}
+
+	matchingNodes, err := v.getMatchingNodes(ctx, t.Spec.NodeSelector)
+	if err != nil {
+		// Fail open if we can't count nodes
+		taloslog.Error(err, "failed to count matching nodes for parallelism validation")
+		return nil, nil
+	}
+
+	nodeCount := int32(len(matchingNodes))
+	if nodeCount > 0 && p > nodeCount {
+		return nil, fmt.Errorf("spec.parallelism (%d) exceeds number of matching nodes (%d)", p, nodeCount)
+	}
+
+	if p > 1 {
+		return admission.Warnings{
+			fmt.Sprintf("Parallelism set to %d: up to %d nodes will be upgraded concurrently per batch.", p, p),
+		}, nil
+	}
+
+	return nil, nil
 }
 
 func (v *Validator) SetupWebhookWithManager(mgr ctrl.Manager) error {

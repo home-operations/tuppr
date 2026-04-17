@@ -23,14 +23,30 @@ import (
 	"github.com/home-operations/tuppr/internal/metrics"
 )
 
-func (r *Reconciler) findActiveJob(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (*batchv1.Job, string, error) {
+// findActiveJobs returns all active (non-completed, non-failed) upgrade jobs and their target node names.
+func (r *Reconciler) findActiveJobs(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) ([]batchv1.Job, []string, error) {
 	jobList, err := jobs.ListJobsByLabel(ctx, r.Client, r.ControllerNamespace, "talos-upgrade")
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 
+	var activeJobs []batchv1.Job
+	var activeNodes []string
+
 	for _, job := range jobList {
-		nodeName := job.Labels["tuppr.home-operations.com/target-node"]
+		nodeName, ok := job.Labels["tuppr.home-operations.com/target-node"]
+		if !ok || nodeName == "" {
+			continue
+		}
+		instanceName := job.Labels["app.kubernetes.io/instance"]
+		controllerOwner := metav1.GetControllerOf(&job)
+		ownedByTalosUpgrade := controllerOwner != nil &&
+			controllerOwner.Kind == "TalosUpgrade" &&
+			controllerOwner.Name == talosUpgrade.Name &&
+			controllerOwner.UID == talosUpgrade.UID
+		if instanceName != talosUpgrade.Name && !ownedByTalosUpgrade {
+			continue
+		}
 
 		if slices.Contains(talosUpgrade.Status.CompletedNodes, nodeName) {
 			continue
@@ -42,67 +58,163 @@ func (r *Reconciler) findActiveJob(ctx context.Context, talosUpgrade *tupprv1alp
 			continue
 		}
 
-		return &job, nodeName, nil
+		activeJobs = append(activeJobs, job)
+		activeNodes = append(activeNodes, nodeName)
 	}
 
-	return nil, "", nil
+	return activeJobs, activeNodes, nil
 }
 
-func (r *Reconciler) handleJobStatus(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string, job *batchv1.Job) (ctrl.Result, error) {
+// handleBatchJobStatus handles all active jobs in the current batch.
+// It waits for all jobs to finish before processing results.
+func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, activeJobs []batchv1.Job, activeNodes []string) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	logger.V(1).Info("Handling job status",
-		"job", job.Name,
-		"node", nodeName,
-		"active", job.Status.Active,
-		"succeeded", job.Status.Succeeded,
-		"failed", job.Status.Failed,
-		"backoffLimit", *job.Spec.BackoffLimit)
+	var stillRunning []string
+	var succeededNodes []string
+	var failedNodes []string
 
-	if job.Status.Succeeded == 0 && (job.Status.Failed == 0 || job.Status.Failed < *job.Spec.BackoffLimit) {
+	for i, job := range activeJobs {
+		nodeName := activeNodes[i]
+
+		logger.V(1).Info("Handling job status",
+			"job", job.Name,
+			"node", nodeName,
+			"active", job.Status.Active,
+			"succeeded", job.Status.Succeeded,
+			"failed", job.Status.Failed,
+			"backoffLimit", *job.Spec.BackoffLimit)
+
+		if job.Status.Succeeded > 0 {
+			succeededNodes = append(succeededNodes, nodeName)
+		} else if job.Status.Failed >= *job.Spec.BackoffLimit {
+			failedNodes = append(failedNodes, nodeName)
+		} else {
+			stillRunning = append(stillRunning, nodeName)
+		}
+	}
+
+	// If any jobs are still running, wait
+	if len(stillRunning) > 0 {
 		phase := tupprv1alpha1.JobPhaseUpgrading
-		message := fmt.Sprintf("Upgrading node %s (job: %s)", nodeName, job.Name)
+		message := fmt.Sprintf("Upgrading %d nodes (%d running, %d succeeded, %d failed)", len(activeJobs), len(stillRunning), len(succeededNodes), len(failedNodes))
 
-		// Check if the node is NotReady, which indicates it is rebooting
-		node := &corev1.Node{}
-		if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err == nil {
-			if !isNodeReady(node) {
-				phase = tupprv1alpha1.JobPhaseRebooting
-				message = fmt.Sprintf("Node %s is rebooting", nodeName)
+		// Check if any running node is NotReady (rebooting)
+		anyRebooting := false
+		for _, nodeName := range stillRunning {
+			node := &corev1.Node{}
+			if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err == nil {
+				if !isNodeReady(node) {
+					anyRebooting = true
+					break
+				}
 			}
 		}
 
-		if err := r.setPhase(ctx, talosUpgrade, phase, nodeName, message); err != nil {
-			logger.Error(err, "Failed to update phase for active job", "job", job.Name, "node", nodeName)
+		if anyRebooting {
+			phase = tupprv1alpha1.JobPhaseRebooting
+			message = fmt.Sprintf("Nodes rebooting (%d running, %d succeeded, %d failed)", len(stillRunning), len(succeededNodes), len(failedNodes))
+		}
+
+		if err := r.setPhaseWithNodes(ctx, talosUpgrade, phase, activeNodes, message); err != nil {
+			logger.Error(err, "Failed to update phase for active batch")
 			return ctrl.Result{RequeueAfter: time.Second * 30}, err
 		}
-		logger.V(1).Info("Job is still active", "job", job.Name, "node", nodeName, "phase", phase)
+
+		r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeTalos, len(stillRunning))
 		return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 	}
 
-	if job.Status.Succeeded > 0 {
-		return r.handleJobSuccess(ctx, talosUpgrade, nodeName)
+	// All jobs are done — process results
+
+	// Process succeeded jobs
+	var rebootingNodes []string
+	for _, nodeName := range succeededNodes {
+		result, err := r.processSingleJobSuccess(ctx, talosUpgrade, nodeName)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		switch result {
+		case jobResultRebooting:
+			rebootingNodes = append(rebootingNodes, nodeName)
+		case jobResultFailed:
+			// Verification failed — treat as failure
+			failedNodes = append(failedNodes, nodeName)
+		}
 	}
 
-	return r.handleJobFailure(ctx, talosUpgrade, nodeName)
+	// If any nodes are still rebooting, wait for all of them before proceeding
+	if len(rebootingNodes) > 0 {
+		message := fmt.Sprintf("Waiting for %d node(s) to finish rebooting", len(rebootingNodes))
+		if err := r.setPhaseWithNodes(ctx, talosUpgrade, tupprv1alpha1.JobPhaseRebooting, activeNodes, message); err != nil {
+			logger.Error(err, "Failed to update phase for rebooting")
+		}
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	// Process failed jobs
+	for _, nodeName := range failedNodes {
+		if err := r.processSingleJobFailure(ctx, talosUpgrade, nodeName); err != nil {
+			return ctrl.Result{RequeueAfter: time.Minute}, err
+		}
+	}
+
+	// Determine final batch outcome
+	if len(failedNodes) > 0 {
+		failedCount := len(failedNodes)
+		message := fmt.Sprintf("Batch upgrade stopped: %d nodes failed - stopping", failedCount)
+
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseFailed, "", message); err != nil {
+			logger.Error(err, "Failed to update phase for batch failure")
+			return ctrl.Result{}, err
+		}
+
+		if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
+			"observedGeneration": talosUpgrade.Generation - 1,
+		}); err != nil {
+			logger.Error(err, "Failed to reset observedGeneration for retry")
+		}
+
+		r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeTalos, 0)
+		return ctrl.Result{RequeueAfter: time.Minute * 10}, nil
+	}
+
+	// All succeeded — ready for next batch
+	completedCount := len(talosUpgrade.Status.CompletedNodes)
+	message := fmt.Sprintf("Batch completed successfully (%d total completed)", completedCount)
+
+	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
+		logger.Error(err, "Failed to update phase after batch completion")
+		return ctrl.Result{}, err
+	}
+
+	r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeTalos, 0)
+	return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 }
 
-func (r *Reconciler) handleJobSuccess(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (ctrl.Result, error) {
+type jobResult int
+
+const (
+	jobResultSuccess   jobResult = iota
+	jobResultRebooting           // node not ready yet
+	jobResultFailed              // verification failed
+)
+
+// processSingleJobSuccess handles a single succeeded job: verify, uncordon, cleanup.
+// Returns the result without setting overall phase or metrics.
+func (r *Reconciler) processSingleJobSuccess(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (jobResult, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Job completed, verifying node upgrade", "node", nodeName)
 
 	isReady, err := r.verifyNodeUpgrade(ctx, talosUpgrade, nodeName)
 	if err != nil {
 		logger.Error(err, "Failed to verify node", "node", nodeName)
-		return r.handleJobFailure(ctx, talosUpgrade, nodeName)
+		return jobResultFailed, nil
 	}
 
 	if !isReady {
 		logger.V(1).Info("Node not yet ready after upgrade, waiting for reboot", "node", nodeName)
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseRebooting, nodeName, fmt.Sprintf("Node %s is rebooting", nodeName)); err != nil {
-			logger.Error(err, "Failed to update phase for rebooting", "node", nodeName)
-		}
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return jobResultRebooting, nil
 	}
 
 	logger.Info("Node verified as upgraded and ready", "node", nodeName)
@@ -118,13 +230,10 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, talosUpgrade *tupprv1
 		node := &corev1.Node{}
 		if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
 			logger.Error(err, "Failed to get node for uncordon", "node", nodeName)
-		} else {
-			// Only patch if currently unschedulable
-			if node.Spec.Unschedulable {
-				patch := []byte(`{"spec":{"unschedulable":false}}`)
-				if err := r.Patch(ctx, node, client.RawPatch(types.MergePatchType, patch)); err != nil {
-					logger.Error(err, "Failed to uncordon node", "node", nodeName)
-				}
+		} else if node.Spec.Unschedulable {
+			patch := []byte(`{"spec":{"unschedulable":false}}`)
+			if err := r.Patch(ctx, node, client.RawPatch(types.MergePatchType, patch)); err != nil {
+				logger.Error(err, "Failed to uncordon node", "node", nodeName)
 			}
 		}
 	}
@@ -139,25 +248,16 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, talosUpgrade *tupprv1
 
 	if err := r.addCompletedNode(ctx, talosUpgrade, nodeName); err != nil {
 		logger.Error(err, "Failed to add completed node", "node", nodeName)
-		return ctrl.Result{}, err
-	}
-
-	completedCount := len(talosUpgrade.Status.CompletedNodes) + 1
-	message := fmt.Sprintf("Node %s upgraded successfully, health checks passed (%d completed)", nodeName, completedCount)
-
-	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
-		logger.Error(err, "Failed to update phase", "node", nodeName)
-		return ctrl.Result{}, err
+		return jobResultSuccess, err
 	}
 
 	r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, nodeName, "success")
-	r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeTalos, 0)
-	logger.Info("Node upgrade completed", "node", nodeName,
-		"completedNodes", completedCount)
-	return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+	logger.Info("Node upgrade completed", "node", nodeName)
+	return jobResultSuccess, nil
 }
 
-func (r *Reconciler) handleJobFailure(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (ctrl.Result, error) {
+// processSingleJobFailure handles a single failed job: cleanup labels, record failure.
+func (r *Reconciler) processSingleJobFailure(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Node upgrade failed", "node", nodeName)
 
@@ -172,27 +272,11 @@ func (r *Reconciler) handleJobFailure(ctx context.Context, talosUpgrade *tupprv1
 
 	if err := r.addFailedNode(ctx, talosUpgrade, nodeStatus); err != nil {
 		logger.Error(err, "Failed to add failed node", "node", nodeName)
-		return ctrl.Result{}, err
-	}
-
-	failedCount := len(talosUpgrade.Status.FailedNodes) + 1
-	message := fmt.Sprintf("Node %s upgrade failed (%d failed) - stopping", nodeName, failedCount)
-
-	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseFailed, "", message); err != nil {
-		logger.Error(err, "Failed to update phase", "node", nodeName)
-		return ctrl.Result{}, err
-	}
-
-	if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
-		"observedGeneration": talosUpgrade.Generation - 1,
-	}); err != nil {
-		logger.Error(err, "Failed to reset observedGeneration for retry", "node", nodeName)
+		return err
 	}
 
 	r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, nodeName, "failure")
-	r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeTalos, 0)
-	logger.V(1).Info("Recorded node failure", "node", nodeName, "failedNodes", failedCount)
-	return ctrl.Result{RequeueAfter: time.Minute * 10}, nil
+	return nil
 }
 
 func (r *Reconciler) cleanupJobForNode(ctx context.Context, nodeName string) error {

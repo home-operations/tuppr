@@ -11,6 +11,7 @@ A Kubernetes controller for managing automated upgrades of Talos Linux and Kuber
 - 🔒 **Safe upgrade execution** - upgrades always run from healthy nodes (never self-upgrade)
 - 📊 **Built-in health checks** - CEL-based expressions for custom cluster validation
 - 🔄 **Configurable reboot modes** - default or powercycle options
+- ⚡ **Parallel node upgrades** - configurable batch size to upgrade multiple nodes concurrently
 - 📋 **Comprehensive status tracking** with real-time progress reporting
 - ⚡ **Resilient job execution** with automatic retry and pod replacement
 - 📈 **Prometheus metrics** - detailed monitoring of upgrade progress and health
@@ -99,6 +100,10 @@ spec:
       - {key: tuppr.home-operations.com/upgrade, operator: In, values: ["enabled"]}
       # Exclude control plane nodes from this specific plan
       - {key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}
+
+  # Parallelism controls how many nodes are upgraded concurrently (optional)
+  # Defaults to 1 (sequential). Must be >= 1 and <= number of matching nodes.
+  parallelism: 1
 
   # Configure drain behavior (optional)
   drain:
@@ -205,6 +210,28 @@ policy:
   # Stage upgrade then reboot to apply (2 total reboots)
   stage: false
 ```
+
+### Parallel Upgrades (TalosUpgrade only)
+
+By default, tuppr upgrades nodes one at a time (sequential). Setting `spec.parallelism` upgrades up to that many nodes concurrently within each batch:
+
+```yaml
+spec:
+  talos:
+    version: v1.11.0
+  parallelism: 3  # upgrade up to 3 nodes at once
+```
+
+Constraints enforced by the admission webhook:
+- Must be `>= 1`
+- Cannot exceed the number of nodes matched by `spec.nodeSelector`
+
+When `parallelism > 1`:
+- Health checks run once before each batch, not per-node
+- Drain (if configured) runs on all batch nodes before any upgrade job is created
+- The batch waits for all node jobs to finish before starting the next batch
+- Any failure in the batch stops further batches
+- `status.currentNodes` lists all nodes in the active batch
 
 ### Maintenance Windows
 
@@ -518,8 +545,8 @@ kubectl scale deployment tuppr --replicas=1 -n system-upgrade
 | Feature | TalosUpgrade | KubernetesUpgrade |
 |---------|--------------|-------------------|
 | **Scope** | Talos nodes | Kubernetes cluster |
-| **Multiple CRs** | ❌ Only one per cluster | ❌ Only one per cluster |
-| **Execution** | Sequential node-by-node | Single controller node |
+| **Multiple CRs** | ✅ Multiple allowed (queued) | ❌ Only one per cluster |
+| **Execution** | Sequential or parallel within a plan (configurable via `spec.parallelism`); only one plan executes at a time | Single controller node |
 | **Reboot Required** | ✅ Yes | ❌ No |
 | **Health Checks** | ✅ Before each node | ✅ Before upgrade |
 | **Concurrent Execution** | ❌ Blocked by other upgrades | ❌ Blocked by other upgrades |
@@ -529,7 +556,7 @@ kubectl scale deployment tuppr --replicas=1 -n system-upgrade
 ### Important Resource Constraints
 
 
-- **TalosUpgrade**:: You can now define multiple TalosUpgrade resources to target different groups of nodes (e.g., "workers-west" vs "workers-east"). While multiple plans can exist simultaneously, only one plan will execute at a time (First-Come, First-Served). The controller automatically queues subsequent plans to ensure safe, sequential orchestration across the cluster.
+- **TalosUpgrade**: Multiple `TalosUpgrade` resources are allowed per cluster and can target different groups of nodes (for example, "workers-west" vs "workers-east"). However, only one `TalosUpgrade` plan executes at a time on a first-come, first-served basis. The controller queues subsequent plans to ensure safe, sequential orchestration across the cluster. Within a single plan, use `spec.parallelism` to upgrade multiple nodes concurrently.
 
 - **KubernetesUpgrade**: Only **one** `KubernetesUpgrade` resource is allowed per cluster. This constraint exists because Kubernetes upgrades affect the entire cluster, and multiple concurrent upgrades would conflict with each other. The admission webhook will reject attempts to create additional `KubernetesUpgrade` resources.
 

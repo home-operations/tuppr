@@ -73,6 +73,7 @@ type Reconciler struct {
 	Scheme              *runtime.Scheme
 	TalosConfigSecret   string
 	ControllerNamespace string
+	ControllerNodeName  string
 	HealthChecker       HealthCheckRunner
 	TalosClient         TalosClient
 	MetricsReporter     *metrics.Reporter
@@ -166,6 +167,14 @@ func (r *Reconciler) updateStatus(ctx context.Context, talosUpgrade *tupprv1alph
 }
 
 func (r *Reconciler) setPhase(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, currentNode, message string) error {
+	var currentNodes []string
+	if currentNode != "" {
+		currentNodes = []string{currentNode}
+	}
+	return r.setPhaseWithNodes(ctx, talosUpgrade, phase, currentNodes, message)
+}
+
+func (r *Reconciler) setPhaseWithNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, currentNodes []string, message string) error {
 	prevPhase := talosUpgrade.Status.Phase
 
 	totalNodes, err := r.getTotalNodeCount(ctx)
@@ -173,14 +182,21 @@ func (r *Reconciler) setPhase(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 		log.FromContext(ctx).Error(err, "Failed to get total node count for metrics")
 	}
 
+	currentNode := ""
+	if len(currentNodes) > 0 {
+		currentNode = currentNodes[0]
+	}
+
 	if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
-		"phase":       phase,
-		"currentNode": currentNode,
-		"message":     message,
+		"phase":        phase,
+		"currentNode":  currentNode,
+		"currentNodes": currentNodes,
+		"message":      message,
 	}); err != nil {
 		return err
 	}
 	talosUpgrade.Status.Phase = phase
+	talosUpgrade.Status.CurrentNodes = currentNodes
 	r.recordPhaseTransition(talosUpgrade, prevPhase, phase)
 	r.MetricsReporter.RecordTalosUpgradeNodes(
 		talosUpgrade.Name,
@@ -202,14 +218,24 @@ func (r *Reconciler) recordPhaseTransition(talosUpgrade *tupprv1alpha1.TalosUpgr
 }
 
 func (r *Reconciler) addCompletedNode(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) error {
+	talosUpgrade.Status.CompletedNodes = append(talosUpgrade.Status.CompletedNodes, nodeName)
 	return r.updateStatus(ctx, talosUpgrade, map[string]any{
-		"completedNodes": append(talosUpgrade.Status.CompletedNodes, nodeName),
+		"completedNodes": talosUpgrade.Status.CompletedNodes,
 	})
 }
 
+// getParallelism returns the effective parallelism value, defaulting to 1.
+func getParallelism(spec tupprv1alpha1.TalosUpgradeSpec) int {
+	if spec.Parallelism != nil && *spec.Parallelism > 0 {
+		return int(*spec.Parallelism)
+	}
+	return 1
+}
+
 func (r *Reconciler) addFailedNode(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeStatus tupprv1alpha1.NodeUpgradeStatus) error {
+	talosUpgrade.Status.FailedNodes = append(talosUpgrade.Status.FailedNodes, nodeStatus)
 	return r.updateStatus(ctx, talosUpgrade, map[string]any{
-		"failedNodes": append(talosUpgrade.Status.FailedNodes, nodeStatus),
+		"failedNodes": talosUpgrade.Status.FailedNodes,
 	})
 }
 
