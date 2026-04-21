@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -11,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -80,6 +82,7 @@ type Reconciler struct {
 	Now                 Now
 	ImageChecker        ImageChecker
 	Notifier            notification.Notifier
+	Recorder            record.EventRecorder
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -175,6 +178,13 @@ func (r *Reconciler) setPhase(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 }
 
 func (r *Reconciler) setPhaseWithNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, currentNodes []string, message string) error {
+	return r.setPhaseWithUpdates(ctx, talosUpgrade, phase, currentNodes, message, nil)
+}
+
+// setPhaseWithUpdates writes phase plus any additional status fields atomically
+// and runs the shared audit/event/metric bookkeeping. All phase transitions
+// must go through this function (directly or via setPhase/setPhaseWithNodes).
+func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, currentNodes []string, message string, extra map[string]any) error {
 	prevPhase := talosUpgrade.Status.Phase
 
 	totalNodes, err := r.getTotalNodeCount(ctx)
@@ -187,17 +197,23 @@ func (r *Reconciler) setPhaseWithNodes(ctx context.Context, talosUpgrade *tupprv
 		currentNode = currentNodes[0]
 	}
 
-	if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
+	updates := map[string]any{
 		"phase":        phase,
 		"currentNode":  currentNode,
 		"currentNodes": currentNodes,
 		"message":      message,
-	}); err != nil {
+	}
+	maps.Copy(updates, extra)
+	applyPhaseAuditFields(&talosUpgrade.Status, updates, phase, metav1.Now(), talosUpgrade.Spec.Talos.Version)
+
+	if err := r.updateStatus(ctx, talosUpgrade, updates); err != nil {
 		return err
 	}
 	talosUpgrade.Status.Phase = phase
 	talosUpgrade.Status.CurrentNodes = currentNodes
+	syncLocalAuditFields(&talosUpgrade.Status, updates)
 	r.recordPhaseTransition(talosUpgrade, prevPhase, phase)
+	r.emitPhaseEvent(talosUpgrade, prevPhase, phase, message)
 	r.MetricsReporter.RecordTalosUpgradeNodes(
 		talosUpgrade.Name,
 		totalNodes,

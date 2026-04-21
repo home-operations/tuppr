@@ -63,20 +63,14 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, kubernetesUpgrad
 		return false, err
 	}
 
-	prevPhase := kubernetesUpgrade.Status.Phase
-	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-		"phase":          tupprv1alpha1.JobPhasePending,
-		"controllerNode": "",
-		"message":        "Reset requested via annotation",
-		"jobName":        "",
-		"retries":        0,
-		"lastError":      "",
+	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "Reset requested via annotation", map[string]any{
+		"jobName":   "",
+		"retries":   0,
+		"lastError": "",
 	}); err != nil {
 		logger.Error(err, "Failed to reset status after annotation")
 		return false, err
 	}
-	kubernetesUpgrade.Status.Phase = tupprv1alpha1.JobPhasePending
-	r.recordPhaseTransition(kubernetesUpgrade, prevPhase, tupprv1alpha1.JobPhasePending)
 
 	return true, nil
 }
@@ -92,18 +86,13 @@ func (r *Reconciler) handleGenerationChange(ctx context.Context, kubernetesUpgra
 		"observed", kubernetesUpgrade.Status.ObservedGeneration,
 		"newVersion", kubernetesUpgrade.Spec.Kubernetes.Version)
 
-	prevPhase := kubernetesUpgrade.Status.Phase
-	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-		"phase":          tupprv1alpha1.JobPhasePending,
-		"controllerNode": "",
-		"message":        fmt.Sprintf("Spec updated to %s, restarting upgrade process", kubernetesUpgrade.Spec.Kubernetes.Version),
-		"jobName":        "",
-		"retries":        0,
-		"lastError":      "",
+	message := fmt.Sprintf("Spec updated to %s, restarting upgrade process", kubernetesUpgrade.Spec.Kubernetes.Version)
+	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", message, map[string]any{
+		"jobName":   "",
+		"retries":   0,
+		"lastError": "",
 	}); err != nil {
 		return false, err
 	}
-	kubernetesUpgrade.Status.Phase = tupprv1alpha1.JobPhasePending
-	r.recordPhaseTransition(kubernetesUpgrade, prevPhase, tupprv1alpha1.JobPhasePending)
 	return true, nil
 }

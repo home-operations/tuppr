@@ -100,22 +100,11 @@ func (r *Reconciler) checkMaintenanceWindow(ctx context.Context, talosUpgrade *t
 		}
 		nextTimestamp := maintenanceRes.NextWindowStart.Unix()
 		r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, false, &nextTimestamp)
-		prevPhase := talosUpgrade.Status.Phase
-		totalNodes, err := r.getTotalNodeCount(ctx)
-		if err != nil {
-			logger.Error(err, "Failed to get total node count for metrics")
-		}
-		if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
-			"phase":                 tupprv1alpha1.JobPhaseMaintenanceWindow,
-			"currentNode":           "",
-			"message":               fmt.Sprintf("Waiting for maintenance window (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339)),
+		message := fmt.Sprintf("Waiting for maintenance window (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339))
+		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhaseMaintenanceWindow, nil, message, map[string]any{
 			"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
 		}); err != nil {
 			logger.Error(err, "Failed to update status for maintenance window")
-		} else {
-			talosUpgrade.Status.Phase = tupprv1alpha1.JobPhaseMaintenanceWindow
-			r.recordPhaseTransition(talosUpgrade, prevPhase, tupprv1alpha1.JobPhaseMaintenanceWindow)
-			r.MetricsReporter.RecordTalosUpgradeNodes(talosUpgrade.Name, totalNodes, len(talosUpgrade.Status.CompletedNodes), len(talosUpgrade.Status.FailedNodes))
 		}
 		return ctrl.Result{RequeueAfter: requeueAfter}, true, nil
 	}
@@ -181,23 +170,11 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		}
 		nextTimestamp := maintenanceRes.NextWindowStart.Unix()
 		r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, false, &nextTimestamp)
-		prevPhase := talosUpgrade.Status.Phase
-		totalNodes, err := r.getTotalNodeCount(ctx)
-		if err != nil {
-			logger.Error(err, "Failed to get total node count for metrics")
-		}
-		if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
-			"phase":                 tupprv1alpha1.JobPhaseMaintenanceWindow,
-			"currentNode":           "",
-			"currentNodes":          []string{},
-			"message":               fmt.Sprintf("Maintenance window closed between nodes, waiting (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339)),
+		message := fmt.Sprintf("Maintenance window closed between nodes, waiting (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339))
+		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhaseMaintenanceWindow, nil, message, map[string]any{
 			"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
 		}); err != nil {
 			logger.Error(err, "Failed to update status for maintenance window")
-		} else {
-			talosUpgrade.Status.Phase = tupprv1alpha1.JobPhaseMaintenanceWindow
-			r.recordPhaseTransition(talosUpgrade, prevPhase, tupprv1alpha1.JobPhaseMaintenanceWindow)
-			r.MetricsReporter.RecordTalosUpgradeNodes(talosUpgrade.Name, totalNodes, len(talosUpgrade.Status.CompletedNodes), len(talosUpgrade.Status.FailedNodes))
 		}
 		return ctrl.Result{RequeueAfter: requeueAfter}, nil
 	}

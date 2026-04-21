@@ -32,6 +32,10 @@ spec:
       name: Retries
       priority: 1
       type: integer
+    - jsonPath: .status.completedAt
+      name: Completed
+      priority: 1
+      type: date
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -170,6 +174,11 @@ spec:
           status:
             description: KubernetesUpgradeStatus defines the observed state of KubernetesUpgrade
             properties:
+              completedAt:
+                description: CompletedAt is the time the upgrade reached a terminal
+                  phase
+                format: date-time
+                type: string
               controllerNode:
                 description: ControllerNode is the controller node being used for
                   the upgrade
@@ -178,6 +187,60 @@ spec:
                 description: CurrentVersion is the current Kubernetes version detected
                   in the cluster
                 type: string
+              history:
+                description: History records past version transitions on this CR,
+                  newest first
+                items:
+                  description: UpgradeHistoryEntry records a single completed version
+                    transition
+                  properties:
+                    completedAt:
+                      description: CompletedAt is when the run reached its terminal
+                        phase
+                      format: date-time
+                      type: string
+                    fromVersion:
+                      description: FromVersion is the cluster version detected at
+                        the start of the run
+                      type: string
+                    lastError:
+                      description: LastError is the final error message when Phase
+                        is Failed
+                      type: string
+                    phase:
+                      description: Phase is the terminal phase reached (Completed
+                        or Failed)
+                      enum:
+                      - Pending
+                      - HealthChecking
+                      - Draining
+                      - Upgrading
+                      - Rebooting
+                      - Completed
+                      - Failed
+                      - MaintenanceWindow
+                      type: string
+                    retries:
+                      description: Retries is the number of retries recorded during
+                        the run
+                      minimum: 0
+                      type: integer
+                    startedAt:
+                      description: StartedAt is when the run began
+                      format: date-time
+                      type: string
+                    toVersion:
+                      description: ToVersion is the spec-target version at the time
+                        of completion
+                      type: string
+                  required:
+                  - completedAt
+                  - phase
+                  - startedAt
+                  - toVersion
+                  type: object
+                maxItems: 10
+                type: array
               jobName:
                 description: JobName is the name of the job handling the upgrade
                 type: string
@@ -217,6 +280,10 @@ spec:
                 description: Retries is the number of times the upgrade was attempted
                 minimum: 0
                 type: integer
+              startedAt:
+                description: StartedAt is the time the current upgrade attempt began
+                format: date-time
+                type: string
               targetVersion:
                 description: TargetVersion is the target version from the spec
                 type: string

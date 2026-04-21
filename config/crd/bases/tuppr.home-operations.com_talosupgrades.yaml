@@ -29,6 +29,10 @@ spec:
       name: Failed
       priority: 1
       type: integer
+    - jsonPath: .status.completedAt
+      name: Completed At
+      priority: 1
+      type: date
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -284,6 +288,11 @@ spec:
           status:
             description: TalosUpgradeStatus defines the observed state of TalosUpgrade
             properties:
+              completedAt:
+                description: CompletedAt is the time the upgrade reached a terminal
+                  phase
+                format: date-time
+                type: string
               completedNodes:
                 description: CompletedNodes are nodes that have been successfully
                   upgraded
@@ -324,6 +333,59 @@ spec:
                   - nodeName
                   type: object
                 type: array
+              history:
+                description: History records past version transitions on this CR,
+                  newest first
+                items:
+                  description: TalosUpgradeHistoryEntry records a single completed
+                    Talos upgrade run
+                  properties:
+                    completedAt:
+                      description: CompletedAt is when the run reached its terminal
+                        phase
+                      format: date-time
+                      type: string
+                    completedNodes:
+                      description: CompletedNodes are the nodes successfully upgraded
+                        during the run
+                      items:
+                        type: string
+                      type: array
+                    failedNodes:
+                      description: FailedNodes are the nodes that failed during the
+                        run
+                      items:
+                        type: string
+                      type: array
+                    phase:
+                      description: Phase is the terminal phase reached (Completed
+                        or Failed)
+                      enum:
+                      - Pending
+                      - HealthChecking
+                      - Draining
+                      - Upgrading
+                      - Rebooting
+                      - Completed
+                      - Failed
+                      - MaintenanceWindow
+                      type: string
+                    startedAt:
+                      description: StartedAt is when the run began
+                      format: date-time
+                      type: string
+                    toVersion:
+                      description: ToVersion is the spec-target Talos version at the
+                        time of completion
+                      type: string
+                  required:
+                  - completedAt
+                  - phase
+                  - startedAt
+                  - toVersion
+                  type: object
+                maxItems: 10
+                type: array
               lastUpdated:
                 description: LastUpdated timestamp of last status update
                 format: date-time
@@ -352,6 +414,10 @@ spec:
                 - Completed
                 - Failed
                 - MaintenanceWindow
+                type: string
+              startedAt:
+                description: StartedAt is the time the current upgrade run began
+                format: date-time
                 type: string
             type: object
         type: object

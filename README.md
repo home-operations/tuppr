@@ -159,6 +159,13 @@ spec:
         timezone: "UTC"        # IANA timezone, default UTC
 ```
 
+> Only one `KubernetesUpgrade` is allowed per cluster (admission webhook enforced).
+> To upgrade again, edit `spec.kubernetes.version` on the existing resource.
+> Past runs are recorded in `.status.history[]` (capped at 10, newest first) with
+> `.status.startedAt` / `.status.completedAt`, and phase transitions are emitted as
+> Kubernetes Events (`kubectl describe kubernetesupgrade kubernetes`). `TalosUpgrade`
+> exposes the same fields plus per-run `completedNodes` / `failedNodes` snapshots.
+
 ## 🎯 Advanced Configuration
 
 ### Health Checks

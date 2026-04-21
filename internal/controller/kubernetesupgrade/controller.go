@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -11,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -72,6 +74,7 @@ type Reconciler struct {
 	MetricsReporter     *metrics.Reporter
 	VersionGetter       VersionGetter
 	Now                 Now
+	Recorder            record.EventRecorder
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -164,17 +167,30 @@ func (r *Reconciler) updateStatus(ctx context.Context, kubernetesUpgrade *tupprv
 }
 
 func (r *Reconciler) setPhase(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, phase tupprv1alpha1.JobPhase, controllerNode, message string) error {
+	return r.setPhaseWithUpdates(ctx, kubernetesUpgrade, phase, controllerNode, message, nil)
+}
+
+// setPhaseWithUpdates writes phase plus any additional status fields atomically
+// and runs the shared audit/event/metric bookkeeping. All phase transitions
+// must go through this function (directly or via setPhase).
+func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, phase tupprv1alpha1.JobPhase, controllerNode, message string, extra map[string]any) error {
 	prevPhase := kubernetesUpgrade.Status.Phase
 
-	if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
+	updates := map[string]any{
 		"phase":          phase,
 		"controllerNode": controllerNode,
 		"message":        message,
-	}); err != nil {
+	}
+	maps.Copy(updates, extra)
+	applyPhaseAuditFields(&kubernetesUpgrade.Status, updates, phase, metav1.Now(), message)
+
+	if err := r.updateStatus(ctx, kubernetesUpgrade, updates); err != nil {
 		return err
 	}
 	kubernetesUpgrade.Status.Phase = phase
+	syncLocalAuditFields(&kubernetesUpgrade.Status, updates)
 	r.recordPhaseTransition(kubernetesUpgrade, prevPhase, phase)
+	r.emitPhaseEvent(kubernetesUpgrade, prevPhase, phase, message)
 	return nil
 }
 
