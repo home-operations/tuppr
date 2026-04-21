@@ -24,6 +24,15 @@ module "talos_cluster" {
   talos_image_id_x86 = imager_image.talos_x86.image_id
   disable_arm        = true
 
+  # Disable kubelet serving-cert rotation. The module turns it on by default,
+  # which needs talos-cloud-controller-manager to approve each rotated CSR;
+  # that approver races with `talosctl health` on multi-CP clusters and
+  # trips the "CSR is not approved" diagnostic. Rotation isn't needed for
+  # short-lived e2e clusters.
+  kubelet_extra_args = {
+    rotate-server-certificates = "false"
+  }
+
   hcloud_token = var.hcloud_token
 
   location_name = var.location
