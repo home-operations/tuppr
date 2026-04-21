@@ -83,7 +83,3 @@ jobs:
             exit 1
           fi
           ./cleanup.sh "cluster=${CLUSTER_NAME}"
-          # cleanup.sh deletes labelled servers/LBs/networks; prune the
-          # imager_image snapshot too (cleanup.sh doesn't handle images).
-          hcloud image list -t snapshot -l managed-by=tuppr-e2e \
-            -o noheader -o columns=id | xargs -r -I{} hcloud image delete {}

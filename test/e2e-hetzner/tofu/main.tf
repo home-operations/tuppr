@@ -5,11 +5,10 @@ resource "imager_image" "talos_x86" {
 
   description = "Talos ${var.talos_bootstrap_version} (tuppr-e2e)"
 
-  labels = {
-    managed-by    = "tuppr-e2e"
+  labels = merge(local.common_labels, {
     talos-version = var.talos_bootstrap_version
     schematic     = substr(var.talos_schematic_id, 0, 12)
-  }
+  })
 }
 
 module "talos_cluster" {
