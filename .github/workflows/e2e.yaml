@@ -63,6 +63,11 @@ jobs:
 
       - run: tofu -chdir=tofu init
 
+      # The module's hcloud_image data source has a count expression that
+      # depends on imager_image.talos_x86.image_id (known only after apply),
+      # so materialize the snapshot first.
+      - run: tofu -chdir=tofu apply -auto-approve -target=imager_image.talos_x86
+
       - run: tofu -chdir=tofu apply -auto-approve
 
       - run: mise exec -- ./test.sh
