@@ -150,6 +150,46 @@ type TalosUpgradeStatus struct {
 	// NextMaintenanceWindow reflect the next time a maintenance can happen
 	// +optional
 	NextMaintenanceWindow *metav1.Time `json:"nextMaintenanceWindow,omitempty"`
+
+	// StartedAt is the time the current upgrade run began
+	// +optional
+	StartedAt *metav1.Time `json:"startedAt,omitempty"`
+
+	// CompletedAt is the time the upgrade reached a terminal phase
+	// +optional
+	CompletedAt *metav1.Time `json:"completedAt,omitempty"`
+
+	// History records past version transitions on this CR, newest first
+	// +optional
+	// +kubebuilder:validation:MaxItems=10
+	History []TalosUpgradeHistoryEntry `json:"history,omitempty"`
+}
+
+// TalosUpgradeHistoryEntry records a single completed Talos upgrade run
+type TalosUpgradeHistoryEntry struct {
+	// ToVersion is the spec-target Talos version at the time of completion
+	// +kubebuilder:validation:Required
+	ToVersion string `json:"toVersion"`
+
+	// StartedAt is when the run began
+	// +kubebuilder:validation:Required
+	StartedAt metav1.Time `json:"startedAt"`
+
+	// CompletedAt is when the run reached its terminal phase
+	// +kubebuilder:validation:Required
+	CompletedAt metav1.Time `json:"completedAt"`
+
+	// Phase is the terminal phase reached (Completed or Failed)
+	// +kubebuilder:validation:Required
+	Phase JobPhase `json:"phase"`
+
+	// CompletedNodes are the nodes successfully upgraded during the run
+	// +optional
+	CompletedNodes []string `json:"completedNodes,omitempty"`
+
+	// FailedNodes are the nodes that failed during the run
+	// +optional
+	FailedNodes []string `json:"failedNodes,omitempty"`
 }
 
 // NodeUpgradeStatus tracks the upgrade status of individual nodes
@@ -179,6 +219,7 @@ type NodeUpgradeStatus struct {
 // +kubebuilder:printcolumn:name="Current Node",type="string",JSONPath=".status.currentNode"
 // +kubebuilder:printcolumn:name="Completed",type="integer",JSONPath=".status.completedNodes",priority=1
 // +kubebuilder:printcolumn:name="Failed",type="integer",JSONPath=".status.failedNodes",priority=1
+// +kubebuilder:printcolumn:name="Completed At",type="date",JSONPath=".status.completedAt",priority=1
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // TalosUpgrade is the Schema for the talosupgrades API

@@ -238,6 +238,9 @@ func main() {
 
 	setupLog.Info("Setting up controllers")
 
+	talosRecorder := mgr.GetEventRecorderFor("talosupgrade-controller")           //nolint:staticcheck
+	kubernetesRecorder := mgr.GetEventRecorderFor("kubernetesupgrade-controller") //nolint:staticcheck
+
 	if err := (&talosupgrade.Reconciler{
 		Client:              mgr.GetClient(),
 		Scheme:              mgr.GetScheme(),
@@ -245,6 +248,7 @@ func main() {
 		ControllerNamespace: controllerNamespace,
 		ControllerNodeName:  controllerNodeName,
 		Notifier:            notifier,
+		Recorder:            talosRecorder,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TalosUpgrade")
 		os.Exit(1)
@@ -255,6 +259,7 @@ func main() {
 		TalosConfigSecret:   talosConfigSecret,
 		ControllerNamespace: controllerNamespace,
 		ControllerNodeName:  controllerNodeName,
+		Recorder:            kubernetesRecorder,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KubernetesUpgrade")
 		os.Exit(1)

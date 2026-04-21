@@ -63,24 +63,13 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, talosUpgrade *tu
 		return false, err
 	}
 
-	prevPhase := talosUpgrade.Status.Phase
-	totalNodes, err := r.getTotalNodeCount(ctx)
-	if err != nil {
-		logger.Error(err, "Failed to get total node count for metrics")
-	}
-	if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
-		"phase":          tupprv1alpha1.JobPhasePending,
-		"currentNode":    "",
-		"message":        "Reset requested via annotation",
+	if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, nil, "Reset requested via annotation", map[string]any{
 		"completedNodes": []string{},
 		"failedNodes":    []tupprv1alpha1.NodeUpgradeStatus{},
 	}); err != nil {
 		logger.Error(err, "Failed to reset status after annotation")
 		return false, err
 	}
-	talosUpgrade.Status.Phase = tupprv1alpha1.JobPhasePending
-	r.recordPhaseTransition(talosUpgrade, prevPhase, tupprv1alpha1.JobPhasePending)
-	r.MetricsReporter.RecordTalosUpgradeNodes(talosUpgrade.Name, totalNodes, 0, 0)
 
 	return true, nil
 }
@@ -95,22 +84,11 @@ func (r *Reconciler) handleGenerationChange(ctx context.Context, talosUpgrade *t
 		"generation", talosUpgrade.Generation,
 		"observed", talosUpgrade.Status.ObservedGeneration)
 
-	prevPhase := talosUpgrade.Status.Phase
-	totalNodes, err := r.getTotalNodeCount(ctx)
-	if err != nil {
-		logger.Error(err, "Failed to get total node count for metrics")
-	}
-	if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
-		"phase":          tupprv1alpha1.JobPhasePending,
-		"currentNode":    "",
-		"message":        "Spec updated, restarting upgrade process",
+	if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, nil, "Spec updated, restarting upgrade process", map[string]any{
 		"completedNodes": []string{},
 		"failedNodes":    []tupprv1alpha1.NodeUpgradeStatus{},
 	}); err != nil {
 		return false, err
 	}
-	talosUpgrade.Status.Phase = tupprv1alpha1.JobPhasePending
-	r.recordPhaseTransition(talosUpgrade, prevPhase, tupprv1alpha1.JobPhasePending)
-	r.MetricsReporter.RecordTalosUpgradeNodes(talosUpgrade.Name, totalNodes, 0, 0)
 	return true, nil
 }
