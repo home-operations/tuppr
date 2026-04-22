@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.7](https://github.com/home-operations/tuppr/compare/0.1.6...0.1.7) (2026-04-21)
+
+
+### Features
+
+* record update history ([65d19e2](https://github.com/home-operations/tuppr/commit/65d19e21d6dbf3ca874b316bc93ff378a598e4a9))
+
+
+### Bug Fixes
+
+* use new imager approach for e2e bootstrap ([#190](https://github.com/home-operations/tuppr/issues/190)) ([4d637e2](https://github.com/home-operations/tuppr/commit/4d637e29d297146ce79bdf48b7ae70a8d41358f5))
+
 ## [0.1.6](https://github.com/home-operations/tuppr/compare/0.1.5...0.1.6) (2026-04-17)
 
 
