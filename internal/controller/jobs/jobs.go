@@ -87,7 +87,7 @@ func BuildTalosctlPodSpec(opts PodSpecOptions) corev1.PodSpec {
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName:  opts.TalosConfigSecret,
-					DefaultMode: ptr.To(int32(0420)),
+					DefaultMode: ptr.To(int32(0o420)),
 				},
 			},
 		}},
@@ -130,4 +130,14 @@ func DeleteJob(ctx context.Context, c client.Client, job *batchv1.Job) error {
 	return c.Delete(ctx, job, &client.DeleteOptions{
 		PropagationPolicy: ptr.To(metav1.DeletePropagationForeground),
 	})
+}
+
+func IsTerminal(job *batchv1.Job) bool {
+	if job.Status.Succeeded > 0 {
+		return true
+	}
+	if job.Spec.BackoffLimit != nil && job.Status.Failed >= *job.Spec.BackoffLimit {
+		return true
+	}
+	return false
 }

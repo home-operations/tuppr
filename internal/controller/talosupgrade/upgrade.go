@@ -202,6 +202,9 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	}
 
 	if len(nextNodes) == 0 {
+		if err := r.recordOutOfBandCompletedNodes(ctx, talosUpgrade); err != nil {
+			logger.Error(err, "Failed to record out-of-band upgraded nodes")
+		}
 		return r.completeUpgrade(ctx, talosUpgrade)
 	}
 
@@ -277,6 +280,49 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
 	}
 	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+}
+
+func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) error {
+	logger := log.FromContext(ctx)
+
+	nodes, err := r.getSortedNodes(ctx, talosUpgrade.Spec.NodeSelector)
+	if err != nil {
+		return err
+	}
+
+	crdTargetVersion := talosUpgrade.Spec.Talos.Version
+	var added []string
+
+	for i := range nodes {
+		node := &nodes[i]
+		if slices.Contains(talosUpgrade.Status.CompletedNodes, node.Name) {
+			continue
+		}
+		if slices.ContainsFunc(talosUpgrade.Status.FailedNodes, func(fn tupprv1alpha1.NodeUpgradeStatus) bool {
+			return fn.NodeName == node.Name
+		}) {
+			continue
+		}
+
+		needsUpgrade, err := r.nodeNeedsUpgrade(ctx, node, crdTargetVersion)
+		if err != nil {
+			return fmt.Errorf("check node %s: %w", node.Name, err)
+		}
+		if needsUpgrade {
+			continue
+		}
+		added = append(added, node.Name)
+	}
+
+	if len(added) == 0 {
+		return nil
+	}
+
+	logger.Info("Recording nodes upgraded out of band", "nodes", added)
+	talosUpgrade.Status.CompletedNodes = append(talosUpgrade.Status.CompletedNodes, added...)
+	return r.updateStatus(ctx, talosUpgrade, map[string]any{
+		"completedNodes": talosUpgrade.Status.CompletedNodes,
+	})
 }
 
 // findNextNodes returns up to `count` node names that need upgrading, sorted alphabetically.

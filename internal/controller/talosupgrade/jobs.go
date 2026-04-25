@@ -275,6 +275,10 @@ func (r *Reconciler) processSingleJobFailure(ctx context.Context, talosUpgrade *
 		return err
 	}
 
+	if err := r.cleanupJobForNode(ctx, nodeName); err != nil {
+		logger.Error(err, "Failed to cleanup failed job, but continuing", "node", nodeName)
+	}
+
 	r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, nodeName, "failure")
 	return nil
 }
@@ -293,12 +297,12 @@ func (r *Reconciler) cleanupJobForNode(ctx context.Context, nodeName string) err
 	}
 
 	for _, job := range jobList.Items {
-		if job.Status.Succeeded > 0 {
-			logger.V(1).Info("Deleting completed job", "job", job.Name, "node", nodeName)
-
-			if err := jobs.DeleteJob(ctx, r.Client, &job); err != nil {
-				return err
-			}
+		if !jobs.IsTerminal(&job) {
+			continue
+		}
+		logger.V(1).Info("Deleting terminal job", "job", job.Name, "node", nodeName)
+		if err := jobs.DeleteJob(ctx, r.Client, &job); err != nil {
+			return err
 		}
 	}
 	return nil
