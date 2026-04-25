@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.8](https://github.com/home-operations/tuppr/compare/0.1.7...0.1.8) (2026-04-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **github-action:** Update action googleapis/release-please-action (v4.4.1 → v5) ([#208](https://github.com/home-operations/tuppr/issues/208))
+
+### Bug Fixes
+
+* delete failed jobs and record out-of-band upgraded nodes ([32504cb](https://github.com/home-operations/tuppr/commit/32504cb02bf243e71c8083a3d65840c642a98594))
+* **deps:** update module github.com/siderolabs/talos/pkg/machinery (v1.12.6 → v1.12.7) ([#212](https://github.com/home-operations/tuppr/issues/212)) ([c42bd38](https://github.com/home-operations/tuppr/commit/c42bd384d081b84a278254a0fb32b17a94e3b03e))
+
+
+### Miscellaneous Chores
+
+* release 0.1.8 ([4ac25e5](https://github.com/home-operations/tuppr/commit/4ac25e5e35c8cf5c4fbc3d5a8b619029b30b9f07))
+
+
+### Continuous Integration
+
+* **github-action:** Update action googleapis/release-please-action (v4.4.1 → v5) ([#208](https://github.com/home-operations/tuppr/issues/208)) ([e43a99e](https://github.com/home-operations/tuppr/commit/e43a99e364560206ae5fd43c6109d4e852c1ef2c))
+
 ## [0.1.7](https://github.com/home-operations/tuppr/compare/0.1.6...0.1.7) (2026-04-21)
 
 
