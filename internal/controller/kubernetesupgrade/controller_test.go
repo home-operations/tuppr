@@ -540,6 +540,18 @@ func TestK8sReconcile_HandlesJobFailure(t *testing.T) {
 		t.Fatalf("expected observedGeneration < generation after failure (so controller retries), got observedGeneration=%d generation=%d",
 			updated.Status.ObservedGeneration, ku.Generation)
 	}
+
+	var jobList batchv1.JobList
+	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+		t.Fatalf("failed to list jobs: %v", err)
+	}
+	if len(jobList.Items) != 0 {
+		t.Fatalf("expected failed job to be cleaned up, got %d jobs", len(jobList.Items))
+	}
+
+	if len(updated.Status.History) != 1 {
+		t.Fatalf("expected exactly 1 history entry after first failure, got %d", len(updated.Status.History))
+	}
 }
 
 func TestK8sReconcile_FailedState_ResetsOnRetry(t *testing.T) {

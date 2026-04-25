@@ -908,6 +908,18 @@ func TestTalosReconcile_HandlesJobFailure(t *testing.T) {
 		t.Fatalf("expected observedGeneration < generation after failure (so controller retries), got observedGeneration=%d generation=%d",
 			updated.Status.ObservedGeneration, tu.Generation)
 	}
+
+	var jobList batchv1.JobList
+	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+		t.Fatalf("failed to list jobs: %v", err)
+	}
+	if len(jobList.Items) != 0 {
+		t.Fatalf("expected failed job to be cleaned up, got %d jobs", len(jobList.Items))
+	}
+
+	if len(updated.Status.History) != 1 {
+		t.Fatalf("expected exactly 1 history entry after first failure, got %d", len(updated.Status.History))
+	}
 }
 
 func TestTalosReconcile_FailedState_ResetsOnRetry(t *testing.T) {
@@ -934,6 +946,49 @@ func TestTalosReconcile_FailedState_ResetsOnRetry(t *testing.T) {
 	}
 	if updated.Status.ObservedGeneration != tu.Generation {
 		t.Fatalf("expected observedGeneration=%d after reset, got: %d", tu.Generation, updated.Status.ObservedGeneration)
+	}
+}
+
+func TestTalosReconcile_OutOfBandUpgradedNodeRecorded(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhasePending),
+		withCompletedNodes(fakeNodeA),
+	)
+	nodeA := newNode(fakeNodeA, "10.0.0.1")
+	nodeB := newNode(fakeNodeB, "10.0.0.2")
+	nodeC := newNode(fakeNodeC, "10.0.0.3")
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{
+			"10.0.0.1": fakeTalosVersion,
+			"10.0.0.2": fakeTalosVersion,
+			"10.0.0.3": fakeTalosVersion,
+		},
+		installImages: map[string]string{
+			"10.0.0.1": "factory.talos.dev/installer:" + fakeTalosVersion,
+			"10.0.0.2": "factory.talos.dev/installer:" + fakeTalosVersion,
+			"10.0.0.3": "factory.talos.dev/installer:" + fakeTalosVersion,
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, nodeA, nodeB, nodeC).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	reconcileTalos(t, r, "test-upgrade")
+
+	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
+		t.Fatalf("expected phase Completed, got: %s", updated.Status.Phase)
+	}
+	if len(updated.Status.CompletedNodes) != 3 {
+		t.Fatalf("expected 3 nodes in CompletedNodes (1 pre-existing + 2 out-of-band), got %d: %v",
+			len(updated.Status.CompletedNodes), updated.Status.CompletedNodes)
+	}
+	for _, n := range []string{fakeNodeA, fakeNodeB, fakeNodeC} {
+		if !slices.Contains(updated.Status.CompletedNodes, n) {
+			t.Fatalf("expected %s in CompletedNodes, got %v", n, updated.Status.CompletedNodes)
+		}
 	}
 }
 

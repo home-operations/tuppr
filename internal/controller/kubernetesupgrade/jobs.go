@@ -108,6 +108,11 @@ func (r *Reconciler) handleJobFailure(ctx context.Context, kubernetesUpgrade *tu
 		logger.Error(err, "Failed to update failure status")
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 	}
+
+	if err := r.cleanupJob(ctx, job); err != nil {
+		logger.Error(err, "Failed to cleanup failed job, but continuing", "job", job.Name)
+	}
+
 	r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, nodeName, "failure")
 	r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeKubernetes, 0)
 
