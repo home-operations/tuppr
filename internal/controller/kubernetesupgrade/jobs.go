@@ -70,7 +70,10 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tu
 		logger.Info("All control plane nodes at target version", "version", targetVersion)
 		r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, nodeName, "success")
 		r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeKubernetes, 0)
-		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseCompleted, "", fmt.Sprintf("Cluster successfully upgraded to %s", targetVersion)); err != nil {
+		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseCompleted, "", fmt.Sprintf("Cluster successfully upgraded to %s", targetVersion), map[string]any{
+			"currentVersion": targetVersion,
+			"targetVersion":  targetVersion,
+		}); err != nil {
 			logger.Error(err, "Failed to update completion phase")
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 		}
