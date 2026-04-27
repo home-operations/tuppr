@@ -83,7 +83,7 @@ func newKubernetesUpgrade(name string, opts ...func(*tupprv1alpha1.KubernetesUpg
 		},
 		Spec: tupprv1alpha1.KubernetesUpgradeSpec{
 			Kubernetes: tupprv1alpha1.KubernetesSpec{
-				Version: "v1.34.0",
+				Version: testK8sVersion,
 			},
 		},
 	}
@@ -224,11 +224,11 @@ func TestK8sReconcile_PartialUpgrade_PreventsCompletion(t *testing.T) {
 	)
 
 	// Node A is upgraded
-	nodeA := newControllerNodeWithVersion("ctrl-1", "10.0.0.1", "v1.34.0")
+	nodeA := newControllerNodeWithVersion("ctrl-1", "10.0.0.1", testK8sVersion)
 	// Node B is still on old version
 	nodeB := newControllerNodeWithVersion("ctrl-2", "10.0.0.2", "v1.33.0")
 
-	vg := &mockVersionGetter{version: "v1.34.0"}
+	vg := &mockVersionGetter{version: testK8sVersion}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, nodeA, nodeB).WithStatusSubresource(ku).Build()
@@ -339,9 +339,9 @@ func TestK8sReconcile_AlreadyAtTargetVersion(t *testing.T) {
 		withK8sFinalizer,
 		withK8sPhase(tupprv1alpha1.JobPhasePending),
 	)
-	node := newControllerNodeWithVersion("ctrl-1", "10.0.0.1", "v1.34.0")
+	node := newControllerNodeWithVersion("ctrl-1", "10.0.0.1", testK8sVersion)
 
-	vg := &mockVersionGetter{version: "v1.34.0"}
+	vg := &mockVersionGetter{version: testK8sVersion}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, node).WithStatusSubresource(ku).Build()
@@ -358,7 +358,7 @@ func TestK8sReconcile_AlreadyAtTargetVersion(t *testing.T) {
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
 		t.Fatalf("expected phase Completed, got: %s", updated.Status.Phase)
 	}
-	if updated.Status.CurrentVersion != "v1.34.0" {
+	if updated.Status.CurrentVersion != testK8sVersion {
 		t.Fatalf("expected currentVersion to be advanced to target, got: %s", updated.Status.CurrentVersion)
 	}
 }
@@ -593,10 +593,10 @@ func TestK8sReconcile_HandlesJobSuccess(t *testing.T) {
 		withK8sPhase(tupprv1alpha1.JobPhaseUpgrading),
 		func(ku *tupprv1alpha1.KubernetesUpgrade) {
 			ku.Status.CurrentVersion = "v1.33.0"
-			ku.Status.TargetVersion = "v1.34.0"
+			ku.Status.TargetVersion = testK8sVersion
 		},
 	)
-	node := newControllerNodeWithVersion(fakeCrtl, "10.0.0.1", "v1.34.0")
+	node := newControllerNodeWithVersion(fakeCrtl, "10.0.0.1", testK8sVersion)
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -611,7 +611,7 @@ func TestK8sReconcile_HandlesJobSuccess(t *testing.T) {
 		Status: batchv1.JobStatus{Succeeded: 1},
 	}
 	// Version now matches target after successful upgrade
-	vg := &mockVersionGetter{version: "v1.34.0"}
+	vg := &mockVersionGetter{version: testK8sVersion}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, node, job).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, vg, &mockTalosClient{}, &mockHealthChecker{})
@@ -625,7 +625,7 @@ func TestK8sReconcile_HandlesJobSuccess(t *testing.T) {
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
 		t.Fatalf("expected phase Completed, got: %s", updated.Status.Phase)
 	}
-	if updated.Status.CurrentVersion != "v1.34.0" {
+	if updated.Status.CurrentVersion != testK8sVersion {
 		t.Fatalf("expected currentVersion to be advanced to target, got: %s", updated.Status.CurrentVersion)
 	}
 }
@@ -636,7 +636,7 @@ func TestK8sReconcile_JobSuccess_PartialUpgrade_ContinuesToNextNode(t *testing.T
 		withK8sFinalizer,
 		withK8sPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
-	nodeA := newControllerNodeWithVersion("ctrl-1", "10.0.0.1", "v1.34.0")
+	nodeA := newControllerNodeWithVersion("ctrl-1", "10.0.0.1", testK8sVersion)
 	nodeB := newControllerNodeWithVersion("ctrl-2", "10.0.0.2", "v1.33.0")
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -650,7 +650,7 @@ func TestK8sReconcile_JobSuccess_PartialUpgrade_ContinuesToNextNode(t *testing.T
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
 		Status: batchv1.JobStatus{Succeeded: 1},
 	}
-	vg := &mockVersionGetter{version: "v1.34.0"}
+	vg := &mockVersionGetter{version: testK8sVersion}
 	tc := &mockTalosClient{nodeVersions: map[string]string{"10.0.0.2": "v1.33.0"}}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, nodeA, nodeB, job).WithStatusSubresource(ku).Build()
@@ -727,7 +727,7 @@ func TestK8sReconcile_Cleanup(t *testing.T) {
 			Finalizers:        []string{KubernetesUpgradeFinalizer},
 		},
 		Spec: tupprv1alpha1.KubernetesUpgradeSpec{
-			Kubernetes: tupprv1alpha1.KubernetesSpec{Version: "v1.34.0"},
+			Kubernetes: tupprv1alpha1.KubernetesSpec{Version: testK8sVersion},
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -775,7 +775,7 @@ func TestK8sReconcile_InProgressBypassesCoordination(t *testing.T) {
 func TestK8sFindControllerNode(t *testing.T) {
 	scheme := newTestScheme()
 	ctrlNode := newControllerNodeWithVersion(fakeCrtl, "10.0.0.1", "v1.33.0")
-	upgradedNode := newControllerNodeWithVersion("ctrl-2", "10.0.0.3", "v1.34.0")
+	upgradedNode := newControllerNodeWithVersion("ctrl-2", "10.0.0.3", testK8sVersion)
 
 	workerNode := newNode("worker-1", "10.0.0.2")
 
@@ -784,7 +784,7 @@ func TestK8sFindControllerNode(t *testing.T) {
 
 	r := newK8sReconciler(cl, &mockVersionGetter{}, &mockTalosClient{}, &mockHealthChecker{})
 
-	name, ip, err := r.findControllerNode(context.Background(), "v1.34.0")
+	name, ip, err := r.findControllerNode(context.Background(), testK8sVersion)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -800,7 +800,7 @@ func TestK8sFindControllerNode_NoControlPlane(t *testing.T) {
 		WithObjects(newNode("worker-1", "10.0.0.2")).Build()
 	r := newK8sReconciler(cl, &mockVersionGetter{}, &mockTalosClient{}, &mockHealthChecker{})
 
-	_, _, err := r.findControllerNode(context.Background(), "v1.34.0")
+	_, _, err := r.findControllerNode(context.Background(), testK8sVersion)
 	if err == nil {
 		t.Fatal("expected error when no control-plane node")
 	}
@@ -850,7 +850,7 @@ func TestKubernetesUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
 		TalosConfigSecret:   "talosconfig",
 		HealthChecker:       &mockHealthChecker{},
 		TalosClient:         &mockTalosClient{},
-		VersionGetter:       &mockVersionGetter{version: "v1.34.0"},
+		VersionGetter:       &mockVersionGetter{version: testK8sVersion},
 		MetricsReporter:     metrics.NewReporter(),
 		Now:                 &fixedClock{t: now},
 	}
@@ -911,7 +911,7 @@ func TestKubernetesUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
 		TalosClient: &mockTalosClient{
 			nodeVersions: map[string]string{"10.0.0.1": "v1.11.0"},
 		},
-		VersionGetter:   &mockVersionGetter{version: "v1.34.0"},
+		VersionGetter:   &mockVersionGetter{version: testK8sVersion},
 		MetricsReporter: metrics.NewReporter(),
 		Now:             &fixedClock{t: now},
 	}
