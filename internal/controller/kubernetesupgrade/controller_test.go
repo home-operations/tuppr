@@ -358,6 +358,9 @@ func TestK8sReconcile_AlreadyAtTargetVersion(t *testing.T) {
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
 		t.Fatalf("expected phase Completed, got: %s", updated.Status.Phase)
 	}
+	if updated.Status.CurrentVersion != "v1.34.0" {
+		t.Fatalf("expected currentVersion to be advanced to target, got: %s", updated.Status.CurrentVersion)
+	}
 }
 
 func TestK8sReconcile_HealthCheckFailure(t *testing.T) {
@@ -588,6 +591,10 @@ func TestK8sReconcile_HandlesJobSuccess(t *testing.T) {
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
 		withK8sPhase(tupprv1alpha1.JobPhaseUpgrading),
+		func(ku *tupprv1alpha1.KubernetesUpgrade) {
+			ku.Status.CurrentVersion = "v1.33.0"
+			ku.Status.TargetVersion = "v1.34.0"
+		},
 	)
 	node := newControllerNodeWithVersion(fakeCrtl, "10.0.0.1", "v1.34.0")
 
@@ -617,6 +624,9 @@ func TestK8sReconcile_HandlesJobSuccess(t *testing.T) {
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
 		t.Fatalf("expected phase Completed, got: %s", updated.Status.Phase)
+	}
+	if updated.Status.CurrentVersion != "v1.34.0" {
+		t.Fatalf("expected currentVersion to be advanced to target, got: %s", updated.Status.CurrentVersion)
 	}
 }
 
