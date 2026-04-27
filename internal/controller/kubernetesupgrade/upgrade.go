@@ -89,7 +89,10 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
 
-		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseCompleted, "", fmt.Sprintf("Kubernetes successfully upgraded to %s", targetVersion)); err != nil {
+		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseCompleted, "", fmt.Sprintf("Kubernetes successfully upgraded to %s", targetVersion), map[string]any{
+			"currentVersion": targetVersion,
+			"targetVersion":  targetVersion,
+		}); err != nil {
 			logger.Error(err, "Failed to update completion phase")
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 		}
