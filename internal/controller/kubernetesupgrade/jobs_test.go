@@ -8,10 +8,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+const testK8sVersion = "v1.34.0"
+
 func TestK8sBuildJob_Properties(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade", withK8sFinalizer)
-	ku.Spec.Kubernetes.Version = "v1.34.0"
+	ku.Spec.Kubernetes.Version = testK8sVersion
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{"10.0.0.1": "v1.10.0"},
 	}
@@ -43,7 +45,7 @@ func TestK8sBuildJob_Properties(t *testing.T) {
 		if arg == "upgrade-k8s" {
 			foundUpgradeCmd = true
 		}
-		if arg == "--to=v1.34.0" {
+		if arg == "--to="+testK8sVersion {
 			foundVersion = true
 		}
 	}
@@ -51,7 +53,7 @@ func TestK8sBuildJob_Properties(t *testing.T) {
 		t.Fatal("expected upgrade-k8s command in args")
 	}
 	if !foundVersion {
-		t.Fatal("expected --to=v1.34.0 in args")
+		t.Fatalf("expected --to=%s in args", testK8sVersion)
 	}
 }
 
