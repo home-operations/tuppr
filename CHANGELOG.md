@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/home-operations/tuppr/compare/0.1.9...0.1.10) (2026-04-28)
+
+
+### Bug Fixes
+
+* **talosupgrade:** fix image patching ([cf58dee](https://github.com/home-operations/tuppr/commit/cf58deec79423dab444f9a2e3f0b445bf05703a3))
+
 ## [0.1.9](https://github.com/home-operations/tuppr/compare/0.1.8...0.1.9) (2026-04-27)
 
 
