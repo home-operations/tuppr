@@ -477,6 +477,42 @@ func TestClient_PatchNodeInstallImage_Success(t *testing.T) {
 		"patched config should not contain old image")
 }
 
+func TestClient_PatchNodeInstallImage_MultiDocumentConfig(t *testing.T) {
+	ctx := context.Background()
+	oldImage := "factory.talos.dev/installer/abc:v1.11.0"
+	newImage := "factory.talos.dev/installer/abc:v1.12.0"
+
+	cfgYAML := fmt.Sprintf(
+		"version: v1alpha1\nmachine:\n  install:\n    image: %q\n"+
+			"---\n"+
+			"apiVersion: v1alpha1\nkind: SideroLinkConfig\napiUrl: https://siderolink.example/?jointoken=secret\n",
+		oldImage,
+	)
+	provider, err := configloader.NewFromBytes([]byte(cfgYAML))
+	require.NoError(t, err)
+	mc := config.NewMachineConfig(provider)
+
+	mock := &mockTalosClient{
+		versionResp:  makeVersionResponse("v1.12.0"),
+		cosiResource: mc,
+	}
+
+	c := &Client{
+		talos:         mock,
+		newClientFunc: func(ctx context.Context) (talosClient, error) { return mock, nil },
+	}
+
+	err = c.PatchNodeInstallImage(ctx, "10.0.0.1", newImage)
+
+	require.NoError(t, err)
+	require.NotNil(t, mock.applyConfigReq)
+	patched := string(mock.applyConfigReq.Data)
+	assert.Contains(t, patched, newImage)
+	assert.NotContains(t, patched, oldImage)
+	assert.Contains(t, patched, "SideroLinkConfig")
+	assert.Contains(t, patched, "siderolink.example")
+}
+
 func TestClient_PatchNodeInstallImage_GetConfigError(t *testing.T) {
 	ctx := context.Background()
 

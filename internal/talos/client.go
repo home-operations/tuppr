@@ -2,7 +2,6 @@ package talos
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/siderolabs/go-retry/retry"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
 	"github.com/siderolabs/talos/pkg/machinery/client"
+	"github.com/siderolabs/talos/pkg/machinery/config/configloader"
 	"github.com/siderolabs/talos/pkg/machinery/config/configpatcher"
 	"github.com/siderolabs/talos/pkg/machinery/resources/config"
 	"google.golang.org/grpc"
@@ -141,17 +141,15 @@ func (s *Client) PatchNodeInstallImage(ctx context.Context, nodeIP, newImage str
 		return fmt.Errorf("failed to patch install image on node %s: %w", nodeIP, err)
 	}
 
-	jsonPatch, err := json.Marshal([]map[string]string{
-		{"op": "add", "path": "/machine/install/image", "value": newImage},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to marshal config patch: %w", err)
-	}
+	// JSON6902 patches reject multi-document configs; strategic merge does not.
+	patchYAML := fmt.Sprintf("version: v1alpha1\nmachine:\n  install:\n    image: %q\n", newImage)
 
-	patch, err := configpatcher.LoadPatch(jsonPatch)
+	patchProvider, err := configloader.NewFromBytes([]byte(patchYAML))
 	if err != nil {
 		return fmt.Errorf("failed to load config patch: %w", err)
 	}
+
+	patch := configpatcher.NewStrategicMergePatch(patchProvider)
 
 	output, err := configpatcher.Apply(configpatcher.WithConfig(mc.Provider()), []configpatcher.Patch{patch})
 	if err != nil {
