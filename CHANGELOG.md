@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.9](https://github.com/home-operations/tuppr/compare/0.1.8...0.1.9) (2026-04-27)
+
+
+### Features
+
+* **deps:** update module github.com/siderolabs/talos/pkg/machinery (v1.12.7 → v1.13.0) ([#221](https://github.com/home-operations/tuppr/issues/221)) ([95e2e57](https://github.com/home-operations/tuppr/commit/95e2e57f1510b8a209b6c9cad8780556488beca4))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/onsi/ginkgo/v2 (v2.28.1 → v2.28.2) ([#217](https://github.com/home-operations/tuppr/issues/217)) ([17d7d90](https://github.com/home-operations/tuppr/commit/17d7d90d07c02a8b71783458049a23f7bb557932))
+* **main:** show new version number after successful update ([#219](https://github.com/home-operations/tuppr/issues/219)) ([6629716](https://github.com/home-operations/tuppr/commit/6629716d72a04ee2d950ab622a79b64f8de0b485))
+
 ## [0.1.8](https://github.com/home-operations/tuppr/compare/0.1.7...0.1.8) (2026-04-25)
 
 
