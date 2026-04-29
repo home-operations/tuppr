@@ -7,6 +7,7 @@ import (
 	"maps"
 	"time"
 
+	talosconfig "github.com/siderolabs/talos/pkg/machinery/resources/config"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -36,6 +37,7 @@ const (
 // TalosClient defines the interface for Talos operations
 type TalosClient interface {
 	GetNodeVersion(ctx context.Context, nodeIP string) (string, error)
+	GetNodeMachineConfig(ctx context.Context, nodeIP string) (*talosconfig.MachineConfig, error)
 }
 
 // HealthCheckRunner defines the interface for health checking

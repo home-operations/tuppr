@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	talosconfig "github.com/siderolabs/talos/pkg/machinery/resources/config"
 )
 
 // mockTalosClient implements TalosClient interface for testing
@@ -67,6 +68,10 @@ func (m *mockTalosClient) PatchNodeInstallImage(ctx context.Context, nodeIP, new
 	defer m.mu.Unlock()
 	m.installImages[nodeIP] = newImage
 	return nil
+}
+
+func (m *mockTalosClient) GetNodeMachineConfig(ctx context.Context, nodeIP string) (*talosconfig.MachineConfig, error) {
+	return nil, nil
 }
 
 func (m *mockTalosClient) Reset() {

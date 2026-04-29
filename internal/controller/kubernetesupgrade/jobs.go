@@ -18,6 +18,7 @@ import (
 	"github.com/home-operations/tuppr/internal/controller/jobs"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/metrics"
+	"github.com/home-operations/tuppr/internal/talos"
 )
 
 func (r *Reconciler) findActiveJob(ctx context.Context) (*batchv1.Job, error) {
@@ -190,11 +191,14 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 		pullPolicy = kubernetesUpgrade.Spec.Talosctl.Image.PullPolicy
 	}
 
+	hostAliases := r.resolveControlPlaneHostAliases(ctx, controllerNode, controllerIP)
+
 	logger.V(1).Info("Building Kubernetes upgrade job specification",
 		"controllerNode", controllerNode,
 		"talosctlImage", talosctlImage,
 		"pullPolicy", pullPolicy,
-		"args", args)
+		"args", args,
+		"hostAliases", hostAliases)
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -221,8 +225,41 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 					TalosConfigSecret: r.TalosConfigSecret,
 					GracePeriod:       KubernetesJobGracePeriod,
 					Affinity:          nil,
+					HostAliases:       hostAliases,
 				}),
 			},
 		},
 	}, nil
+}
+
+// resolveControlPlaneHostAliases reads the live machine config and, if cluster.controlPlaneEndpoint
+// is a hostname, returns a HostAlias mapping that hostname to the IP from extraHostEntries
+// (typically a VIP), or to the target node's IP as fallback. Returns nil when no alias is needed
+// or on any error — failure here must not block upgrades, since users with bespoke CoreDNS setups
+// already make the endpoint resolve through cluster DNS.
+func (r *Reconciler) resolveControlPlaneHostAliases(ctx context.Context, controllerNode, controllerIP string) []corev1.HostAlias {
+	logger := log.FromContext(ctx)
+
+	mc, err := r.TalosClient.GetNodeMachineConfig(ctx, controllerIP)
+	if err != nil {
+		logger.V(1).Info("Skipping controlPlaneEndpoint host-alias injection: failed to read machine config",
+			"node", controllerNode, "error", err.Error())
+		return nil
+	}
+	if mc == nil {
+		return nil
+	}
+
+	alias, err := talos.ResolveControlPlaneHostAlias(mc, controllerIP)
+	if err != nil {
+		logger.V(1).Info("Skipping controlPlaneEndpoint host-alias injection",
+			"node", controllerNode, "error", err.Error())
+		return nil
+	}
+	if alias == nil {
+		return nil
+	}
+	logger.V(1).Info("Injecting controlPlaneEndpoint host alias into upgrade pod",
+		"node", controllerNode, "ip", alias.IP, "hostnames", alias.Hostnames)
+	return []corev1.HostAlias{*alias}
 }

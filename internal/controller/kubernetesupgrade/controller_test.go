@@ -10,6 +10,7 @@ import (
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
 	"github.com/home-operations/tuppr/internal/metrics"
+	talosconfig "github.com/siderolabs/talos/pkg/machinery/resources/config"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,8 +29,10 @@ const (
 )
 
 type mockTalosClient struct {
-	nodeVersions  map[string]string
-	getVersionErr error
+	nodeVersions     map[string]string
+	getVersionErr    error
+	machineConfigs   map[string]*talosconfig.MachineConfig
+	getMachineCfgErr error
 }
 
 func (m *mockTalosClient) GetNodeVersion(ctx context.Context, nodeIP string) (string, error) {
@@ -40,6 +43,16 @@ func (m *mockTalosClient) GetNodeVersion(ctx context.Context, nodeIP string) (st
 		return v, nil
 	}
 	return "", fmt.Errorf("node %s not found", nodeIP)
+}
+
+func (m *mockTalosClient) GetNodeMachineConfig(ctx context.Context, nodeIP string) (*talosconfig.MachineConfig, error) {
+	if m.getMachineCfgErr != nil {
+		return nil, m.getMachineCfgErr
+	}
+	if mc, ok := m.machineConfigs[nodeIP]; ok {
+		return mc, nil
+	}
+	return nil, nil
 }
 
 type mockHealthChecker struct {

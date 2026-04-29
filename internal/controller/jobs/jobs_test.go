@@ -133,6 +133,29 @@ func TestBuildTalosctlPodSpec_OptsApplied(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "host aliases empty when not provided",
+			opts: PodSpecOptions{},
+			check: func(t *testing.T, spec corev1.PodSpec) {
+				if len(spec.HostAliases) != 0 {
+					t.Errorf("want no HostAliases, got %v", spec.HostAliases)
+				}
+			},
+		},
+		{
+			name: "host aliases set when provided",
+			opts: PodSpecOptions{
+				HostAliases: []corev1.HostAlias{{IP: "10.0.1.100", Hostnames: []string{"kube.cluster.local"}}},
+			},
+			check: func(t *testing.T, spec corev1.PodSpec) {
+				if len(spec.HostAliases) != 1 ||
+					spec.HostAliases[0].IP != "10.0.1.100" ||
+					len(spec.HostAliases[0].Hostnames) != 1 ||
+					spec.HostAliases[0].Hostnames[0] != "kube.cluster.local" {
+					t.Errorf("HostAliases: got %v", spec.HostAliases)
+				}
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
