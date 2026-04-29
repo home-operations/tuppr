@@ -249,6 +249,14 @@ spec:
               talos:
                 description: Talos specifies the talos configuration for upgrade operations
                 properties:
+                  factoryURL:
+                    description: |-
+                      FactoryURL overrides the Talos image factory base used when building the
+                      installer image from a schematic annotation. Must be a host[/path] without
+                      scheme or tag (e.g., "factory.talos.dev/installer", "factory.talos.dev/hcloud-installer").
+                      Defaults to "factory.talos.dev/installer" when unset.
+                    pattern: ^[a-zA-Z0-9._-]+(:[0-9]+)?(/[a-zA-Z0-9._-]+)+$
+                    type: string
                   version:
                     description: Version is the target Talos version to upgrade to
                       (e.g., "v1.11.0")

@@ -118,6 +118,23 @@ func ValidateVersionFormat(version string) error {
 	return nil
 }
 
+// ValidateFactoryURL checks the factory URL is a bare host[/path] reference
+// without a scheme or tag. Empty is valid (defaults are applied later).
+func ValidateFactoryURL(factoryURL string) error {
+	if factoryURL == "" {
+		return nil
+	}
+	pattern := `^[a-zA-Z0-9._-]+(:[0-9]+)?(/[a-zA-Z0-9._-]+)+$`
+	matched, err := regexp.MatchString(pattern, factoryURL)
+	if err != nil {
+		return fmt.Errorf("regex error: %w", err)
+	}
+	if !matched {
+		return fmt.Errorf("factoryURL '%s' invalid. Must be 'host[:port]/path' without scheme or tag (e.g., 'factory.talos.dev/installer')", factoryURL)
+	}
+	return nil
+}
+
 // ValidateSingleton ensures only one instance of the specific list type exists
 func ValidateSingleton(ctx context.Context, c client.Client, kindName, currentName string, list client.ObjectList) error {
 	if err := c.List(ctx, list); err != nil {

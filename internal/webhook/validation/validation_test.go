@@ -328,6 +328,38 @@ func TestValidateVersionFormat(t *testing.T) {
 	}
 }
 
+func TestValidateFactoryURL(t *testing.T) {
+	g := NewWithT(t)
+
+	tests := []struct {
+		name       string
+		factoryURL string
+		wantErr    bool
+	}{
+		{"empty (default applies)", "", false},
+		{"default factory", "factory.talos.dev/installer", false},
+		{"hcloud factory", "factory.talos.dev/hcloud-installer", false},
+		{"private registry with port", "registry.example.com:5000/installer", false},
+		{"nested path", "registry.example.com/team/installer", false},
+		{"with scheme rejected", "https://factory.talos.dev/installer", true},
+		{"with tag rejected", "factory.talos.dev/installer:v1.12.0", true},
+		{"trailing slash rejected", "factory.talos.dev/installer/", true},
+		{"no path rejected", "factory.talos.dev", true},
+		{"space rejected", "factory.talos.dev/foo bar", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateFactoryURL(tt.factoryURL)
+			if tt.wantErr {
+				g.Expect(err).To(HaveOccurred())
+			} else {
+				g.Expect(err).NotTo(HaveOccurred())
+			}
+		})
+	}
+}
+
 func TestValidateSingleton(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()

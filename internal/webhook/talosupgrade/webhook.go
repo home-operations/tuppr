@@ -75,6 +75,10 @@ func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade)
 		return warnings, fmt.Errorf("invalid talos version: %w", err)
 	}
 
+	if err := validation.ValidateFactoryURL(t.Spec.Talos.FactoryURL); err != nil {
+		return warnings, fmt.Errorf("invalid talos factoryURL: %w", err)
+	}
+
 	if err := validation.ValidateHealthChecks(t.Spec.HealthChecks); err != nil {
 		return warnings, err
 	}

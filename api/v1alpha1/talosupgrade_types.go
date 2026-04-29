@@ -10,6 +10,14 @@ type TalosSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern=`^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\-\.]+)?$`
 	Version string `json:"version,omitempty"`
+
+	// FactoryURL overrides the Talos image factory base used when building the
+	// installer image from a schematic annotation. Must be a host[/path] without
+	// scheme or tag (e.g., "factory.talos.dev/installer", "factory.talos.dev/hcloud-installer").
+	// Defaults to "factory.talos.dev/installer" when unset.
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+(:[0-9]+)?(/[a-zA-Z0-9._-]+)+$`
+	// +optional
+	FactoryURL string `json:"factoryURL,omitempty"`
 }
 
 // Policy defines upgrade behavior options

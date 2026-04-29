@@ -486,8 +486,12 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 	var imageBase string
 
 	if schematic, ok := node.Annotations[constants.SchematicAnnotation]; ok && schematic != "" {
-		imageBase = fmt.Sprintf("%s/%s", constants.DefaultFactoryURL, schematic)
-		logger.V(1).Info("Using schematic override from annotation", "node", nodeName, "schematic", schematic)
+		factoryURL := r.getFactoryURL(node, talosUpgrade.Spec.Talos.FactoryURL)
+		imageBase = fmt.Sprintf("%s/%s", factoryURL, schematic)
+		logger.V(1).Info("Using schematic override from annotation",
+			"node", nodeName,
+			"schematic", schematic,
+			"factoryURL", factoryURL)
 	} else {
 		nodeIP, err := nodeutil.GetNodeIP(node)
 		if err != nil {
@@ -521,6 +525,16 @@ func (r *Reconciler) getTargetVersion(node *corev1.Node, crdTargetVersion string
 		return v
 	}
 	return crdTargetVersion
+}
+
+func (r *Reconciler) getFactoryURL(node *corev1.Node, crdFactoryURL string) string {
+	if v, ok := node.Annotations[constants.FactoryURLAnnotation]; ok && v != "" {
+		return v
+	}
+	if crdFactoryURL != "" {
+		return crdFactoryURL
+	}
+	return constants.DefaultFactoryURL
 }
 
 func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (bool, error) {

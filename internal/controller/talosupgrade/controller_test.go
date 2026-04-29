@@ -1857,6 +1857,75 @@ func TestTalosBuildTalosUpgradeImage(t *testing.T) {
 	}
 }
 
+func TestTalosBuildTalosUpgradeImage_SchematicAnnotation_DefaultFactory(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Annotations = map[string]string{
+		constants.SchematicAnnotation: "abc123",
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := "factory.talos.dev/installer/abc123:" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("expected %s, got: %s", expected, image)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_SchematicAnnotation_SpecFactoryURL(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+	tu.Spec.Talos.FactoryURL = "factory.talos.dev/hcloud-installer"
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Annotations = map[string]string{
+		constants.SchematicAnnotation: "abc123",
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := "factory.talos.dev/hcloud-installer/abc123:" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("expected %s, got: %s", expected, image)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_SchematicAnnotation_AnnotationOverridesSpec(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+	tu.Spec.Talos.FactoryURL = "factory.talos.dev/installer"
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Annotations = map[string]string{
+		constants.SchematicAnnotation:  "abc123",
+		constants.FactoryURLAnnotation: "factory.talos.dev/hcloud-installer",
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := "factory.talos.dev/hcloud-installer/abc123:" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("expected %s, got: %s", expected, image)
+	}
+}
+
 func TestTalosBuildTalosUpgradeImage_InvalidFormat(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade", withFinalizer)

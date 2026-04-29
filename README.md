@@ -266,6 +266,7 @@ Tuppr supports overriding the global TalosUpgrade configuration on a per-node ba
 | -------- | ------- | ------- |
 | tuppr.home-operations.com/version | Overrides the target Talos version for this node. | v1.12.1 |
 | tuppr.home-operations.com/schematic | Overrides the Talos schematic hash for this node. | b55fbf... |
+| tuppr.home-operations.com/factory-url | Overrides the image factory base used to build the installer image. Only applies when a schematic annotation is set. | factory.talos.dev/hcloud-installer |
 
 
 Example: Applying an override
@@ -276,6 +277,19 @@ kubectl annotate node worker-01 tuppr.home-operations.com/version="v1.12.1"
 
 # Apply a custom schematic (with specific extensions) to one node
 kubectl annotate node worker-02 tuppr.home-operations.com/schematic="314b18a3f89d..."
+
+# Use a non-default factory base (e.g., Hetzner Cloud installer flavor) for one node
+kubectl annotate node worker-03 tuppr.home-operations.com/factory-url="factory.talos.dev/hcloud-installer"
+```
+
+The factory base can also be set cluster-wide on the `TalosUpgrade` spec for use with the schematic annotation:
+
+```yaml
+spec:
+  talos:
+    version: v1.12.6
+    # Defaults to factory.talos.dev/installer when omitted
+    factoryURL: factory.talos.dev/hcloud-installer
 ```
 
 How it works:
