@@ -16,6 +16,9 @@ const (
 	SchematicAnnotation = "tuppr.home-operations.com/schematic"
 	VersionAnnotation   = "tuppr.home-operations.com/version"
 
+	// TalosSchematicAnnotation is published automatically by Talos >= v1.8.
+	TalosSchematicAnnotation = "extensions.talos.dev/schematic"
+
 	// Default factory URL for schematic construction
 	DefaultFactoryURL = "factory.talos.dev/installer"
 )

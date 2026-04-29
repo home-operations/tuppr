@@ -267,6 +267,7 @@ Tuppr supports overriding the global TalosUpgrade configuration on a per-node ba
 | tuppr.home-operations.com/version | Overrides the target Talos version for this node. | v1.12.1 |
 | tuppr.home-operations.com/schematic | Overrides the Talos schematic hash for this node. | b55fbf... |
 
+On Talos v1.8 and later, nodes automatically publish their schematic ID to the `extensions.talos.dev/schematic` annotation. Tuppr reads this annotation as a fallback, so the manual `tuppr.home-operations.com/schematic` annotation is only needed when you want to override the schematic Talos publishes (for example, to swap a node onto a different schematic).
 
 Example: Applying an override
 
@@ -274,13 +275,14 @@ Example: Applying an override
 # Upgrade a specific node to a different version than the global policy
 kubectl annotate node worker-01 tuppr.home-operations.com/version="v1.12.1"
 
-# Apply a custom schematic (with specific extensions) to one node
+# Override the schematic on a single node (e.g. swap it to a different one with extra extensions)
 kubectl annotate node worker-02 tuppr.home-operations.com/schematic="314b18a3f89d..."
 ```
 
 How it works:
 - The controller checks if a node version or schematic matches the annotation instead of the global TalosUpgrade spec.
-- If an inconsistency is found, an upgrade job is triggered for that node using the override values.
+- For the schematic, the tuppr override wins; otherwise the Talos-published `extensions.talos.dev/schematic` annotation is used; otherwise the schematic is parsed from the node's current install image.
+- If an inconsistency is found, an upgrade job is triggered for that node using the resolved values.
 
 ## ⚠️ Safe Talos Upgrade Paths
 
@@ -483,7 +485,7 @@ kubectl describe kubernetesupgrade kubernetes
 # View upgrade logs
 kubectl logs -f deployment/tuppr -n system-upgrade
 
-# Force a node to a specific version/schematic
+# Force a node to a specific version, or override the schematic Talos publishes
 kubectl annotate node <node-name> tuppr.home-operations.com/version="v1.10.7"
 kubectl annotate node <node-name> tuppr.home-operations.com/schematic="<hash>"
 

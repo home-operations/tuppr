@@ -1775,6 +1775,48 @@ func TestNodeNeedsUpgrade(t *testing.T) {
 			},
 			wantError: true,
 		},
+		{
+			name:          "Schematic: Talos-published annotation matches current image -> No Upgrade",
+			nodeVersion:   "v1.12.0",
+			globalVersion: "v1.12.0",
+			nodeImage:     "factory.talos.dev/installer/talos-published-id:v1.12.0",
+			annotations: map[string]string{
+				constants.TalosSchematicAnnotation: "talos-published-id",
+			},
+			wantUpgrade: false,
+		},
+		{
+			name:          "Schematic: Talos-published annotation differs from current image -> Upgrade",
+			nodeVersion:   "v1.12.0",
+			globalVersion: "v1.12.0",
+			nodeImage:     "factory.talos.dev/installer/old-id:v1.12.0",
+			annotations: map[string]string{
+				constants.TalosSchematicAnnotation: "talos-published-id",
+			},
+			wantUpgrade: true,
+		},
+		{
+			name:          "Schematic: Both annotations set, tuppr override wins -> No Upgrade when image matches override",
+			nodeVersion:   "v1.12.0",
+			globalVersion: "v1.12.0",
+			nodeImage:     "factory.talos.dev/installer/tuppr-override-id:v1.12.0",
+			annotations: map[string]string{
+				constants.SchematicAnnotation:      "tuppr-override-id",
+				constants.TalosSchematicAnnotation: "talos-published-id",
+			},
+			wantUpgrade: false,
+		},
+		{
+			name:          "Schematic: Both annotations set, tuppr override wins -> Upgrade when image matches Talos value but not override",
+			nodeVersion:   "v1.12.0",
+			globalVersion: "v1.12.0",
+			nodeImage:     "factory.talos.dev/installer/talos-published-id:v1.12.0",
+			annotations: map[string]string{
+				constants.SchematicAnnotation:      "tuppr-override-id",
+				constants.TalosSchematicAnnotation: "talos-published-id",
+			},
+			wantUpgrade: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -2236,6 +2278,68 @@ func TestTalosBuildTalosUpgradeImage_WithSchematicAnnotation(t *testing.T) {
 	expected := "factory.talos.dev/installer/abc123schematic:" + fakeTalosVersion
 	if image != expected {
 		t.Fatalf("expected schematic image %s, got: %s", expected, image)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_WithTalosPublishedAnnotation(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Annotations = map[string]string{
+		constants.TalosSchematicAnnotation: "talos-published-id",
+	}
+
+	// TalosClient should not be consulted for the install image when an annotation exists.
+	tc := &mockTalosClient{
+		getInstallErr: fmt.Errorf("GetNodeInstallImage should not be called"),
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := "factory.talos.dev/installer/talos-published-id:" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("expected schematic image %s, got: %s", expected, image)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_TupprAnnotationOverridesTalos(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Annotations = map[string]string{
+		constants.SchematicAnnotation:      "tuppr-override-id",
+		constants.TalosSchematicAnnotation: "talos-published-id",
+	}
+
+	tc := &mockTalosClient{
+		getInstallErr: fmt.Errorf("GetNodeInstallImage should not be called"),
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := "factory.talos.dev/installer/tuppr-override-id:" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("expected tuppr override to win, got: %s", image)
 	}
 }
 

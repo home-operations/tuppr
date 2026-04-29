@@ -432,7 +432,7 @@ func (r *Reconciler) nodeNeedsUpgrade(ctx context.Context, node *corev1.Node, cr
 			"target", targetVersion)
 		return true, nil
 	}
-	if targetSchematic, ok := node.Annotations[constants.SchematicAnnotation]; ok && targetSchematic != "" {
+	if targetSchematic := resolveSchematic(node); targetSchematic != "" {
 		currentImage, err := r.TalosClient.GetNodeInstallImage(ctx, nodeIP)
 		if err != nil {
 			logger.Error(err, "Failed to get install image to verify schematic", "node", node.Name)
@@ -485,9 +485,9 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 
 	var imageBase string
 
-	if schematic, ok := node.Annotations[constants.SchematicAnnotation]; ok && schematic != "" {
+	if schematic := resolveSchematic(node); schematic != "" {
 		imageBase = fmt.Sprintf("%s/%s", constants.DefaultFactoryURL, schematic)
-		logger.V(1).Info("Using schematic override from annotation", "node", nodeName, "schematic", schematic)
+		logger.V(1).Info("Using schematic from annotation", "node", nodeName, "schematic", schematic)
 	} else {
 		nodeIP, err := nodeutil.GetNodeIP(node)
 		if err != nil {
@@ -521,6 +521,19 @@ func (r *Reconciler) getTargetVersion(node *corev1.Node, crdTargetVersion string
 		return v
 	}
 	return crdTargetVersion
+}
+
+// resolveSchematic returns the schematic ID to target for this node, or "" if
+// neither the tuppr override nor the Talos-published annotation is present.
+// The tuppr annotation wins so users can override the value Talos publishes.
+func resolveSchematic(node *corev1.Node) string {
+	if v, ok := node.Annotations[constants.SchematicAnnotation]; ok && v != "" {
+		return v
+	}
+	if v, ok := node.Annotations[constants.TalosSchematicAnnotation]; ok && v != "" {
+		return v
+	}
+	return ""
 }
 
 func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (bool, error) {
