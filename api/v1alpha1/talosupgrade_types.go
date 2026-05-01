@@ -239,7 +239,3 @@ type TalosUpgradeList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []TalosUpgrade `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&TalosUpgrade{}, &TalosUpgradeList{})
-}
