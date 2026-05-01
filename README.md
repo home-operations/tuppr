@@ -250,6 +250,55 @@ When `parallelism > 1`:
 - Any failure in the batch stops further batches
 - `status.currentNodes` lists all nodes in the active batch
 
+### Pre/Post-Upgrade Hooks (TalosUpgrade only)
+
+Run side-effecting Jobs around an upgrade run — e.g. set/unset Ceph `noout` so brief node reboots don't trigger PG rebalancing:
+
+```yaml
+spec:
+  talos:
+    version: v1.12.7
+  hooks:
+    pre:
+      - name: ceph-set-noout
+        image: ghcr.io/rook/rook:v1.18.7
+        command: ["sh", "-c"]
+        args: ["ceph osd set noout"]
+        envFrom:
+          - secretRef:
+              name: rook-ceph-mon
+        volumeMounts:
+          - name: ceph-config
+            mountPath: /etc/ceph
+        volumes:
+          - name: ceph-config
+            secret:
+              secretName: rook-ceph-config
+    post:
+      - name: ceph-unset-noout
+        image: ghcr.io/rook/rook:v1.18.7
+        command: ["sh", "-c"]
+        args: ["ceph osd unset noout"]
+        envFrom:
+          - secretRef:
+              name: rook-ceph-mon
+        volumeMounts:
+          - name: ceph-config
+            mountPath: /etc/ceph
+        volumes:
+          - name: ceph-config
+            secret:
+              secretName: rook-ceph-config
+```
+
+Behavior:
+- **Pre-hooks** run sequentially after the initial health check, before any node is touched. If any pre-hook fails, the upgrade is skipped and the run is marked `Failed` (post-hooks still run as cleanup).
+- **Post-hooks** run sequentially after the upgrade reaches a terminal state (success or failure). They always run if any pre-hook was attempted. Post-hook failures are logged and recorded but don't override the upgrade outcome.
+- **Inter-batch health checks are suppressed** while pre-hooks are configured. The contract: pre-hooks own cluster state for the upgrade window. Without pre-hooks, the per-batch re-check stays on (existing behavior).
+- Each hook runs as a Job in the controller namespace with the same non-root, capabilities-dropped security posture as the upgrade Job. Mount your own credentials via `volumes` / `envFrom` and pick a `serviceAccountName` if you need cluster-API access.
+
+Phase progression with hooks: `Pending → HealthChecking → PreHook → (Draining → Upgrading → Rebooting per batch) → PostHook → Completed`.
+
 ### Maintenance Windows
 
 Control when upgrades start using cron-based maintenance windows. Running upgrades always complete without interruption.

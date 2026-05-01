@@ -243,9 +243,11 @@ spec:
                       enum:
                       - Pending
                       - HealthChecking
+                      - PreHook
                       - Draining
                       - Upgrading
                       - Rebooting
+                      - PostHook
                       - Completed
                       - Failed
                       - MaintenanceWindow
@@ -299,9 +301,11 @@ spec:
                 enum:
                 - Pending
                 - HealthChecking
+                - PreHook
                 - Draining
                 - Upgrading
                 - Rebooting
+                - PostHook
                 - Completed
                 - Failed
                 - MaintenanceWindow

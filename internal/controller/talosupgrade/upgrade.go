@@ -55,6 +55,34 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
 
+	switch talosUpgrade.Status.Phase {
+	case tupprv1alpha1.JobPhasePreHook:
+		result, done, err := r.processHookPhase(ctx, talosUpgrade, hookPhasePre)
+		if err != nil {
+			return result, err
+		}
+		if !done {
+			return result, nil
+		}
+		if talosUpgrade.Status.PreHookFailed {
+			logger.Info("Pre-hook failed; running post-hooks then failing")
+			return r.transitionToFinalize(ctx, talosUpgrade)
+		}
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", "Pre-hooks complete; starting upgrade"); err != nil {
+			logger.Error(err, "Failed to advance phase past pre-hooks")
+		}
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	case tupprv1alpha1.JobPhasePostHook:
+		result, done, err := r.processHookPhase(ctx, talosUpgrade, hookPhasePost)
+		if err != nil {
+			return result, err
+		}
+		if !done {
+			return result, nil
+		}
+		return r.completeUpgrade(ctx, talosUpgrade)
+	}
+
 	if !talosUpgrade.Status.Phase.IsActive() {
 		if result, done, err := r.checkMaintenanceWindow(ctx, talosUpgrade); done {
 			return result, err
@@ -75,15 +103,48 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 	if len(talosUpgrade.Status.FailedNodes) > 0 {
 		logger.Info("Upgrade stopped due to failed nodes",
 			"failedNodes", len(talosUpgrade.Status.FailedNodes))
-		message := fmt.Sprintf("Upgrade stopped due to %d failed nodes", len(talosUpgrade.Status.FailedNodes))
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseFailed, "", message); err != nil {
-			logger.Error(err, "Failed to update phase for failed nodes")
-			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
-		}
-		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+		return r.transitionToFinalize(ctx, talosUpgrade)
 	}
 
 	return r.processNextBatch(ctx, talosUpgrade)
+}
+
+// maybeEnterPreHook transitions to PreHook phase if pre-hooks are configured
+// and have not yet been attempted (or completed). Returns entered=true when
+// the caller should return the result instead of continuing.
+func (r *Reconciler) maybeEnterPreHook(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, bool, error) {
+	if !hasPreHooks(talosUpgrade) ||
+		talosUpgrade.Status.PreHookFailed ||
+		talosUpgrade.Status.PreHookIndex >= len(talosUpgrade.Spec.Hooks.Pre) {
+		return ctrl.Result{}, false, nil
+	}
+	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePreHook, "", "Running pre-upgrade hooks"); err != nil {
+		log.FromContext(ctx).Error(err, "Failed to enter PreHook phase")
+		return ctrl.Result{RequeueAfter: time.Minute}, true, err
+	}
+	return ctrl.Result{RequeueAfter: time.Second * 5}, true, nil
+}
+
+// transitionToFinalize routes to PostHook (if configured and not yet run) or
+// directly to the terminal phase via completeUpgrade.
+func (r *Reconciler) transitionToFinalize(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	if hasPostHooks(talosUpgrade) && talosUpgrade.Status.PostHookIndex < len(talosUpgrade.Spec.Hooks.Post) {
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePostHook, "", "Running post-hooks"); err != nil {
+			logger.Error(err, "Failed to transition to PostHook")
+			return ctrl.Result{RequeueAfter: time.Second * 30}, err
+		}
+		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+	}
+	return r.completeUpgrade(ctx, talosUpgrade)
+}
+
+func hasPreHooks(tu *tupprv1alpha1.TalosUpgrade) bool {
+	return tu.Spec.Hooks != nil && len(tu.Spec.Hooks.Pre) > 0
+}
+
+func hasPostHooks(tu *tupprv1alpha1.TalosUpgrade) bool {
+	return tu.Spec.Hooks != nil && len(tu.Spec.Hooks.Post) > 0
 }
 
 func (r *Reconciler) checkMaintenanceWindow(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, bool, error) {
@@ -138,11 +199,16 @@ func (r *Reconciler) completeUpgrade(ctx context.Context, talosUpgrade *tupprv1a
 
 	var phase tupprv1alpha1.JobPhase
 	var message string
-	if failedCount > 0 {
+	switch {
+	case talosUpgrade.Status.PreHookFailed:
+		phase = tupprv1alpha1.JobPhaseFailed
+		message = "Pre-upgrade hook failed; upgrade did not run"
+		logger.Info("Upgrade marked failed due to pre-hook failure")
+	case failedCount > 0:
 		phase = tupprv1alpha1.JobPhaseFailed
 		message = fmt.Sprintf("Completed with failures: %d successful, %d failed", completedCount, failedCount)
 		logger.Info("Upgrade completed with failures", "completed", completedCount, "failed", failedCount)
-	} else {
+	default:
 		phase = tupprv1alpha1.JobPhaseCompleted
 		message = fmt.Sprintf("Successfully upgraded %d nodes", completedCount)
 		logger.Info("Upgrade completed successfully", "nodes", completedCount)
@@ -183,15 +249,30 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	ctx = context.WithValue(ctx, metrics.ContextKeyUpgradeType, metrics.UpgradeTypeTalos)
 	ctx = context.WithValue(ctx, metrics.ContextKeyUpgradeName, talosUpgrade.Name)
 
-	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", "Running health checks"); err != nil {
-		logger.Error(err, "Failed to update phase for health check")
-	}
-	if err := r.HealthChecker.CheckHealth(ctx, talosUpgrade.Spec.HealthChecks); err != nil {
-		logger.Info("Waiting for health checks to pass", "error", err.Error())
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
+	// Skip the inter-batch health check re-run when pre-hooks are configured and
+	// have already run: pre-hooks own cluster state for the rest of the upgrade
+	// window, so re-checking would fail (e.g. Ceph reports HEALTH_WARN while
+	// `noout` is set). The initial check (first batch, no completed nodes yet)
+	// still runs.
+	skipHealthCheck := hasPreHooks(talosUpgrade) &&
+		talosUpgrade.Status.PreHookIndex >= len(talosUpgrade.Spec.Hooks.Pre) &&
+		len(talosUpgrade.Status.CompletedNodes) > 0
+
+	if !skipHealthCheck {
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", "Running health checks"); err != nil {
 			logger.Error(err, "Failed to update phase for health check")
 		}
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
+		if err := r.HealthChecker.CheckHealth(ctx, talosUpgrade.Spec.HealthChecks); err != nil {
+			logger.Info("Waiting for health checks to pass", "error", err.Error())
+			if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
+				logger.Error(err, "Failed to update phase for health check")
+			}
+			return ctrl.Result{RequeueAfter: time.Minute}, nil
+		}
+	}
+
+	if result, entered, err := r.maybeEnterPreHook(ctx, talosUpgrade); entered {
+		return result, err
 	}
 
 	parallelism := getParallelism(talosUpgrade.Spec)
@@ -205,7 +286,7 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		if err := r.recordOutOfBandCompletedNodes(ctx, talosUpgrade); err != nil {
 			logger.Error(err, "Failed to record out-of-band upgraded nodes")
 		}
-		return r.completeUpgrade(ctx, talosUpgrade)
+		return r.transitionToFinalize(ctx, talosUpgrade)
 	}
 
 	// Build and verify images for all nodes in this batch

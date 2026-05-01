@@ -124,6 +124,10 @@ func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade)
 		warnings = append(warnings, pWarnings...)
 	}
 
+	if err := validateHooks(t.Spec.Hooks); err != nil {
+		return warnings, err
+	}
+
 	taloslog.Info("talos plan validation successful", "name", t.Name, "version", t.Spec.Talos.Version)
 	return warnings, nil
 }
@@ -242,6 +246,34 @@ func (v *Validator) validateParallelism(ctx context.Context, t *tupprv1alpha1.Ta
 	}
 
 	return nil, nil
+}
+
+// validateHooks rejects empty images and duplicate names within each hook list.
+func validateHooks(hooks *tupprv1alpha1.HooksSpec) error {
+	if hooks == nil {
+		return nil
+	}
+	if err := validateHookList("spec.hooks.pre", hooks.Pre); err != nil {
+		return err
+	}
+	return validateHookList("spec.hooks.post", hooks.Post)
+}
+
+func validateHookList(path string, list []tupprv1alpha1.HookSpec) error {
+	seen := make(map[string]struct{}, len(list))
+	for i, h := range list {
+		if h.Name == "" {
+			return fmt.Errorf("%s[%d].name is required", path, i)
+		}
+		if h.Image == "" {
+			return fmt.Errorf("%s[%d].image is required", path, i)
+		}
+		if _, dup := seen[h.Name]; dup {
+			return fmt.Errorf("%s: duplicate hook name %q", path, h.Name)
+		}
+		seen[h.Name] = struct{}{}
+	}
+	return nil
 }
 
 func (v *Validator) SetupWebhookWithManager(mgr ctrl.Manager) error {

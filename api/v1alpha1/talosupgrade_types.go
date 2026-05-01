@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -49,6 +50,78 @@ type PolicySpec struct {
 	// +kubebuilder:default="30m"
 	// +optional
 	Timeout *metav1.Duration `json:"timeout,omitempty"`
+}
+
+// HookSpec describes a Job to run before or after a TalosUpgrade run.
+type HookSpec struct {
+	// Name is a human-readable identifier, unique within its pre/post list.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	Name string `json:"name"`
+
+	// Image is the container image to run.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Image string `json:"image"`
+
+	// ImagePullPolicy for the hook container.
+	// +kubebuilder:validation:Enum=Always;Never;IfNotPresent
+	// +kubebuilder:default="IfNotPresent"
+	// +optional
+	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
+
+	// Command overrides the image entrypoint.
+	// +optional
+	Command []string `json:"command,omitempty"`
+
+	// Args are passed to the entrypoint.
+	// +optional
+	Args []string `json:"args,omitempty"`
+
+	// Env are environment variables for the hook container.
+	// +optional
+	Env []corev1.EnvVar `json:"env,omitempty"`
+
+	// EnvFrom sources environment variables from ConfigMaps or Secrets.
+	// +optional
+	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
+
+	// VolumeMounts are container volume mounts.
+	// +optional
+	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
+
+	// Volumes are pod-level volumes (typically Secrets / ConfigMaps).
+	// +optional
+	Volumes []corev1.Volume `json:"volumes,omitempty"`
+
+	// ServiceAccountName for the hook pod. Defaults to "default".
+	// +optional
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+
+	// ActiveDeadlineSeconds for the hook Job. Defaults to 600.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
+
+	// BackoffLimit for the hook Job. Defaults to 0 (fail fast, no retries).
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	BackoffLimit *int32 `json:"backoffLimit,omitempty"`
+}
+
+// HooksSpec configures Jobs that run around a TalosUpgrade run.
+type HooksSpec struct {
+	// Pre runs sequentially before any node is touched.
+	// +optional
+	Pre []HookSpec `json:"pre,omitempty"`
+
+	// Post runs sequentially after the upgrade reaches a terminal state.
+	// Always runs if any pre-hook was attempted; failures don't override the
+	// upgrade outcome.
+	// +optional
+	Post []HookSpec `json:"post,omitempty"`
 }
 
 type DrainSpec struct {
@@ -111,6 +184,10 @@ type TalosUpgradeSpec struct {
 	// +kubebuilder:default=1
 	// +optional
 	Parallelism *int32 `json:"parallelism,omitempty"`
+
+	// Hooks configures pre/post-upgrade Jobs (e.g. `ceph osd set/unset noout`).
+	// +optional
+	Hooks *HooksSpec `json:"hooks,omitempty"`
 }
 
 // TalosUpgradeStatus defines the observed state of TalosUpgrade
@@ -163,6 +240,20 @@ type TalosUpgradeStatus struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=10
 	History []TalosUpgradeHistoryEntry `json:"history,omitempty"`
+
+	// PreHookIndex is the index of the next pre-hook to run.
+	// Equals len(spec.hooks.pre) once all pre-hooks are done.
+	// +optional
+	PreHookIndex int `json:"preHookIndex,omitempty"`
+
+	// PostHookIndex is the index of the next post-hook to run.
+	// +optional
+	PostHookIndex int `json:"postHookIndex,omitempty"`
+
+	// PreHookFailed records that a pre-hook failed during this run, so the
+	// terminal phase ends up Failed even after post-hooks (cleanup) succeed.
+	// +optional
+	PreHookFailed bool `json:"preHookFailed,omitempty"`
 }
 
 // TalosUpgradeHistoryEntry records a single completed Talos upgrade run
