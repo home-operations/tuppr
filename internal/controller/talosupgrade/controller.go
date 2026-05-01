@@ -224,7 +224,11 @@ func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, talosUpgrade *tupp
 }
 
 func (r *Reconciler) recordPhaseTransition(talosUpgrade *tupprv1alpha1.TalosUpgrade, fromPhase, toPhase tupprv1alpha1.JobPhase) {
-	r.MetricsReporter.RecordTalosUpgradePhase(talosUpgrade.Name, string(toPhase))
+	currentNode := ""
+	if len(talosUpgrade.Status.CurrentNodes) > 0 {
+		currentNode = talosUpgrade.Status.CurrentNodes[0]
+	}
+	r.MetricsReporter.RecordTalosUpgradePhase(talosUpgrade.Name, string(toPhase), currentNode)
 	if fromPhase != toPhase {
 		if fromPhase != "" {
 			r.MetricsReporter.EndPhaseTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, string(fromPhase))

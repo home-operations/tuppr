@@ -50,9 +50,9 @@ var (
 	talosUpgradePhaseGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "tuppr_talos_upgrade_phase",
-			Help: "Current phase of a Talos upgrade, labelled by phase name. Only one phase label is active (value=1) at a time. Possible phases: Pending, HealthChecking, Draining, Upgrading, Rebooting, MaintenanceWindow, Completed, Failed.",
+			Help: "Current phase of a Talos upgrade. One phase label is 1 at a time; node_name is populated for node-scoped phases (Draining, Upgrading, Rebooting) and empty otherwise.",
 		},
-		[]string{"name", "phase"},
+		[]string{"name", "phase", "node_name"},
 	)
 
 	talosUpgradeNodes = prometheus.NewGaugeVec(
@@ -136,7 +136,15 @@ var (
 			Help:    "Time taken for upgrade jobs to complete",
 			Buckets: []float64{60, 300, 600, 1200, 1800, 3600, 7200},
 		},
-		[]string{"upgrade_type", "node_name", "result"},
+		[]string{"upgrade_type", "upgrade_name", "node_name", "result"},
+	)
+
+	hookExecutionsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "tuppr_hook_executions_total",
+			Help: "Total hook executions",
+		},
+		[]string{"upgrade_name", "hook_phase", "hook_name", "result"},
 	)
 
 	maintenanceWindowActive = prometheus.NewGaugeVec(
@@ -169,31 +177,48 @@ func init() {
 		healthCheckFailuresTotal,
 		upgradeJobsActive,
 		upgradeJobDuration,
+		hookExecutionsTotal,
 		maintenanceWindowActive,
 		maintenanceWindowNextOpenTimestamp,
 	)
 }
 
+type talosPhaseNode struct {
+	phase string
+	node  string
+}
+
 type Reporter struct {
-	mu            sync.RWMutex
-	startTimes    map[string]*prometheus.Timer
-	jobStartTimes map[string]time.Time
+	mu                  sync.RWMutex
+	startTimes          map[string]*prometheus.Timer
+	jobStartTimes       map[string]time.Time
+	talosUpgradePrev    map[string]talosPhaseNode
 }
 
 func NewReporter() *Reporter {
 	return &Reporter{
-		startTimes:    make(map[string]*prometheus.Timer),
-		jobStartTimes: make(map[string]time.Time),
+		startTimes:       make(map[string]*prometheus.Timer),
+		jobStartTimes:    make(map[string]time.Time),
+		talosUpgradePrev: make(map[string]talosPhaseNode),
 	}
 }
 
-func (m *Reporter) RecordTalosUpgradePhase(name, phase string) {
+func (m *Reporter) RecordTalosUpgradePhase(name, phase, nodeName string) {
+	m.mu.Lock()
+	prev := m.talosUpgradePrev[name]
+	m.talosUpgradePrev[name] = talosPhaseNode{phase: phase, node: nodeName}
+	m.mu.Unlock()
+
+	if prev.phase != "" && (prev.phase != phase || prev.node != nodeName) {
+		talosUpgradePhaseGauge.DeleteLabelValues(name, prev.phase, prev.node)
+	}
+
 	for _, p := range talosPhases {
-		val := 0.0
 		if p == phase {
-			val = 1.0
+			talosUpgradePhaseGauge.WithLabelValues(name, p, nodeName).Set(1.0)
+		} else {
+			talosUpgradePhaseGauge.WithLabelValues(name, p, "").Set(0.0)
 		}
-		talosUpgradePhaseGauge.WithLabelValues(name, p).Set(val)
 	}
 }
 
@@ -250,8 +275,8 @@ func (m *Reporter) RecordActiveJobs(upgradeType string, count int) {
 	upgradeJobsActive.WithLabelValues(upgradeType).Set(float64(count))
 }
 
-func (m *Reporter) RecordJobDuration(upgradeType, nodeName, result string, duration float64) {
-	upgradeJobDuration.WithLabelValues(upgradeType, nodeName, result).Observe(duration)
+func (m *Reporter) RecordJobDuration(upgradeType, upgradeName, nodeName, result string, duration float64) {
+	upgradeJobDuration.WithLabelValues(upgradeType, upgradeName, nodeName, result).Observe(duration)
 }
 
 func (m *Reporter) StartJobTiming(upgradeType, upgradeName, nodeName string) {
@@ -265,9 +290,13 @@ func (m *Reporter) EndJobTiming(upgradeType, upgradeName, nodeName, result strin
 	defer m.mu.Unlock()
 	key := upgradeType + ":" + upgradeName + ":" + nodeName
 	if start, ok := m.jobStartTimes[key]; ok {
-		upgradeJobDuration.WithLabelValues(upgradeType, nodeName, result).Observe(time.Since(start).Seconds())
+		upgradeJobDuration.WithLabelValues(upgradeType, upgradeName, nodeName, result).Observe(time.Since(start).Seconds())
 		delete(m.jobStartTimes, key)
 	}
+}
+
+func (m *Reporter) RecordHookExecution(upgradeName, hookPhase, hookName, result string) {
+	hookExecutionsTotal.WithLabelValues(upgradeName, hookPhase, hookName, result).Inc()
 }
 
 func (m *Reporter) RecordMaintenanceWindow(upgradeType, name string, active bool, nextOpenTimestamp *int64) {
@@ -300,8 +329,14 @@ func (m *Reporter) CleanupUpgradeMetrics(upgradeType, name string) {
 
 	switch upgradeType {
 	case UpgradeTypeTalos:
+		prev := m.talosUpgradePrev[name]
+		delete(m.talosUpgradePrev, name)
+
 		for _, phase := range talosPhases {
-			talosUpgradePhaseGauge.DeleteLabelValues(name, phase)
+			talosUpgradePhaseGauge.DeleteLabelValues(name, phase, "")
+		}
+		if prev.phase != "" {
+			talosUpgradePhaseGauge.DeleteLabelValues(name, prev.phase, prev.node)
 		}
 		talosUpgradeNodes.DeleteLabelValues(name)
 		talosUpgradeNodesCompleted.DeleteLabelValues(name)
