@@ -13,8 +13,9 @@ const (
 
 const (
 	// Override annotations
-	SchematicAnnotation = "tuppr.home-operations.com/schematic"
-	VersionAnnotation   = "tuppr.home-operations.com/version"
+	SchematicAnnotation  = "tuppr.home-operations.com/schematic"
+	VersionAnnotation    = "tuppr.home-operations.com/version"
+	FactoryURLAnnotation = "tuppr.home-operations.com/factory-url"
 
 	// Default factory URL for schematic construction
 	DefaultFactoryURL = "factory.talos.dev/installer"

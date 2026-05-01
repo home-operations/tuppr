@@ -430,6 +430,50 @@ func TestTalosReconcile_NodeSchematicOverride(t *testing.T) {
 	}
 }
 
+func TestTalosReconcile_NodeFactoryURLOverride(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhasePending),
+	)
+
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Annotations = map[string]string{
+		constants.SchematicAnnotation:  "custom-schematic-id",
+		constants.FactoryURLAnnotation: "factory.talos.dev/hcloud-installer",
+	}
+
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{"10.0.0.1": "v1.11.0"},
+		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer:v1.11.0"},
+	}
+
+	expectedImage := "factory.talos.dev/hcloud-installer/custom-schematic-id:" + fakeTalosVersion
+
+	ic := &mockImageChecker{availableImages: map[string]bool{expectedImage: true}}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+	r.ImageChecker = ic
+
+	reconcileTalos(t, r, "test-upgrade")
+
+	var jobList batchv1.JobList
+	if err := cl.List(context.Background(), &jobList); err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	if len(jobList.Items) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobList.Items))
+	}
+
+	container := jobList.Items[0].Spec.Template.Spec.Containers[0]
+	if !slices.Contains(container.Args, "--image="+expectedImage) {
+		t.Fatalf("job args %v did not contain expected hcloud-installer image %s", container.Args, expectedImage)
+	}
+}
+
 func TestTalosReconcile_GenerationChange(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
