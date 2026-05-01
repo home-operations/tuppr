@@ -12,6 +12,13 @@ type KubernetesSpec struct {
 	// +kubebuilder:validation:Pattern=`^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\-\.]+)?$`
 	Version string `json:"version"`
 
+	// ImageRepository overrides the registry+path prefix for Kubernetes component
+	// images. When set, each component (kube-apiserver, kube-controller-manager,
+	// kube-scheduler, kube-proxy, kubelet) is pulled from
+	// "<imageRepository>/<component>:<version>".
+	// +optional
+	ImageRepository string `json:"imageRepository,omitempty"`
+
 	// HostAliases are appended to the upgrade Job pod's /etc/hosts. The controller
 	// auto-discovers an alias for cluster.controlPlane.endpoint from the live
 	// machine config; entries here override that for any hostname they cover.
