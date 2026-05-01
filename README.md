@@ -275,7 +275,7 @@ Tuppr supports overriding the global TalosUpgrade configuration on a per-node ba
 | Annotation | Description | Example |
 | -------- | ------- | ------- |
 | tuppr.home-operations.com/version | Overrides the target Talos version for this node. | v1.12.1 |
-| tuppr.home-operations.com/schematic | Overrides the Talos schematic hash for this node. | b55fbf... |
+| tuppr.home-operations.com/schematic | Overrides the Talos schematic hash for this node. On Talos v1.8+ the schematic is auto-detected from `extensions.talos.dev/schematic`, so this is only needed to switch a node to a different schematic. | b55fbf... |
 | tuppr.home-operations.com/factory-url | Overrides the factory image base paired with the schematic (defaults to `factory.talos.dev/installer`). | factory.talos.dev/hcloud-installer |
 
 

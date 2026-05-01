@@ -485,14 +485,21 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 
 	var imageBase string
 
-	if schematic, ok := node.Annotations[constants.SchematicAnnotation]; ok && schematic != "" {
+	schematic := node.Annotations[constants.SchematicAnnotation]
+	source := constants.SchematicAnnotation
+	if schematic == "" {
+		schematic = node.Annotations[constants.TalosSchematicAnnotation]
+		source = constants.TalosSchematicAnnotation
+	}
+
+	if schematic != "" {
 		factoryURL := constants.DefaultFactoryURL
 		if v, ok := node.Annotations[constants.FactoryURLAnnotation]; ok && v != "" {
 			factoryURL = strings.TrimRight(v, "/")
 		}
 		imageBase = fmt.Sprintf("%s/%s", factoryURL, schematic)
-		logger.V(1).Info("Using schematic override from annotation",
-			"node", nodeName, "schematic", schematic, "factoryURL", factoryURL)
+		logger.V(1).Info("Using schematic from annotation",
+			"node", nodeName, "schematic", schematic, "source", source, "factoryURL", factoryURL)
 	} else {
 		nodeIP, err := nodeutil.GetNodeIP(node)
 		if err != nil {

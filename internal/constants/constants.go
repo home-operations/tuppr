@@ -17,6 +17,9 @@ const (
 	VersionAnnotation    = "tuppr.home-operations.com/version"
 	FactoryURLAnnotation = "tuppr.home-operations.com/factory-url"
 
+	// Used as a fallback when SchematicAnnotation is not set.
+	TalosSchematicAnnotation = "extensions.talos.dev/schematic"
+
 	// Default factory URL for schematic construction
 	DefaultFactoryURL = "factory.talos.dev/installer"
 )
