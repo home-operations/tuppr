@@ -430,6 +430,88 @@ func TestTalosReconcile_NodeSchematicOverride(t *testing.T) {
 	}
 }
 
+func TestTalosReconcile_TalosPublishedSchematicFallback(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhasePending),
+	)
+
+	node := newNode(fakeNodeA, "10.0.0.1")
+	// Only the Talos-published annotation, no tuppr override.
+	node.Annotations = map[string]string{
+		constants.TalosSchematicAnnotation: "talos-published-id",
+	}
+
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{"10.0.0.1": "v1.11.0"},
+		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/talos-published-id:v1.11.0"},
+	}
+
+	expectedImage := fmt.Sprintf("%s/talos-published-id:%s", constants.DefaultFactoryURL, fakeTalosVersion)
+	ic := &mockImageChecker{availableImages: map[string]bool{expectedImage: true}}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+	r.ImageChecker = ic
+
+	reconcileTalos(t, r, "test-upgrade")
+
+	var jobList batchv1.JobList
+	if err := cl.List(context.Background(), &jobList); err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	if len(jobList.Items) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobList.Items))
+	}
+	if !slices.Contains(jobList.Items[0].Spec.Template.Spec.Containers[0].Args, "--image="+expectedImage) {
+		t.Fatalf("expected --image=%s in job args, got: %v", expectedImage, jobList.Items[0].Spec.Template.Spec.Containers[0].Args)
+	}
+}
+
+func TestTalosReconcile_TupprSchematicWinsOverTalosAnnotation(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade",
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhasePending),
+	)
+
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Annotations = map[string]string{
+		constants.SchematicAnnotation:      "tuppr-explicit",
+		constants.TalosSchematicAnnotation: "talos-published",
+	}
+
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{"10.0.0.1": "v1.11.0"},
+		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/talos-published:v1.11.0"},
+	}
+
+	expectedImage := fmt.Sprintf("%s/tuppr-explicit:%s", constants.DefaultFactoryURL, fakeTalosVersion)
+	ic := &mockImageChecker{availableImages: map[string]bool{expectedImage: true}}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+	r.ImageChecker = ic
+
+	reconcileTalos(t, r, "test-upgrade")
+
+	var jobList batchv1.JobList
+	if err := cl.List(context.Background(), &jobList); err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	if len(jobList.Items) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobList.Items))
+	}
+	if !slices.Contains(jobList.Items[0].Spec.Template.Spec.Containers[0].Args, "--image="+expectedImage) {
+		t.Fatalf("expected tuppr override to win, got: %v", jobList.Items[0].Spec.Template.Spec.Containers[0].Args)
+	}
+}
+
 func TestTalosReconcile_NodeFactoryURLOverride(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade",
