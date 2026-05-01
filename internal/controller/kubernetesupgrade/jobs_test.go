@@ -2,6 +2,7 @@ package kubernetesupgrade
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/siderolabs/talos/pkg/machinery/config/configloader"
@@ -233,6 +234,46 @@ func TestK8sBuildJob_ExplicitHostAliasMergedWhenNoOverlap(t *testing.T) {
 	}
 	if aliases[1].IP != "10.0.1.100" {
 		t.Fatalf("expected auto-discovered entry second, got: %s", aliases[1].IP)
+	}
+}
+
+func TestComponentImageArgs(t *testing.T) {
+	cases := []struct {
+		name       string
+		repository string
+		want       []string
+	}{
+		{name: "empty", repository: "", want: nil},
+		{
+			name:       "trailing slash trimmed",
+			repository: "registry.example.com/k8s/",
+			want: []string{
+				"--apiserver-image=registry.example.com/k8s/kube-apiserver:v1.34.0",
+				"--controller-manager-image=registry.example.com/k8s/kube-controller-manager:v1.34.0",
+				"--scheduler-image=registry.example.com/k8s/kube-scheduler:v1.34.0",
+				"--proxy-image=registry.example.com/k8s/kube-proxy:v1.34.0",
+				"--kubelet-image=registry.example.com/k8s/kubelet:v1.34.0",
+			},
+		},
+		{
+			name:       "no trailing slash",
+			repository: "registry.example.com/k8s",
+			want: []string{
+				"--apiserver-image=registry.example.com/k8s/kube-apiserver:v1.34.0",
+				"--controller-manager-image=registry.example.com/k8s/kube-controller-manager:v1.34.0",
+				"--scheduler-image=registry.example.com/k8s/kube-scheduler:v1.34.0",
+				"--proxy-image=registry.example.com/k8s/kube-proxy:v1.34.0",
+				"--kubelet-image=registry.example.com/k8s/kubelet:v1.34.0",
+			},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := componentImageArgs(c.repository, "v1.34.0")
+			if !slices.Equal(got, c.want) {
+				t.Fatalf("got %v, want %v", got, c.want)
+			}
+		})
 	}
 }
 

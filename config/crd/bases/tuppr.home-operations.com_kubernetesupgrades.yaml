@@ -129,6 +129,13 @@ spec:
                       - ip
                       type: object
                     type: array
+                  imageRepository:
+                    description: |-
+                      ImageRepository overrides the registry+path prefix for Kubernetes component
+                      images. When set, each component (kube-apiserver, kube-controller-manager,
+                      kube-scheduler, kube-proxy, kubelet) is pulled from
+                      "<imageRepository>/<component>:<version>".
+                    type: string
                   version:
                     description: Version is the target Kubernetes version to upgrade
                       to (e.g., "v1.34.0")

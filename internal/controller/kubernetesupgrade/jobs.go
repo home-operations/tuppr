@@ -181,11 +181,14 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 
 	talosctlImage := talosctlRepo + ":" + talosctlTag
 
-	args := []string{
+	k8sSpec := kubernetesUpgrade.Spec.Kubernetes
+	args := make([]string, 0, 8)
+	args = append(args,
 		"upgrade-k8s",
-		"--nodes=" + controllerIP,
-		"--to=" + kubernetesUpgrade.Spec.Kubernetes.Version,
-	}
+		"--nodes="+controllerIP,
+		"--to="+k8sSpec.Version,
+	)
+	args = append(args, componentImageArgs(k8sSpec.ImageRepository, k8sSpec.Version)...)
 
 	pullPolicy := corev1.PullIfNotPresent
 	if kubernetesUpgrade.Spec.Talosctl.Image.PullPolicy != "" {
@@ -231,6 +234,20 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 			},
 		},
 	}, nil
+}
+
+func componentImageArgs(repository, version string) []string {
+	repo := strings.TrimRight(repository, "/")
+	if repo == "" {
+		return nil
+	}
+	return []string{
+		"--apiserver-image=" + repo + "/kube-apiserver:" + version,
+		"--controller-manager-image=" + repo + "/kube-controller-manager:" + version,
+		"--scheduler-image=" + repo + "/kube-scheduler:" + version,
+		"--proxy-image=" + repo + "/kube-proxy:" + version,
+		"--kubelet-image=" + repo + "/kubelet:" + version,
+	}
 }
 
 // resolveHostAliases combines explicit entries from the spec with one
