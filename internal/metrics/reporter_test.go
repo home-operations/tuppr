@@ -10,9 +10,14 @@ func TestRecordUpgradePhase(t *testing.T) {
 	mr := NewReporter()
 
 	for _, phase := range talosPhases {
-		mr.RecordTalosUpgradePhase("talos-test", phase)
+		mr.RecordTalosUpgradePhase("talos-test", phase, "worker-01")
 		for _, p := range talosPhases {
-			got := testutil.ToFloat64(talosUpgradePhaseGauge.WithLabelValues("talos-test", p))
+			var got float64
+			if p == phase {
+				got = testutil.ToFloat64(talosUpgradePhaseGauge.WithLabelValues("talos-test", p, "worker-01"))
+			} else {
+				got = testutil.ToFloat64(talosUpgradePhaseGauge.WithLabelValues("talos-test", p, ""))
+			}
 			want := 0.0
 			if p == phase {
 				want = 1.0
@@ -38,9 +43,9 @@ func TestRecordUpgradePhase(t *testing.T) {
 	}
 
 	// Unknown phase: all labels must be 0 (no active phase)
-	mr.RecordTalosUpgradePhase("talos-test", "Unknown")
+	mr.RecordTalosUpgradePhase("talos-test", "Unknown", "")
 	for _, p := range talosPhases {
-		got := testutil.ToFloat64(talosUpgradePhaseGauge.WithLabelValues("talos-test", p))
+		got := testutil.ToFloat64(talosUpgradePhaseGauge.WithLabelValues("talos-test", p, ""))
 		if got != 0.0 {
 			t.Errorf("RecordTalosUpgradePhase(\"Unknown\"): phase label %q = %v, want 0", p, got)
 		}

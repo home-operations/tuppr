@@ -137,11 +137,13 @@ func (r *Reconciler) handleHookJobStatus(ctx context.Context, tu *tupprv1alpha1.
 
 	if job.Status.Succeeded > 0 {
 		logger.Info("Hook job succeeded", "phase", phase, "hook", hookName, "index", idx, "job", job.Name)
+		r.MetricsReporter.RecordHookExecution(tu.Name, phase, hookName, "success")
 		if err := r.advanceHookIndex(ctx, tu, phase, idx+1); err != nil {
 			return ctrl.Result{}, false, err
 		}
 	} else {
 		logger.Info("Hook job failed", "phase", phase, "hook", hookName, "index", idx, "job", job.Name)
+		r.MetricsReporter.RecordHookExecution(tu.Name, phase, hookName, "failure")
 		if phase == hookPhasePre {
 			// Skip remaining pre-hooks; processHookPhase will report done so the
 			// caller can run post-hooks (cleanup) and reach Failed.
