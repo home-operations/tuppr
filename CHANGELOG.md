@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.1.11](https://github.com/home-operations/tuppr/compare/0.1.10...0.1.11) (2026-05-01)
+
+
+### Features
+
+* **deps:** update module sigs.k8s.io/controller-runtime (v0.23.3 → v0.24.0) ([#231](https://github.com/home-operations/tuppr/issues/231)) ([22ac172](https://github.com/home-operations/tuppr/commit/22ac172e92c55cdea6853c4903c6c055740510ac))
+* **kubernetesupgrade:** allow private registry for component images via spec.kubernetes.imageRepository ([68bba9e](https://github.com/home-operations/tuppr/commit/68bba9e9aeab9c8586849c0f17b5677f48a4af70))
+* **talosupgrade:** allow per-node factory URL override via tuppr.home-operations.com/factory-url annotation ([8154539](https://github.com/home-operations/tuppr/commit/81545397ccf17e2e6ceea326f4a37b53ba745c2a))
+* **talosupgrade:** auto-detect schematic from ([ef2a5fa](https://github.com/home-operations/tuppr/commit/ef2a5fa8f2281e04251695fb72cba6c00577bfdc))
+* **talosupgrade:** pre/post-upgrade hooks via spec.hooks ([9982679](https://github.com/home-operations/tuppr/commit/9982679db0e66d7b84e59c817fbeba529b81042b))
+
+
+### Bug Fixes
+
+* **kubernetesupgrade:** inject hostAliases for controlPlane endpoint hostname ([9fe8f47](https://github.com/home-operations/tuppr/commit/9fe8f47c2110780776aeb80fd93fcb5d1384e91d))
+
+
+### Documentation
+
+* update readme ([51ab315](https://github.com/home-operations/tuppr/commit/51ab3158e6b176b29f8c734faf8adfecac56e3f1))
+
+
+### Miscellaneous Chores
+
+* remove deprecated functions usage ([ba649c0](https://github.com/home-operations/tuppr/commit/ba649c01315bf423420242bcb4d304abac6ce941))
+
 ## [0.1.10](https://github.com/home-operations/tuppr/compare/0.1.9...0.1.10) (2026-04-28)
 
 
