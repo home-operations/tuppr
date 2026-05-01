@@ -144,6 +144,43 @@ func talosConfigSecretWithKey(ns string, data []byte) *corev1.Secret { //nolint:
 	}
 }
 
+func TestValidateHooks_RejectsEmptyImage(t *testing.T) {
+	err := validateHooks(&tupprv1alpha1.HooksSpec{
+		Pre: []tupprv1alpha1.HookSpec{{Name: "no-image"}},
+	})
+	if err == nil {
+		t.Fatal("expected error for empty image")
+	}
+}
+
+func TestValidateHooks_RejectsDuplicateNames(t *testing.T) {
+	err := validateHooks(&tupprv1alpha1.HooksSpec{
+		Pre: []tupprv1alpha1.HookSpec{
+			{Name: "ceph", Image: "ceph/ceph:v17"},
+			{Name: "ceph", Image: "ceph/ceph:v17"},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for duplicate hook name")
+	}
+}
+
+func TestValidateHooks_AllowsValidConfig(t *testing.T) {
+	err := validateHooks(&tupprv1alpha1.HooksSpec{
+		Pre:  []tupprv1alpha1.HookSpec{{Name: "set", Image: "ceph/ceph:v17"}},
+		Post: []tupprv1alpha1.HookSpec{{Name: "unset", Image: "ceph/ceph:v17"}},
+	})
+	if err != nil {
+		t.Fatalf("expected no error for valid hooks, got: %v", err)
+	}
+}
+
+func TestValidateHooks_NilHooksOk(t *testing.T) {
+	if err := validateHooks(nil); err != nil {
+		t.Fatalf("expected nil hooks to be valid, got: %v", err)
+	}
+}
+
 func TestTalosUpgrade_ValidateCreate_ValidResource(t *testing.T) {
 	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
 	tu := newTalosUpgrade("test-upgrade")

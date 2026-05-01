@@ -105,6 +105,70 @@ func BuildTalosctlPodSpec(opts PodSpecOptions) corev1.PodSpec {
 	return spec
 }
 
+// HookPodSpecOptions configures a hook Job pod.
+type HookPodSpecOptions struct {
+	ContainerName      string
+	Image              string
+	PullPolicy         corev1.PullPolicy
+	Command            []string
+	Args               []string
+	Env                []corev1.EnvVar
+	EnvFrom            []corev1.EnvFromSource
+	VolumeMounts       []corev1.VolumeMount
+	Volumes            []corev1.Volume
+	ServiceAccountName string
+}
+
+func BuildHookPodSpec(opts HookPodSpecOptions) corev1.PodSpec {
+	pullPolicy := opts.PullPolicy
+	if pullPolicy == "" {
+		pullPolicy = corev1.PullIfNotPresent
+	}
+
+	spec := corev1.PodSpec{
+		RestartPolicy:      corev1.RestartPolicyNever,
+		ServiceAccountName: opts.ServiceAccountName,
+		SecurityContext: &corev1.PodSecurityContext{
+			RunAsNonRoot: ptr.To(true),
+			RunAsUser:    ptr.To(int64(65532)),
+			RunAsGroup:   ptr.To(int64(65532)),
+			FSGroup:      ptr.To(int64(65532)),
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+		},
+		Tolerations: []corev1.Toleration{{Operator: corev1.TolerationOpExists}},
+		Containers: []corev1.Container{{
+			Name:            opts.ContainerName,
+			Image:           opts.Image,
+			ImagePullPolicy: pullPolicy,
+			Command:         opts.Command,
+			Args:            opts.Args,
+			Env:             opts.Env,
+			EnvFrom:         opts.EnvFrom,
+			VolumeMounts:    opts.VolumeMounts,
+			SecurityContext: &corev1.SecurityContext{
+				AllowPrivilegeEscalation: ptr.To(false),
+				ReadOnlyRootFilesystem:   ptr.To(true),
+				Capabilities: &corev1.Capabilities{
+					Drop: []corev1.Capability{"ALL"},
+				},
+			},
+			Resources: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resourceCPU10m,
+					corev1.ResourceMemory: resourceMemory64Mi,
+				},
+				Limits: corev1.ResourceList{
+					corev1.ResourceMemory: resourceMemory512Mi,
+				},
+			},
+		}},
+		Volumes: opts.Volumes,
+	}
+	return spec
+}
+
 // ListJobsByLabel lists all Jobs in namespace matching the given app.kubernetes.io/name label.
 func ListJobsByLabel(ctx context.Context, c client.Client, namespace, appName string) ([]batchv1.Job, error) {
 	jobList := &batchv1.JobList{}
