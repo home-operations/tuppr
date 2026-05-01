@@ -3,6 +3,7 @@ package kubernetesupgrade
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -18,6 +19,7 @@ import (
 	"github.com/home-operations/tuppr/internal/controller/jobs"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/metrics"
+	"github.com/home-operations/tuppr/internal/talos"
 )
 
 func (r *Reconciler) findActiveJob(ctx context.Context) (*batchv1.Job, error) {
@@ -190,11 +192,14 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 		pullPolicy = kubernetesUpgrade.Spec.Talosctl.Image.PullPolicy
 	}
 
+	hostAliases := r.resolveHostAliases(ctx, kubernetesUpgrade, controllerIP)
+
 	logger.V(1).Info("Building Kubernetes upgrade job specification",
 		"controllerNode", controllerNode,
 		"talosctlImage", talosctlImage,
 		"pullPolicy", pullPolicy,
-		"args", args)
+		"args", args,
+		"hostAliases", hostAliases)
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -221,8 +226,39 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 					TalosConfigSecret: r.TalosConfigSecret,
 					GracePeriod:       KubernetesJobGracePeriod,
 					Affinity:          nil,
+					HostAliases:       hostAliases,
 				}),
 			},
 		},
 	}, nil
+}
+
+// resolveHostAliases combines explicit entries from the spec with one
+// auto-discovered from the live machine config. Explicit wins: if any
+// explicit entry already covers the endpoint hostname, autodiscovery is
+// skipped. Autodiscovery failures don't block the upgrade.
+func (r *Reconciler) resolveHostAliases(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, controllerIP string) []corev1.HostAlias {
+	explicit := kubernetesUpgrade.Spec.Kubernetes.HostAliases
+
+	mc, err := r.TalosClient.GetNodeMachineConfig(ctx, controllerIP)
+	if err != nil {
+		log.FromContext(ctx).V(1).Info("Skipping HostAlias autodiscovery", "err", err)
+		return explicit
+	}
+
+	auto := talos.ResolveControlPlaneHostAlias(mc.Config(), controllerIP)
+	if auto == nil {
+		return explicit
+	}
+
+	endpointHost := auto.Hostnames[0]
+	for _, a := range explicit {
+		for _, h := range a.Hostnames {
+			if strings.EqualFold(h, endpointHost) {
+				return explicit
+			}
+		}
+	}
+
+	return append(append([]corev1.HostAlias(nil), explicit...), *auto)
 }
