@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -10,6 +11,12 @@ type KubernetesSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern=`^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\-\.]+)?$`
 	Version string `json:"version"`
+
+	// HostAliases are appended to the upgrade Job pod's /etc/hosts. The controller
+	// auto-discovers an alias for cluster.controlPlane.endpoint from the live
+	// machine config; entries here override that for any hostname they cover.
+	// +optional
+	HostAliases []corev1.HostAlias `json:"hostAliases,omitempty"`
 }
 
 // KubernetesUpgradeSpec defines the desired state of KubernetesUpgrade

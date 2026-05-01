@@ -29,6 +29,7 @@ type PodSpecOptions struct {
 	TalosConfigSecret string
 	GracePeriod       int64
 	Affinity          *corev1.Affinity
+	HostAliases       []corev1.HostAlias
 }
 
 // BuildTalosctlPodSpec returns the shared pod spec used by both upgrade controllers.
@@ -95,6 +96,10 @@ func BuildTalosctlPodSpec(opts PodSpecOptions) corev1.PodSpec {
 
 	if opts.Affinity != nil {
 		spec.Affinity = opts.Affinity
+	}
+
+	if len(opts.HostAliases) > 0 {
+		spec.HostAliases = opts.HostAliases
 	}
 
 	return spec

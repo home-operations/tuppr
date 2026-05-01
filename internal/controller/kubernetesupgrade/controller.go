@@ -18,6 +18,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	talosconfigresource "github.com/siderolabs/talos/pkg/machinery/resources/config"
+
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/healthcheck"
@@ -36,6 +38,7 @@ const (
 // TalosClient defines the interface for Talos operations
 type TalosClient interface {
 	GetNodeVersion(ctx context.Context, nodeIP string) (string, error)
+	GetNodeMachineConfig(ctx context.Context, nodeIP string) (*talosconfigresource.MachineConfig, error)
 }
 
 // HealthCheckRunner defines the interface for health checking
