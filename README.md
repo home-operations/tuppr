@@ -137,6 +137,16 @@ spec:
     # renovate: datasource=docker depName=ghcr.io/siderolabs/kubelet
     version: v1.34.0  # Required - target Kubernetes version
 
+    # Optional - private registry for component images
+    # (kube-apiserver, kube-controller-manager, kube-scheduler, kube-proxy, kubelet)
+    # imageRepository: registry.example.com/k8s
+
+    # Optional - extra /etc/hosts entries for the upgrade Job pod
+    # (controlPlane.endpoint is auto-discovered from the machine config)
+    # hostAliases:
+    #   - ip: 10.0.1.100
+    #     hostnames: [kube.cluster.local]
+
   # Custom health checks (optional)
   healthChecks:
     - apiVersion: v1
@@ -266,6 +276,7 @@ Tuppr supports overriding the global TalosUpgrade configuration on a per-node ba
 | -------- | ------- | ------- |
 | tuppr.home-operations.com/version | Overrides the target Talos version for this node. | v1.12.1 |
 | tuppr.home-operations.com/schematic | Overrides the Talos schematic hash for this node. | b55fbf... |
+| tuppr.home-operations.com/factory-url | Overrides the factory image base paired with the schematic (defaults to `factory.talos.dev/installer`). | factory.talos.dev/hcloud-installer |
 
 
 Example: Applying an override
@@ -276,6 +287,11 @@ kubectl annotate node worker-01 tuppr.home-operations.com/version="v1.12.1"
 
 # Apply a custom schematic (with specific extensions) to one node
 kubectl annotate node worker-02 tuppr.home-operations.com/schematic="314b18a3f89d..."
+
+# Hetzner Cloud: keep the hcloud-installer flavor so `platform: hcloud` is preserved
+kubectl annotate node hcloud-01 \
+  tuppr.home-operations.com/schematic="613e15..." \
+  tuppr.home-operations.com/factory-url="factory.talos.dev/hcloud-installer"
 ```
 
 How it works:
