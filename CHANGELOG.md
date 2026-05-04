@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.12](https://github.com/home-operations/tuppr/compare/0.1.11...0.1.12) (2026-05-04)
+
+
+### Features
+
+* **deps:** update module google.golang.org/grpc (v1.80.0 → v1.81.0) ([#236](https://github.com/home-operations/tuppr/issues/236)) ([ff6be1c](https://github.com/home-operations/tuppr/commit/ff6be1c4f22d2c5c0940ef44c1d98618f08b42b8))
+* improve metrics ([2413b78](https://github.com/home-operations/tuppr/commit/2413b780f7cc51999f1d41ae70681ea11daa1b92))
+
+
+### Bug Fixes
+
+* **talosupgrade:** preserve factory installer flavor across upgrades ([aaf1ea5](https://github.com/home-operations/tuppr/commit/aaf1ea5c43228839f7627b3c1b30e0cac73feec7))
+
 ## [0.1.11](https://github.com/home-operations/tuppr/compare/0.1.10...0.1.11) (2026-05-01)
 
 
