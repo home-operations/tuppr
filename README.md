@@ -347,18 +347,18 @@ How it works:
 - The controller checks if a node version or schematic matches the annotation instead of the global TalosUpgrade spec.
 - If an inconsistency is found, an upgrade job is triggered for that node using the override values.
 
-#### Factory flavor resolution
+#### Image base resolution
 
-The image-factory flavor (`installer`, `aws-installer`, `hcloud-installer`, etc.) determines which Talos platform module ships to the node. Picking the wrong one flips `PlatformMetadata.platform` on reboot and breaks cloud integrations (CCM routes, metadata-driven hostnames).
+Tuppr needs the registry/flavor to pair with the schematic when building the upgrade image. For public factory images the flavor (`installer`, `aws-installer`, `hcloud-installer`, etc.) ships the matching Talos platform module; using the wrong one flips `PlatformMetadata.platform` on reboot and breaks cloud integrations (CCM routes, metadata-driven hostnames). Private registry mirrors must preserve the registry and path.
 
-Tuppr resolves the flavor per node in this order:
+Resolution order per node:
 
 1. `tuppr.home-operations.com/factory-url` annotation.
-2. Prefix of the current `machine.install.image`, when it is a `factory.talos.dev/<flavor>/<schematic>:<version>` URL.
-3. `PlatformMetadata.spec.platform` (read live from Talos), mapped to `factory.talos.dev/<platform>-installer`.
-4. Otherwise the upgrade is refused. Tuppr does not fall back to a vanilla flavor.
+2. Prefix of `machine.install.image` when it has the shape `<base>/<schematic>:<version>` and the trailing schematic matches the schematic annotation. Works for the public factory and any private mirror.
+3. `PlatformMetadata.spec.platform` mapped to `factory.talos.dev/<platform>-installer`.
+4. Otherwise the upgrade is refused. No fallback to vanilla.
 
-Steps 2 and 3 cover the common cases without any annotation. Set the annotation explicitly to switch flavors, or when the platform read can't succeed on a custom platform.
+Steps 2 and 3 cover the common cases. Set the annotation when switching flavors or schematics, on custom platforms without a matching factory flavor, or when the install image's registry can't be auto-detected.
 
 ## ⚠️ Safe Talos Upgrade Paths
 

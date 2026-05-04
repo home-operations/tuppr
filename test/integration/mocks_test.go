@@ -73,15 +73,6 @@ func (m *mockTalosClient) GetNodePlatform(ctx context.Context, nodeIP string) (s
 	return "", fmt.Errorf("platform not found for %s", nodeIP)
 }
 
-func (m *mockTalosClient) SetNodePlatform(nodeIP, platform string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.platforms == nil {
-		m.platforms = make(map[string]string)
-	}
-	m.platforms[nodeIP] = platform
-}
-
 func (m *mockTalosClient) SetNodeInstallImage(nodeIP, image string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
