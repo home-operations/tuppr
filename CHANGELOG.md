@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.15](https://github.com/home-operations/tuppr/compare/0.1.14...0.1.15) (2026-05-04)
+
+
+### Bug Fixes
+
+* correct helm template for dashboard ([bcbbc84](https://github.com/home-operations/tuppr/commit/bcbbc84bcd83b3e26bbaae6faf16f19e93b391f5))
+
+
+### Miscellaneous Chores
+
+* **dashboard:** import the file as json ([d5b86a5](https://github.com/home-operations/tuppr/commit/d5b86a516b1d256657860cbe1ce81a9bfedc4209))
+
 ## [0.1.14](https://github.com/home-operations/tuppr/compare/0.1.13...0.1.14) (2026-05-04)
 
 
