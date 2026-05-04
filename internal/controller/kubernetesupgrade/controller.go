@@ -100,6 +100,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	r.MetricsReporter.Initialize(kubernetesUpgrade.Name, metrics.UpgradeTypeTalos)
+
 	if kubernetesUpgrade.DeletionTimestamp != nil {
 		return r.cleanup(ctx, &kubernetesUpgrade)
 	}
