@@ -583,7 +583,7 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 
 	var imageBase string
 	if schematic != "" {
-		factoryBase, factorySource, err := r.resolveFactoryBase(ctx, node, nodeIP, currentImage)
+		factoryBase, factorySource, err := r.resolveFactoryBase(ctx, node, nodeIP, currentImage, schematic)
 		if err != nil {
 			return "", err
 		}
@@ -612,49 +612,52 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 	return targetImage, nil
 }
 
-// resolveFactoryBase returns the factory base URL for a node's upgrade image.
-// It refuses rather than guessing on ambiguity: a wrong flavor flips the
-// node's platform on reboot.
-func (r *Reconciler) resolveFactoryBase(ctx context.Context, node *corev1.Node, nodeIP, currentImage string) (string, string, error) {
+// resolveFactoryBase returns the base URL to pair with a schematic for a
+// node's upgrade image. It refuses rather than guessing on ambiguity: a wrong
+// flavor flips the node's platform on reboot.
+func (r *Reconciler) resolveFactoryBase(ctx context.Context, node *corev1.Node, nodeIP, currentImage, schematic string) (string, string, error) {
 	if v, ok := node.Annotations[constants.FactoryURLAnnotation]; ok && v != "" {
 		return strings.TrimRight(v, "/"), "annotation", nil
 	}
 
-	if base := parseFactoryBase(currentImage); base != "" {
+	if base := parseSchematicBase(currentImage, schematic); base != "" {
 		return base, "installImage", nil
 	}
 
 	platform, err := r.TalosClient.GetNodePlatform(ctx, nodeIP)
 	if err != nil {
 		return "", "", fmt.Errorf(
-			"node %s: set annotation %s to pick a factory flavor (install image %q is not a factory URL, PlatformMetadata read failed: %w)",
-			node.Name, constants.FactoryURLAnnotation, currentImage, err)
+			"node %s: set annotation %s to pick a factory flavor (install image %q does not embed schematic %s, PlatformMetadata read failed: %w)",
+			node.Name, constants.FactoryURLAnnotation, currentImage, schematic, err)
 	}
 	if platform == "" {
 		return "", "", fmt.Errorf(
-			"node %s: set annotation %s to pick a factory flavor (install image %q is not a factory URL, PlatformMetadata.platform is empty)",
-			node.Name, constants.FactoryURLAnnotation, currentImage)
+			"node %s: set annotation %s to pick a factory flavor (install image %q does not embed schematic %s, PlatformMetadata.platform is empty)",
+			node.Name, constants.FactoryURLAnnotation, currentImage, schematic)
 	}
 
 	return fmt.Sprintf("%s/%s-installer", constants.FactoryDomain, platform), "platformMetadata", nil
 }
 
-func parseFactoryBase(image string) string {
-	prefix := constants.FactoryDomain + "/"
-	if !strings.HasPrefix(image, prefix) {
+// parseSchematicBase returns the base URL when image has the form
+// "<base>/<schematic>:<version>", or "" otherwise.
+func parseSchematicBase(image, schematic string) string {
+	if schematic == "" {
 		return ""
 	}
-
 	repo, _, ok := strings.Cut(image, ":")
 	if !ok {
 		return ""
 	}
-
-	idx := strings.LastIndex(repo, "/")
-	if idx < len(prefix) {
+	suffix := "/" + schematic
+	if !strings.HasSuffix(repo, suffix) {
 		return ""
 	}
-	return repo[:idx]
+	base := strings.TrimSuffix(repo, suffix)
+	if base == "" {
+		return ""
+	}
+	return base
 }
 
 func (r *Reconciler) getTargetVersion(node *corev1.Node, crdTargetVersion string) string {

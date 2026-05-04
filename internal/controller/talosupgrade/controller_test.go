@@ -409,14 +409,13 @@ func TestTalosReconcile_NodeSchematicOverride(t *testing.T) {
 	)
 
 	node := newNode(fakeNodeA, testNodeIP1)
-	// Add schematic override
 	node.Annotations = map[string]string{
-		constants.SchematicAnnotation: testCustomSchematic,
+		constants.SchematicAnnotation:  testCustomSchematic,
+		constants.FactoryURLAnnotation: "factory.talos.dev/installer",
 	}
 
 	tc := &mockTalosClient{
-		nodeVersions: map[string]string{testNodeIP1: testV111}, // Needs upgrade to v1.12.0
-		// The current image is vanilla, but we expect the upgrade to use the schematic
+		nodeVersions:  map[string]string{testNodeIP1: testV111},
 		installImages: map[string]string{testNodeIP1: "factory.talos.dev/installer/b55fbf4fdc6aec0c43e108cc8bde16d5533fbdeec3cb114ff3913ed9e8d019fe:v1.11.0"},
 	}
 
@@ -513,6 +512,7 @@ func TestTalosReconcile_TupprSchematicWinsOverTalosAnnotation(t *testing.T) {
 	node.Annotations = map[string]string{
 		constants.SchematicAnnotation:      "tuppr-explicit",
 		constants.TalosSchematicAnnotation: "talos-published",
+		constants.FactoryURLAnnotation:     "factory.talos.dev/installer",
 	}
 
 	tc := &mockTalosClient{
@@ -2363,14 +2363,15 @@ func (m *mockImageChecker) Check(ctx context.Context, imageRef string) error {
 	return fmt.Errorf("fetch failed after status: 500 Internal Server Error")
 }
 
-func TestTalosBuildTalosUpgradeImage_WithSchematicAnnotation(t *testing.T) {
+func TestTalosBuildTalosUpgradeImage_SchematicAndFactoryURLOverride(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
-	tu.Spec.Talos.Version = fakeTalosVersion // v1.12.0
+	tu.Spec.Talos.Version = fakeTalosVersion
 
 	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.SchematicAnnotation: "abc123schematic",
+		constants.SchematicAnnotation:  "abc123schematic",
+		constants.FactoryURLAnnotation: "factory.talos.dev/installer",
 	}
 
 	tc := &mockTalosClient{
@@ -2565,26 +2566,61 @@ func TestTalosBuildTalosUpgradeImage_RefusesWhenPlatformEmpty(t *testing.T) {
 	}
 }
 
-func TestParseFactoryBase(t *testing.T) {
+func TestParseSchematicBase(t *testing.T) {
 	tests := []struct {
-		name  string
-		image string
-		want  string
+		name      string
+		image     string
+		schematic string
+		want      string
 	}{
-		{"vanilla installer", "factory.talos.dev/installer/abc:v1.13.0", "factory.talos.dev/installer"},
-		{"hcloud installer", "factory.talos.dev/hcloud-installer/abc:v1.13.0", "factory.talos.dev/hcloud-installer"},
-		{"camelcase platform", "factory.talos.dev/equinixMetal-installer/abc:v1.13.0", "factory.talos.dev/equinixMetal-installer"},
-		{"non-factory ghcr image", "ghcr.io/siderolabs/installer:v1.13.0", ""},
-		{"factory host without flavor segment", "factory.talos.dev/installer:v1.13.0", ""},
-		{"empty", "", ""},
-		{"missing version tag", "factory.talos.dev/installer/abc", ""},
+		{"factory vanilla", "factory.talos.dev/installer/abc:v1.13.0", "abc", "factory.talos.dev/installer"},
+		{"factory hcloud", "factory.talos.dev/hcloud-installer/abc:v1.13.0", "abc", "factory.talos.dev/hcloud-installer"},
+		{"factory camelcase platform", "factory.talos.dev/equinixMetal-installer/abc:v1.13.0", "abc", "factory.talos.dev/equinixMetal-installer"},
+		{"private registry", "registry.example.com/talos/abc:v1.13.0", "abc", "registry.example.com/talos"},
+		{"private registry nested path", "registry.example.com/team/talos/installer/abc:v1.13.0", "abc", "registry.example.com/team/talos/installer"},
+		{"schematic appears mid-path", "registry.example.com/abc/abc:v1.13.0", "abc", "registry.example.com/abc"},
+		{"image without trailing schematic", "ghcr.io/siderolabs/installer:v1.13.0", "abc", ""},
+		{"factory bare flavor without schematic", "factory.talos.dev/installer:v1.13.0", "abc", ""},
+		{"schematic mismatch", "factory.talos.dev/installer/xyz:v1.13.0", "abc", ""},
+		{"missing version tag", "factory.talos.dev/installer/abc", "abc", ""},
+		{"empty image", "", "abc", ""},
+		{"empty schematic", "factory.talos.dev/installer/abc:v1.13.0", "", ""},
+		{"schematic-only repo", "/abc:v1.13.0", "abc", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := parseFactoryBase(tt.image); got != tt.want {
-				t.Fatalf("parseFactoryBase(%q) = %q, want %q", tt.image, got, tt.want)
+			if got := parseSchematicBase(tt.image, tt.schematic); got != tt.want {
+				t.Fatalf("parseSchematicBase(%q, %q) = %q, want %q", tt.image, tt.schematic, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_PreservesPrivateRegistry(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Annotations = map[string]string{
+		constants.TalosSchematicAnnotation: "abc123",
+	}
+
+	tc := &mockTalosClient{
+		installImages: map[string]string{"10.0.0.1": "registry.example.com/talos/abc123:v1.11.0"},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := "registry.example.com/talos/abc123:" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("private registry must be preserved: got %s, want %s", image, expected)
 	}
 }
 
