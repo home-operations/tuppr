@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.14](https://github.com/home-operations/tuppr/compare/0.1.13...0.1.14) (2026-05-04)
+
+
+### Features
+
+* add grafanadashboard ([6aaf23e](https://github.com/home-operations/tuppr/commit/6aaf23e2668d49034da218fb45435e88711452eb))
+
+
+### Documentation
+
+* simplify the contributors.md ([44d9078](https://github.com/home-operations/tuppr/commit/44d90787eccd2cf21c3b2f5354452da56d7ea4c8))
+
 ## [0.1.13](https://github.com/home-operations/tuppr/compare/0.1.12...0.1.13) (2026-05-04)
 
 
