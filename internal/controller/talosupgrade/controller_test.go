@@ -33,26 +33,27 @@ const (
 
 	fakeTalosVersion = "v1.12.0"
 
-	testNamespace        = "default"
-	testNodeIP1          = "10.0.0.1"
-	testNodeIP2          = "10.0.0.2"
-	testNodeIP3          = "10.0.0.3"
-	testCustomSchematic  = "custom-schematic-id"
-	testFactoryInstaller = "factory.talos.dev/installer:v1.10.0"
-	testInstallerV111    = "ghcr.io/siderolabs/installer:v1.11.0"
-	testCronEvery2       = "0 2 * * *"
-	testTimezoneUTC      = "UTC"
-	testSchematicABC     = "abc123"
-	testLabelTier        = "tier"
-	testLabelBackend     = "backend"
-	testNodeAlpha        = "node-alpha"
-	testNodeBeta         = "node-beta"
-	testNodeCharlie      = "node-charlie"
-	testJobName1         = "test-upgrade-node-1-abcd1234"
-	testJobNodeA         = "job-node-a"
-	testUpgradeName      = "test-upgrade"
-	testNameStr          = "test"
-	testInstallerABC     = "factory.talos.dev/installer/abc:v1.10.0"
+	testNamespace                   = "default"
+	testNodeIP1                     = "10.0.0.1"
+	testNodeIP2                     = "10.0.0.2"
+	testNodeIP3                     = "10.0.0.3"
+	testCustomSchematic             = "custom-schematic-id"
+	testFactoryInstallerVersionless = "factory.talos.dev/installer"
+	testFactoryInstaller            = "factory.talos.dev/installer:v1.10.0"
+	testInstallerV111               = "ghcr.io/siderolabs/installer:v1.11.0"
+	testCronEvery2                  = "0 2 * * *"
+	testTimezoneUTC                 = "UTC"
+	testSchematicABC                = "abc123"
+	testLabelTier                   = "tier"
+	testLabelBackend                = "backend"
+	testNodeAlpha                   = "node-alpha"
+	testNodeBeta                    = "node-beta"
+	testNodeCharlie                 = "node-charlie"
+	testJobName1                    = "test-upgrade-node-1-abcd1234"
+	testJobNodeA                    = "job-node-a"
+	testUpgradeName                 = "test-upgrade"
+	testNameStr                     = "test"
+	testInstallerABC                = "factory.talos.dev/installer/abc:v1.10.0"
 )
 
 type mockTalosClient struct {
@@ -411,7 +412,7 @@ func TestTalosReconcile_NodeSchematicOverride(t *testing.T) {
 	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
 		constants.SchematicAnnotation:  testCustomSchematic,
-		constants.FactoryURLAnnotation: "factory.talos.dev/installer",
+		constants.FactoryURLAnnotation: testFactoryInstallerVersionless,
 	}
 
 	tc := &mockTalosClient{
@@ -512,7 +513,7 @@ func TestTalosReconcile_TupprSchematicWinsOverTalosAnnotation(t *testing.T) {
 	node.Annotations = map[string]string{
 		constants.SchematicAnnotation:      "tuppr-explicit",
 		constants.TalosSchematicAnnotation: "talos-published",
-		constants.FactoryURLAnnotation:     "factory.talos.dev/installer",
+		constants.FactoryURLAnnotation:     testFactoryInstallerVersionless,
 	}
 
 	tc := &mockTalosClient{
@@ -2371,7 +2372,7 @@ func TestTalosBuildTalosUpgradeImage_SchematicAndFactoryURLOverride(t *testing.T
 	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
 		constants.SchematicAnnotation:  "abc123schematic",
-		constants.FactoryURLAnnotation: "factory.talos.dev/installer",
+		constants.FactoryURLAnnotation: testFactoryInstallerVersionless,
 	}
 
 	tc := &mockTalosClient{
@@ -2573,19 +2574,19 @@ func TestParseSchematicBase(t *testing.T) {
 		schematic string
 		want      string
 	}{
-		{"factory vanilla", "factory.talos.dev/installer/abc:v1.13.0", "abc", "factory.talos.dev/installer"},
-		{"factory hcloud", "factory.talos.dev/hcloud-installer/abc:v1.13.0", "abc", "factory.talos.dev/hcloud-installer"},
-		{"factory camelcase platform", "factory.talos.dev/equinixMetal-installer/abc:v1.13.0", "abc", "factory.talos.dev/equinixMetal-installer"},
-		{"private registry", "registry.example.com/talos/abc:v1.13.0", "abc", "registry.example.com/talos"},
-		{"private registry nested path", "registry.example.com/team/talos/installer/abc:v1.13.0", "abc", "registry.example.com/team/talos/installer"},
-		{"schematic appears mid-path", "registry.example.com/abc/abc:v1.13.0", "abc", "registry.example.com/abc"},
-		{"image without trailing schematic", "ghcr.io/siderolabs/installer:v1.13.0", "abc", ""},
-		{"factory bare flavor without schematic", "factory.talos.dev/installer:v1.13.0", "abc", ""},
-		{"schematic mismatch", "factory.talos.dev/installer/xyz:v1.13.0", "abc", ""},
-		{"missing version tag", "factory.talos.dev/installer/abc", "abc", ""},
-		{"empty image", "", "abc", ""},
+		{"factory vanilla", "factory.talos.dev/installer/abc:v1.13.0", testCustomSchematic, testFactoryInstallerVersionless},
+		{"factory hcloud", "factory.talos.dev/hcloud-installer/abc:v1.13.0", testCustomSchematic, "factory.talos.dev/hcloud-installer"},
+		{"factory camelcase platform", "factory.talos.dev/equinixMetal-installer/abc:v1.13.0", testCustomSchematic, "factory.talos.dev/equinixMetal-installer"},
+		{"private registry", "registry.example.com/talos/abc:v1.13.0", testCustomSchematic, "registry.example.com/talos"},
+		{"private registry nested path", "registry.example.com/team/talos/installer/abc:v1.13.0", testCustomSchematic, "registry.example.com/team/talos/installer"},
+		{"schematic appears mid-path", "registry.example.com/abc/abc:v1.13.0", testCustomSchematic, "registry.example.com/abc"},
+		{"image without trailing schematic", "ghcr.io/siderolabs/installer:v1.13.0", testCustomSchematic, ""},
+		{"factory bare flavor without schematic", "factory.talos.dev/installer:v1.13.0", testCustomSchematic, ""},
+		{"schematic mismatch", "factory.talos.dev/installer/xyz:v1.13.0", testCustomSchematic, ""},
+		{"missing version tag", "factory.talos.dev/installer/abc", testCustomSchematic, ""},
+		{"empty image", "", testCustomSchematic, ""},
 		{"empty schematic", "factory.talos.dev/installer/abc:v1.13.0", "", ""},
-		{"schematic-only repo", "/abc:v1.13.0", "abc", ""},
+		{"schematic-only repo", "/abc:v1.13.0", testCustomSchematic, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
