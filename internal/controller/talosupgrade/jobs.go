@@ -25,7 +25,7 @@ import (
 
 // findActiveJobs returns all active (non-completed, non-failed) upgrade jobs and their target node names.
 func (r *Reconciler) findActiveJobs(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) ([]batchv1.Job, []string, error) {
-	jobList, err := jobs.ListJobsByLabel(ctx, r.Client, r.ControllerNamespace, "talos-upgrade")
+	jobList, err := jobs.ListJobsByLabel(ctx, r.Client, r.ControllerNamespace, talosUpgradeAppName)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -34,11 +34,11 @@ func (r *Reconciler) findActiveJobs(ctx context.Context, talosUpgrade *tupprv1al
 	var activeNodes []string
 
 	for _, job := range jobList {
-		nodeName, ok := job.Labels["tuppr.home-operations.com/target-node"]
+		nodeName, ok := job.Labels[targetNodeLabelKey]
 		if !ok || nodeName == "" {
 			continue
 		}
-		instanceName := job.Labels["app.kubernetes.io/instance"]
+		instanceName := job.Labels[appInstanceLabelKey]
 		controllerOwner := metav1.GetControllerOf(&job)
 		ownedByTalosUpgrade := controllerOwner != nil &&
 			controllerOwner.Kind == "TalosUpgrade" &&
@@ -200,6 +200,8 @@ const (
 	jobResultFailed              // verification failed
 )
 
+const upgradeContainerName = "upgrade"
+
 // processSingleJobSuccess handles a single succeeded job: verify, uncordon, cleanup.
 // Returns the result without setting overall phase or metrics.
 func (r *Reconciler) processSingleJobSuccess(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (jobResult, error) {
@@ -290,8 +292,8 @@ func (r *Reconciler) cleanupJobForNode(ctx context.Context, nodeName string) err
 	if err := r.List(ctx, jobList,
 		client.InNamespace(r.ControllerNamespace),
 		client.MatchingLabels{
-			"app.kubernetes.io/name":                "talos-upgrade",
-			"tuppr.home-operations.com/target-node": nodeName,
+			appLabelKey:        talosUpgradeAppName,
+			targetNodeLabelKey: nodeName,
 		}); err != nil {
 		return fmt.Errorf("failed to list jobs for node %s: %w", nodeName, err)
 	}
@@ -377,10 +379,10 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 	jobName := nodeutil.GenerateSafeJobName(talosUpgrade.Name, nodeName)
 
 	labels := map[string]string{
-		"app.kubernetes.io/name":                "talos-upgrade",
-		"app.kubernetes.io/instance":            talosUpgrade.Name,
-		"app.kubernetes.io/part-of":             "tuppr",
-		"tuppr.home-operations.com/target-node": nodeName,
+		appLabelKey:         talosUpgradeAppName,
+		appInstanceLabelKey: talosUpgrade.Name,
+		appPartOfLabelKey:   appPartOfTuppr,
+		targetNodeLabelKey:  nodeName,
 	}
 
 	placement := talosUpgrade.Spec.Policy.Placement
@@ -446,7 +448,7 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 	}
 
 	args := []string{
-		"upgrade",
+		upgradeContainerName,
 		"--nodes=" + nodeIP,
 		"--image=" + targetImage,
 		"--timeout=" + timeout.String(),
@@ -503,7 +505,7 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 					Labels: labels,
 				},
 				Spec: jobs.BuildTalosctlPodSpec(jobs.PodSpecOptions{
-					ContainerName:     "upgrade",
+					ContainerName:     upgradeContainerName,
 					Image:             talosctlImage,
 					PullPolicy:        pullPolicy,
 					Args:              args,

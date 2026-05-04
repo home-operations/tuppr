@@ -8,6 +8,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	testExternalIP   = "1.2.3.4"
+	testHostnameNode = "node-1"
+	testJobPrefix    = "upgrade"
+)
+
 func TestGetNodeIP(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -18,7 +24,7 @@ func TestGetNodeIP(t *testing.T) {
 		{
 			name: "internal IP preferred",
 			addresses: []corev1.NodeAddress{
-				{Type: corev1.NodeExternalIP, Address: "1.2.3.4"},
+				{Type: corev1.NodeExternalIP, Address: testExternalIP},
 				{Type: corev1.NodeInternalIP, Address: "10.0.0.1"},
 			},
 			wantIP: "10.0.0.1",
@@ -26,10 +32,10 @@ func TestGetNodeIP(t *testing.T) {
 		{
 			name: "external IP fallback",
 			addresses: []corev1.NodeAddress{
-				{Type: corev1.NodeExternalIP, Address: "1.2.3.4"},
-				{Type: corev1.NodeHostName, Address: "node-1"},
+				{Type: corev1.NodeExternalIP, Address: testExternalIP},
+				{Type: corev1.NodeHostName, Address: testHostnameNode},
 			},
-			wantIP: "1.2.3.4",
+			wantIP: testExternalIP,
 		},
 		{
 			name: "only internal IP",
@@ -41,7 +47,7 @@ func TestGetNodeIP(t *testing.T) {
 		{
 			name: "no IP addresses",
 			addresses: []corev1.NodeAddress{
-				{Type: corev1.NodeHostName, Address: "node-1"},
+				{Type: corev1.NodeHostName, Address: testHostnameNode},
 			},
 			wantErr: true,
 		},
@@ -78,17 +84,17 @@ func TestGenerateSafeJobName(t *testing.T) {
 	}{
 		{
 			name:       "normal names",
-			prefix:     "upgrade",
+			prefix:     testJobPrefix,
 			identifier: "node-1",
 		},
 		{
 			name:       "long identifier gets truncated",
-			prefix:     "upgrade",
+			prefix:     testJobPrefix,
 			identifier: "very-long-node-name-that-exceeds-kubernetes-limits-significantly",
 		},
 		{
 			name:       "empty identifier",
-			prefix:     "upgrade",
+			prefix:     testJobPrefix,
 			identifier: "",
 		},
 		{

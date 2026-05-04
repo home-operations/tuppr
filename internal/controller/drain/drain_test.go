@@ -14,6 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+const testDsName = "test-ds"
+
 func newTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
 	_ = corev1.AddToScheme(s)
@@ -162,7 +164,7 @@ func TestShouldEvictPod(t *testing.T) {
 		{
 			name: "daemonset pod should not be evicted",
 			pod: newPod("test-pod", "default", "test-node", corev1.PodRunning, []metav1.OwnerReference{
-				{Kind: "DaemonSet", Name: "test-ds"},
+				{Kind: daemonSetKind, Name: testDsName},
 			}, nil),
 			expected: false,
 		},
@@ -209,7 +211,7 @@ func TestIsDaemonSetPod(t *testing.T) {
 		{
 			name: "daemonset owner",
 			ownerRefs: []metav1.OwnerReference{
-				{Kind: "DaemonSet", Name: "test-ds"},
+				{Kind: daemonSetKind, Name: testDsName},
 			},
 			expected: true,
 		},
@@ -279,7 +281,7 @@ func TestGetEvictablePods(t *testing.T) {
 	runningPod := newPod("running-pod", "default", "test-node", corev1.PodRunning, nil, nil)
 	succeededPod := newPod("succeeded-pod", "default", "test-node", corev1.PodSucceeded, nil, nil)
 	daemonSetPod := newPod("daemonset-pod", "default", "test-node", corev1.PodRunning, []metav1.OwnerReference{
-		{Kind: "DaemonSet", Name: "test-ds"},
+		{Kind: daemonSetKind, Name: testDsName},
 	}, nil)
 	onOtherNode := newPod("other-node-pod", "default", "other-node", corev1.PodRunning, nil, nil)
 
@@ -322,7 +324,7 @@ func TestIsDrained(t *testing.T) {
 			name: "only daemonset pods",
 			pods: []*corev1.Pod{
 				newPod("ds-pod", "default", "test-node", corev1.PodRunning, []metav1.OwnerReference{
-					{Kind: "DaemonSet", Name: "test-ds"},
+					{Kind: daemonSetKind, Name: testDsName},
 				}, nil),
 			},
 			expected: true,

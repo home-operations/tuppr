@@ -26,7 +26,12 @@ import (
 )
 
 const (
-	fakeCrtl = "ctrl-1"
+	fakeCrtl       = "ctrl-1"
+	testNamespace  = "default"
+	testNodeIP     = "10.0.0.1"
+	testJobNameStr = "test-upgrade-ctrl-1-abcd1234"
+	testNameStr    = "test"
+	testV1330      = "v1.33.0"
 )
 
 type mockTalosClient struct {
@@ -157,7 +162,7 @@ func newK8sReconciler(cl client.Client, vg VersionGetter, tc TalosClient, hc Hea
 		Client:              cl,
 		Scheme:              newTestScheme(),
 		TalosConfigSecret:   "test-talosconfig",
-		ControllerNamespace: "default",
+		ControllerNamespace: testNamespace,
 		TalosClient:         tc,
 		HealthChecker:       hc,
 		MetricsReporter:     metrics.NewReporter(),
@@ -191,7 +196,7 @@ func TestK8sReconcile_AddsFinalizer(t *testing.T) {
 	ku := newKubernetesUpgrade("test-upgrade")
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku).WithStatusSubresource(ku).Build()
-	r := newK8sReconciler(cl, &mockVersionGetter{version: "v1.33.0"}, &mockTalosClient{}, &mockHealthChecker{})
+	r := newK8sReconciler(cl, &mockVersionGetter{version: testV1330}, &mockTalosClient{}, &mockHealthChecker{})
 
 	reconcileK8s(t, r, "test-upgrade")
 
@@ -234,16 +239,16 @@ func TestK8sReconcile_PartialUpgrade_PreventsCompletion(t *testing.T) {
 	)
 
 	// Node A is upgraded
-	nodeA := newControllerNodeWithVersion("ctrl-1", "10.0.0.1", testK8sVersion)
+	nodeA := newControllerNodeWithVersion("ctrl-1", testNodeIP, testK8sVersion)
 	// Node B is still on old version
-	nodeB := newControllerNodeWithVersion("ctrl-2", "10.0.0.2", "v1.33.0")
+	nodeB := newControllerNodeWithVersion("ctrl-2", "10.0.0.2", testV1330)
 
 	vg := &mockVersionGetter{version: testK8sVersion}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, nodeA, nodeB).WithStatusSubresource(ku).Build()
 
-	tc := &mockTalosClient{nodeVersions: map[string]string{"10.0.0.2": "v1.33.0"}}
+	tc := &mockTalosClient{nodeVersions: map[string]string{"10.0.0.2": testV1330}}
 	r := newK8sReconciler(cl, vg, tc, &mockHealthChecker{})
 
 	result := reconcileK8s(t, r, "test-upgrade")
@@ -349,7 +354,7 @@ func TestK8sReconcile_AlreadyAtTargetVersion(t *testing.T) {
 		withK8sFinalizer,
 		withK8sPhase(tupprv1alpha1.JobPhasePending),
 	)
-	node := newControllerNodeWithVersion("ctrl-1", "10.0.0.1", testK8sVersion)
+	node := newControllerNodeWithVersion("ctrl-1", testNodeIP, testK8sVersion)
 
 	vg := &mockVersionGetter{version: testK8sVersion}
 
@@ -379,8 +384,8 @@ func TestK8sReconcile_HealthCheckFailure(t *testing.T) {
 		withK8sFinalizer,
 		withK8sPhase(tupprv1alpha1.JobPhasePending),
 	)
-	node := newControllerNodeWithVersion(fakeCrtl, "10.0.0.1", "v1.33.0")
-	vg := &mockVersionGetter{version: "v1.33.0"} // needs upgrade
+	node := newControllerNodeWithVersion(fakeCrtl, testNodeIP, testV1330)
+	vg := &mockVersionGetter{version: testV1330} // needs upgrade
 	hc := &mockHealthChecker{err: fmt.Errorf("cluster not healthy")}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, node).WithStatusSubresource(ku).Build()
@@ -406,9 +411,9 @@ func TestK8sReconcile_StartsUpgrade(t *testing.T) {
 		withK8sFinalizer,
 		withK8sPhase(tupprv1alpha1.JobPhasePending),
 	)
-	ctrlNode := newControllerNode(fakeCrtl, "10.0.0.1")
-	vg := &mockVersionGetter{version: "v1.33.0"}
-	tc := &mockTalosClient{nodeVersions: map[string]string{"10.0.0.1": "v1.33.0"}}
+	ctrlNode := newControllerNode(fakeCrtl, testNodeIP)
+	vg := &mockVersionGetter{version: testV1330}
+	tc := &mockTalosClient{nodeVersions: map[string]string{testNodeIP: testV1330}}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, ctrlNode).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, vg, tc, &mockHealthChecker{})
@@ -420,14 +425,14 @@ func TestK8sReconcile_StartsUpgrade(t *testing.T) {
 
 	// Verify job was created
 	var jobList batchv1.JobList
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	if len(jobList.Items) != 1 {
 		t.Fatalf("expected 1 job, got: %d", len(jobList.Items))
 	}
-	if jobList.Items[0].Labels["tuppr.home-operations.com/target-node"] != fakeCrtl {
-		t.Fatalf("expected job for ctrl-1, got: %s", jobList.Items[0].Labels["tuppr.home-operations.com/target-node"])
+	if jobList.Items[0].Labels[targetNodeLabelKey] != fakeCrtl {
+		t.Fatalf("expected job for ctrl-1, got: %s", jobList.Items[0].Labels[targetNodeLabelKey])
 	}
 
 	// Verify status updated to InProgress
@@ -447,7 +452,7 @@ func TestK8sReconcile_NoControllerNode(t *testing.T) {
 		withK8sPhase(tupprv1alpha1.JobPhasePending),
 	)
 	workerNode := newNode("worker-1", "10.0.0.2")
-	vg := &mockVersionGetter{version: "v1.33.0"}
+	vg := &mockVersionGetter{version: testV1330}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, workerNode).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, vg, &mockTalosClient{}, &mockHealthChecker{})
@@ -484,11 +489,11 @@ func TestK8sReconcile_HandlesActiveJobRunning(t *testing.T) {
 	)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-upgrade-ctrl-1-abcd1234",
-			Namespace: "default",
+			Name:      testJobNameStr,
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "kubernetes-upgrade",
-				"tuppr.home-operations.com/target-node": fakeCrtl,
+				appLabelKey:        kubernetesUpgradeAppName,
+				targetNodeLabelKey: fakeCrtl,
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
@@ -507,7 +512,7 @@ func TestK8sReconcile_HandlesActiveJobRunning(t *testing.T) {
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseUpgrading {
 		t.Fatalf("expected phase Upgrading while job running, got: %s", updated.Status.Phase)
 	}
-	if updated.Status.JobName != "test-upgrade-ctrl-1-abcd1234" {
+	if updated.Status.JobName != testJobNameStr {
 		t.Fatalf("expected jobName to be set, got: %s", updated.Status.JobName)
 	}
 }
@@ -520,11 +525,11 @@ func TestK8sReconcile_HandlesJobFailure(t *testing.T) {
 	)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-upgrade-ctrl-1-abcd1234",
-			Namespace: "default",
+			Name:      testJobNameStr,
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "kubernetes-upgrade",
-				"tuppr.home-operations.com/target-node": fakeCrtl,
+				appLabelKey:        kubernetesUpgradeAppName,
+				targetNodeLabelKey: fakeCrtl,
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
@@ -555,7 +560,7 @@ func TestK8sReconcile_HandlesJobFailure(t *testing.T) {
 	}
 
 	var jobList batchv1.JobList
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	if len(jobList.Items) != 0 {
@@ -602,19 +607,19 @@ func TestK8sReconcile_HandlesJobSuccess(t *testing.T) {
 		withK8sFinalizer,
 		withK8sPhase(tupprv1alpha1.JobPhaseUpgrading),
 		func(ku *tupprv1alpha1.KubernetesUpgrade) {
-			ku.Status.CurrentVersion = "v1.33.0"
+			ku.Status.CurrentVersion = testV1330
 			ku.Status.TargetVersion = testK8sVersion
 		},
 	)
-	node := newControllerNodeWithVersion(fakeCrtl, "10.0.0.1", testK8sVersion)
+	node := newControllerNodeWithVersion(fakeCrtl, testNodeIP, testK8sVersion)
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-upgrade-ctrl-1-abcd1234",
-			Namespace: "default",
+			Name:      testJobNameStr,
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "kubernetes-upgrade",
-				"tuppr.home-operations.com/target-node": fakeCrtl,
+				appLabelKey:        kubernetesUpgradeAppName,
+				targetNodeLabelKey: fakeCrtl,
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
@@ -646,22 +651,22 @@ func TestK8sReconcile_JobSuccess_PartialUpgrade_ContinuesToNextNode(t *testing.T
 		withK8sFinalizer,
 		withK8sPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
-	nodeA := newControllerNodeWithVersion("ctrl-1", "10.0.0.1", testK8sVersion)
-	nodeB := newControllerNodeWithVersion("ctrl-2", "10.0.0.2", "v1.33.0")
+	nodeA := newControllerNodeWithVersion("ctrl-1", testNodeIP, testK8sVersion)
+	nodeB := newControllerNodeWithVersion("ctrl-2", "10.0.0.2", testV1330)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-upgrade-ctrl-1-abcd1234",
-			Namespace: "default",
+			Name:      testJobNameStr,
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "kubernetes-upgrade",
-				"tuppr.home-operations.com/target-node": "ctrl-1",
+				appLabelKey:        kubernetesUpgradeAppName,
+				targetNodeLabelKey: "ctrl-1",
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
 		Status: batchv1.JobStatus{Succeeded: 1},
 	}
 	vg := &mockVersionGetter{version: testK8sVersion}
-	tc := &mockTalosClient{nodeVersions: map[string]string{"10.0.0.2": "v1.33.0"}}
+	tc := &mockTalosClient{nodeVersions: map[string]string{"10.0.0.2": testV1330}}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, nodeA, nodeB, job).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, vg, tc, &mockHealthChecker{})
@@ -699,18 +704,18 @@ func TestK8sReconcile_JobSuccessButVersionMismatch(t *testing.T) {
 	)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-upgrade-ctrl-1-abcd1234",
-			Namespace: "default",
+			Name:      testJobNameStr,
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "kubernetes-upgrade",
-				"tuppr.home-operations.com/target-node": fakeCrtl,
+				appLabelKey:        kubernetesUpgradeAppName,
+				targetNodeLabelKey: fakeCrtl,
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
 		Status: batchv1.JobStatus{Succeeded: 1},
 	}
 	// Version doesn't match target - upgrade didn't actually work
-	vg := &mockVersionGetter{version: "v1.33.0"}
+	vg := &mockVersionGetter{version: testV1330}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, job).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, vg, &mockTalosClient{}, &mockHealthChecker{})
@@ -784,7 +789,7 @@ func TestK8sReconcile_InProgressBypassesCoordination(t *testing.T) {
 
 func TestK8sFindControllerNode(t *testing.T) {
 	scheme := newTestScheme()
-	ctrlNode := newControllerNodeWithVersion(fakeCrtl, "10.0.0.1", "v1.33.0")
+	ctrlNode := newControllerNodeWithVersion(fakeCrtl, testNodeIP, testV1330)
 	upgradedNode := newControllerNodeWithVersion("ctrl-2", "10.0.0.3", testK8sVersion)
 
 	workerNode := newNode("worker-1", "10.0.0.2")
@@ -799,7 +804,7 @@ func TestK8sFindControllerNode(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if name != fakeCrtl || ip != "10.0.0.1" {
+	if name != fakeCrtl || ip != testNodeIP {
 		t.Fatalf("expected to pick node needing upgrade (ctrl-1), got: %s/%s", name, ip)
 	}
 }
@@ -821,10 +826,10 @@ func TestK8sBuildJob_VersionDetectionFailure(t *testing.T) {
 	ku := newKubernetesUpgrade("test-upgrade", withK8sFinalizer)
 	tc := &mockTalosClient{getVersionErr: fmt.Errorf("connection refused")}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku, newControllerNode(fakeCrtl, "10.0.0.1")).WithStatusSubresource(ku).Build()
+		WithObjects(ku, newControllerNode(fakeCrtl, testNodeIP)).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, &mockVersionGetter{}, tc, &mockHealthChecker{})
 
-	_, err := r.buildJob(context.Background(), ku, fakeCrtl, "10.0.0.1")
+	_, err := r.buildJob(context.Background(), ku, fakeCrtl, testNodeIP)
 	if err == nil {
 		t.Fatal("expected error when version detection fails, got nil")
 	}
@@ -856,7 +861,7 @@ func TestKubernetesUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
 	r := &Reconciler{
 		Client:              cl,
 		Scheme:              scheme,
-		ControllerNamespace: "default",
+		ControllerNamespace: testNamespace,
 		TalosConfigSecret:   "talosconfig",
 		HealthChecker:       &mockHealthChecker{},
 		TalosClient:         &mockTalosClient{},
@@ -866,7 +871,7 @@ func TestKubernetesUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
 	}
 
 	result, err := r.Reconcile(context.Background(), reconcile.Request{
-		NamespacedName: types.NamespacedName{Name: "test"},
+		NamespacedName: types.NamespacedName{Name: testNameStr},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -877,7 +882,7 @@ func TestKubernetesUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
 
 	// Verify status updated
 	var updated tupprv1alpha1.KubernetesUpgrade
-	if err := cl.Get(context.Background(), types.NamespacedName{Name: "test"}, &updated); err != nil {
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: testNameStr}, &updated); err != nil {
 		t.Fatalf("failed to get updated upgrade: %v", err)
 	}
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseMaintenanceWindow {
@@ -910,16 +915,16 @@ func TestKubernetesUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
 	})
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku, newControllerNode(fakeCrtl, "10.0.0.1")).
+		WithObjects(ku, newControllerNode(fakeCrtl, testNodeIP)).
 		WithStatusSubresource(ku).Build()
 	r := &Reconciler{
 		Client:              cl,
 		Scheme:              scheme,
-		ControllerNamespace: "default",
+		ControllerNamespace: testNamespace,
 		TalosConfigSecret:   "talosconfig",
 		HealthChecker:       &mockHealthChecker{},
 		TalosClient: &mockTalosClient{
-			nodeVersions: map[string]string{"10.0.0.1": "v1.11.0"},
+			nodeVersions: map[string]string{testNodeIP: "v1.11.0"},
 		},
 		VersionGetter:   &mockVersionGetter{version: testK8sVersion},
 		MetricsReporter: metrics.NewReporter(),
@@ -928,7 +933,7 @@ func TestKubernetesUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
 
 	// Inside window — should proceed with upgrade logic
 	result, err := r.Reconcile(context.Background(), reconcile.Request{
-		NamespacedName: types.NamespacedName{Name: "test"},
+		NamespacedName: types.NamespacedName{Name: testNameStr},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -939,7 +944,7 @@ func TestKubernetesUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
 
 	// Should NOT be blocked by maintenance window
 	var updated tupprv1alpha1.KubernetesUpgrade
-	if err := cl.Get(context.Background(), types.NamespacedName{Name: "test"}, &updated); err != nil {
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: testNameStr}, &updated); err != nil {
 		t.Fatalf("failed to get updated upgrade: %v", err)
 	}
 	if strings.Contains(updated.Status.Message, "Waiting for maintenance window") {

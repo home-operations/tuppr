@@ -33,6 +33,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const daemonSetKind = "DaemonSet"
+
 // Drainer handles node drain operations
 type Drainer struct {
 	client client.Client
@@ -161,7 +163,7 @@ func shouldEvictPod(pod *corev1.Pod) bool {
 // isDaemonSetPod checks if a pod is managed by a DaemonSet
 func isDaemonSetPod(pod *corev1.Pod) bool {
 	for _, owner := range pod.OwnerReferences {
-		if owner.Kind == "DaemonSet" {
+		if owner.Kind == daemonSetKind {
 			return true
 		}
 	}

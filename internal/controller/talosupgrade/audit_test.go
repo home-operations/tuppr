@@ -32,7 +32,7 @@ func TestApplyPhaseAuditFields_Talos(t *testing.T) {
 			name:          "first transition into active sets startedAt",
 			status:        tupprv1alpha1.TalosUpgradeStatus{Phase: tupprv1alpha1.JobPhasePending},
 			nextPhase:     tupprv1alpha1.JobPhaseHealthChecking,
-			targetVersion: "v1.12.0",
+			targetVersion: fakeTalosVersion,
 			wantStartedAt: now,
 		},
 		{
@@ -40,10 +40,10 @@ func TestApplyPhaseAuditFields_Talos(t *testing.T) {
 			status: tupprv1alpha1.TalosUpgradeStatus{
 				Phase:          tupprv1alpha1.JobPhaseUpgrading,
 				StartedAt:      &earlier,
-				CompletedNodes: []string{"node-a", "node-b"},
+				CompletedNodes: []string{fakeNodeA, fakeNodeB},
 			},
 			nextPhase:     tupprv1alpha1.JobPhaseCompleted,
-			targetVersion: "v1.12.0",
+			targetVersion: fakeTalosVersion,
 			wantCompleted: now,
 			wantHistoryOp: func(t *testing.T, updates map[string]any) {
 				t.Helper()
@@ -51,10 +51,10 @@ func TestApplyPhaseAuditFields_Talos(t *testing.T) {
 				if len(h) != 1 {
 					t.Fatalf("want 1 history entry, got %d", len(h))
 				}
-				if h[0].ToVersion != "v1.12.0" || h[0].Phase != tupprv1alpha1.JobPhaseCompleted {
+				if h[0].ToVersion != fakeTalosVersion || h[0].Phase != tupprv1alpha1.JobPhaseCompleted {
 					t.Fatalf("unexpected entry: %+v", h[0])
 				}
-				if len(h[0].CompletedNodes) != 2 || h[0].CompletedNodes[0] != "node-a" {
+				if len(h[0].CompletedNodes) != 2 || h[0].CompletedNodes[0] != fakeNodeA {
 					t.Fatalf("want CompletedNodes snapshot, got %v", h[0].CompletedNodes)
 				}
 				if len(h[0].FailedNodes) != 0 {
@@ -74,7 +74,7 @@ func TestApplyPhaseAuditFields_Talos(t *testing.T) {
 				},
 			},
 			nextPhase:     tupprv1alpha1.JobPhaseFailed,
-			targetVersion: "v1.12.0",
+			targetVersion: fakeTalosVersion,
 			wantCompleted: now,
 			wantHistoryOp: func(t *testing.T, updates map[string]any) {
 				t.Helper()
@@ -95,7 +95,7 @@ func TestApplyPhaseAuditFields_Talos(t *testing.T) {
 				CompletedAt: &earlier,
 			},
 			nextPhase:     tupprv1alpha1.JobPhasePending,
-			targetVersion: "v1.12.1",
+			targetVersion: testV121,
 			wantStartedAt: nil,
 			wantCompleted: nil,
 		},
@@ -171,7 +171,7 @@ func TestSetPhase_Talos_WritesTimestampsAndEmitsEvent(t *testing.T) {
 		tu.Status.Phase = tupprv1alpha1.JobPhaseUpgrading
 		started := metav1.NewTime(now.Add(-30 * time.Minute))
 		tu.Status.StartedAt = &started
-		tu.Status.CompletedNodes = []string{"node-a"}
+		tu.Status.CompletedNodes = []string{fakeNodeA}
 	})
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tu).WithStatusSubresource(tu).Build()
 	recorder := record.NewFakeRecorder(4)
@@ -200,7 +200,7 @@ func TestSetPhase_Talos_WritesTimestampsAndEmitsEvent(t *testing.T) {
 	if len(got.Status.History) != 1 {
 		t.Fatalf("want 1 history entry, got %d", len(got.Status.History))
 	}
-	if got.Status.History[0].CompletedNodes[0] != "node-a" {
+	if got.Status.History[0].CompletedNodes[0] != fakeNodeA {
 		t.Fatalf("want node-a in history, got %v", got.Status.History[0].CompletedNodes)
 	}
 
@@ -235,7 +235,7 @@ func TestApplyPhaseAuditFields_Talos_EmptyPhaseEdge(t *testing.T) {
 	t.Run("empty to active sets startedAt", func(t *testing.T) {
 		status := tupprv1alpha1.TalosUpgradeStatus{}
 		updates := map[string]any{}
-		applyPhaseAuditFields(&status, updates, tupprv1alpha1.JobPhaseHealthChecking, now, "v1.12.0")
+		applyPhaseAuditFields(&status, updates, tupprv1alpha1.JobPhaseHealthChecking, now, fakeTalosVersion)
 		if _, ok := updates["startedAt"]; !ok {
 			t.Fatal("want startedAt set for fresh CR going active")
 		}

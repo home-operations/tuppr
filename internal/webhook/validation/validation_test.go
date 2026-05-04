@@ -15,6 +15,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+const (
+	testKindNode = "Node"
+	testExprTrue = "true"
+)
+
 // Helper to create a fake client with objects
 func newFakeClient(objs ...client.Object) client.Client {
 	scheme := runtime.NewScheme()
@@ -171,7 +176,7 @@ func TestValidateHealthChecks(t *testing.T) {
 			name:    "valid check",
 			wantErr: false,
 			checks: []tupprv1alpha1.HealthCheckSpec{{
-				APIVersion: "v1", Kind: "Node", Expr: "true",
+				APIVersion: "v1", Kind: testKindNode, Expr: testExprTrue,
 			}},
 		},
 		{
@@ -179,7 +184,7 @@ func TestValidateHealthChecks(t *testing.T) {
 			wantErr:     true,
 			errContains: "apiVersion cannot be empty",
 			checks: []tupprv1alpha1.HealthCheckSpec{{
-				Kind: "Node", Expr: "true",
+				Kind: testKindNode, Expr: testExprTrue,
 			}},
 		},
 		{
@@ -187,7 +192,7 @@ func TestValidateHealthChecks(t *testing.T) {
 			wantErr:     true,
 			errContains: "kind cannot be empty",
 			checks: []tupprv1alpha1.HealthCheckSpec{{
-				APIVersion: "v1", Expr: "true",
+				APIVersion: "v1", Expr: testExprTrue,
 			}},
 		},
 		{
@@ -195,7 +200,7 @@ func TestValidateHealthChecks(t *testing.T) {
 			wantErr:     true,
 			errContains: "expr cannot be empty",
 			checks: []tupprv1alpha1.HealthCheckSpec{{
-				APIVersion: "v1", Kind: "Node",
+				APIVersion: "v1", Kind: testKindNode,
 			}},
 		},
 		{
@@ -203,7 +208,7 @@ func TestValidateHealthChecks(t *testing.T) {
 			wantErr:     true,
 			errContains: "timeout must be positive",
 			checks: []tupprv1alpha1.HealthCheckSpec{{
-				APIVersion: "v1", Kind: "Node", Expr: "true",
+				APIVersion: "v1", Kind: testKindNode, Expr: testExprTrue,
 				Timeout: &metav1.Duration{Duration: -1 * time.Second},
 			}},
 		},
@@ -381,7 +386,7 @@ func TestGenerateCommonWarnings(t *testing.T) {
 	g.Expect(warnings).To(ContainElement(ContainSubstring("No talosctl version specified")))
 
 	// Case 4: No timeout
-	check := tupprv1alpha1.HealthCheckSpec{Expr: "true"} // timeout is nil
+	check := tupprv1alpha1.HealthCheckSpec{Expr: testExprTrue} // timeout is nil
 	warnings = GenerateCommonWarnings("v1.0.0", []tupprv1alpha1.HealthCheckSpec{check}, "v1.0.0")
 	g.Expect(warnings).To(ContainElement(ContainSubstring("no timeout specified")))
 }

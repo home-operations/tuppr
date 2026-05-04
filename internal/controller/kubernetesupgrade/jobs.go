@@ -23,7 +23,7 @@ import (
 )
 
 func (r *Reconciler) findActiveJob(ctx context.Context) (*batchv1.Job, error) {
-	return jobs.FindActiveJobByLabel(ctx, r.Client, r.ControllerNamespace, "kubernetes-upgrade")
+	return jobs.FindActiveJobByLabel(ctx, r.Client, r.ControllerNamespace, kubernetesUpgradeAppName)
 }
 
 func (r *Reconciler) handleJobStatus(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, job *batchv1.Job) (ctrl.Result, error) {
@@ -39,7 +39,7 @@ func (r *Reconciler) handleJobStatus(ctx context.Context, kubernetesUpgrade *tup
 	if job.Status.Succeeded == 0 && (job.Status.Failed == 0 || job.Status.Failed < *job.Spec.BackoffLimit) {
 		message := fmt.Sprintf("Upgrading Kubernetes to %s (job: %s)", kubernetesUpgrade.Spec.Kubernetes.Version, job.Name)
 		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseUpgrading, kubernetesUpgrade.Status.ControllerNode, message, map[string]any{
-			"jobName": job.Name,
+			statusFieldJobName: job.Name,
 		}); err != nil {
 			logger.Error(err, "Failed to update phase for active job", "job", job.Name)
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
@@ -59,7 +59,7 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tu
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Kubernetes upgrade job completed, verifying", "job", job.Name)
 
-	nodeName := job.Labels["tuppr.home-operations.com/target-node"]
+	nodeName := job.Labels[targetNodeLabelKey]
 	targetVersion := kubernetesUpgrade.Spec.Kubernetes.Version
 
 	allUpgraded, err := r.areAllControlPlaneNodesUpgraded(ctx, targetVersion)
@@ -73,8 +73,8 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tu
 		r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, nodeName, "success")
 		r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeKubernetes, 0)
 		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseCompleted, "", fmt.Sprintf("Cluster successfully upgraded to %s", targetVersion), map[string]any{
-			"currentVersion": targetVersion,
-			"targetVersion":  targetVersion,
+			statusFieldCurrentVersion: targetVersion,
+			statusFieldTargetVersion:  targetVersion,
 		}); err != nil {
 			logger.Error(err, "Failed to update completion phase")
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
@@ -89,7 +89,7 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tu
 	logger.Info("Node upgraded, continuing to next control plane node", "version", targetVersion)
 	message := fmt.Sprintf("Upgrading Kubernetes to %s, continuing to next node", targetVersion)
 	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseUpgrading, "", message, map[string]any{
-		"jobName": "",
+		statusFieldJobName: "",
 	}); err != nil {
 		logger.Error(err, "Failed to update status after partial upgrade")
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, err
@@ -104,10 +104,10 @@ func (r *Reconciler) handleJobFailure(ctx context.Context, kubernetesUpgrade *tu
 	logger := log.FromContext(ctx)
 	logger.Info("Kubernetes upgrade job failed", "job", job.Name)
 
-	nodeName := job.Labels["tuppr.home-operations.com/target-node"]
+	nodeName := job.Labels[targetNodeLabelKey]
 	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseFailed, kubernetesUpgrade.Status.ControllerNode, "Kubernetes upgrade job failed permanently", map[string]any{
-		"lastError":          "Job failed permanently",
-		"jobName":            job.Name,
+		statusFieldLastError: "Job failed permanently",
+		statusFieldJobName:   job.Name,
 		"observedGeneration": kubernetesUpgrade.Generation - 1,
 	}); err != nil {
 		logger.Error(err, "Failed to update failure status")
@@ -157,10 +157,10 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 	jobName := nodeutil.GenerateSafeJobName(kubernetesUpgrade.Name, controllerNode)
 
 	labels := map[string]string{
-		"app.kubernetes.io/name":                "kubernetes-upgrade",
-		"app.kubernetes.io/instance":            kubernetesUpgrade.Name,
-		"app.kubernetes.io/part-of":             "tuppr",
-		"tuppr.home-operations.com/target-node": controllerNode,
+		appLabelKey:                  kubernetesUpgradeAppName,
+		"app.kubernetes.io/instance": kubernetesUpgrade.Name,
+		"app.kubernetes.io/part-of":  "tuppr",
+		targetNodeLabelKey:           controllerNode,
 	}
 
 	talosctlRepo := constants.DefaultTalosctlImage
@@ -184,7 +184,7 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 	k8sSpec := kubernetesUpgrade.Spec.Kubernetes
 	args := make([]string, 0, 8)
 	args = append(args,
-		"upgrade-k8s",
+		upgradeK8sCommand,
 		"--nodes="+controllerIP,
 		"--to="+k8sSpec.Version,
 	)
@@ -222,7 +222,7 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 					Labels: labels,
 				},
 				Spec: jobs.BuildTalosctlPodSpec(jobs.PodSpecOptions{
-					ContainerName:     "upgrade-k8s",
+					ContainerName:     upgradeK8sCommand,
 					Image:             talosctlImage,
 					PullPolicy:        pullPolicy,
 					Args:              args,

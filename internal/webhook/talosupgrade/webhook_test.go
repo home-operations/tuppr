@@ -15,6 +15,22 @@ import (
 
 // Helper functions copied from kubernetesupgrade tests since test files can't be imported
 
+const (
+	testNamespace      = "default"
+	testTalosConfigKey = "talosconfig"
+	testCephImage      = "ceph/ceph:v17"
+	testKindNode       = "Node"
+	testTzUTC          = "UTC"
+	testNode1          = "node-1"
+	testNode2          = "node-2"
+	testNode3          = "node-3"
+	testLabelRole      = "role"
+	testLabelTier      = "tier"
+	testExprTrue       = "true"
+	testRoleWorker     = "worker"
+	testLabelZone      = "zone"
+)
+
 func validTalosConfig() []byte {
 	return []byte(`context: default
 contexts:
@@ -40,7 +56,7 @@ func newTalosUpgrade(name string, opts ...func(*tupprv1alpha1.TalosUpgrade)) *tu
 	tu := &tupprv1alpha1.TalosUpgrade{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: "default",
+			Namespace: testNamespace,
 		},
 		Spec: tupprv1alpha1.TalosUpgradeSpec{
 			Talos: tupprv1alpha1.TalosSpec{
@@ -127,15 +143,15 @@ func newTalosValidator(objects ...runtime.Object) *Validator {
 
 	return &Validator{
 		Client:            c,
-		TalosConfigSecret: "talosconfig",
-		Namespace:         "default",
+		TalosConfigSecret: testTalosConfigKey,
+		Namespace:         testNamespace,
 	}
 }
 
 func talosConfigSecretWithKey(ns string, data []byte) *corev1.Secret { //nolint:unparam
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "talosconfig",
+			Name:      testTalosConfigKey,
 			Namespace: ns,
 		},
 		Data: map[string][]byte{
@@ -156,8 +172,8 @@ func TestValidateHooks_RejectsEmptyImage(t *testing.T) {
 func TestValidateHooks_RejectsDuplicateNames(t *testing.T) {
 	err := validateHooks(&tupprv1alpha1.HooksSpec{
 		Pre: []tupprv1alpha1.HookSpec{
-			{Name: "ceph", Image: "ceph/ceph:v17"},
-			{Name: "ceph", Image: "ceph/ceph:v17"},
+			{Name: "ceph", Image: testCephImage},
+			{Name: "ceph", Image: testCephImage},
 		},
 	})
 	if err == nil {
@@ -167,8 +183,8 @@ func TestValidateHooks_RejectsDuplicateNames(t *testing.T) {
 
 func TestValidateHooks_AllowsValidConfig(t *testing.T) {
 	err := validateHooks(&tupprv1alpha1.HooksSpec{
-		Pre:  []tupprv1alpha1.HookSpec{{Name: "set", Image: "ceph/ceph:v17"}},
-		Post: []tupprv1alpha1.HookSpec{{Name: "unset", Image: "ceph/ceph:v17"}},
+		Pre:  []tupprv1alpha1.HookSpec{{Name: "set", Image: testCephImage}},
+		Post: []tupprv1alpha1.HookSpec{{Name: "unset", Image: testCephImage}},
 	})
 	if err != nil {
 		t.Fatalf("expected no error for valid hooks, got: %v", err)
@@ -182,7 +198,7 @@ func TestValidateHooks_NilHooksOk(t *testing.T) {
 }
 
 func TestTalosUpgrade_ValidateCreate_ValidResource(t *testing.T) {
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 	tu := newTalosUpgrade("test-upgrade")
 
 	_, err := v.ValidateCreate(context.Background(), tu)
@@ -206,7 +222,7 @@ func TestTalosUpgrade_ValidateCreate_MissingSecret(t *testing.T) {
 
 func TestTalosUpgrade_ValidateCreate_SecretMissingKey(t *testing.T) {
 	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "talosconfig", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: testTalosConfigKey, Namespace: testNamespace},
 		Data:       map[string][]byte{"bad-key": validTalosConfig()},
 	}
 	v := newTalosValidator(secret)
@@ -222,7 +238,7 @@ func TestTalosUpgrade_ValidateCreate_SecretMissingKey(t *testing.T) {
 }
 
 func TestTalosUpgrade_ValidateCreate_EmptySecretData(t *testing.T) {
-	v := newTalosValidator(talosConfigSecretWithKey("default", []byte{}))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, []byte{}))
 	tu := newTalosUpgrade("test-upgrade")
 
 	_, err := v.ValidateCreate(context.Background(), tu)
@@ -235,7 +251,7 @@ func TestTalosUpgrade_ValidateCreate_EmptySecretData(t *testing.T) {
 }
 
 func TestTalosUpgrade_ValidateCreate_InvalidTalosConfig(t *testing.T) {
-	v := newTalosValidator(talosConfigSecretWithKey("default", []byte("{not yaml")))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, []byte("{not yaml")))
 	tu := newTalosUpgrade("test-upgrade")
 
 	_, err := v.ValidateCreate(context.Background(), tu)
@@ -249,7 +265,7 @@ func TestTalosUpgrade_ValidateCreate_InvalidTalosConfig(t *testing.T) {
 
 func TestTalosUpgrade_ValidateCreate_NoContextsInConfig(t *testing.T) {
 	noCtx := []byte("context: \"\"\ncontexts: {}\n")
-	v := newTalosValidator(talosConfigSecretWithKey("default", noCtx))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, noCtx))
 	tu := newTalosUpgrade("test-upgrade")
 
 	_, err := v.ValidateCreate(context.Background(), tu)
@@ -275,7 +291,7 @@ func TestTalosUpgrade_ValidateCreate_InvalidVersionFormats(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+			v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 			tu := newTalosUpgrade("test", withTalosVersion(tc.version))
 
 			_, err := v.ValidateCreate(context.Background(), tu)
@@ -291,7 +307,7 @@ func TestTalosUpgrade_ValidateCreate_ValidVersionFormats(t *testing.T) {
 
 	for _, version := range versions {
 		t.Run(version, func(t *testing.T) {
-			v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+			v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 			tu := newTalosUpgrade("test", withTalosVersion(version))
 
 			_, err := v.ValidateCreate(context.Background(), tu)
@@ -309,7 +325,7 @@ func TestTalosUpgrade_ValidateUpdate_RejectsSpecChangeWhileInProgress(t *testing
 		withTalosVersion("v1.12.0"),
 	)
 
-	v := newTalosValidator(old, talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newTalosValidator(old, talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 
 	_, err := v.ValidateUpdate(context.Background(), old, updated)
 	if err == nil {
@@ -324,7 +340,7 @@ func TestTalosUpgrade_ValidateUpdate_AllowsNoSpecChangeWhileInProgress(t *testin
 	old := newTalosUpgrade("test", withTalosPhase(tupprv1alpha1.JobPhaseUpgrading))
 	updated := newTalosUpgrade("test", withTalosPhase(tupprv1alpha1.JobPhaseUpgrading))
 
-	v := newTalosValidator(old, talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newTalosValidator(old, talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 
 	_, err := v.ValidateUpdate(context.Background(), old, updated)
 	if err != nil {
@@ -338,7 +354,7 @@ func TestTalosUpgrade_ValidateUpdate_AllowsSpecChangeWhenNotInProgress(t *testin
 			old := newTalosUpgrade("test", withTalosPhase(phase))
 			updated := newTalosUpgrade("test", withTalosPhase(phase), withTalosVersion("v1.12.0"))
 
-			v := newTalosValidator(old, talosConfigSecretWithKey("default", validTalosConfig()))
+			v := newTalosValidator(old, talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 
 			_, err := v.ValidateUpdate(context.Background(), old, updated)
 			if err != nil {
@@ -389,7 +405,7 @@ func TestTalosUpgrade_ValidateCreate_HealthCheckValidation(t *testing.T) {
 	}
 
 	t.Run("valid", func(t *testing.T) {
-		v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+		v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 		tu := newTalosUpgrade("test", withTalosHealthChecks(validCheck))
 
 		_, err := v.ValidateCreate(context.Background(), tu)
@@ -401,7 +417,7 @@ func TestTalosUpgrade_ValidateCreate_HealthCheckValidation(t *testing.T) {
 	t.Run("empty apiVersion", func(t *testing.T) {
 		check := validCheck
 		check.APIVersion = ""
-		v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+		v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 		tu := newTalosUpgrade("test", withTalosHealthChecks(check))
 
 		_, err := v.ValidateCreate(context.Background(), tu)
@@ -413,7 +429,7 @@ func TestTalosUpgrade_ValidateCreate_HealthCheckValidation(t *testing.T) {
 	t.Run("empty kind", func(t *testing.T) {
 		check := validCheck
 		check.Kind = ""
-		v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+		v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 		tu := newTalosUpgrade("test", withTalosHealthChecks(check))
 
 		_, err := v.ValidateCreate(context.Background(), tu)
@@ -425,7 +441,7 @@ func TestTalosUpgrade_ValidateCreate_HealthCheckValidation(t *testing.T) {
 	t.Run("empty expr", func(t *testing.T) {
 		check := validCheck
 		check.Expr = ""
-		v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+		v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 		tu := newTalosUpgrade("test", withTalosHealthChecks(check))
 
 		_, err := v.ValidateCreate(context.Background(), tu)
@@ -438,7 +454,7 @@ func TestTalosUpgrade_ValidateCreate_HealthCheckValidation(t *testing.T) {
 		check := validCheck
 		d := metav1.Duration{Duration: -1 * time.Second}
 		check.Timeout = &d
-		v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+		v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 		tu := newTalosUpgrade("test", withTalosHealthChecks(check))
 
 		_, err := v.ValidateCreate(context.Background(), tu)
@@ -448,8 +464,8 @@ func TestTalosUpgrade_ValidateCreate_HealthCheckValidation(t *testing.T) {
 	})
 
 	t.Run("multiple checks with second invalid", func(t *testing.T) {
-		bad := tupprv1alpha1.HealthCheckSpec{APIVersion: "", Kind: "Node", Expr: "true"}
-		v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+		bad := tupprv1alpha1.HealthCheckSpec{APIVersion: "", Kind: testKindNode, Expr: testExprTrue}
+		v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 		tu := newTalosUpgrade("test", withTalosHealthChecks(validCheck, bad))
 
 		_, err := v.ValidateCreate(context.Background(), tu)
@@ -466,7 +482,7 @@ func TestTalosUpgrade_ValidateCreate_HealthCheckValidation(t *testing.T) {
 
 func TestTalosUpgrade_ValidateCreate_TalosctlImagePartialSpec(t *testing.T) {
 	t.Run("tag without repo", func(t *testing.T) {
-		v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+		v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 		tu := newTalosUpgrade("test", withTalosTalosctlImage("", "v1.11.0"))
 
 		_, err := v.ValidateCreate(context.Background(), tu)
@@ -476,7 +492,7 @@ func TestTalosUpgrade_ValidateCreate_TalosctlImagePartialSpec(t *testing.T) {
 	})
 
 	t.Run("both specified", func(t *testing.T) {
-		v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+		v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 		tu := newTalosUpgrade("test", withTalosTalosctlImage("ghcr.io/custom/talosctl", "v1.11.0"))
 
 		_, err := v.ValidateCreate(context.Background(), tu)
@@ -487,7 +503,7 @@ func TestTalosUpgrade_ValidateCreate_TalosctlImagePartialSpec(t *testing.T) {
 }
 
 func TestTalosUpgrade_ValidateCreate_InvalidPullPolicy(t *testing.T) {
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 	tu := newTalosUpgrade("test", withTalosPullPolicy(corev1.PullPolicy("BadPolicy")))
 
 	_, err := v.ValidateCreate(context.Background(), tu)
@@ -501,7 +517,7 @@ func TestTalosUpgrade_ValidateCreate_InvalidPullPolicy(t *testing.T) {
 
 func TestTalosUpgrade_ValidateCreate_RebootMode(t *testing.T) {
 	t.Run("valid default", func(t *testing.T) {
-		v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+		v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 		tu := newTalosUpgrade("test", withRebootMode("default"))
 
 		_, err := v.ValidateCreate(context.Background(), tu)
@@ -511,7 +527,7 @@ func TestTalosUpgrade_ValidateCreate_RebootMode(t *testing.T) {
 	})
 
 	t.Run("valid powercycle", func(t *testing.T) {
-		v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+		v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 		tu := newTalosUpgrade("test", withRebootMode("powercycle"))
 
 		_, err := v.ValidateCreate(context.Background(), tu)
@@ -521,7 +537,7 @@ func TestTalosUpgrade_ValidateCreate_RebootMode(t *testing.T) {
 	})
 
 	t.Run("invalid mode", func(t *testing.T) {
-		v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+		v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 		tu := newTalosUpgrade("test", withRebootMode("hard-reset"))
 
 		_, err := v.ValidateCreate(context.Background(), tu)
@@ -536,7 +552,7 @@ func TestTalosUpgrade_ValidateCreate_RebootMode(t *testing.T) {
 
 func TestTalosUpgrade_ValidateCreate_Placement(t *testing.T) {
 	t.Run("valid hard", func(t *testing.T) {
-		v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+		v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 		tu := newTalosUpgrade("test", withPlacement("hard"))
 
 		_, err := v.ValidateCreate(context.Background(), tu)
@@ -546,7 +562,7 @@ func TestTalosUpgrade_ValidateCreate_Placement(t *testing.T) {
 	})
 
 	t.Run("valid soft", func(t *testing.T) {
-		v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+		v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 		tu := newTalosUpgrade("test", withPlacement("soft"))
 
 		_, err := v.ValidateCreate(context.Background(), tu)
@@ -556,7 +572,7 @@ func TestTalosUpgrade_ValidateCreate_Placement(t *testing.T) {
 	})
 
 	t.Run("invalid placement", func(t *testing.T) {
-		v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+		v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 		tu := newTalosUpgrade("test", withPlacement("medium"))
 
 		_, err := v.ValidateCreate(context.Background(), tu)
@@ -570,7 +586,7 @@ func TestTalosUpgrade_ValidateCreate_Placement(t *testing.T) {
 }
 
 func TestTalosUpgrade_Warnings_ForceUpgrade(t *testing.T) {
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 	tu := newTalosUpgrade("test", withForce(true))
 
 	warnings, err := v.ValidateCreate(context.Background(), tu)
@@ -583,7 +599,7 @@ func TestTalosUpgrade_Warnings_ForceUpgrade(t *testing.T) {
 }
 
 func TestTalosUpgrade_Warnings_PowercycleReboot(t *testing.T) {
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 	tu := newTalosUpgrade("test", withRebootMode("powercycle"))
 
 	warnings, err := v.ValidateCreate(context.Background(), tu)
@@ -596,7 +612,7 @@ func TestTalosUpgrade_Warnings_PowercycleReboot(t *testing.T) {
 }
 
 func TestTalosUpgrade_Warnings_DebugMode(t *testing.T) {
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 	tu := newTalosUpgrade("test", withDebug(true))
 
 	warnings, err := v.ValidateCreate(context.Background(), tu)
@@ -609,7 +625,7 @@ func TestTalosUpgrade_Warnings_DebugMode(t *testing.T) {
 }
 
 func TestTalosUpgrade_Warnings_SoftPlacement(t *testing.T) {
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 	tu := newTalosUpgrade("test", withPlacement("soft"))
 
 	warnings, err := v.ValidateCreate(context.Background(), tu)
@@ -622,7 +638,7 @@ func TestTalosUpgrade_Warnings_SoftPlacement(t *testing.T) {
 }
 
 func TestTalosUpgrade_Warnings_PreReleaseVersion(t *testing.T) {
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 	tu := newTalosUpgrade("test", withTalosVersion("v1.11.0-alpha.1"))
 
 	warnings, err := v.ValidateCreate(context.Background(), tu)
@@ -635,7 +651,7 @@ func TestTalosUpgrade_Warnings_PreReleaseVersion(t *testing.T) {
 }
 
 func TestTalosUpgrade_Warnings_NoTalosctlVersion(t *testing.T) {
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 	tu := newTalosUpgrade("test")
 
 	warnings, err := v.ValidateCreate(context.Background(), tu)
@@ -650,10 +666,10 @@ func TestTalosUpgrade_Warnings_NoTalosctlVersion(t *testing.T) {
 func TestTalosUpgrade_Warnings_HealthCheckNoTimeout(t *testing.T) {
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "v1",
-		Kind:       "Node",
-		Expr:       "true",
+		Kind:       testKindNode,
+		Expr:       testExprTrue,
 	}
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 	tu := newTalosUpgrade("test", withTalosHealthChecks(check))
 
 	warnings, err := v.ValidateCreate(context.Background(), tu)
@@ -669,11 +685,11 @@ func TestTalosUpgrade_Warnings_NoWarningsForSafeDefaults(t *testing.T) {
 	timeout := metav1.Duration{Duration: 5 * time.Minute}
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "v1",
-		Kind:       "Node",
-		Expr:       "true",
+		Kind:       testKindNode,
+		Expr:       testExprTrue,
 		Timeout:    &timeout,
 	}
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 	tu := newTalosUpgrade("test",
 		withTalosTalosctlImage("ghcr.io/siderolabs/talosctl", "v1.11.0"),
 		withRebootMode("default"),
@@ -691,14 +707,14 @@ func TestTalosUpgrade_Warnings_NoWarningsForSafeDefaults(t *testing.T) {
 }
 
 func TestTalosUpgrade_ValidateCreate_MaintenanceWindowValid(t *testing.T) {
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
 		tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{
 				{
 					Start:    "0 2 * * 0",
 					Duration: metav1.Duration{Duration: 4 * time.Hour},
-					Timezone: "UTC",
+					Timezone: testTzUTC,
 				},
 			},
 		}
@@ -717,14 +733,14 @@ func TestTalosUpgrade_ValidateCreate_MaintenanceWindowValid(t *testing.T) {
 }
 
 func TestTalosUpgrade_ValidateCreate_MaintenanceWindowInvalidCron(t *testing.T) {
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
 		tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{
 				{
 					Start:    "not a cron",
 					Duration: metav1.Duration{Duration: 4 * time.Hour},
-					Timezone: "UTC",
+					Timezone: testTzUTC,
 				},
 			},
 		}
@@ -740,14 +756,14 @@ func TestTalosUpgrade_ValidateCreate_MaintenanceWindowInvalidCron(t *testing.T) 
 }
 
 func TestTalosUpgrade_ValidateCreate_MaintenanceWindowShortDuration(t *testing.T) {
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
 		tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{
 				{
 					Start:    "0 2 * * *",
 					Duration: metav1.Duration{Duration: 30 * time.Minute},
-					Timezone: "UTC",
+					Timezone: testTzUTC,
 				},
 			},
 		}
@@ -770,11 +786,11 @@ func TestTalosUpgrade_ValidateCreate_MaintenanceWindowShortDuration(t *testing.T
 }
 
 func TestTalosUpgrade_ValidateCreate_ParallelismValid(t *testing.T) {
-	node1 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}
-	node2 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-2"}}
-	node3 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-3"}}
+	node1 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: testNode1}}
+	node2 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: testNode2}}
+	node3 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: testNode3}}
 
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()), node1, node2, node3)
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()), node1, node2, node3)
 	tu := newTalosUpgrade("test-upgrade", withParallelism(2))
 
 	warnings, err := v.ValidateCreate(context.Background(), tu)
@@ -787,10 +803,10 @@ func TestTalosUpgrade_ValidateCreate_ParallelismValid(t *testing.T) {
 }
 
 func TestTalosUpgrade_ValidateCreate_ParallelismExceedsNodes(t *testing.T) {
-	node1 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}
-	node2 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-2"}}
+	node1 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: testNode1}}
+	node2 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: testNode2}}
 
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()), node1, node2)
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()), node1, node2)
 	tu := newTalosUpgrade("test-upgrade", withParallelism(5))
 
 	_, err := v.ValidateCreate(context.Background(), tu)
@@ -803,9 +819,9 @@ func TestTalosUpgrade_ValidateCreate_ParallelismExceedsNodes(t *testing.T) {
 }
 
 func TestTalosUpgrade_ValidateCreate_ParallelismZero(t *testing.T) {
-	node1 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}
+	node1 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: testNode1}}
 
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()), node1)
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()), node1)
 	var p int32 = 0
 	tu := newTalosUpgrade("test-upgrade")
 	tu.Spec.Parallelism = &p
@@ -820,7 +836,7 @@ func TestTalosUpgrade_ValidateCreate_ParallelismZero(t *testing.T) {
 }
 
 func TestTalosUpgrade_ValidateCreate_ParallelismNil(t *testing.T) {
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()))
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 	tu := newTalosUpgrade("test-upgrade")
 	// parallelism is nil (default)
 
@@ -831,11 +847,11 @@ func TestTalosUpgrade_ValidateCreate_ParallelismNil(t *testing.T) {
 }
 
 func TestTalosUpgrade_ValidateCreate_ParallelismEqualsNodeCount(t *testing.T) {
-	node1 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}
-	node2 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-2"}}
-	node3 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-3"}}
+	node1 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: testNode1}}
+	node2 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: testNode2}}
+	node3 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: testNode3}}
 
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()), node1, node2, node3)
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()), node1, node2, node3)
 	tu := newTalosUpgrade("test-upgrade", withParallelism(3))
 
 	_, err := v.ValidateCreate(context.Background(), tu)
@@ -856,24 +872,24 @@ func newWebhookNode(name string, labels map[string]string) *corev1.Node {
 
 func TestTalosUpgrade_ValidateOverlaps(t *testing.T) {
 	// Define nodes in the cluster
-	node1 := newWebhookNode("node-1", map[string]string{"role": "worker", "zone": "a"})
-	node2 := newWebhookNode("node-2", map[string]string{"role": "worker", "zone": "b"})
-	node3 := newWebhookNode("node-3", map[string]string{"role": "control-plane", "zone": "a"})
+	node1 := newWebhookNode(testNode1, map[string]string{testLabelRole: testRoleWorker, testLabelZone: "a"})
+	node2 := newWebhookNode(testNode2, map[string]string{testLabelRole: testRoleWorker, testLabelZone: "b"})
+	node3 := newWebhookNode(testNode3, map[string]string{testLabelRole: "control-plane", testLabelZone: "a"})
 
 	// Existing plan targeting zone=a (matches node-1, node-3)
 	existingPlan := newTalosUpgrade("plan-zone-a")
 	existingPlan.Spec.NodeSelector = &metav1.LabelSelector{
-		MatchLabels: map[string]string{"zone": "a"},
+		MatchLabels: map[string]string{testLabelZone: "a"},
 	}
 
-	secret := talosConfigSecretWithKey("default", validTalosConfig())
+	secret := talosConfigSecretWithKey(testNamespace, validTalosConfig())
 
 	t.Run("Detects Overlap", func(t *testing.T) {
 		// New plan targeting role=worker (matches node-1, node-2)
 		// Overlap should be node-1 (it has both zone=a and role=worker)
 		newPlan := newTalosUpgrade("plan-workers")
 		newPlan.Spec.NodeSelector = &metav1.LabelSelector{
-			MatchLabels: map[string]string{"role": "worker"},
+			MatchLabels: map[string]string{testLabelRole: testRoleWorker},
 		}
 
 		// Initialize validator with existing resources AND the nodes
@@ -901,7 +917,7 @@ func TestTalosUpgrade_ValidateOverlaps(t *testing.T) {
 		// No intersection with existing plan (zone=a)
 		newPlan := newTalosUpgrade("plan-zone-b")
 		newPlan.Spec.NodeSelector = &metav1.LabelSelector{
-			MatchLabels: map[string]string{"zone": "b"},
+			MatchLabels: map[string]string{testLabelZone: "b"},
 		}
 
 		v := newTalosValidator(secret, existingPlan, node1, node2, node3)
@@ -939,14 +955,14 @@ func TestTalosUpgrade_ValidateOverlaps(t *testing.T) {
 }
 
 func TestTalosUpgrade_ValidateCreate_ParallelismWithNodeSelector(t *testing.T) {
-	node1 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1", Labels: map[string]string{"tier": "worker"}}}
-	node2 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-2", Labels: map[string]string{"tier": "worker"}}}
-	node3 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-3", Labels: map[string]string{"tier": "control-plane"}}}
+	node1 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: testNode1, Labels: map[string]string{testLabelTier: testRoleWorker}}}
+	node2 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: testNode2, Labels: map[string]string{testLabelTier: testRoleWorker}}}
+	node3 := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: testNode3, Labels: map[string]string{testLabelTier: "control-plane"}}}
 
-	v := newTalosValidator(talosConfigSecretWithKey("default", validTalosConfig()), node1, node2, node3)
+	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()), node1, node2, node3)
 	tu := newTalosUpgrade("test-upgrade", withParallelism(3))
 	tu.Spec.NodeSelector = &metav1.LabelSelector{
-		MatchLabels: map[string]string{"tier": "worker"},
+		MatchLabels: map[string]string{testLabelTier: testRoleWorker},
 	}
 
 	// parallelism=3 but only 2 nodes match the selector

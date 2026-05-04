@@ -12,14 +12,17 @@ import (
 	"github.com/home-operations/tuppr/internal/constants"
 )
 
-const upgradingLabelValue = "true"
+const (
+	labelBarValue = "bar"
+	labelFooKey   = "foo"
+)
 
 func TestAddNodeUpgradingLabel(t *testing.T) {
 	scheme := newTestScheme()
 	node := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   fakeNodeA,
-			Labels: map[string]string{"foo": "bar"},
+			Labels: map[string]string{labelFooKey: labelBarValue},
 		},
 	}
 
@@ -39,7 +42,7 @@ func TestAddNodeUpgradingLabel(t *testing.T) {
 		t.Fatalf("expected upgrading label to be %q, got: %s", upgradingLabelValue, updated.Labels[constants.NodeUpgradingLabel])
 	}
 
-	if updated.Labels["foo"] != "bar" {
+	if updated.Labels[labelFooKey] != labelBarValue {
 		t.Fatal("expected existing labels to be preserved")
 	}
 }
@@ -77,7 +80,7 @@ func TestRemoveNodeUpgradingLabel(t *testing.T) {
 			Name: fakeNodeA,
 			Labels: map[string]string{
 				constants.NodeUpgradingLabel: upgradingLabelValue,
-				"foo":                        "bar",
+				"foo":                        labelBarValue,
 			},
 		},
 	}
@@ -98,7 +101,7 @@ func TestRemoveNodeUpgradingLabel(t *testing.T) {
 		t.Fatalf("expected upgrading label to be removed, got: %s", updated.Labels[constants.NodeUpgradingLabel])
 	}
 
-	if updated.Labels["foo"] != "bar" {
+	if updated.Labels[labelFooKey] != labelBarValue {
 		t.Fatal("expected other labels to be preserved")
 	}
 }
@@ -108,7 +111,7 @@ func TestRemoveNodeUpgradingLabel_Idempotent(t *testing.T) {
 	node := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   fakeNodeA,
-			Labels: map[string]string{"foo": "bar"},
+			Labels: map[string]string{labelFooKey: labelBarValue},
 		},
 	}
 

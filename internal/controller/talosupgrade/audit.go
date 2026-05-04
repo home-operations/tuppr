@@ -78,12 +78,12 @@ func syncLocalAuditFields(status *tupprv1alpha1.TalosUpgradeStatus, updates map[
 			status.History = h
 		}
 	}
-	if v, ok := updates["completedNodes"]; ok {
+	if v, ok := updates[statusCompletedNodes]; ok {
 		if s, isSlice := v.([]string); isSlice {
 			status.CompletedNodes = s
 		}
 	}
-	if v, ok := updates["failedNodes"]; ok {
+	if v, ok := updates[statusFailedNodes]; ok {
 		if s, isSlice := v.([]tupprv1alpha1.NodeUpgradeStatus); isSlice {
 			status.FailedNodes = s
 		}

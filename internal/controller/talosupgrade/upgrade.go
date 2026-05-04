@@ -402,7 +402,7 @@ func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpg
 	logger.Info("Recording nodes upgraded out of band", "nodes", added)
 	talosUpgrade.Status.CompletedNodes = append(talosUpgrade.Status.CompletedNodes, added...)
 	return r.updateStatus(ctx, talosUpgrade, map[string]any{
-		"completedNodes": talosUpgrade.Status.CompletedNodes,
+		statusCompletedNodes: talosUpgrade.Status.CompletedNodes,
 	})
 }
 

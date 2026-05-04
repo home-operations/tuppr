@@ -20,6 +20,8 @@ import (
 
 const DefaultHealthCheckTimeout = 10 * time.Minute
 
+const celStatusKey = "status"
+
 // MetricsRecorder defines the interface for metrics the health checker needs
 type MetricsRecorder interface {
 	RecordHealthCheckDuration(upgradeType, upgradeName string, duration float64)
@@ -82,7 +84,7 @@ func (hc *Checker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1
 	for i, check := range healthChecks {
 		env, err := cel.NewEnv(
 			cel.Variable("object", cel.DynType),
-			cel.Variable("status", cel.DynType),
+			cel.Variable(celStatusKey, cel.DynType),
 		)
 		if err != nil {
 			return fmt.Errorf("failed to create CEL environment for check %d: %w", i, err)
@@ -217,15 +219,15 @@ func (hc *Checker) runCELExpression(program cel.Program, resourceData map[string
 	safeData := maps.Clone(resourceData)
 
 	statusData := make(map[string]any)
-	if status, exists := safeData["status"]; exists {
+	if status, exists := safeData[celStatusKey]; exists {
 		if statusMap, ok := status.(map[string]any); ok {
 			statusData = statusMap
 		}
 	}
 
 	out, _, err := program.Eval(map[string]any{
-		"object": safeData,
-		"status": statusData,
+		"object":     safeData,
+		celStatusKey: statusData,
 	})
 	if err != nil {
 		return false, fmt.Errorf("CEL evaluation error: %w", err)
@@ -254,7 +256,7 @@ func (hc *Checker) validateHealthChecks(healthChecks []tupprv1alpha1.HealthCheck
 
 		env, err := cel.NewEnv(
 			cel.Variable("object", cel.DynType),
-			cel.Variable("status", cel.DynType),
+			cel.Variable(celStatusKey, cel.DynType),
 		)
 		if err == nil {
 			if _, issues := env.Compile(check.Expr); issues != nil && issues.Err() != nil {

@@ -14,6 +14,8 @@ import (
 	"github.com/home-operations/tuppr/internal/constants"
 )
 
+const testUpgradeK8s = "upgrade-k8s"
+
 func newTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
 	_ = batchv1.AddToScheme(s)
@@ -78,12 +80,12 @@ func TestBuildTalosctlPodSpec_OptsApplied(t *testing.T) {
 		{
 			name: "container fields from opts",
 			opts: PodSpecOptions{
-				ContainerName: "upgrade-k8s", Image: "my-reg/talosctl:v1.9.0",
-				PullPolicy: corev1.PullAlways, Args: []string{"upgrade-k8s", "--nodes=10.0.0.1"},
+				ContainerName: testUpgradeK8s, Image: "my-reg/talosctl:v1.9.0",
+				PullPolicy: corev1.PullAlways, Args: []string{testUpgradeK8s, "--nodes=10.0.0.1"},
 			},
 			check: func(t *testing.T, spec corev1.PodSpec) {
 				c := spec.Containers[0]
-				if c.Name != "upgrade-k8s" {
+				if c.Name != testUpgradeK8s {
 					t.Errorf("Name: got %q", c.Name)
 				}
 				if c.Image != "my-reg/talosctl:v1.9.0" {
@@ -92,7 +94,7 @@ func TestBuildTalosctlPodSpec_OptsApplied(t *testing.T) {
 				if c.ImagePullPolicy != corev1.PullAlways {
 					t.Errorf("PullPolicy: got %q", c.ImagePullPolicy)
 				}
-				if len(c.Args) != 2 || c.Args[0] != "upgrade-k8s" {
+				if len(c.Args) != 2 || c.Args[0] != testUpgradeK8s {
 					t.Errorf("Args: got %v", c.Args)
 				}
 			},
