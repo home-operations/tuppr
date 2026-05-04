@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.14](https://github.com/home-operations/tuppr/compare/0.1.13...0.1.14) (2026-05-04)
+
+
+### Documentation
+
+* simplify the contributors.md ([44d9078](https://github.com/home-operations/tuppr/commit/44d90787eccd2cf21c3b2f5354452da56d7ea4c8))
+
 ## [0.1.13](https://github.com/home-operations/tuppr/compare/0.1.12...0.1.13) (2026-05-04)
 
 
