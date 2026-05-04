@@ -20,8 +20,7 @@ const (
 	// Used as a fallback when SchematicAnnotation is not set.
 	TalosSchematicAnnotation = "extensions.talos.dev/schematic"
 
-	// Default factory URL for schematic construction
-	DefaultFactoryURL = "factory.talos.dev/installer"
+	FactoryDomain = "factory.talos.dev"
 )
 
 // Node label constants

@@ -12,6 +12,7 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/config/configloader"
 	"github.com/siderolabs/talos/pkg/machinery/config/configpatcher"
 	"github.com/siderolabs/talos/pkg/machinery/resources/config"
+	talosruntime "github.com/siderolabs/talos/pkg/machinery/resources/runtime"
 	"google.golang.org/grpc"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -119,6 +120,27 @@ func (s *Client) GetNodeMachineConfig(ctx context.Context, nodeIP string) (*conf
 	}
 
 	return mc, nil
+}
+
+func (s *Client) GetNodePlatform(ctx context.Context, nodeIP string) (string, error) {
+	nodeCtx := client.WithNode(ctx, nodeIP)
+	var r resource.Resource
+
+	err := s.executeWithRetry(ctx, func() error {
+		var err error
+		r, err = s.talos.COSIGet(nodeCtx, talosruntime.NamespaceName, talosruntime.PlatformMetadataType, talosruntime.PlatformMetadataID)
+		return err
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to get platform metadata from node %s: %w", nodeIP, err)
+	}
+
+	pm, ok := r.(*talosruntime.PlatformMetadata)
+	if !ok {
+		return "", fmt.Errorf("unexpected resource type for platform metadata from node %s", nodeIP)
+	}
+
+	return pm.TypedSpec().Platform, nil
 }
 
 func (s *Client) GetNodeInstallImage(ctx context.Context, nodeIP string) (string, error) {
