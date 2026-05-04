@@ -1,11 +1,3 @@
-# Contributors
-
-The project differentiates between 3 levels of contributors:
-
-- Contributors: people who have contributed before (no special privileges)
-- Collaborators (Triage): people with significant contributions, who may be responsible for some parts of the code, and are expected to maintain and review contributions for the code they own
-- Maintainers: responsible for reviewing and merging PRs, after approval from the code owners
-
 # AI Usage Policy
 
 > [!IMPORTANT]
@@ -21,12 +13,12 @@ If AI is used to generate any portion of the code, contributors must adhere to t
 
 1. Explicitly disclose the manner in which AI was employed.
 2. Perform a comprehensive manual review prior to submitting the pull request.
-3. Be prepared to explain every line of code they submitted when asked about it by a maintainer.
+3. Be prepared to explain every line of code they submitted when asked about it by a reviewer.
 4. It is strictly prohibited to use AI to write your posts for you (bug reports, feature requests, pull request descriptions, Github discussions, responding to humans, ...).
 
 For more info, please refer to the [AGENTS.md](AGENTS.md) file.
 
-# Pull requests (for contributors & collaborators)
+# Pull requests
 
 Before submitting your PR:
 - Search for existing PRs and issues to prevent duplicating efforts
@@ -34,21 +26,7 @@ Before submitting your PR:
 - Create separate PRs for each feature or fix, and avoid combining unrelated changes
 - For intricate features, consider opening a feature request first to discuss and align expectations
 - Use [Conventional Commits](https://www.conventionalcommits.org/). [release-please](https://github.com/googleapis/release-please) drives versioning and the changelog from these
-- If you are a new contributor, limit your open PRs to 1
-
-After submitting your PR:
-- Expect requests for modifications to ensure quality and long-term maintainability
-- If your PR becomes stale, rebase it on top of latest `main` to get maintainers attention
-- Consider adding yourself to [CODEOWNERS](CODEOWNERS) to indicate your availability for reviewing related PRs
-
-# Pull requests (for maintainers)
-
-- Squash-merge PRs
-- Keep the squashed commit title in Conventional Commits form: `<type>(<scope>): <subject> (#<pr_number>)`
-- Let other maintainers merge their own PRs
-- Be mindful of maintenance: most of the work happens after the PR is merged. If the author is not committed long-term, someone else needs to take responsibility (you)
-
-Maintainers reserve the right to decline review or close pull requests for any reason, particularly when the change duplicates an existing one, is already assigned to someone, or fails to adhere to this guide or the AI policy.
+- If your PR becomes stale, rebase it on top of latest `main`
 
 # Coding guidelines
 
@@ -65,12 +43,6 @@ Maintainers reserve the right to decline review or close pull requests for any r
 - Acronyms keep their case: `nodeID`, `talosAPIClient`
 - CRD kinds are `PascalCase` and singular (`TalosUpgrade`); JSON tags are `camelCase`
 - Reconciler types are named `<Kind>Reconciler`
-
-# Code maintenance
-
-- Existing code should have designated collaborators and/or maintainers in the [CODEOWNERS](CODEOWNERS) file, responsible for reviewing related PRs and fixing related bugs
-- When adding a large piece of code, either add yourself to CODEOWNERS or find an existing collaborator willing to maintain it long-term
-- New code should follow the guidelines above; exceptions are allowed in generated files
 
 # Documentation
 
