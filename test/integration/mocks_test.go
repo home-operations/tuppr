@@ -12,12 +12,14 @@ import (
 
 // mockTalosClient implements TalosClient interface for testing
 type mockTalosClient struct {
-	mu            sync.RWMutex
-	nodeVersions  map[string]string
-	installImages map[string]string
-	waitReadyErr  error
-	getVersionErr error
-	getInstallErr error
+	mu             sync.RWMutex
+	nodeVersions   map[string]string
+	installImages  map[string]string
+	platforms      map[string]string
+	waitReadyErr   error
+	getVersionErr  error
+	getInstallErr  error
+	getPlatformErr error
 }
 
 func (m *mockTalosClient) GetNodeVersion(ctx context.Context, nodeIP string) (string, error) {
@@ -58,6 +60,28 @@ func (m *mockTalosClient) GetNodeInstallImage(ctx context.Context, nodeIP string
 	return "", fmt.Errorf("install image not found for %s", nodeIP)
 }
 
+func (m *mockTalosClient) GetNodePlatform(ctx context.Context, nodeIP string) (string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.getPlatformErr != nil {
+		return "", m.getPlatformErr
+	}
+	if p, ok := m.platforms[nodeIP]; ok {
+		return p, nil
+	}
+	return "", fmt.Errorf("platform not found for %s", nodeIP)
+}
+
+func (m *mockTalosClient) SetNodePlatform(nodeIP, platform string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.platforms == nil {
+		m.platforms = make(map[string]string)
+	}
+	m.platforms[nodeIP] = platform
+}
+
 func (m *mockTalosClient) SetNodeInstallImage(nodeIP, image string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -82,8 +106,10 @@ func (m *mockTalosClient) Reset() {
 	defer m.mu.Unlock()
 	m.nodeVersions = make(map[string]string)
 	m.installImages = make(map[string]string)
+	m.platforms = make(map[string]string)
 	m.getVersionErr = nil
 	m.getInstallErr = nil
+	m.getPlatformErr = nil
 }
 
 // mockHealthChecker implements HealthCheckRunner interface for testing

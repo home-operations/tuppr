@@ -35,13 +35,15 @@ const (
 )
 
 type mockTalosClient struct {
-	nodeVersions  map[string]string
-	installImages map[string]string
-	checkReadyErr error
-	getVersionErr error
-	getInstallErr error
-	patchCalls    []string
-	patchImageErr error
+	nodeVersions   map[string]string
+	installImages  map[string]string
+	platforms      map[string]string
+	checkReadyErr  error
+	getVersionErr  error
+	getInstallErr  error
+	getPlatformErr error
+	patchCalls     []string
+	patchImageErr  error
 }
 
 func (m *mockTalosClient) GetNodeVersion(ctx context.Context, nodeIP string) (string, error) {
@@ -66,6 +68,16 @@ func (m *mockTalosClient) GetNodeInstallImage(ctx context.Context, nodeIP string
 		return img, nil
 	}
 	return "", fmt.Errorf("install image not found for %s", nodeIP)
+}
+
+func (m *mockTalosClient) GetNodePlatform(ctx context.Context, nodeIP string) (string, error) {
+	if m.getPlatformErr != nil {
+		return "", m.getPlatformErr
+	}
+	if p, ok := m.platforms[nodeIP]; ok {
+		return p, nil
+	}
+	return "", fmt.Errorf("platform not found for %s", nodeIP)
 }
 
 func (m *mockTalosClient) PatchNodeInstallImage(ctx context.Context, nodeIP, newImage string) error {
@@ -387,9 +399,7 @@ func TestTalosReconcile_NodeSchematicOverride(t *testing.T) {
 		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/b55fbf4fdc6aec0c43e108cc8bde16d5533fbdeec3cb114ff3913ed9e8d019fe:v1.11.0"},
 	}
 
-	// The expected image is DefaultFactoryURL + schematic + global version
-	// Note: buildTalosUpgradeImage uses "%s/%s" for factory/schematic, then adds ":%s" for version
-	expectedImage := fmt.Sprintf("%s/custom-schematic-id:%s", constants.DefaultFactoryURL, fakeTalosVersion)
+	expectedImage := "factory.talos.dev/installer/custom-schematic-id:" + fakeTalosVersion
 
 	ic := &mockImageChecker{
 		availableImages: map[string]bool{
@@ -448,7 +458,7 @@ func TestTalosReconcile_TalosPublishedSchematicFallback(t *testing.T) {
 		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/talos-published-id:v1.11.0"},
 	}
 
-	expectedImage := fmt.Sprintf("%s/talos-published-id:%s", constants.DefaultFactoryURL, fakeTalosVersion)
+	expectedImage := "factory.talos.dev/installer/talos-published-id:" + fakeTalosVersion
 	ic := &mockImageChecker{availableImages: map[string]bool{expectedImage: true}}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -489,7 +499,7 @@ func TestTalosReconcile_TupprSchematicWinsOverTalosAnnotation(t *testing.T) {
 		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/talos-published:v1.11.0"},
 	}
 
-	expectedImage := fmt.Sprintf("%s/tuppr-explicit:%s", constants.DefaultFactoryURL, fakeTalosVersion)
+	expectedImage := "factory.talos.dev/installer/tuppr-explicit:" + fakeTalosVersion
 	ic := &mockImageChecker{availableImages: map[string]bool{expectedImage: true}}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -2342,8 +2352,6 @@ func TestTalosBuildTalosUpgradeImage_WithSchematicAnnotation(t *testing.T) {
 		constants.SchematicAnnotation: "abc123schematic",
 	}
 
-	// TalosClient shouldn't even be called for image info if annotation exists,
-	// but we provide it just in case
 	tc := &mockTalosClient{
 		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/b55fbf4fdc6aec0c43e108cc8bde16d5533fbdeec3cb114ff3913ed9e8d019fe:v1.10.0"},
 	}
@@ -2358,10 +2366,204 @@ func TestTalosBuildTalosUpgradeImage_WithSchematicAnnotation(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should use factory URL + schematic + CR version
 	expected := "factory.talos.dev/installer/abc123schematic:" + fakeTalosVersion
 	if image != expected {
 		t.Fatalf("expected schematic image %s, got: %s", expected, image)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_FactoryURLAnnotationWins(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Annotations = map[string]string{
+		constants.TalosSchematicAnnotation: "schematic-id",
+		constants.FactoryURLAnnotation:     "factory.talos.dev/aws-installer/",
+	}
+
+	tc := &mockTalosClient{
+		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/hcloud-installer/schematic-id:v1.11.0"},
+		platforms:     map[string]string{"10.0.0.1": "metal"},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := "factory.talos.dev/aws-installer/schematic-id:" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("annotation override should win: got %s, want %s", image, expected)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_PreservesFactoryFlavorFromInstallImage(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Annotations = map[string]string{
+		constants.TalosSchematicAnnotation: "abc123",
+	}
+
+	tc := &mockTalosClient{
+		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/hcloud-installer/abc123:v1.11.0"},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := "factory.talos.dev/hcloud-installer/abc123:" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("factory flavor must be preserved: got %s, want %s", image, expected)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_PlatformMetadataFallback(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Annotations = map[string]string{
+		constants.TalosSchematicAnnotation: "abc123",
+	}
+
+	tc := &mockTalosClient{
+		installImages: map[string]string{"10.0.0.1": "ghcr.io/siderolabs/installer:v1.11.0"},
+		platforms:     map[string]string{"10.0.0.1": "hcloud"},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := "factory.talos.dev/hcloud-installer/abc123:" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("platform metadata fallback failed: got %s, want %s", image, expected)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_InstallImageBeatsPlatformMetadata(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Annotations = map[string]string{
+		constants.TalosSchematicAnnotation: "abc123",
+	}
+
+	tc := &mockTalosClient{
+		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/aws-installer/abc123:v1.11.0"},
+		platforms:     map[string]string{"10.0.0.1": "metal"},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := "factory.talos.dev/aws-installer/abc123:" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("install.image should beat platform metadata: got %s, want %s", image, expected)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_RefusesWhenPlatformReadFails(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Annotations = map[string]string{
+		constants.TalosSchematicAnnotation: "abc123",
+	}
+
+	tc := &mockTalosClient{
+		installImages:  map[string]string{"10.0.0.1": "ghcr.io/siderolabs/installer:v1.11.0"},
+		getPlatformErr: fmt.Errorf("rpc error: code = Unavailable"),
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	_, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err == nil {
+		t.Fatal("expected error when factory flavor cannot be resolved")
+	}
+	if !strings.Contains(err.Error(), constants.FactoryURLAnnotation) {
+		t.Fatalf("error should point user at %s; got: %v", constants.FactoryURLAnnotation, err)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_RefusesWhenPlatformEmpty(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+
+	node := newNode(fakeNodeA, "10.0.0.1")
+	node.Annotations = map[string]string{
+		constants.TalosSchematicAnnotation: "abc123",
+	}
+
+	tc := &mockTalosClient{
+		installImages: map[string]string{"10.0.0.1": "ghcr.io/siderolabs/installer:v1.11.0"},
+		platforms:     map[string]string{"10.0.0.1": ""},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	_, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err == nil {
+		t.Fatal("expected error when platform is empty")
+	}
+	if !strings.Contains(err.Error(), constants.FactoryURLAnnotation) {
+		t.Fatalf("error should point user at %s; got: %v", constants.FactoryURLAnnotation, err)
+	}
+}
+
+func TestParseFactoryBase(t *testing.T) {
+	tests := []struct {
+		name  string
+		image string
+		want  string
+	}{
+		{"vanilla installer", "factory.talos.dev/installer/abc:v1.13.0", "factory.talos.dev/installer"},
+		{"hcloud installer", "factory.talos.dev/hcloud-installer/abc:v1.13.0", "factory.talos.dev/hcloud-installer"},
+		{"camelcase platform", "factory.talos.dev/equinixMetal-installer/abc:v1.13.0", "factory.talos.dev/equinixMetal-installer"},
+		{"non-factory ghcr image", "ghcr.io/siderolabs/installer:v1.13.0", ""},
+		{"factory host without flavor segment", "factory.talos.dev/installer:v1.13.0", ""},
+		{"empty", "", ""},
+		{"missing version tag", "factory.talos.dev/installer/abc", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := parseFactoryBase(tt.image); got != tt.want {
+				t.Fatalf("parseFactoryBase(%q) = %q, want %q", tt.image, got, tt.want)
+			}
+		})
 	}
 }
 

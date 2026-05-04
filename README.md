@@ -325,7 +325,7 @@ Tuppr supports overriding the global TalosUpgrade configuration on a per-node ba
 | -------- | ------- | ------- |
 | tuppr.home-operations.com/version | Overrides the target Talos version for this node. | v1.12.1 |
 | tuppr.home-operations.com/schematic | Overrides the Talos schematic hash for this node. On Talos v1.8+ the schematic is auto-detected from `extensions.talos.dev/schematic`, so this is only needed to switch a node to a different schematic. | b55fbf... |
-| tuppr.home-operations.com/factory-url | Overrides the factory image base paired with the schematic (defaults to `factory.talos.dev/installer`). | factory.talos.dev/hcloud-installer |
+| tuppr.home-operations.com/factory-url | Forces a specific factory image base (e.g. to switch flavors). Normally not needed, see "Factory flavor resolution" below. | factory.talos.dev/aws-installer |
 
 
 Example: Applying an override
@@ -337,15 +337,28 @@ kubectl annotate node worker-01 tuppr.home-operations.com/version="v1.12.1"
 # Apply a custom schematic (with specific extensions) to one node
 kubectl annotate node worker-02 tuppr.home-operations.com/schematic="314b18a3f89d..."
 
-# Hetzner Cloud: keep the hcloud-installer flavor so `platform: hcloud` is preserved
+# Force a specific factory flavor (only needed when auto-detection fails;
+# see "Factory flavor resolution" below)
 kubectl annotate node hcloud-01 \
-  tuppr.home-operations.com/schematic="613e15..." \
   tuppr.home-operations.com/factory-url="factory.talos.dev/hcloud-installer"
 ```
 
 How it works:
 - The controller checks if a node version or schematic matches the annotation instead of the global TalosUpgrade spec.
 - If an inconsistency is found, an upgrade job is triggered for that node using the override values.
+
+#### Factory flavor resolution
+
+The image-factory flavor (`installer`, `aws-installer`, `hcloud-installer`, etc.) determines which Talos platform module ships to the node. Picking the wrong one flips `PlatformMetadata.platform` on reboot and breaks cloud integrations (CCM routes, metadata-driven hostnames).
+
+Tuppr resolves the flavor per node in this order:
+
+1. `tuppr.home-operations.com/factory-url` annotation.
+2. Prefix of the current `machine.install.image`, when it is a `factory.talos.dev/<flavor>/<schematic>:<version>` URL.
+3. `PlatformMetadata.spec.platform` (read live from Talos), mapped to `factory.talos.dev/<platform>-installer`.
+4. Otherwise the upgrade is refused. Tuppr does not fall back to a vanilla flavor.
+
+Steps 2 and 3 cover the common cases without any annotation. Set the annotation explicitly to switch flavors, or when the platform read can't succeed on a custom platform.
 
 ## ⚠️ Safe Talos Upgrade Paths
 

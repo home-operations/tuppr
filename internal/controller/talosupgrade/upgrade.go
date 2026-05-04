@@ -562,41 +562,44 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 		return "", fmt.Errorf("failed to get node %s: %w", nodeName, err)
 	}
 
-	targetVersion := r.getTargetVersion(node, talosUpgrade.Spec.Talos.Version)
-
-	var imageBase string
-
-	schematic := node.Annotations[constants.SchematicAnnotation]
-	source := constants.SchematicAnnotation
-	if schematic == "" {
-		schematic = node.Annotations[constants.TalosSchematicAnnotation]
-		source = constants.TalosSchematicAnnotation
+	nodeIP, err := nodeutil.GetNodeIP(node)
+	if err != nil {
+		return "", fmt.Errorf("failed to get node IP for %s: %w", nodeName, err)
 	}
 
+	currentImage, err := r.TalosClient.GetNodeInstallImage(ctx, nodeIP)
+	if err != nil {
+		return "", fmt.Errorf("failed to get install image from Talos client for %s: %w", nodeName, err)
+	}
+
+	targetVersion := r.getTargetVersion(node, talosUpgrade.Spec.Talos.Version)
+
+	schematic := node.Annotations[constants.SchematicAnnotation]
+	schematicSource := constants.SchematicAnnotation
+	if schematic == "" {
+		schematic = node.Annotations[constants.TalosSchematicAnnotation]
+		schematicSource = constants.TalosSchematicAnnotation
+	}
+
+	var imageBase string
 	if schematic != "" {
-		factoryURL := constants.DefaultFactoryURL
-		if v, ok := node.Annotations[constants.FactoryURLAnnotation]; ok && v != "" {
-			factoryURL = strings.TrimRight(v, "/")
+		factoryBase, factorySource, err := r.resolveFactoryBase(ctx, node, nodeIP, currentImage)
+		if err != nil {
+			return "", err
 		}
-		imageBase = fmt.Sprintf("%s/%s", factoryURL, schematic)
-		logger.V(1).Info("Using schematic from annotation",
-			"node", nodeName, "schematic", schematic, "source", source, "factoryURL", factoryURL)
+		imageBase = fmt.Sprintf("%s/%s", factoryBase, schematic)
+		logger.V(1).Info("Resolved factory image base",
+			"node", nodeName,
+			"schematic", schematic,
+			"schematicSource", schematicSource,
+			"factoryBase", factoryBase,
+			"factorySource", factorySource)
 	} else {
-		nodeIP, err := nodeutil.GetNodeIP(node)
-		if err != nil {
-			return "", fmt.Errorf("failed to get node IP for %s: %w", nodeName, err)
-		}
-
-		currentImage, err := r.TalosClient.GetNodeInstallImage(ctx, nodeIP)
-		if err != nil {
-			return "", fmt.Errorf("failed to get install image from Talos client for %s: %w", nodeName, err)
-		}
-
-		parts := strings.Split(currentImage, ":")
-		if len(parts) != 2 {
+		repo, _, ok := strings.Cut(currentImage, ":")
+		if !ok || repo == "" {
 			return "", fmt.Errorf("invalid current image format for node %s: %s", nodeName, currentImage)
 		}
-		imageBase = parts[0]
+		imageBase = repo
 	}
 
 	targetImage := fmt.Sprintf("%s:%s", imageBase, targetVersion)
@@ -607,6 +610,51 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 		"version", targetVersion)
 
 	return targetImage, nil
+}
+
+// resolveFactoryBase returns the factory base URL for a node's upgrade image.
+// It refuses rather than guessing on ambiguity: a wrong flavor flips the
+// node's platform on reboot.
+func (r *Reconciler) resolveFactoryBase(ctx context.Context, node *corev1.Node, nodeIP, currentImage string) (string, string, error) {
+	if v, ok := node.Annotations[constants.FactoryURLAnnotation]; ok && v != "" {
+		return strings.TrimRight(v, "/"), "annotation", nil
+	}
+
+	if base := parseFactoryBase(currentImage); base != "" {
+		return base, "installImage", nil
+	}
+
+	platform, err := r.TalosClient.GetNodePlatform(ctx, nodeIP)
+	if err != nil {
+		return "", "", fmt.Errorf(
+			"node %s: set annotation %s to pick a factory flavor (install image %q is not a factory URL, PlatformMetadata read failed: %w)",
+			node.Name, constants.FactoryURLAnnotation, currentImage, err)
+	}
+	if platform == "" {
+		return "", "", fmt.Errorf(
+			"node %s: set annotation %s to pick a factory flavor (install image %q is not a factory URL, PlatformMetadata.platform is empty)",
+			node.Name, constants.FactoryURLAnnotation, currentImage)
+	}
+
+	return fmt.Sprintf("%s/%s-installer", constants.FactoryDomain, platform), "platformMetadata", nil
+}
+
+func parseFactoryBase(image string) string {
+	prefix := constants.FactoryDomain + "/"
+	if !strings.HasPrefix(image, prefix) {
+		return ""
+	}
+
+	repo, _, ok := strings.Cut(image, ":")
+	if !ok {
+		return ""
+	}
+
+	idx := strings.LastIndex(repo, "/")
+	if idx < len(prefix) {
+		return ""
+	}
+	return repo[:idx]
 }
 
 func (r *Reconciler) getTargetVersion(node *corev1.Node, crdTargetVersion string) string {
