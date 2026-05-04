@@ -265,8 +265,12 @@ monitoring:
     labels: {}
     grafanaOperator:
       enabled: false
-      spec:
-        instanceSelector:
-          matchLabels:
-            dashboards: grafana
-        allowCrossNamespaceImport: false
+      # -- If true allows for a Grafana in any namespace to access this GrafanaDashboard.
+      allowCrossNamespaceImport: true
+      # -- Folder to create the dashboard in.
+      folder: ""
+      # -- Resync period for the Grafana operator to check for updates to the dashboard.
+      resyncPeriod: "10m"
+      # -- Selected labels for Grafana instance.
+      matchLabels: {}
+      # dashboards: grafana

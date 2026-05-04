@@ -18,5 +18,5 @@ metadata:
     {{- end }}
 data:
   tuppr.json: |
-    {{ .Files.Get "dashboards/tuppr.json" | indent 4 }}
+{{ .Files.Get "dashboards/tuppr.json" | nindent 4 }}
 {{- end }}
