@@ -252,3 +252,21 @@ monitoring:
     annotations: {}
     # Additional labels for PrometheusRule
     labels: {}
+
+  # Grafana dashboard shipped with the chart
+  dashboards:
+    # Render the dashboard ConfigMap. Required for either grafana-operator or
+    # the kube-prometheus-stack grafana sidecar to pick the dashboard up.
+    enabled: false
+    # Namespace to render the dashboard objects into. Defaults to the release namespace.
+    namespace: ""
+    # Extra annotations/labels added to the dashboard ConfigMap.
+    annotations: {}
+    labels: {}
+    grafanaOperator:
+      enabled: false
+      spec:
+        instanceSelector:
+          matchLabels:
+            dashboards: grafana
+        allowCrossNamespaceImport: false
