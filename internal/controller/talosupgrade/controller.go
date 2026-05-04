@@ -108,6 +108,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	r.MetricsReporter.Initialize(talosUpgrade.Name, metrics.UpgradeTypeTalos)
+
 	if talosUpgrade.DeletionTimestamp != nil {
 		return r.cleanup(ctx, &talosUpgrade)
 	}

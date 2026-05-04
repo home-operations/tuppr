@@ -210,6 +210,24 @@ func NewReporter() *Reporter {
 	}
 }
 
+func (m *Reporter) Initialize(upgradeName, upgradeType string) {
+	switch upgradeType {
+	case UpgradeTypeTalos:
+		for _, phase := range talosPhases {
+			talosUpgradePhaseGauge.WithLabelValues(upgradeName, phase, "").Set(0)
+		}
+		talosUpgradeNodes.WithLabelValues(upgradeName).Set(0)
+		talosUpgradeNodesCompleted.WithLabelValues(upgradeName).Set(0)
+		talosUpgradeNodesFailed.WithLabelValues(upgradeName).Set(0)
+	case UpgradeTypeKubernetes:
+		for _, phase := range kubernetesPhases {
+			kubernetesUpgradePhaseGauge.WithLabelValues(upgradeName, phase).Set(0)
+		}
+	}
+	upgradeJobsActive.WithLabelValues(upgradeType).Set(0)
+	maintenanceWindowActive.WithLabelValues(upgradeType, upgradeName).Set(0)
+}
+
 func (m *Reporter) RecordTalosUpgradePhase(name, phase, nodeName string) {
 	m.mu.Lock()
 	prev := m.talosUpgradePrev[name]
