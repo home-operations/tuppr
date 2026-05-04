@@ -274,7 +274,7 @@ func TestComponentImageArgs(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := componentImageArgs(c.repository, "v1.34.0")
+			got := componentImageArgs(c.repository)
 			if !slices.Equal(got, c.want) {
 				t.Fatalf("got %v, want %v", got, c.want)
 			}
