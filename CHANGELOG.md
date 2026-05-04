@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.18](https://github.com/home-operations/tuppr/compare/0.1.17...0.1.18) (2026-05-04)
+
+
+### Bug Fixes
+
+* add missing reporter ([ba40626](https://github.com/home-operations/tuppr/commit/ba4062678b2373b84c6f97bd9a05d2110a62d022))
+
 ## [0.1.17](https://github.com/home-operations/tuppr/compare/0.1.16...0.1.17) (2026-05-04)
 
 
