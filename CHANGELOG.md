@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16](https://github.com/home-operations/tuppr/compare/0.1.15...0.1.16) (2026-05-04)
+
+
+### Miscellaneous Chores
+
+* release 0.1.16 ([6092c72](https://github.com/home-operations/tuppr/commit/6092c721b3e898b3462ef1023ed8d9827e9e36e2))
+
 ## [0.1.15](https://github.com/home-operations/tuppr/compare/0.1.14...0.1.15) (2026-05-04)
 
 
