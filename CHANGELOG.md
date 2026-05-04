@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.13](https://github.com/home-operations/tuppr/compare/0.1.12...0.1.13) (2026-05-04)
+
+
+### Features
+
+* add basic contributing/issues/PR template ([339015d](https://github.com/home-operations/tuppr/commit/339015d2e20ea6799b090ac70db2cc16076b46b8))
+* **talosupgrade:** preserve any registry's install image across upgrades ([30c662c](https://github.com/home-operations/tuppr/commit/30c662cc69a9771aa34dd88fc72474c057a376ea))
+
 ## [0.1.12](https://github.com/home-operations/tuppr/compare/0.1.11...0.1.12) (2026-05-04)
 
 
