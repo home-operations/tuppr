@@ -33,6 +33,7 @@ const (
 
 	fakeTalosVersion = "v1.12.0"
 
+	testabc                         = "abc"
 	testNamespace                   = "default"
 	testNodeIP1                     = "10.0.0.1"
 	testNodeIP2                     = "10.0.0.2"
@@ -43,7 +44,6 @@ const (
 	testInstallerV111               = "ghcr.io/siderolabs/installer:v1.11.0"
 	testCronEvery2                  = "0 2 * * *"
 	testTimezoneUTC                 = "UTC"
-	testSchematicABC                = "abc123"
 	testLabelTier                   = "tier"
 	testLabelBackend                = "backend"
 	testNodeAlpha                   = "node-alpha"
@@ -2000,7 +2000,7 @@ func TestTalosBuildTalosUpgradeImage(t *testing.T) {
 	tu.Spec.Talos.Version = fakeTalosVersion
 	node := newNode(fakeNodeA, testNodeIP1)
 	tc := &mockTalosClient{
-		installImages: map[string]string{testNodeIP1: "factory.talos.dev/metal-installer/abc123:v1.10.0"},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/metal-installer/abc:v1.10.0"},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node).WithStatusSubresource(tu).Build()
@@ -2010,7 +2010,7 @@ func TestTalosBuildTalosUpgradeImage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if image != "factory.talos.dev/metal-installer/abc123:"+fakeTalosVersion {
+	if image != "factory.talos.dev/metal-installer/abc:"+fakeTalosVersion {
 		t.Fatalf("expected version-swapped image, got: %s", image)
 	}
 }
@@ -2432,11 +2432,11 @@ func TestTalosBuildTalosUpgradeImage_PreservesFactoryFlavorFromInstallImage(t *t
 
 	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.TalosSchematicAnnotation: testSchematicABC,
+		constants.TalosSchematicAnnotation: testabc,
 	}
 
 	tc := &mockTalosClient{
-		installImages: map[string]string{testNodeIP1: "factory.talos.dev/hcloud-installer/abc123:v1.11.0"},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/hcloud-installer/abc:v1.11.0"},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -2447,7 +2447,7 @@ func TestTalosBuildTalosUpgradeImage_PreservesFactoryFlavorFromInstallImage(t *t
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	expected := "factory.talos.dev/hcloud-installer/abc123:" + fakeTalosVersion
+	expected := "factory.talos.dev/hcloud-installer/abc:" + fakeTalosVersion
 	if image != expected {
 		t.Fatalf("factory flavor must be preserved: got %s, want %s", image, expected)
 	}
@@ -2460,7 +2460,7 @@ func TestTalosBuildTalosUpgradeImage_PlatformMetadataFallback(t *testing.T) {
 
 	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.TalosSchematicAnnotation: testSchematicABC,
+		constants.TalosSchematicAnnotation: testabc,
 	}
 
 	tc := &mockTalosClient{
@@ -2476,7 +2476,7 @@ func TestTalosBuildTalosUpgradeImage_PlatformMetadataFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	expected := "factory.talos.dev/hcloud-installer/abc123:" + fakeTalosVersion
+	expected := "factory.talos.dev/hcloud-installer/abc:" + fakeTalosVersion
 	if image != expected {
 		t.Fatalf("platform metadata fallback failed: got %s, want %s", image, expected)
 	}
@@ -2489,11 +2489,11 @@ func TestTalosBuildTalosUpgradeImage_InstallImageBeatsPlatformMetadata(t *testin
 
 	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.TalosSchematicAnnotation: testSchematicABC,
+		constants.TalosSchematicAnnotation: testabc,
 	}
 
 	tc := &mockTalosClient{
-		installImages: map[string]string{testNodeIP1: "factory.talos.dev/aws-installer/abc123:v1.11.0"},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/aws-installer/abc:v1.11.0"},
 		platforms:     map[string]string{testNodeIP1: "metal"},
 	}
 
@@ -2505,7 +2505,7 @@ func TestTalosBuildTalosUpgradeImage_InstallImageBeatsPlatformMetadata(t *testin
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	expected := "factory.talos.dev/aws-installer/abc123:" + fakeTalosVersion
+	expected := "factory.talos.dev/aws-installer/abc:" + fakeTalosVersion
 	if image != expected {
 		t.Fatalf("install.image should beat platform metadata: got %s, want %s", image, expected)
 	}
@@ -2518,7 +2518,7 @@ func TestTalosBuildTalosUpgradeImage_RefusesWhenPlatformReadFails(t *testing.T) 
 
 	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.TalosSchematicAnnotation: testSchematicABC,
+		constants.TalosSchematicAnnotation: testabc,
 	}
 
 	tc := &mockTalosClient{
@@ -2546,7 +2546,7 @@ func TestTalosBuildTalosUpgradeImage_RefusesWhenPlatformEmpty(t *testing.T) {
 
 	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.TalosSchematicAnnotation: testSchematicABC,
+		constants.TalosSchematicAnnotation: testabc,
 	}
 
 	tc := &mockTalosClient{
@@ -2574,19 +2574,19 @@ func TestParseSchematicBase(t *testing.T) {
 		schematic string
 		want      string
 	}{
-		{"factory vanilla", "factory.talos.dev/installer/abc:v1.13.0", testCustomSchematic, testFactoryInstallerVersionless},
-		{"factory hcloud", "factory.talos.dev/hcloud-installer/abc:v1.13.0", testCustomSchematic, "factory.talos.dev/hcloud-installer"},
-		{"factory camelcase platform", "factory.talos.dev/equinixMetal-installer/abc:v1.13.0", testCustomSchematic, "factory.talos.dev/equinixMetal-installer"},
-		{"private registry", "registry.example.com/talos/abc:v1.13.0", testCustomSchematic, "registry.example.com/talos"},
-		{"private registry nested path", "registry.example.com/team/talos/installer/abc:v1.13.0", testCustomSchematic, "registry.example.com/team/talos/installer"},
-		{"schematic appears mid-path", "registry.example.com/abc/abc:v1.13.0", testCustomSchematic, "registry.example.com/abc"},
-		{"image without trailing schematic", "ghcr.io/siderolabs/installer:v1.13.0", testCustomSchematic, ""},
-		{"factory bare flavor without schematic", "factory.talos.dev/installer:v1.13.0", testCustomSchematic, ""},
-		{"schematic mismatch", "factory.talos.dev/installer/xyz:v1.13.0", testCustomSchematic, ""},
-		{"missing version tag", "factory.talos.dev/installer/abc", testCustomSchematic, ""},
-		{"empty image", "", testCustomSchematic, ""},
+		{"factory vanilla", "factory.talos.dev/installer/abc:v1.13.0", testabc, testFactoryInstallerVersionless},
+		{"factory hcloud", "factory.talos.dev/hcloud-installer/abc:v1.13.0", testabc, "factory.talos.dev/hcloud-installer"},
+		{"factory camelcase platform", "factory.talos.dev/equinixMetal-installer/abc:v1.13.0", testabc, "factory.talos.dev/equinixMetal-installer"},
+		{"private registry", "registry.example.com/talos/abc:v1.13.0", testabc, "registry.example.com/talos"},
+		{"private registry nested path", "registry.example.com/team/talos/installer/abc:v1.13.0", testabc, "registry.example.com/team/talos/installer"},
+		{"schematic appears mid-path", "registry.example.com/abc/abc:v1.13.0", testabc, "registry.example.com/abc"},
+		{"image without trailing schematic", "ghcr.io/siderolabs/installer:v1.13.0", testabc, ""},
+		{"factory bare flavor without schematic", "factory.talos.dev/installer:v1.13.0", testabc, ""},
+		{"schematic mismatch", "factory.talos.dev/installer/xyz:v1.13.0", testabc, ""},
+		{"missing version tag", "factory.talos.dev/installer/abc", testabc, ""},
+		{"empty image", "", testabc, ""},
 		{"empty schematic", "factory.talos.dev/installer/abc:v1.13.0", "", ""},
-		{"schematic-only repo", "/abc:v1.13.0", testCustomSchematic, ""},
+		{"schematic-only repo", "/abc:v1.13.0", testabc, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
