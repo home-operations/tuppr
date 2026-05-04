@@ -10,7 +10,7 @@ require (
 	github.com/netresearch/go-cron v0.14.0
 	github.com/nicholas-fedor/shoutrrr v0.14.3
 	github.com/onsi/ginkgo/v2 v2.28.2
-	github.com/onsi/gomega v1.39.1
+	github.com/onsi/gomega v1.40.0
 	github.com/open-policy-agent/cert-controller v0.16.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/siderolabs/go-retry v0.3.3
