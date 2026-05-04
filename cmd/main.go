@@ -31,6 +31,7 @@ import (
 	tupperv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/controller/kubernetesupgrade"
 	"github.com/home-operations/tuppr/internal/controller/talosupgrade"
+	"github.com/home-operations/tuppr/internal/metrics"
 	"github.com/home-operations/tuppr/internal/notification"
 	kuberneteswebhook "github.com/home-operations/tuppr/internal/webhook/kubernetesupgrade"
 	taloswebhook "github.com/home-operations/tuppr/internal/webhook/talosupgrade"
@@ -107,6 +108,8 @@ func main() {
 
 	// Get controller node name from environment (injected via downward API)
 	controllerNodeName := os.Getenv("CONTROLLER_NODE_NAME")
+
+	reporter := metrics.NewReporter()
 
 	notificationURL := os.Getenv("NOTIFICATION_URL")
 	notifier := notification.NewShoutrrrNotifier(notificationURL)
@@ -249,6 +252,7 @@ func main() {
 		ControllerNodeName:  controllerNodeName,
 		Notifier:            notifier,
 		Recorder:            talosRecorder,
+		MetricsReporter:     reporter,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TalosUpgrade")
 		os.Exit(1)
@@ -260,6 +264,7 @@ func main() {
 		ControllerNamespace: controllerNamespace,
 		ControllerNodeName:  controllerNodeName,
 		Recorder:            kubernetesRecorder,
+		MetricsReporter:     reporter,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KubernetesUpgrade")
 		os.Exit(1)
