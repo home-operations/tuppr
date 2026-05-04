@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a bug in tuppr
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please make sure you have read the [AI Usage Policy](../blob/main/CONTRIBUTING.md#ai-usage-policy) before submitting.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, what you expected, and what actually happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the `TalosUpgrade` or `KubernetesUpgrade` resource you applied if relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Controller logs
+      description: Relevant controller logs around the time of the failure.
+      render: shell
+
+  - type: input
+    id: tuppr-version
+    attributes:
+      label: tuppr version
+      placeholder: "0.1.11"
+    validations:
+      required: true
+
+  - type: input
+    id: talos-version
+    attributes:
+      label: Talos version
+      placeholder: "v1.11.0"
+    validations:
+      required: true
+
+  - type: input
+    id: kubernetes-version
+    attributes:
+      label: Kubernetes version
+      placeholder: "v1.31.0"
+    validations:
+      required: true
