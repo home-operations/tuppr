@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.17](https://github.com/home-operations/tuppr/compare/0.1.16...0.1.17) (2026-05-04)
+
+
+### Bug Fixes
+
+* correct indent of templates ([63e88ec](https://github.com/home-operations/tuppr/commit/63e88eca2a28fc482f7625cf70bfd01449ed2a94))
+
 ## [0.1.16](https://github.com/home-operations/tuppr/compare/0.1.15...0.1.16) (2026-05-04)
 
 
