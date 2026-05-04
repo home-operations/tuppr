@@ -3,9 +3,9 @@ apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
   name: {{ include "tuppr.fullname" . }}-dashboard
-  namespace: {{ .Values.monitoring.dashboard.namespace | default .Release.Namespace }}
+  namespace: {{ .Values.monitoring.dashboards.namespace | default .Release.Namespace }}
 spec:
-  {{- toYaml .Values.monitoring.dashboard.grafanaDashboard | nindent 2 }}
+  {{- toYaml .Values.monitoring.dashboards.grafanaDashboard | nindent 2 }}
   configMapRef:
     name: {{ include "tuppr.fullname" . }}-dashboard
     key: tuprr.json
