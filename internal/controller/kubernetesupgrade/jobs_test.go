@@ -33,26 +33,31 @@ cluster:
     endpoint: https://kube.cluster.local:6443
 `
 
-const testK8sVersion = "v1.34.0"
+const (
+	testK8sVersion        = "v1.34.0"
+	testKubeClusterHost   = "kube.cluster.local"
+	testHostAliasOverride = "192.168.99.99"
+	testV110              = "v1.10.0"
+)
 
 func TestK8sBuildJob_Properties(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade", withK8sFinalizer)
 	ku.Spec.Kubernetes.Version = testK8sVersion
 	tc := &mockTalosClient{
-		nodeVersions: map[string]string{"10.0.0.1": "v1.10.0"},
+		nodeVersions: map[string]string{testNodeIP: testV110},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku, newControllerNode(fakeCrtl, "10.0.0.1")).WithStatusSubresource(ku).Build()
+		WithObjects(ku, newControllerNode(fakeCrtl, testNodeIP)).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, &mockVersionGetter{}, tc, &mockHealthChecker{})
 
-	job, err := r.buildJob(context.Background(), ku, fakeCrtl, "10.0.0.1")
+	job, err := r.buildJob(context.Background(), ku, fakeCrtl, testNodeIP)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if job.Labels["app.kubernetes.io/name"] != "kubernetes-upgrade" {
-		t.Fatalf("expected kubernetes-upgrade label, got: %s", job.Labels["app.kubernetes.io/name"])
+	if job.Labels[appLabelKey] != kubernetesUpgradeAppName {
+		t.Fatalf("expected kubernetes-upgrade label, got: %s", job.Labels[appLabelKey])
 	}
 
 	podSpec := job.Spec.Template.Spec
@@ -61,13 +66,13 @@ func TestK8sBuildJob_Properties(t *testing.T) {
 	}
 
 	container := podSpec.Containers[0]
-	if container.Name != "upgrade-k8s" {
+	if container.Name != upgradeK8sCommand {
 		t.Fatalf("expected container name 'upgrade-k8s', got: %s", container.Name)
 	}
 
 	foundUpgradeCmd, foundVersion := false, false
 	for _, arg := range container.Args {
-		if arg == "upgrade-k8s" {
+		if arg == upgradeK8sCommand {
 			foundUpgradeCmd = true
 		}
 		if arg == "--to="+testK8sVersion {
@@ -90,10 +95,10 @@ func TestK8sBuildJob_CustomImage(t *testing.T) {
 	ku.Spec.Talosctl.Image.PullPolicy = corev1.PullAlways
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku, newControllerNode(fakeCrtl, "10.0.0.1")).WithStatusSubresource(ku).Build()
+		WithObjects(ku, newControllerNode(fakeCrtl, testNodeIP)).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, &mockVersionGetter{}, &mockTalosClient{}, &mockHealthChecker{})
 
-	job, err := r.buildJob(context.Background(), ku, fakeCrtl, "10.0.0.1")
+	job, err := r.buildJob(context.Background(), ku, fakeCrtl, testNodeIP)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -112,16 +117,16 @@ func TestK8sBuildJob_AutoDiscoversHostAlias(t *testing.T) {
 	ku.Spec.Kubernetes.Version = testK8sVersion
 
 	tc := &mockTalosClient{
-		nodeVersions: map[string]string{"10.0.0.1": "v1.10.0"},
+		nodeVersions: map[string]string{testNodeIP: testV110},
 		machineConfigs: map[string]*talosconfigresource.MachineConfig{
-			"10.0.0.1": mustMachineConfigFromYAML(t, hcloudHostnameMachineConfig),
+			testNodeIP: mustMachineConfigFromYAML(t, hcloudHostnameMachineConfig),
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku, newControllerNode(fakeCrtl, "10.0.0.1")).WithStatusSubresource(ku).Build()
+		WithObjects(ku, newControllerNode(fakeCrtl, testNodeIP)).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, &mockVersionGetter{}, tc, &mockHealthChecker{})
 
-	job, err := r.buildJob(context.Background(), ku, fakeCrtl, "10.0.0.1")
+	job, err := r.buildJob(context.Background(), ku, fakeCrtl, testNodeIP)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -133,7 +138,7 @@ func TestK8sBuildJob_AutoDiscoversHostAlias(t *testing.T) {
 	if aliases[0].IP != "10.0.1.100" {
 		t.Fatalf("expected VIP 10.0.1.100, got: %s", aliases[0].IP)
 	}
-	if len(aliases[0].Hostnames) != 1 || aliases[0].Hostnames[0] != "kube.cluster.local" {
+	if len(aliases[0].Hostnames) != 1 || aliases[0].Hostnames[0] != testKubeClusterHost {
 		t.Fatalf("expected single hostname kube.cluster.local, got: %v", aliases[0].Hostnames)
 	}
 }
@@ -143,20 +148,20 @@ func TestK8sBuildJob_ExplicitHostAliasOverridesAutoDiscovery(t *testing.T) {
 	ku := newKubernetesUpgrade("test-upgrade", withK8sFinalizer)
 	ku.Spec.Kubernetes.Version = testK8sVersion
 	ku.Spec.Kubernetes.HostAliases = []corev1.HostAlias{
-		{IP: "192.168.99.99", Hostnames: []string{"kube.cluster.local"}},
+		{IP: testHostAliasOverride, Hostnames: []string{testKubeClusterHost}},
 	}
 
 	tc := &mockTalosClient{
-		nodeVersions: map[string]string{"10.0.0.1": "v1.10.0"},
+		nodeVersions: map[string]string{testNodeIP: testV110},
 		machineConfigs: map[string]*talosconfigresource.MachineConfig{
-			"10.0.0.1": mustMachineConfigFromYAML(t, hcloudHostnameMachineConfig),
+			testNodeIP: mustMachineConfigFromYAML(t, hcloudHostnameMachineConfig),
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku, newControllerNode(fakeCrtl, "10.0.0.1")).WithStatusSubresource(ku).Build()
+		WithObjects(ku, newControllerNode(fakeCrtl, testNodeIP)).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, &mockVersionGetter{}, tc, &mockHealthChecker{})
 
-	job, err := r.buildJob(context.Background(), ku, fakeCrtl, "10.0.0.1")
+	job, err := r.buildJob(context.Background(), ku, fakeCrtl, testNodeIP)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -165,7 +170,7 @@ func TestK8sBuildJob_ExplicitHostAliasOverridesAutoDiscovery(t *testing.T) {
 	if len(aliases) != 1 {
 		t.Fatalf("expected only the explicit hostAlias, got %d: %+v", len(aliases), aliases)
 	}
-	if aliases[0].IP != "192.168.99.99" {
+	if aliases[0].IP != testHostAliasOverride {
 		t.Fatalf("expected explicit override IP 192.168.99.99, got: %s", aliases[0].IP)
 	}
 }
@@ -175,20 +180,20 @@ func TestK8sBuildJob_ExplicitHostAliasOverrideMatchesAnyHostnameInEntry(t *testi
 	ku := newKubernetesUpgrade("test-upgrade", withK8sFinalizer)
 	ku.Spec.Kubernetes.Version = testK8sVersion
 	ku.Spec.Kubernetes.HostAliases = []corev1.HostAlias{
-		{IP: "192.168.99.99", Hostnames: []string{"other.host", "kube.cluster.local"}},
+		{IP: testHostAliasOverride, Hostnames: []string{"other.host", testKubeClusterHost}},
 	}
 
 	tc := &mockTalosClient{
-		nodeVersions: map[string]string{"10.0.0.1": "v1.10.0"},
+		nodeVersions: map[string]string{testNodeIP: testV110},
 		machineConfigs: map[string]*talosconfigresource.MachineConfig{
-			"10.0.0.1": mustMachineConfigFromYAML(t, hcloudHostnameMachineConfig),
+			testNodeIP: mustMachineConfigFromYAML(t, hcloudHostnameMachineConfig),
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku, newControllerNode(fakeCrtl, "10.0.0.1")).WithStatusSubresource(ku).Build()
+		WithObjects(ku, newControllerNode(fakeCrtl, testNodeIP)).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, &mockVersionGetter{}, tc, &mockHealthChecker{})
 
-	job, err := r.buildJob(context.Background(), ku, fakeCrtl, "10.0.0.1")
+	job, err := r.buildJob(context.Background(), ku, fakeCrtl, testNodeIP)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -197,7 +202,7 @@ func TestK8sBuildJob_ExplicitHostAliasOverrideMatchesAnyHostnameInEntry(t *testi
 	if len(aliases) != 1 {
 		t.Fatalf("expected only the explicit hostAlias when endpoint hostname is covered as a non-first entry, got %d: %+v", len(aliases), aliases)
 	}
-	if aliases[0].IP != "192.168.99.99" {
+	if aliases[0].IP != testHostAliasOverride {
 		t.Fatalf("expected explicit override IP, got: %s", aliases[0].IP)
 	}
 }
@@ -211,16 +216,16 @@ func TestK8sBuildJob_ExplicitHostAliasMergedWhenNoOverlap(t *testing.T) {
 	}
 
 	tc := &mockTalosClient{
-		nodeVersions: map[string]string{"10.0.0.1": "v1.10.0"},
+		nodeVersions: map[string]string{testNodeIP: testV110},
 		machineConfigs: map[string]*talosconfigresource.MachineConfig{
-			"10.0.0.1": mustMachineConfigFromYAML(t, hcloudHostnameMachineConfig),
+			testNodeIP: mustMachineConfigFromYAML(t, hcloudHostnameMachineConfig),
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku, newControllerNode(fakeCrtl, "10.0.0.1")).WithStatusSubresource(ku).Build()
+		WithObjects(ku, newControllerNode(fakeCrtl, testNodeIP)).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, &mockVersionGetter{}, tc, &mockHealthChecker{})
 
-	job, err := r.buildJob(context.Background(), ku, fakeCrtl, "10.0.0.1")
+	job, err := r.buildJob(context.Background(), ku, fakeCrtl, testNodeIP)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -290,16 +295,16 @@ cluster:
     endpoint: https://10.0.1.100:6443
 `
 	tc := &mockTalosClient{
-		nodeVersions: map[string]string{"10.0.0.1": "v1.10.0"},
+		nodeVersions: map[string]string{testNodeIP: testV110},
 		machineConfigs: map[string]*talosconfigresource.MachineConfig{
-			"10.0.0.1": mustMachineConfigFromYAML(t, ipLiteralConfig),
+			testNodeIP: mustMachineConfigFromYAML(t, ipLiteralConfig),
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku, newControllerNode(fakeCrtl, "10.0.0.1")).WithStatusSubresource(ku).Build()
+		WithObjects(ku, newControllerNode(fakeCrtl, testNodeIP)).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, &mockVersionGetter{}, tc, &mockHealthChecker{})
 
-	job, err := r.buildJob(context.Background(), ku, fakeCrtl, "10.0.0.1")
+	job, err := r.buildJob(context.Background(), ku, fakeCrtl, testNodeIP)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

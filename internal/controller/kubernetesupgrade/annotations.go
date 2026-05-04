@@ -64,9 +64,9 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, kubernetesUpgrad
 	}
 
 	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "Reset requested via annotation", map[string]any{
-		"jobName":   "",
-		"retries":   0,
-		"lastError": "",
+		statusFieldJobName:   "",
+		"retries":            0,
+		statusFieldLastError: "",
 	}); err != nil {
 		logger.Error(err, "Failed to reset status after annotation")
 		return false, err
@@ -88,9 +88,9 @@ func (r *Reconciler) handleGenerationChange(ctx context.Context, kubernetesUpgra
 
 	message := fmt.Sprintf("Spec updated to %s, restarting upgrade process", kubernetesUpgrade.Spec.Kubernetes.Version)
 	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", message, map[string]any{
-		"jobName":   "",
-		"retries":   0,
-		"lastError": "",
+		statusFieldJobName:   "",
+		"retries":            0,
+		statusFieldLastError: "",
 	}); err != nil {
 		return false, err
 	}

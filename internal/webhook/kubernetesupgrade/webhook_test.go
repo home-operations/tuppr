@@ -14,6 +14,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+const (
+	testNamespace      = "default"
+	testTalosConfigKey = "talosconfig"
+)
+
 func validTalosConfig() []byte {
 	return []byte(`context: default
 contexts:
@@ -30,7 +35,7 @@ func newKubernetesUpgrade(name string, opts ...func(*tupprv1alpha1.KubernetesUpg
 	ku := &tupprv1alpha1.KubernetesUpgrade{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: "default",
+			Namespace: testNamespace,
 		},
 		Spec: tupprv1alpha1.KubernetesUpgradeSpec{
 			Kubernetes: tupprv1alpha1.KubernetesSpec{
@@ -87,15 +92,15 @@ func newK8sValidator(objects ...runtime.Object) *Validator {
 
 	return &Validator{
 		Client:            c,
-		TalosConfigSecret: "talosconfig",
-		Namespace:         "default",
+		TalosConfigSecret: testTalosConfigKey,
+		Namespace:         testNamespace,
 	}
 }
 
 func talosConfigSecret(ns string, data []byte) *corev1.Secret { //nolint:unparam
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "talosconfig",
+			Name:      testTalosConfigKey,
 			Namespace: ns,
 		},
 		Data: map[string][]byte{
@@ -105,7 +110,7 @@ func talosConfigSecret(ns string, data []byte) *corev1.Secret { //nolint:unparam
 }
 
 func TestKubernetesUpgrade_ValidateCreate_ValidResource(t *testing.T) {
-	v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
+	v := newK8sValidator(talosConfigSecret(testNamespace, validTalosConfig()))
 	ku := newKubernetesUpgrade("test-upgrade")
 
 	warnings, err := v.ValidateCreate(context.Background(), ku)
@@ -138,7 +143,7 @@ func TestKubernetesUpgrade_ValidateCreate_MissingSecret(t *testing.T) {
 
 func TestKubernetesUpgrade_ValidateCreate_SecretMissingKey(t *testing.T) {
 	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "talosconfig", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: testTalosConfigKey, Namespace: testNamespace},
 		Data:       map[string][]byte{"wrong-key": validTalosConfig()},
 	}
 	v := newK8sValidator(secret)
@@ -154,7 +159,7 @@ func TestKubernetesUpgrade_ValidateCreate_SecretMissingKey(t *testing.T) {
 }
 
 func TestKubernetesUpgrade_ValidateCreate_EmptySecretData(t *testing.T) {
-	v := newK8sValidator(talosConfigSecret("default", []byte{}))
+	v := newK8sValidator(talosConfigSecret(testNamespace, []byte{}))
 	ku := newKubernetesUpgrade("test-upgrade")
 
 	_, err := v.ValidateCreate(context.Background(), ku)
@@ -167,7 +172,7 @@ func TestKubernetesUpgrade_ValidateCreate_EmptySecretData(t *testing.T) {
 }
 
 func TestKubernetesUpgrade_ValidateCreate_InvalidTalosConfig(t *testing.T) {
-	v := newK8sValidator(talosConfigSecret("default", []byte("not: valid: talosconfig: {{")))
+	v := newK8sValidator(talosConfigSecret(testNamespace, []byte("not: valid: talosconfig: {{")))
 	ku := newKubernetesUpgrade("test-upgrade")
 
 	_, err := v.ValidateCreate(context.Background(), ku)
@@ -183,7 +188,7 @@ func TestKubernetesUpgrade_ValidateCreate_NoContextsInConfig(t *testing.T) {
 	noContexts := []byte(`context: ""
 contexts: {}
 `)
-	v := newK8sValidator(talosConfigSecret("default", noContexts))
+	v := newK8sValidator(talosConfigSecret(testNamespace, noContexts))
 	ku := newKubernetesUpgrade("test-upgrade")
 
 	_, err := v.ValidateCreate(context.Background(), ku)
@@ -211,7 +216,7 @@ func TestKubernetesUpgrade_ValidateCreate_InvalidVersionFormats(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
+			v := newK8sValidator(talosConfigSecret(testNamespace, validTalosConfig()))
 			ku := newKubernetesUpgrade("test", withKubernetesVersion(tc.version))
 
 			_, err := v.ValidateCreate(context.Background(), ku)
@@ -233,7 +238,7 @@ func TestKubernetesUpgrade_ValidateCreate_ValidVersionFormats(t *testing.T) {
 
 	for _, version := range cases {
 		t.Run(version, func(t *testing.T) {
-			v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
+			v := newK8sValidator(talosConfigSecret(testNamespace, validTalosConfig()))
 			ku := newKubernetesUpgrade("test", withKubernetesVersion(version))
 
 			_, err := v.ValidateCreate(context.Background(), ku)
@@ -246,7 +251,7 @@ func TestKubernetesUpgrade_ValidateCreate_ValidVersionFormats(t *testing.T) {
 
 func TestKubernetesUpgrade_ValidateCreate_SingletonRejectsSecondResource(t *testing.T) {
 	existing := newKubernetesUpgrade("existing-upgrade")
-	v := newK8sValidator(existing, talosConfigSecret("default", validTalosConfig()))
+	v := newK8sValidator(existing, talosConfigSecret(testNamespace, validTalosConfig()))
 
 	ku := newKubernetesUpgrade("second-upgrade")
 
@@ -261,7 +266,7 @@ func TestKubernetesUpgrade_ValidateCreate_SingletonRejectsSecondResource(t *test
 
 func TestKubernetesUpgrade_ValidateUpdate_SingletonAllowsSameResource(t *testing.T) {
 	existing := newKubernetesUpgrade("my-upgrade")
-	v := newK8sValidator(existing, talosConfigSecret("default", validTalosConfig()))
+	v := newK8sValidator(existing, talosConfigSecret(testNamespace, validTalosConfig()))
 
 	old := newKubernetesUpgrade("my-upgrade")
 	updated := newKubernetesUpgrade("my-upgrade", withKubernetesVersion("v1.35.0"))
@@ -279,7 +284,7 @@ func TestKubernetesUpgrade_ValidateUpdate_RejectsSpecChangeWhileInProgress(t *te
 		withKubernetesVersion("v1.35.0"),
 	)
 
-	v := newK8sValidator(old, talosConfigSecret("default", validTalosConfig()))
+	v := newK8sValidator(old, talosConfigSecret(testNamespace, validTalosConfig()))
 
 	_, err := v.ValidateUpdate(context.Background(), old, updated)
 	if err == nil {
@@ -294,7 +299,7 @@ func TestKubernetesUpgrade_ValidateUpdate_AllowsNoSpecChangeWhileInProgress(t *t
 	old := newKubernetesUpgrade("test", withK8sPhase(tupprv1alpha1.JobPhaseUpgrading))
 	updated := newKubernetesUpgrade("test", withK8sPhase(tupprv1alpha1.JobPhaseUpgrading))
 
-	v := newK8sValidator(old, talosConfigSecret("default", validTalosConfig()))
+	v := newK8sValidator(old, talosConfigSecret(testNamespace, validTalosConfig()))
 
 	_, err := v.ValidateUpdate(context.Background(), old, updated)
 	if err != nil {
@@ -308,7 +313,7 @@ func TestKubernetesUpgrade_ValidateUpdate_AllowsSpecChangeWhenNotInProgress(t *t
 			old := newKubernetesUpgrade("test", withK8sPhase(phase))
 			updated := newKubernetesUpgrade("test", withK8sPhase(phase), withKubernetesVersion("v1.35.0"))
 
-			v := newK8sValidator(old, talosConfigSecret("default", validTalosConfig()))
+			v := newK8sValidator(old, talosConfigSecret(testNamespace, validTalosConfig()))
 
 			_, err := v.ValidateUpdate(context.Background(), old, updated)
 			if err != nil {
@@ -359,7 +364,7 @@ func TestKubernetesUpgrade_ValidateCreate_HealthCheckValidation(t *testing.T) {
 	}
 
 	t.Run("valid health check", func(t *testing.T) {
-		v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
+		v := newK8sValidator(talosConfigSecret(testNamespace, validTalosConfig()))
 		ku := newKubernetesUpgrade("test", withK8sHealthChecks(validCheck))
 
 		_, err := v.ValidateCreate(context.Background(), ku)
@@ -371,7 +376,7 @@ func TestKubernetesUpgrade_ValidateCreate_HealthCheckValidation(t *testing.T) {
 	t.Run("empty apiVersion", func(t *testing.T) {
 		check := validCheck
 		check.APIVersion = ""
-		v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
+		v := newK8sValidator(talosConfigSecret(testNamespace, validTalosConfig()))
 		ku := newKubernetesUpgrade("test", withK8sHealthChecks(check))
 
 		_, err := v.ValidateCreate(context.Background(), ku)
@@ -383,7 +388,7 @@ func TestKubernetesUpgrade_ValidateCreate_HealthCheckValidation(t *testing.T) {
 	t.Run("empty kind", func(t *testing.T) {
 		check := validCheck
 		check.Kind = ""
-		v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
+		v := newK8sValidator(talosConfigSecret(testNamespace, validTalosConfig()))
 		ku := newKubernetesUpgrade("test", withK8sHealthChecks(check))
 
 		_, err := v.ValidateCreate(context.Background(), ku)
@@ -395,7 +400,7 @@ func TestKubernetesUpgrade_ValidateCreate_HealthCheckValidation(t *testing.T) {
 	t.Run("empty expr", func(t *testing.T) {
 		check := validCheck
 		check.Expr = ""
-		v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
+		v := newK8sValidator(talosConfigSecret(testNamespace, validTalosConfig()))
 		ku := newKubernetesUpgrade("test", withK8sHealthChecks(check))
 
 		_, err := v.ValidateCreate(context.Background(), ku)
@@ -408,7 +413,7 @@ func TestKubernetesUpgrade_ValidateCreate_HealthCheckValidation(t *testing.T) {
 		check := validCheck
 		d := metav1.Duration{Duration: -1 * time.Second}
 		check.Timeout = &d
-		v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
+		v := newK8sValidator(talosConfigSecret(testNamespace, validTalosConfig()))
 		ku := newKubernetesUpgrade("test", withK8sHealthChecks(check))
 
 		_, err := v.ValidateCreate(context.Background(), ku)
@@ -420,7 +425,7 @@ func TestKubernetesUpgrade_ValidateCreate_HealthCheckValidation(t *testing.T) {
 
 func TestKubernetesUpgrade_ValidateCreate_TalosctlImagePartialSpec(t *testing.T) {
 	t.Run("tag without repo", func(t *testing.T) {
-		v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
+		v := newK8sValidator(talosConfigSecret(testNamespace, validTalosConfig()))
 		ku := newKubernetesUpgrade("test", withK8sTalosctlImage("", "v1.11.0"))
 
 		_, err := v.ValidateCreate(context.Background(), ku)
@@ -430,7 +435,7 @@ func TestKubernetesUpgrade_ValidateCreate_TalosctlImagePartialSpec(t *testing.T)
 	})
 
 	t.Run("both specified", func(t *testing.T) {
-		v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
+		v := newK8sValidator(talosConfigSecret(testNamespace, validTalosConfig()))
 		ku := newKubernetesUpgrade("test", withK8sTalosctlImage("ghcr.io/custom/talosctl", "v1.11.0"))
 
 		_, err := v.ValidateCreate(context.Background(), ku)
@@ -441,7 +446,7 @@ func TestKubernetesUpgrade_ValidateCreate_TalosctlImagePartialSpec(t *testing.T)
 }
 
 func TestKubernetesUpgrade_ValidateCreate_InvalidPullPolicy(t *testing.T) {
-	v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
+	v := newK8sValidator(talosConfigSecret(testNamespace, validTalosConfig()))
 	ku := newKubernetesUpgrade("test", withK8sPullPolicy(corev1.PullPolicy("BadPolicy")))
 
 	_, err := v.ValidateCreate(context.Background(), ku)
@@ -454,7 +459,7 @@ func TestKubernetesUpgrade_ValidateCreate_InvalidPullPolicy(t *testing.T) {
 }
 
 func TestKubernetesUpgrade_Warnings_PreReleaseVersion(t *testing.T) {
-	v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
+	v := newK8sValidator(talosConfigSecret(testNamespace, validTalosConfig()))
 	ku := newKubernetesUpgrade("test", withKubernetesVersion("v1.34.0-rc.1"))
 
 	warnings, err := v.ValidateCreate(context.Background(), ku)
@@ -472,7 +477,7 @@ func TestKubernetesUpgrade_Warnings_HealthCheckNoTimeout(t *testing.T) {
 		Kind:       "Deployment",
 		Expr:       "true",
 	}
-	v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
+	v := newK8sValidator(talosConfigSecret(testNamespace, validTalosConfig()))
 	ku := newKubernetesUpgrade("test", withK8sHealthChecks(check))
 
 	warnings, err := v.ValidateCreate(context.Background(), ku)
@@ -494,7 +499,7 @@ func containsWarning(warnings []string, substr string) bool {
 }
 
 func TestKubernetesUpgrade_ValidateCreate_MaintenanceWindowValid(t *testing.T) {
-	v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
+	v := newK8sValidator(talosConfigSecret(testNamespace, validTalosConfig()))
 	ku := newKubernetesUpgrade("test", func(ku *tupprv1alpha1.KubernetesUpgrade) {
 		ku.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{
@@ -520,7 +525,7 @@ func TestKubernetesUpgrade_ValidateCreate_MaintenanceWindowValid(t *testing.T) {
 }
 
 func TestKubernetesUpgrade_ValidateCreate_MaintenanceWindowInvalidTimezone(t *testing.T) {
-	v := newK8sValidator(talosConfigSecret("default", validTalosConfig()))
+	v := newK8sValidator(talosConfigSecret(testNamespace, validTalosConfig()))
 	ku := newKubernetesUpgrade("test", func(ku *tupprv1alpha1.KubernetesUpgrade) {
 		ku.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{

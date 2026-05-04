@@ -64,17 +64,17 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 		mockTalos = getMockTalosClient()
 		mockTalos.Reset()
 
-		testNode = createTestNode("drain-test-node", "10.0.0.20")
+		testNode = createTestNode(testDrainTestNode, "10.0.0.20")
 		Expect(k8sClient.Create(ctx, testNode)).To(Succeed())
 
 		// Create a test pod on the node
 		testPod = &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "drain-test-pod",
-				Namespace: "default",
+				Name:      testDrainTestPod,
+				Namespace: testNamespaceDef,
 			},
 			Spec: corev1.PodSpec{
-				NodeName: "drain-test-node",
+				NodeName: testDrainTestNode,
 				Containers: []corev1.Container{
 					{
 						Name:  "test",
@@ -115,7 +115,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 		// Force delete the test pod if it still exists (it may have been evicted during drain)
 		By("force deleting test pod if it still exists")
 		pod := &corev1.Pod{}
-		err := k8sClient.Get(ctx, types.NamespacedName{Name: "drain-test-pod", Namespace: "default"}, pod)
+		err := k8sClient.Get(ctx, types.NamespacedName{Name: testDrainTestPod, Namespace: testNamespaceDef}, pod)
 		if err == nil {
 			// Pod still exists, force delete it
 			_ = k8sClient.Delete(ctx, pod, client.GracePeriodSeconds(0))
@@ -123,7 +123,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 
 		// Also clean up any daemonset pod that might have been created
 		dsPod := &corev1.Pod{}
-		err = k8sClient.Get(ctx, types.NamespacedName{Name: "daemonset-pod", Namespace: "default"}, dsPod)
+		err = k8sClient.Get(ctx, types.NamespacedName{Name: "daemonset-pod", Namespace: testNamespaceDef}, dsPod)
 		if err == nil {
 			_ = k8sClient.Delete(ctx, dsPod, client.GracePeriodSeconds(0))
 		}
@@ -131,7 +131,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 		// Wait for test pod to be fully deleted before next test
 		By("waiting for test pod to be fully deleted")
 		Eventually(func() bool {
-			err := k8sClient.Get(ctx, types.NamespacedName{Name: "drain-test-pod", Namespace: "default"}, &corev1.Pod{})
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: testDrainTestPod, Namespace: testNamespaceDef}, &corev1.Pod{})
 			return err != nil
 		}, 10*time.Second, 500*time.Millisecond).Should(BeTrue())
 	})
@@ -145,7 +145,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 				},
 				Spec: tupprv1alpha1.TalosUpgradeSpec{
 					Talos: tupprv1alpha1.TalosSpec{
-						Version: "v1.11.0",
+						Version: testTalosV111,
 					},
 					Drain: &tupprv1alpha1.DrainSpec{
 						Force: ptr.To(true),
@@ -164,7 +164,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 			By("verifying node gets cordoned before upgrade job starts")
 			Eventually(func(g Gomega) {
 				var node corev1.Node
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "drain-test-node"}, &node)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testDrainTestNode}, &node)
 				g.Expect(err).NotTo(HaveOccurred())
 				// Node should eventually be cordoned
 				g.Expect(node.Spec.Unschedulable).To(BeTrue())
@@ -182,7 +182,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 				},
 				Spec: tupprv1alpha1.TalosUpgradeSpec{
 					Talos: tupprv1alpha1.TalosSpec{
-						Version: "v1.11.0",
+						Version: testTalosV111,
 					},
 					Drain: &tupprv1alpha1.DrainSpec{
 						Force: ptr.To(true),
@@ -201,13 +201,13 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 			By("waiting for job to be created and drain to occur")
 			Eventually(func(g Gomega) {
 				var node corev1.Node
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "drain-test-node"}, &node)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testDrainTestNode}, &node)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(node.Spec.Unschedulable).To(BeTrue())
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 			By("simulating node version update to match target")
-			mockTalos.SetNodeVersion("10.0.0.20", "v1.11.0")
+			mockTalos.SetNodeVersion("10.0.0.20", testTalosV111)
 
 			// Wait for the job to be created first
 			var jobName string
@@ -216,7 +216,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 				err := k8sClient.List(ctx, jobList, client.InNamespace("tuppr-system"))
 				g.Expect(err).NotTo(HaveOccurred())
 				for _, job := range jobList.Items {
-					if job.Labels["tuppr.home-operations.com/target-node"] == "drain-test-node" {
+					if job.Labels["tuppr.home-operations.com/target-node"] == testDrainTestNode {
 						jobName = job.Name
 						break
 					}
@@ -230,7 +230,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 			By("waiting for node to be uncordoned after upgrade")
 			Eventually(func(g Gomega) {
 				var node corev1.Node
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "drain-test-node"}, &node)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testDrainTestNode}, &node)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(node.Spec.Unschedulable).To(BeFalse())
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
@@ -247,7 +247,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 				},
 				Spec: tupprv1alpha1.TalosUpgradeSpec{
 					Talos: tupprv1alpha1.TalosSpec{
-						Version: "v1.11.0",
+						Version: testTalosV111,
 					},
 					Drain: &tupprv1alpha1.DrainSpec{
 						DisableEviction: ptr.To(true),
@@ -266,7 +266,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 			By("verifying node gets cordoned")
 			Eventually(func(g Gomega) {
 				var node corev1.Node
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "drain-test-node"}, &node)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testDrainTestNode}, &node)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(node.Spec.Unschedulable).To(BeTrue())
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
@@ -281,11 +281,11 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 			By("creating a TalosUpgrade without drain spec")
 			talosUpgrade := &tupprv1alpha1.TalosUpgrade{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "no-drain-test",
+					Name: testNoDrainTest,
 				},
 				Spec: tupprv1alpha1.TalosUpgradeSpec{
 					Talos: tupprv1alpha1.TalosSpec{
-						Version: "v1.11.0",
+						Version: testTalosV111,
 					},
 					// No Drain spec set
 				},
@@ -294,24 +294,24 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 
 			By("waiting for finalizer and initial status")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "no-drain-test"}, talosUpgrade)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testNoDrainTest}, talosUpgrade)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(talosUpgrade.Finalizers).To(ContainElement("tuppr.home-operations.com/talos-finalizer"))
 			}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
 
 			By("simulating node version update to match target")
-			mockTalos.SetNodeVersion("10.0.0.20", "v1.11.0")
+			mockTalos.SetNodeVersion("10.0.0.20", testTalosV111)
 
 			By("waiting for job to be created")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "no-drain-test"}, talosUpgrade)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testNoDrainTest}, talosUpgrade)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(talosUpgrade.Status.CurrentNode).To(Equal("drain-test-node"))
+				g.Expect(talosUpgrade.Status.CurrentNode).To(Equal(testDrainTestNode))
 			}, 30*time.Second, 100*time.Millisecond).Should(Succeed())
 
 			By("verifying node is NOT cordoned (remains schedulable)")
 			var node corev1.Node
-			err := k8sClient.Get(ctx, types.NamespacedName{Name: "drain-test-node"}, &node)
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: testDrainTestNode}, &node)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(node.Spec.Unschedulable).To(BeFalse())
 
@@ -326,7 +326,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 			daemonSetPod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "daemonset-pod",
-					Namespace: "default",
+					Namespace: testNamespaceDef,
 					OwnerReferences: []metav1.OwnerReference{
 						{
 							APIVersion: "apps/v1",
@@ -337,7 +337,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 					},
 				},
 				Spec: corev1.PodSpec{
-					NodeName: "drain-test-node",
+					NodeName: testDrainTestNode,
 					Containers: []corev1.Container{
 						{
 							Name:  "test",
@@ -355,7 +355,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 				},
 				Spec: tupprv1alpha1.TalosUpgradeSpec{
 					Talos: tupprv1alpha1.TalosSpec{
-						Version: "v1.11.0",
+						Version: testTalosV111,
 					},
 					Drain: &tupprv1alpha1.DrainSpec{
 						Force: ptr.To(true),
@@ -374,7 +374,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 			By("waiting for job to be created and drain to occur")
 			Eventually(func(g Gomega) {
 				var node corev1.Node
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "drain-test-node"}, &node)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testDrainTestNode}, &node)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(node.Spec.Unschedulable).To(BeTrue())
 			}, 30*time.Second, 1*time.Second).Should(Succeed())

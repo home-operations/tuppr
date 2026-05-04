@@ -35,6 +35,17 @@ const (
 	KubernetesJobTTLAfterFinished = 300
 )
 
+const (
+	appLabelKey               = "app.kubernetes.io/name"
+	kubernetesUpgradeAppName  = "kubernetes-upgrade"
+	statusFieldJobName        = "jobName"
+	statusFieldCurrentVersion = "currentVersion"
+	statusFieldTargetVersion  = "targetVersion"
+	statusFieldLastError      = "lastError"
+	targetNodeLabelKey        = "tuppr.home-operations.com/target-node"
+	upgradeK8sCommand         = "upgrade-k8s"
+)
+
 // TalosClient defines the interface for Talos operations
 type TalosClient interface {
 	GetNodeVersion(ctx context.Context, nodeIP string) (string, error)

@@ -19,6 +19,8 @@ import (
 
 var taloslog = logf.Log.WithName("talos-resource")
 
+const rebootModeDefault = "default"
+
 // Validator validates Talos resources
 type Validator struct {
 	Client            client.Client
@@ -84,7 +86,7 @@ func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade)
 	}
 
 	// Validate Policy
-	if t.Spec.Policy.RebootMode != "" && t.Spec.Policy.RebootMode != "default" && t.Spec.Policy.RebootMode != "powercycle" {
+	if t.Spec.Policy.RebootMode != "" && t.Spec.Policy.RebootMode != rebootModeDefault && t.Spec.Policy.RebootMode != "powercycle" {
 		return warnings, fmt.Errorf("invalid rebootMode '%s'", t.Spec.Policy.RebootMode)
 	}
 	if t.Spec.Policy.Placement != "" && t.Spec.Policy.Placement != "hard" && t.Spec.Policy.Placement != "soft" {

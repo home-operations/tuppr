@@ -11,6 +11,8 @@ import (
 	"github.com/home-operations/tuppr/internal/constants"
 )
 
+const upgradingLabelValue = "true"
+
 // addNodeUpgradingLabel adds the upgrading label to a node
 func (r *Reconciler) addNodeUpgradingLabel(ctx context.Context, nodeName string) error {
 	node := &corev1.Node{}
@@ -22,11 +24,11 @@ func (r *Reconciler) addNodeUpgradingLabel(ctx context.Context, nodeName string)
 		node.Labels = make(map[string]string)
 	}
 
-	if node.Labels[constants.NodeUpgradingLabel] == "true" {
+	if node.Labels[constants.NodeUpgradingLabel] == upgradingLabelValue {
 		return nil
 	}
 
-	node.Labels[constants.NodeUpgradingLabel] = "true"
+	node.Labels[constants.NodeUpgradingLabel] = upgradingLabelValue
 	if err := r.Update(ctx, node); err != nil {
 		return fmt.Errorf("failed to add upgrading label to node %s: %w", nodeName, err)
 	}

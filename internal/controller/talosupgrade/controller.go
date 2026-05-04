@@ -37,6 +37,19 @@ const (
 	PlacementSoft                = "soft"
 )
 
+const (
+	appLabelKey          = "app.kubernetes.io/name"
+	appInstanceLabelKey  = "app.kubernetes.io/instance"
+	appPartOfLabelKey    = "app.kubernetes.io/part-of"
+	appPartOfTuppr       = "tuppr"
+	targetNodeLabelKey   = "tuppr.home-operations.com/target-node"
+	talosUpgradeAppName  = "talos-upgrade"
+	statusCompletedNodes = "completedNodes"
+	statusFailedNodes    = "failedNodes"
+	statusPreHookFailed  = "preHookFailed"
+	statusPreHookIndex   = "preHookIndex"
+)
+
 // TalosClient defines the interface for Talos operations
 type TalosClient interface {
 	GetNodeVersion(ctx context.Context, nodeIP string) (string, error)
@@ -241,7 +254,7 @@ func (r *Reconciler) recordPhaseTransition(talosUpgrade *tupprv1alpha1.TalosUpgr
 func (r *Reconciler) addCompletedNode(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) error {
 	talosUpgrade.Status.CompletedNodes = append(talosUpgrade.Status.CompletedNodes, nodeName)
 	return r.updateStatus(ctx, talosUpgrade, map[string]any{
-		"completedNodes": talosUpgrade.Status.CompletedNodes,
+		statusCompletedNodes: talosUpgrade.Status.CompletedNodes,
 	})
 }
 
@@ -256,7 +269,7 @@ func getParallelism(spec tupprv1alpha1.TalosUpgradeSpec) int {
 func (r *Reconciler) addFailedNode(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeStatus tupprv1alpha1.NodeUpgradeStatus) error {
 	talosUpgrade.Status.FailedNodes = append(talosUpgrade.Status.FailedNodes, nodeStatus)
 	return r.updateStatus(ctx, talosUpgrade, map[string]any{
-		"failedNodes": talosUpgrade.Status.FailedNodes,
+		statusFailedNodes: talosUpgrade.Status.FailedNodes,
 	})
 }
 

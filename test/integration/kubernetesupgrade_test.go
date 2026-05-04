@@ -66,7 +66,7 @@ var _ = Describe("KubernetesUpgrade Integration", func() {
 	Context("K8s upgrade lifecycle", func() {
 		It("should handle a basic Kubernetes upgrade", func() {
 			By("configuring talos version for the node")
-			mockTalos.SetNodeVersion("10.0.0.20", "v1.33.0")
+			mockTalos.SetNodeVersion("10.0.0.20", testK8sVersionV1330)
 
 			By("creating a KubernetesUpgrade resource")
 			k8sUpgrade := &tupprv1alpha1.KubernetesUpgrade{
@@ -75,7 +75,7 @@ var _ = Describe("KubernetesUpgrade Integration", func() {
 				},
 				Spec: tupprv1alpha1.KubernetesUpgradeSpec{
 					Kubernetes: tupprv1alpha1.KubernetesSpec{
-						Version: "v1.34.0",
+						Version: testK8sVersionV1340,
 					},
 				},
 			}
@@ -105,7 +105,7 @@ var _ = Describe("KubernetesUpgrade Integration", func() {
 				},
 				Spec: tupprv1alpha1.KubernetesUpgradeSpec{
 					Kubernetes: tupprv1alpha1.KubernetesSpec{
-						Version: "v1.34.0",
+						Version: testK8sVersionV1340,
 					},
 				},
 			}
@@ -127,11 +127,11 @@ var _ = Describe("KubernetesUpgrade Integration", func() {
 		It("should add finalizer on creation", func() {
 			k8sUpgrade := &tupprv1alpha1.KubernetesUpgrade{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "k8s-finalizer-test",
+					Name: testK8sFinalizer,
 				},
 				Spec: tupprv1alpha1.KubernetesUpgradeSpec{
 					Kubernetes: tupprv1alpha1.KubernetesSpec{
-						Version: "v1.34.0",
+						Version: testK8sVersionV1340,
 					},
 				},
 			}
@@ -139,7 +139,7 @@ var _ = Describe("KubernetesUpgrade Integration", func() {
 
 			By("verifying finalizer is added")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "k8s-finalizer-test"}, k8sUpgrade)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testK8sFinalizer}, k8sUpgrade)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(k8sUpgrade.Finalizers).To(ContainElement("tuppr.home-operations.com/kubernetes-finalizer"))
 			}, 10*time.Second, 500*time.Millisecond).Should(Succeed())
@@ -149,7 +149,7 @@ var _ = Describe("KubernetesUpgrade Integration", func() {
 
 			By("verifying resource is eventually deleted")
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "k8s-finalizer-test"}, k8sUpgrade)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testK8sFinalizer}, k8sUpgrade)
 				return err != nil
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
 		})
@@ -163,7 +163,7 @@ var _ = Describe("KubernetesUpgrade Integration", func() {
 				},
 				Spec: tupprv1alpha1.KubernetesUpgradeSpec{
 					Kubernetes: tupprv1alpha1.KubernetesSpec{
-						Version: "v1.34.0",
+						Version: testK8sVersionV1340,
 					},
 				},
 			}
@@ -189,7 +189,7 @@ var _ = Describe("KubernetesUpgrade Integration", func() {
 				},
 				Spec: tupprv1alpha1.KubernetesUpgradeSpec{
 					Kubernetes: tupprv1alpha1.KubernetesSpec{
-						Version: "v1.33.0", // Matches mock version
+						Version: testK8sVersionV1330, // Matches mock version
 					},
 				},
 			}

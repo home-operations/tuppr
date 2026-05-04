@@ -26,6 +26,24 @@ import (
 	"github.com/home-operations/tuppr/internal/controller/talosupgrade"
 )
 
+const (
+	testTupprNS         = "tuppr-system"
+	testTupprSecret     = "tuppr"
+	testK8sVersionV1330 = "v1.33.0"
+	testK8sVersionV1340 = "v1.34.0"
+	testTalosV111       = "v1.11.0"
+	testNamespaceDef    = "default"
+	testDrainTestNode   = "drain-test-node"
+	testNoDrainTest     = "no-drain-test"
+	testFinalizerTest   = "finalizer-test"
+	testK8sFinalizer    = "k8s-finalizer-test"
+	testBatchTest       = "batch-test"
+	testNodeName        = "test-node"
+	testDrainTestPod    = "drain-test-pod"
+	testTalosUpgrade    = "talos-upgrade"
+	testAppLabelKey     = "app.kubernetes.io/name"
+)
+
 var (
 	cfg              *rest.Config
 	k8sClient        client.Client
@@ -98,15 +116,15 @@ var _ = BeforeSuite(func() {
 	By("creating test namespace and talosconfig secret")
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "tuppr-system",
+			Name: testTupprNS,
 		},
 	}
 	Expect(k8sClient.Create(ctx, ns)).To(Succeed())
 
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "tuppr",
-			Namespace: "tuppr-system",
+			Name:      testTupprSecret,
+			Namespace: testTupprNS,
 		},
 		Data: map[string][]byte{
 			constants.TalosSecretKey: []byte(validTalosConfig()),
@@ -120,7 +138,7 @@ var _ = BeforeSuite(func() {
 		installImages: make(map[string]string),
 	}
 	sharedMockHealth = &mockHealthChecker{}
-	sharedMockVersion = &mockVersionGetter{version: "v1.33.0"}
+	sharedMockVersion = &mockVersionGetter{version: testK8sVersionV1330}
 
 	mockTalos := sharedMockTalos
 	mockHealth := sharedMockHealth
@@ -130,8 +148,8 @@ var _ = BeforeSuite(func() {
 	talosReconciler := &talosupgrade.Reconciler{
 		Client:              k8sManager.GetClient(),
 		Scheme:              k8sManager.GetScheme(),
-		TalosConfigSecret:   "tuppr",
-		ControllerNamespace: "tuppr-system",
+		TalosConfigSecret:   testTupprSecret,
+		ControllerNamespace: testTupprNS,
 		TalosClient:         mockTalos,
 		HealthChecker:       mockHealth,
 	}
@@ -142,8 +160,8 @@ var _ = BeforeSuite(func() {
 	k8sReconciler := &kubernetesupgrade.Reconciler{
 		Client:              k8sManager.GetClient(),
 		Scheme:              k8sManager.GetScheme(),
-		TalosConfigSecret:   "tuppr",
-		ControllerNamespace: "tuppr-system",
+		TalosConfigSecret:   testTupprSecret,
+		ControllerNamespace: testTupprNS,
 		TalosClient:         mockTalos,
 		HealthChecker:       mockHealth,
 		VersionGetter:       mockVersion,

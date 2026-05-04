@@ -80,9 +80,9 @@ func (r *Reconciler) findActiveHookJob(ctx context.Context, tu *tupprv1alpha1.Ta
 	if err := r.List(ctx, jobList,
 		client.InNamespace(r.ControllerNamespace),
 		client.MatchingLabels{
-			"app.kubernetes.io/name":     hookJobAppName,
-			"app.kubernetes.io/instance": tu.Name,
-			hookPhaseLabel:               phase,
+			appLabelKey:         hookJobAppName,
+			appInstanceLabelKey: tu.Name,
+			hookPhaseLabel:      phase,
 		},
 	); err != nil {
 		return nil, fmt.Errorf("list hook jobs for %s/%s: %w", tu.Name, phase, err)
@@ -167,7 +167,7 @@ func (r *Reconciler) handleHookJobStatus(ctx context.Context, tu *tupprv1alpha1.
 func (r *Reconciler) advanceHookIndex(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade, phase string, next int) error {
 	updates := map[string]any{}
 	if phase == hookPhasePre {
-		updates["preHookIndex"] = next
+		updates[statusPreHookIndex] = next
 		tu.Status.PreHookIndex = next
 	} else {
 		updates["postHookIndex"] = next
@@ -178,8 +178,8 @@ func (r *Reconciler) advanceHookIndex(ctx context.Context, tu *tupprv1alpha1.Tal
 
 func (r *Reconciler) failPreHook(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade, total int) error {
 	updates := map[string]any{
-		"preHookFailed": true,
-		"preHookIndex":  total,
+		statusPreHookFailed: true,
+		statusPreHookIndex:  total,
 	}
 	tu.Status.PreHookFailed = true
 	tu.Status.PreHookIndex = total
@@ -190,12 +190,12 @@ func (r *Reconciler) buildHookJob(tu *tupprv1alpha1.TalosUpgrade, hook tupprv1al
 	jobName := nodeutil.GenerateSafeJobName(fmt.Sprintf("%s-%s-hook", tu.Name, phase), hook.Name)
 
 	labels := map[string]string{
-		"app.kubernetes.io/name":     hookJobAppName,
-		"app.kubernetes.io/instance": tu.Name,
-		"app.kubernetes.io/part-of":  "tuppr",
-		hookPhaseLabel:               phase,
-		hookNameLabel:                hook.Name,
-		hookIndexLabel:               fmt.Sprintf("%d", idx),
+		appLabelKey:         hookJobAppName,
+		appInstanceLabelKey: tu.Name,
+		appPartOfLabelKey:   appPartOfTuppr,
+		hookPhaseLabel:      phase,
+		hookNameLabel:       hook.Name,
+		hookIndexLabel:      fmt.Sprintf("%d", idx),
 	}
 
 	activeDeadline := hookJobActiveDeadline

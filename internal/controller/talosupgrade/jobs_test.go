@@ -15,6 +15,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+const (
+	testTimeoutErr = "timeout"
+	testV110Talos  = "v1.10.0"
+	testV121       = "v1.12.1"
+)
+
 func TestIsTransientError(t *testing.T) {
 	tests := []struct {
 		name string
@@ -63,12 +69,12 @@ func TestIsTransientError(t *testing.T) {
 		},
 		{
 			name: "network timeout error is transient",
-			err:  &net.OpError{Op: "dial", Err: &net.DNSError{Err: "timeout", IsTimeout: true}},
+			err:  &net.OpError{Op: "dial", Err: &net.DNSError{Err: testTimeoutErr, IsTimeout: true}},
 			want: true,
 		},
 		{
 			name: "network timeout with timeout=true is transient",
-			err:  &net.OpError{Op: "read", Err: &net.DNSError{Err: "timeout", IsTimeout: true}},
+			err:  &net.OpError{Op: "read", Err: &net.DNSError{Err: testTimeoutErr, IsTimeout: true}},
 			want: true,
 		},
 		{
@@ -197,14 +203,14 @@ func TestIsNodeReady(t *testing.T) {
 func TestCreateJob_SendsNotification(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade", withFinalizer)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node).
 		Build()
 
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{
-		nodeVersions: map[string]string{"10.0.0.1": "v1.10.0"},
+		nodeVersions: map[string]string{testNodeIP1: testV110Talos},
 	}, &mockHealthChecker{})
 	notifier := &mockNotifier{}
 	r.Notifier = notifier
@@ -233,9 +239,9 @@ func TestCreateJob_SendsNotification(t *testing.T) {
 func TestCreateJob_SendsNotification_WithVersionOverride(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade", withFinalizer)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.VersionAnnotation: "v1.12.1",
+		constants.VersionAnnotation: testV121,
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -243,7 +249,7 @@ func TestCreateJob_SendsNotification_WithVersionOverride(t *testing.T) {
 		Build()
 
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{
-		nodeVersions: map[string]string{"10.0.0.1": "v1.10.0"},
+		nodeVersions: map[string]string{testNodeIP1: testV110Talos},
 	}, &mockHealthChecker{})
 	notifier := &mockNotifier{}
 	r.Notifier = notifier
@@ -267,7 +273,7 @@ func TestCreateJob_SendsNotification_WithVersionOverride(t *testing.T) {
 func TestCreateJob_NotifierErrorDoesNotFailJobCreation(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade", withFinalizer)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node).
@@ -294,7 +300,7 @@ func TestCreateJob_NotifierErrorDoesNotFailJobCreation(t *testing.T) {
 func TestCreateJob_SendsFallbackMessage_WhenCurrentVersionLookupFails(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade("test-upgrade", withFinalizer)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node).

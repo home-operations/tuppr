@@ -11,6 +11,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+const (
+	testCephImage = "ceph/ceph:v17"
+	testCephCmd   = "ceph"
+	testCephx     = "cephx"
+	testV111      = "v1.11.0"
+)
+
 func withHooks(pre, post []tupprv1alpha1.HookSpec) func(*tupprv1alpha1.TalosUpgrade) {
 	return func(tu *tupprv1alpha1.TalosUpgrade) {
 		tu.Spec.Hooks = &tupprv1alpha1.HooksSpec{Pre: pre, Post: post}
@@ -20,8 +27,8 @@ func withHooks(pre, post []tupprv1alpha1.HookSpec) func(*tupprv1alpha1.TalosUpgr
 func cephNoutHook(name, action string) tupprv1alpha1.HookSpec {
 	return tupprv1alpha1.HookSpec{
 		Name:    name,
-		Image:   "ceph/ceph:v17",
-		Command: []string{"ceph"},
+		Image:   testCephImage,
+		Command: []string{testCephCmd},
 		Args:    []string{"osd", action, "noout"},
 	}
 }
@@ -71,17 +78,17 @@ func TestBuildHookJob_PodSpecShape(t *testing.T) {
 	tu := newTalosUpgrade("tu", withFinalizer)
 	hook := tupprv1alpha1.HookSpec{
 		Name:    "set-noout",
-		Image:   "ceph/ceph:v17",
-		Command: []string{"ceph"},
+		Image:   testCephImage,
+		Command: []string{testCephCmd},
 		Args:    []string{"osd", "set", "noout"},
 		Env: []corev1.EnvVar{
 			{Name: "CEPH_USER", Value: "admin"},
 		},
 		VolumeMounts: []corev1.VolumeMount{
-			{Name: "cephx", MountPath: "/etc/ceph", ReadOnly: true},
+			{Name: testCephx, MountPath: "/etc/ceph", ReadOnly: true},
 		},
 		Volumes: []corev1.Volume{{
-			Name: "cephx",
+			Name: testCephx,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{SecretName: "ceph-client-admin"},
 			},
@@ -223,10 +230,10 @@ func TestNoHooks_NoHookJobs(t *testing.T) {
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{"10.0.0.1": "v1.11.0"},
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer:v1.11.0"},
+		nodeVersions:  map[string]string{testNodeIP1: testV111},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/installer:v1.11.0"},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node).WithStatusSubresource(tu).Build()

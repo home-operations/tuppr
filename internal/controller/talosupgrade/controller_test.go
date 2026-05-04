@@ -32,6 +32,27 @@ const (
 	fakeNodeC = "node-c"
 
 	fakeTalosVersion = "v1.12.0"
+
+	testNamespace        = "default"
+	testNodeIP1          = "10.0.0.1"
+	testNodeIP2          = "10.0.0.2"
+	testNodeIP3          = "10.0.0.3"
+	testCustomSchematic  = "custom-schematic-id"
+	testFactoryInstaller = "factory.talos.dev/installer:v1.10.0"
+	testInstallerV111    = "ghcr.io/siderolabs/installer:v1.11.0"
+	testCronEvery2       = "0 2 * * *"
+	testTimezoneUTC      = "UTC"
+	testSchematicABC     = "abc123"
+	testLabelTier        = "tier"
+	testLabelBackend     = "backend"
+	testNodeAlpha        = "node-alpha"
+	testNodeBeta         = "node-beta"
+	testNodeCharlie      = "node-charlie"
+	testJobName1         = "test-upgrade-node-1-abcd1234"
+	testJobNodeA         = "job-node-a"
+	testUpgradeName      = "test-upgrade"
+	testNameStr          = "test"
+	testInstallerABC     = "factory.talos.dev/installer/abc:v1.10.0"
 )
 
 type mockTalosClient struct {
@@ -210,7 +231,7 @@ func newTalosReconciler(cl client.Client, scheme *runtime.Scheme, talosClient Ta
 		Client:              cl,
 		Scheme:              scheme,
 		TalosConfigSecret:   "test-talosconfig",
-		ControllerNamespace: "default",
+		ControllerNamespace: testNamespace,
 		TalosClient:         talosClient,
 		HealthChecker:       healthChecker,
 		MetricsReporter:     metrics.NewReporter(),
@@ -241,14 +262,14 @@ func reconcileTalos(t *testing.T, r *Reconciler, name string) ctrl.Result { //no
 
 func TestTalosReconcile_AddsFinalizer(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade")
+	tu := newTalosUpgrade(testUpgradeName)
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
 
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if !controllerutil.ContainsFinalizer(updated, TalosUpgradeFinalizer) {
 		t.Fatal("expected finalizer to be added")
 	}
@@ -256,7 +277,7 @@ func TestTalosReconcile_AddsFinalizer(t *testing.T) {
 
 func TestTalosReconcile_SuspendAnnotation(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withAnnotation(constants.SuspendAnnotation, "maintenance window"),
 	)
@@ -264,12 +285,12 @@ func TestTalosReconcile_SuspendAnnotation(t *testing.T) {
 		WithObjects(tu).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != 30*time.Minute {
 		t.Fatalf("expected 30m requeue, got: %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase Pending, got: %s", updated.Status.Phase)
 	}
@@ -280,10 +301,10 @@ func TestTalosReconcile_SuspendAnnotation(t *testing.T) {
 
 func TestTalosReconcile_ResetAnnotation(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseFailed),
-		withAnnotation(constants.ResetAnnotation, "true"),
+		withAnnotation(constants.ResetAnnotation, upgradingLabelValue),
 		withFailedNodes(fakeNodeA),
 		withCompletedNodes(fakeNodeB),
 	)
@@ -291,12 +312,12 @@ func TestTalosReconcile_ResetAnnotation(t *testing.T) {
 		WithObjects(tu).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != 30*time.Second {
 		t.Fatalf("expected 30s requeue, got: %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if _, exists := updated.Annotations[constants.ResetAnnotation]; exists {
 		t.Fatal("expected reset annotation to be removed")
 	}
@@ -317,22 +338,22 @@ func TestTalosReconcile_ResetAnnotation(t *testing.T) {
 func TestTalosReconcile_NodeVersionOverride(t *testing.T) {
 	scheme := newTestScheme()
 	// Global target is fakeTalosVersion (v1.12.0)
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 
 	// Node is already at v1.12.0 (matches global), so normally wouldn't upgrade.
 	// But we add an annotation requesting v1.12.1
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.VersionAnnotation: "v1.12.1",
+		constants.VersionAnnotation: testV121,
 	}
 
 	tc := &mockTalosClient{
-		nodeVersions: map[string]string{"10.0.0.1": fakeTalosVersion}, // Node is at v1.12.0
+		nodeVersions: map[string]string{testNodeIP1: fakeTalosVersion}, // Node is at v1.12.0
 		// The controller will fetch the current image to get the base
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/b55fbf4fdc6aec0c43e108cc8bde16d5533fbdeec3cb114ff3913ed9e8d019fe:v1.12.0"},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/installer/b55fbf4fdc6aec0c43e108cc8bde16d5533fbdeec3cb114ff3913ed9e8d019fe:v1.12.0"},
 	}
 
 	// We must mock that the specific overridden image is available
@@ -349,7 +370,7 @@ func TestTalosReconcile_NodeVersionOverride(t *testing.T) {
 	r.ImageChecker = ic
 
 	// Run Reconcile
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 
 	// Expect job creation (30s requeue)
 	if result.RequeueAfter != 30*time.Second {
@@ -382,21 +403,21 @@ func TestTalosReconcile_NodeVersionOverride(t *testing.T) {
 
 func TestTalosReconcile_NodeSchematicOverride(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	// Add schematic override
 	node.Annotations = map[string]string{
-		constants.SchematicAnnotation: "custom-schematic-id",
+		constants.SchematicAnnotation: testCustomSchematic,
 	}
 
 	tc := &mockTalosClient{
-		nodeVersions: map[string]string{"10.0.0.1": "v1.11.0"}, // Needs upgrade to v1.12.0
+		nodeVersions: map[string]string{testNodeIP1: testV111}, // Needs upgrade to v1.12.0
 		// The current image is vanilla, but we expect the upgrade to use the schematic
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/b55fbf4fdc6aec0c43e108cc8bde16d5533fbdeec3cb114ff3913ed9e8d019fe:v1.11.0"},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/installer/b55fbf4fdc6aec0c43e108cc8bde16d5533fbdeec3cb114ff3913ed9e8d019fe:v1.11.0"},
 	}
 
 	expectedImage := "factory.talos.dev/installer/custom-schematic-id:" + fakeTalosVersion
@@ -413,7 +434,7 @@ func TestTalosReconcile_NodeSchematicOverride(t *testing.T) {
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 	r.ImageChecker = ic
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 
 	if result.RequeueAfter != 30*time.Second {
 		t.Fatalf("expected 30s requeue, got: %v", result.RequeueAfter)
@@ -442,20 +463,20 @@ func TestTalosReconcile_NodeSchematicOverride(t *testing.T) {
 
 func TestTalosReconcile_TalosPublishedSchematicFallback(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	// Only the Talos-published annotation, no tuppr override.
 	node.Annotations = map[string]string{
 		constants.TalosSchematicAnnotation: "talos-published-id",
 	}
 
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{"10.0.0.1": "v1.11.0"},
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/talos-published-id:v1.11.0"},
+		nodeVersions:  map[string]string{testNodeIP1: testV111},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/installer/talos-published-id:v1.11.0"},
 	}
 
 	expectedImage := "factory.talos.dev/installer/talos-published-id:" + fakeTalosVersion
@@ -467,7 +488,7 @@ func TestTalosReconcile_TalosPublishedSchematicFallback(t *testing.T) {
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 	r.ImageChecker = ic
 
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
 	var jobList batchv1.JobList
 	if err := cl.List(context.Background(), &jobList); err != nil {
@@ -483,20 +504,20 @@ func TestTalosReconcile_TalosPublishedSchematicFallback(t *testing.T) {
 
 func TestTalosReconcile_TupprSchematicWinsOverTalosAnnotation(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
 		constants.SchematicAnnotation:      "tuppr-explicit",
 		constants.TalosSchematicAnnotation: "talos-published",
 	}
 
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{"10.0.0.1": "v1.11.0"},
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/talos-published:v1.11.0"},
+		nodeVersions:  map[string]string{testNodeIP1: testV111},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/installer/talos-published:v1.11.0"},
 	}
 
 	expectedImage := "factory.talos.dev/installer/tuppr-explicit:" + fakeTalosVersion
@@ -508,7 +529,7 @@ func TestTalosReconcile_TupprSchematicWinsOverTalosAnnotation(t *testing.T) {
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 	r.ImageChecker = ic
 
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
 	var jobList batchv1.JobList
 	if err := cl.List(context.Background(), &jobList); err != nil {
@@ -524,20 +545,20 @@ func TestTalosReconcile_TupprSchematicWinsOverTalosAnnotation(t *testing.T) {
 
 func TestTalosReconcile_NodeFactoryURLOverride(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.SchematicAnnotation:  "custom-schematic-id",
+		constants.SchematicAnnotation:  testCustomSchematic,
 		constants.FactoryURLAnnotation: "factory.talos.dev/hcloud-installer",
 	}
 
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{"10.0.0.1": "v1.11.0"},
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer:v1.11.0"},
+		nodeVersions:  map[string]string{testNodeIP1: testV111},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/installer:v1.11.0"},
 	}
 
 	expectedImage := "factory.talos.dev/hcloud-installer/custom-schematic-id:" + fakeTalosVersion
@@ -550,7 +571,7 @@ func TestTalosReconcile_NodeFactoryURLOverride(t *testing.T) {
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 	r.ImageChecker = ic
 
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
 	var jobList batchv1.JobList
 	if err := cl.List(context.Background(), &jobList); err != nil {
@@ -568,7 +589,7 @@ func TestTalosReconcile_NodeFactoryURLOverride(t *testing.T) {
 
 func TestTalosReconcile_GenerationChange(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withGeneration(2, 1),
 		withCompletedNodes("node-old"),
@@ -578,12 +599,12 @@ func TestTalosReconcile_GenerationChange(t *testing.T) {
 		WithObjects(tu).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != 30*time.Second {
 		t.Fatalf("expected 30s requeue, got: %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase reset to Pending, got: %s", updated.Status.Phase)
 	}
@@ -600,7 +621,7 @@ func TestTalosReconcile_GenerationChange(t *testing.T) {
 
 func TestTalosReconcile_BlockedByKubernetesUpgrade(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
@@ -615,12 +636,12 @@ func TestTalosReconcile_BlockedByKubernetesUpgrade(t *testing.T) {
 		WithObjects(tu, ku).WithStatusSubresource(tu, ku).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != 2*time.Minute {
 		t.Fatalf("expected 2m requeue, got: %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase Pending while blocked, got: %s", updated.Status.Phase)
 	}
@@ -631,7 +652,7 @@ func TestTalosReconcile_BlockedByKubernetesUpgrade(t *testing.T) {
 
 func TestTalosReconcile_FailedNodesSetPhaseFailed(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 		withFailedNodes(fakeNodeA),
@@ -640,12 +661,12 @@ func TestTalosReconcile_FailedNodesSetPhaseFailed(t *testing.T) {
 		WithObjects(tu).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != 5*time.Minute {
 		t.Fatalf("expected 5m requeue, got: %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
 		t.Fatalf("expected phase Failed when nodes have failed, got: %s", updated.Status.Phase)
 	}
@@ -656,26 +677,26 @@ func TestTalosReconcile_FailedNodesSetPhaseFailed(t *testing.T) {
 
 func TestTalosReconcile_HealthCheckFailure(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{"10.0.0.1": "v1.10.0"},
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer:v1.10.0"},
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: testFactoryInstaller},
 	}
 	hc := &mockHealthChecker{err: fmt.Errorf("nodes not ready")}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, hc)
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != time.Minute {
 		t.Fatalf("expected 1m requeue, got: %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseHealthChecking {
 		t.Fatalf("expected phase HealthChecking during health check failure, got: %s", updated.Status.Phase)
 	}
@@ -686,21 +707,21 @@ func TestTalosReconcile_HealthCheckFailure(t *testing.T) {
 
 func TestTalosReconcile_AllNodesUpToDate(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	tc := &mockTalosClient{
-		nodeVersions: map[string]string{"10.0.0.1": fakeTalosVersion},
+		nodeVersions: map[string]string{testNodeIP1: fakeTalosVersion},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
 		t.Fatalf("expected phase Completed when all nodes at target, got: %s", updated.Status.Phase)
 	}
@@ -714,11 +735,11 @@ func TestTalosReconcile_SingleNodeVersionCheckFailure(t *testing.T) {
 	// On single-node clusters, if GetNodeVersion fails (e.g. TLS expired cert),
 	// the controller should retry instead of silently completing with 0 nodes.
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	tc := &mockTalosClient{
 		getVersionErr: fmt.Errorf("rpc error: code = Unavailable desc = connection error: desc = \"error reading server preface: remote error: tls: expired certificate\""),
 	}
@@ -726,14 +747,14 @@ func TestTalosReconcile_SingleNodeVersionCheckFailure(t *testing.T) {
 		WithObjects(tu, node).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 
 	// Should requeue for retry, not complete
 	if result.RequeueAfter != time.Minute {
 		t.Fatalf("expected 1m requeue for transient error, got: %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	// Must NOT be Completed — the node was never checked successfully
 	if updated.Status.Phase == tupprv1alpha1.JobPhaseCompleted {
 		t.Fatal("expected phase to NOT be Completed when version check fails on single-node cluster")
@@ -744,29 +765,29 @@ func TestTalosReconcile_MultiNodePartialVersionCheckFailure(t *testing.T) {
 	// When one node's version check fails, the entire findNextNode should error
 	// and the controller should retry, not skip that node.
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
-	nodeA := newNode(fakeNodeA, "10.0.0.1")
-	nodeB := newNode(fakeNodeB, "10.0.0.2")
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	nodeB := newNode(fakeNodeB, testNodeIP2)
 	// nodeA is already at target, nodeB fails version check
 	tc := &mockTalosClient{
-		nodeVersions: map[string]string{"10.0.0.1": fakeTalosVersion},
+		nodeVersions: map[string]string{testNodeIP1: fakeTalosVersion},
 		// nodeB (10.0.0.2) is not in the map, so GetNodeVersion returns an error
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, nodeA, nodeB).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 
 	// Should requeue for retry since nodeB version check failed
 	if result.RequeueAfter != time.Minute {
 		t.Fatalf("expected 1m requeue for node version check failure, got: %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase == tupprv1alpha1.JobPhaseCompleted {
 		t.Fatal("expected phase to NOT be Completed when a node version check fails")
 	}
@@ -774,38 +795,38 @@ func TestTalosReconcile_MultiNodePartialVersionCheckFailure(t *testing.T) {
 
 func TestTalosReconcile_CreatesJobForNextNode(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{"10.0.0.1": "v1.10.0"},
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer:v1.10.0"},
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: testFactoryInstaller},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != 30*time.Second {
 		t.Fatalf("expected 30s requeue, got: %v", result.RequeueAfter)
 	}
 
 	// Verify job was created
 	var jobList batchv1.JobList
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	if len(jobList.Items) != 1 {
 		t.Fatalf("expected 1 job, got: %d", len(jobList.Items))
 	}
-	if jobList.Items[0].Labels["tuppr.home-operations.com/target-node"] != fakeNodeA {
-		t.Fatalf("expected job for node-1, got: %s", jobList.Items[0].Labels["tuppr.home-operations.com/target-node"])
+	if jobList.Items[0].Labels[targetNodeLabelKey] != fakeNodeA {
+		t.Fatalf("expected job for node-1, got: %s", jobList.Items[0].Labels[targetNodeLabelKey])
 	}
 
 	// Verify status was updated to InProgress
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseUpgrading {
 		t.Fatalf("expected phase Upgrading after job creation, got: %s", updated.Status.Phase)
 	}
@@ -816,19 +837,19 @@ func TestTalosReconcile_CreatesJobForNextNode(t *testing.T) {
 
 func TestTalosReconcile_HandlesActiveJobRunning(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-upgrade-node-1-abcd1234",
-			Namespace: "default",
+			Name:      testJobName1,
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "talos-upgrade",
-				"app.kubernetes.io/instance":            "test-upgrade",
-				"app.kubernetes.io/part-of":             "tuppr",
-				"tuppr.home-operations.com/target-node": fakeNodeA,
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeA,
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
@@ -838,12 +859,12 @@ func TestTalosReconcile_HandlesActiveJobRunning(t *testing.T) {
 		WithObjects(tu, job).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != 30*time.Second {
 		t.Fatalf("expected 30s requeue for active job, got: %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseUpgrading {
 		t.Fatalf("expected phase Upgrading while job running, got: %s", updated.Status.Phase)
 	}
@@ -854,7 +875,7 @@ func TestTalosReconcile_HandlesActiveJobRunning(t *testing.T) {
 
 func TestTalosReconcile_HandlesActiveJobRunning_NodeNotReady_Rebooting(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
@@ -865,7 +886,7 @@ func TestTalosReconcile_HandlesActiveJobRunning_NodeNotReady_Rebooting(t *testin
 		},
 		Status: corev1.NodeStatus{
 			Addresses: []corev1.NodeAddress{
-				{Type: corev1.NodeInternalIP, Address: "10.0.0.1"},
+				{Type: corev1.NodeInternalIP, Address: testNodeIP1},
 			},
 			Conditions: []corev1.NodeCondition{
 				{Type: corev1.NodeReady, Status: corev1.ConditionFalse},
@@ -875,12 +896,12 @@ func TestTalosReconcile_HandlesActiveJobRunning_NodeNotReady_Rebooting(t *testin
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-upgrade-node-a-abcd1234",
-			Namespace: "default",
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "talos-upgrade",
-				"app.kubernetes.io/instance":            "test-upgrade",
-				"app.kubernetes.io/part-of":             "tuppr",
-				"tuppr.home-operations.com/target-node": fakeNodeA,
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeA,
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
@@ -890,12 +911,12 @@ func TestTalosReconcile_HandlesActiveJobRunning_NodeNotReady_Rebooting(t *testin
 		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != 30*time.Second {
 		t.Fatalf("expected 30s requeue for active job with rebooting node, got: %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseRebooting {
 		t.Fatalf("expected phase Rebooting when node is NotReady during active job, got: %s", updated.Status.Phase)
 	}
@@ -906,51 +927,51 @@ func TestTalosReconcile_HandlesActiveJobRunning_NodeNotReady_Rebooting(t *testin
 
 func TestTalosReconcile_HandlesJobSuccess(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-upgrade-node-1-abcd1234",
-			Namespace: "default",
+			Name:      testJobName1,
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "talos-upgrade",
-				"app.kubernetes.io/instance":            "test-upgrade",
-				"app.kubernetes.io/part-of":             "tuppr",
-				"tuppr.home-operations.com/target-node": fakeNodeA,
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeA,
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
 		Status: batchv1.JobStatus{Succeeded: 1},
 	}
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{"10.0.0.1": fakeTalosVersion}, // matches target
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/abc:" + fakeTalosVersion},
+		nodeVersions:  map[string]string{testNodeIP1: fakeTalosVersion}, // matches target
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/installer/abc:" + fakeTalosVersion},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != 5*time.Second {
 		t.Fatalf("expected 5s requeue, got: %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if !slices.Contains(updated.Status.CompletedNodes, fakeNodeA) {
 		t.Fatalf("expected node-1 in CompletedNodes, got: %v", updated.Status.CompletedNodes)
 	}
 
 	// Verify install image was synced
-	if len(tc.patchCalls) != 1 || tc.patchCalls[0] != "10.0.0.1" {
+	if len(tc.patchCalls) != 1 || tc.patchCalls[0] != testNodeIP1 {
 		t.Fatalf("expected PatchNodeInstallImage called for 10.0.0.1, got: %v", tc.patchCalls)
 	}
 
 	// Verify job was cleaned up
 	var jobList batchv1.JobList
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	if len(jobList.Items) != 0 {
@@ -960,42 +981,42 @@ func TestTalosReconcile_HandlesJobSuccess(t *testing.T) {
 
 func TestTalosReconcile_HandleJobSuccess_PatchInstallImageFails_Continues(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-upgrade-node-1-abcd1234",
-			Namespace: "default",
+			Name:      testJobName1,
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "talos-upgrade",
-				"app.kubernetes.io/instance":            "test-upgrade",
-				"app.kubernetes.io/part-of":             "tuppr",
-				"tuppr.home-operations.com/target-node": fakeNodeA,
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeA,
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
 		Status: batchv1.JobStatus{Succeeded: 1},
 	}
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{"10.0.0.1": fakeTalosVersion},
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/abc:" + fakeTalosVersion},
+		nodeVersions:  map[string]string{testNodeIP1: fakeTalosVersion},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/installer/abc:" + fakeTalosVersion},
 		patchImageErr: fmt.Errorf("permission denied"),
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 
 	// Should still succeed despite patch failure
 	if result.RequeueAfter != 5*time.Second {
 		t.Fatalf("expected 5s requeue, got: %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if !slices.Contains(updated.Status.CompletedNodes, fakeNodeA) {
 		t.Fatalf("expected node in CompletedNodes despite patch failure, got: %v", updated.Status.CompletedNodes)
 	}
@@ -1003,19 +1024,19 @@ func TestTalosReconcile_HandleJobSuccess_PatchInstallImageFails_Continues(t *tes
 
 func TestTalosReconcile_HandlesJobFailure(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-upgrade-node-1-abcd1234",
-			Namespace: "default",
+			Name:      testJobName1,
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "talos-upgrade",
-				"app.kubernetes.io/instance":            "test-upgrade",
-				"app.kubernetes.io/part-of":             "tuppr",
-				"tuppr.home-operations.com/target-node": fakeNodeA,
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeA,
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
@@ -1025,12 +1046,12 @@ func TestTalosReconcile_HandlesJobFailure(t *testing.T) {
 		WithObjects(tu, job).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != 10*time.Minute {
 		t.Fatalf("expected 10m requeue, got: %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
 		t.Fatalf("expected phase Failed, got: %s", updated.Status.Phase)
 	}
@@ -1046,7 +1067,7 @@ func TestTalosReconcile_HandlesJobFailure(t *testing.T) {
 	}
 
 	var jobList batchv1.JobList
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	if len(jobList.Items) != 0 {
@@ -1060,7 +1081,7 @@ func TestTalosReconcile_HandlesJobFailure(t *testing.T) {
 
 func TestTalosReconcile_FailedState_ResetsOnRetry(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		func(tu *tupprv1alpha1.TalosUpgrade) {
 			tu.Status.Phase = tupprv1alpha1.JobPhaseFailed
@@ -1071,12 +1092,12 @@ func TestTalosReconcile_FailedState_ResetsOnRetry(t *testing.T) {
 		WithObjects(tu).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != 30*time.Second {
 		t.Fatalf("expected 30s requeue after generation-change reset, got: %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase reset to Pending so upgrade is retried, got: %s", updated.Status.Phase)
 	}
@@ -1087,33 +1108,33 @@ func TestTalosReconcile_FailedState_ResetsOnRetry(t *testing.T) {
 
 func TestTalosReconcile_OutOfBandUpgradedNodeRecorded(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 		withCompletedNodes(fakeNodeA),
 	)
-	nodeA := newNode(fakeNodeA, "10.0.0.1")
-	nodeB := newNode(fakeNodeB, "10.0.0.2")
-	nodeC := newNode(fakeNodeC, "10.0.0.3")
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	nodeB := newNode(fakeNodeB, testNodeIP2)
+	nodeC := newNode(fakeNodeC, testNodeIP3)
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{
-			"10.0.0.1": fakeTalosVersion,
-			"10.0.0.2": fakeTalosVersion,
-			"10.0.0.3": fakeTalosVersion,
+			testNodeIP1: fakeTalosVersion,
+			testNodeIP2: fakeTalosVersion,
+			testNodeIP3: fakeTalosVersion,
 		},
 		installImages: map[string]string{
-			"10.0.0.1": "factory.talos.dev/installer:" + fakeTalosVersion,
-			"10.0.0.2": "factory.talos.dev/installer:" + fakeTalosVersion,
-			"10.0.0.3": "factory.talos.dev/installer:" + fakeTalosVersion,
+			testNodeIP1: "factory.talos.dev/installer:" + fakeTalosVersion,
+			testNodeIP2: "factory.talos.dev/installer:" + fakeTalosVersion,
+			testNodeIP3: "factory.talos.dev/installer:" + fakeTalosVersion,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, nodeA, nodeB, nodeC).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
 		t.Fatalf("expected phase Completed, got: %s", updated.Status.Phase)
 	}
@@ -1130,20 +1151,20 @@ func TestTalosReconcile_OutOfBandUpgradedNodeRecorded(t *testing.T) {
 
 func TestTalosReconcile_JobVerificationFailure(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-upgrade-node-1-abcd1234",
-			Namespace: "default",
+			Name:      testJobName1,
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "talos-upgrade",
-				"app.kubernetes.io/instance":            "test-upgrade",
-				"app.kubernetes.io/part-of":             "tuppr",
-				"tuppr.home-operations.com/target-node": fakeNodeA,
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeA,
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
@@ -1151,18 +1172,18 @@ func TestTalosReconcile_JobVerificationFailure(t *testing.T) {
 	}
 	// Job "succeeded" but version still doesn't match
 	tc := &mockTalosClient{
-		nodeVersions: map[string]string{"10.0.0.1": "v1.10.0"},
+		nodeVersions: map[string]string{testNodeIP1: testV110Talos},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != 10*time.Minute {
 		t.Fatalf("expected 10m requeue, got: %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
 		t.Fatalf("expected phase Failed after verification failure, got: %s", updated.Status.Phase)
 	}
@@ -1170,83 +1191,83 @@ func TestTalosReconcile_JobVerificationFailure(t *testing.T) {
 
 func TestTalosReconcile_MultiNodeUpgradeOrdering(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
-	node1 := newNode(fakeNodeA, "10.0.0.1")
-	node2 := newNode(fakeNodeB, "10.0.0.2")
-	node3 := newNode(fakeNodeC, "10.0.0.3")
+	node1 := newNode(fakeNodeA, testNodeIP1)
+	node2 := newNode(fakeNodeB, testNodeIP2)
+	node3 := newNode(fakeNodeC, testNodeIP3)
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{
-			"10.0.0.1": "v1.10.0",
-			"10.0.0.2": "v1.10.0",
-			"10.0.0.3": "v1.10.0",
+			testNodeIP1: testV110Talos,
+			testNodeIP2: testV110Talos,
+			testNodeIP3: testV110Talos,
 		},
 		installImages: map[string]string{
-			"10.0.0.1": "factory.talos.dev/installer:v1.10.0",
-			"10.0.0.2": "factory.talos.dev/installer:v1.10.0",
-			"10.0.0.3": "factory.talos.dev/installer:v1.10.0",
+			testNodeIP1: testFactoryInstaller,
+			testNodeIP2: testFactoryInstaller,
+			testNodeIP3: testFactoryInstaller,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node1, node2, node3).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
 	var jobList batchv1.JobList
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	if len(jobList.Items) != 1 {
 		t.Fatalf("expected 1 job, got: %d", len(jobList.Items))
 	}
-	if jobList.Items[0].Labels["tuppr.home-operations.com/target-node"] != fakeNodeA {
+	if jobList.Items[0].Labels[targetNodeLabelKey] != fakeNodeA {
 		t.Fatalf("expected first job for node-a (alphabetical), got: %s",
-			jobList.Items[0].Labels["tuppr.home-operations.com/target-node"])
+			jobList.Items[0].Labels[targetNodeLabelKey])
 	}
 }
 
 func TestTalosReconcile_SkipsAlreadyUpgradedNodes(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
-	node1 := newNode(fakeNodeA, "10.0.0.1")
-	node2 := newNode(fakeNodeB, "10.0.0.2")
+	node1 := newNode(fakeNodeA, testNodeIP1)
+	node2 := newNode(fakeNodeB, testNodeIP2)
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{
-			"10.0.0.1": fakeTalosVersion, // already at target
-			"10.0.0.2": "v1.10.0",        // needs upgrade
+			testNodeIP1: fakeTalosVersion, // already at target
+			testNodeIP2: testV110Talos,    // needs upgrade
 		},
 		installImages: map[string]string{
-			"10.0.0.2": "factory.talos.dev/installer:v1.10.0",
+			testNodeIP2: testFactoryInstaller,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node1, node2).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
 	var jobList batchv1.JobList
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	if len(jobList.Items) != 1 {
 		t.Fatalf("expected 1 job, got: %d", len(jobList.Items))
 	}
-	if jobList.Items[0].Labels["tuppr.home-operations.com/target-node"] != fakeNodeB {
+	if jobList.Items[0].Labels[targetNodeLabelKey] != fakeNodeB {
 		t.Fatalf("expected job for node-b (node-a already upgraded), got: %s",
-			jobList.Items[0].Labels["tuppr.home-operations.com/target-node"])
+			jobList.Items[0].Labels[targetNodeLabelKey])
 	}
 }
 
 func TestTalosReconcile_InProgressBypassesCoordination(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
@@ -1261,13 +1282,13 @@ func TestTalosReconcile_InProgressBypassesCoordination(t *testing.T) {
 		WithObjects(tu, ku).WithStatusSubresource(tu, ku).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 	// Should NOT be blocked at 2m - should proceed past coordination to findActiveJob
 	if result.RequeueAfter == 2*time.Minute {
 		t.Fatal("InProgress upgrade should bypass coordination check, but got 2m requeue (blocked)")
 	}
 	// With no active job and no nodes, it should complete quickly
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase == tupprv1alpha1.JobPhasePending {
 		t.Fatal("expected phase to not be Pending (should have bypassed coordination)")
 	}
@@ -1278,7 +1299,7 @@ func TestTalosReconcile_Cleanup(t *testing.T) {
 	now := metav1.Now()
 	tu := &tupprv1alpha1.TalosUpgrade{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:              "test-upgrade",
+			Name:              testUpgradeName,
 			Generation:        1,
 			DeletionTimestamp: &now,
 			Finalizers:        []string{TalosUpgradeFinalizer},
@@ -1291,14 +1312,14 @@ func TestTalosReconcile_Cleanup(t *testing.T) {
 		WithObjects(tu).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 	if result != (ctrl.Result{}) {
 		t.Fatalf("expected empty result after cleanup, got: %v", result)
 	}
 
 	// Object should be gone (fake client deletes when finalizer removed + DeletionTimestamp set)
 	var updated tupprv1alpha1.TalosUpgrade
-	err := cl.Get(context.Background(), types.NamespacedName{Name: "test-upgrade"}, &updated)
+	err := cl.Get(context.Background(), types.NamespacedName{Name: testUpgradeName}, &updated)
 	if err == nil {
 		t.Fatal("expected object to be deleted after cleanup")
 	}
@@ -1308,26 +1329,26 @@ func TestTalosReconcile_UncordonsNodeAfterDrain(t *testing.T) {
 	scheme := newTestScheme()
 
 	// Upgrade with Drain enabled
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Force: ptr.To(true)}
 
 	// Node that is currently Cordoned
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	node.Spec.Unschedulable = true
 
 	// Successful Job
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-upgrade-node-a-12345",
-			Namespace: "default",
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "talos-upgrade",
-				"app.kubernetes.io/instance":            "test-upgrade",
-				"app.kubernetes.io/part-of":             "tuppr",
-				"tuppr.home-operations.com/target-node": fakeNodeA,
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeA,
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
@@ -1336,7 +1357,7 @@ func TestTalosReconcile_UncordonsNodeAfterDrain(t *testing.T) {
 
 	// Mock client successful version check
 	tc := &mockTalosClient{
-		nodeVersions: map[string]string{"10.0.0.1": fakeTalosVersion},
+		nodeVersions: map[string]string{testNodeIP1: fakeTalosVersion},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -1345,7 +1366,7 @@ func TestTalosReconcile_UncordonsNodeAfterDrain(t *testing.T) {
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
 	// Run Reconcile
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 
 	if result.RequeueAfter != 5*time.Second {
 		t.Fatalf("expected 5s requeue (success), got %v", result.RequeueAfter)
@@ -1365,24 +1386,24 @@ func TestTalosReconcile_UncordonsNodeAfterDrain(t *testing.T) {
 func TestTalosReconcile_DoesNotUncordonWithoutDrainSpec(t *testing.T) {
 	scheme := newTestScheme()
 
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
 
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	node.Spec.Unschedulable = true
 
 	// Successful Job
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-upgrade-node-a-12345",
-			Namespace: "default",
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "talos-upgrade",
-				"app.kubernetes.io/instance":            "test-upgrade",
-				"app.kubernetes.io/part-of":             "tuppr",
-				"tuppr.home-operations.com/target-node": fakeNodeA,
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeA,
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
@@ -1390,7 +1411,7 @@ func TestTalosReconcile_DoesNotUncordonWithoutDrainSpec(t *testing.T) {
 	}
 
 	tc := &mockTalosClient{
-		nodeVersions: map[string]string{"10.0.0.1": fakeTalosVersion},
+		nodeVersions: map[string]string{testNodeIP1: fakeTalosVersion},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -1398,7 +1419,7 @@ func TestTalosReconcile_DoesNotUncordonWithoutDrainSpec(t *testing.T) {
 
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
 	// Verify Node remains Cordoned
 	updatedNode := &corev1.Node{}
@@ -1411,24 +1432,24 @@ func TestTalosReconcile_DoesNotUncordonWithoutDrainSpec(t *testing.T) {
 
 func TestTalosReconcile_DrainRollbackOnBatchFailure(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 		withParallelism(2),
 	)
 	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Force: ptr.To(true)}
 
-	nodeA := newNode(fakeNodeA, "10.0.0.1")
-	nodeB := newNode(fakeNodeB, "10.0.0.2")
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	nodeB := newNode(fakeNodeB, testNodeIP2)
 
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{
-			"10.0.0.1": "v1.10.0",
-			"10.0.0.2": "v1.10.0",
+			testNodeIP1: testV110Talos,
+			testNodeIP2: testV110Talos,
 		},
 		installImages: map[string]string{
-			"10.0.0.1": "factory.talos.dev/installer:v1.10.0",
-			"10.0.0.2": "factory.talos.dev/installer:v1.10.0",
+			testNodeIP1: testFactoryInstaller,
+			testNodeIP2: testFactoryInstaller,
 		},
 	}
 
@@ -1450,7 +1471,7 @@ func TestTalosReconcile_DrainRollbackOnBatchFailure(t *testing.T) {
 		}).Build()
 
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
 	// Node-a was cordoned before the failure — rollback must have uncordoned it.
 	updatedNodeA := &corev1.Node{}
@@ -1463,7 +1484,7 @@ func TestTalosReconcile_DrainRollbackOnBatchFailure(t *testing.T) {
 
 	// No upgrade jobs should have been created.
 	var jobList batchv1.JobList
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	if len(jobList.Items) != 0 {
@@ -1473,21 +1494,21 @@ func TestTalosReconcile_DrainRollbackOnBatchFailure(t *testing.T) {
 
 func TestTalosReconcile_MultiNodeFullLifecycle(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
-	nodeA := newNode(fakeNodeA, "10.0.0.1")
-	nodeB := newNode(fakeNodeB, "10.0.0.2")
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	nodeB := newNode(fakeNodeB, testNodeIP2)
 
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{
-			"10.0.0.1": "v1.10.0",
-			"10.0.0.2": "v1.10.0",
+			testNodeIP1: testV110Talos,
+			testNodeIP2: testV110Talos,
 		},
 		installImages: map[string]string{
-			"10.0.0.1": "factory.talos.dev/installer:v1.10.0",
-			"10.0.0.2": "factory.talos.dev/installer:v1.10.0",
+			testNodeIP1: testFactoryInstaller,
+			testNodeIP2: testFactoryInstaller,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -1495,21 +1516,21 @@ func TestTalosReconcile_MultiNodeFullLifecycle(t *testing.T) {
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
 	// --- Step 1: First reconcile creates job for node-a (alphabetical) ---
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
 	var jobList batchv1.JobList
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	if len(jobList.Items) != 1 {
 		t.Fatalf("step 1: expected 1 job, got %d", len(jobList.Items))
 	}
-	if jobList.Items[0].Labels["tuppr.home-operations.com/target-node"] != fakeNodeA {
+	if jobList.Items[0].Labels[targetNodeLabelKey] != fakeNodeA {
 		t.Fatalf("step 1: expected job for node-a, got: %s",
-			jobList.Items[0].Labels["tuppr.home-operations.com/target-node"])
+			jobList.Items[0].Labels[targetNodeLabelKey])
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseUpgrading {
 		t.Fatalf("step 1: expected phase Upgrading, got: %s", updated.Status.Phase)
 	}
@@ -1522,25 +1543,25 @@ func TestTalosReconcile_MultiNodeFullLifecycle(t *testing.T) {
 	if err := cl.Status().Update(context.Background(), &jobList.Items[0]); err != nil {
 		t.Fatalf("failed to update job status: %v", err)
 	}
-	tc.nodeVersions["10.0.0.1"] = fakeTalosVersion // node-a now at target
+	tc.nodeVersions[testNodeIP1] = fakeTalosVersion // node-a now at target
 
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
-	updated = getTalosUpgrade(t, cl, "test-upgrade")
+	updated = getTalosUpgrade(t, cl, testUpgradeName)
 	if !slices.Contains(updated.Status.CompletedNodes, fakeNodeA) {
 		t.Fatalf("step 2: expected node-a in CompletedNodes, got: %v", updated.Status.CompletedNodes)
 	}
 
 	// --- Step 3: Next reconcile should create job for node-b ---
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	// Find the job targeting node-b
 	foundNodeB := false
 	for _, job := range jobList.Items {
-		if job.Labels["tuppr.home-operations.com/target-node"] == fakeNodeB {
+		if job.Labels[targetNodeLabelKey] == fakeNodeB {
 			foundNodeB = true
 			break
 		}
@@ -1549,36 +1570,36 @@ func TestTalosReconcile_MultiNodeFullLifecycle(t *testing.T) {
 		t.Fatal("step 3: expected job for node-b to be created")
 	}
 
-	updated = getTalosUpgrade(t, cl, "test-upgrade")
+	updated = getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.CurrentNode != fakeNodeB {
 		t.Fatalf("step 3: expected currentNode=node-b, got: %s", updated.Status.CurrentNode)
 	}
 
 	// --- Step 4: Mark node-b job as succeeded ---
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	for i := range jobList.Items {
-		if jobList.Items[i].Labels["tuppr.home-operations.com/target-node"] == fakeNodeB {
+		if jobList.Items[i].Labels[targetNodeLabelKey] == fakeNodeB {
 			jobList.Items[i].Status.Succeeded = 1
 			if err := cl.Status().Update(context.Background(), &jobList.Items[i]); err != nil {
 				t.Fatalf("failed to update job status: %v", err)
 			}
 		}
 	}
-	tc.nodeVersions["10.0.0.2"] = fakeTalosVersion // node-b now at target
+	tc.nodeVersions[testNodeIP2] = fakeTalosVersion // node-b now at target
 
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
-	updated = getTalosUpgrade(t, cl, "test-upgrade")
+	updated = getTalosUpgrade(t, cl, testUpgradeName)
 	if !slices.Contains(updated.Status.CompletedNodes, fakeNodeB) {
 		t.Fatalf("step 4: expected node-b in CompletedNodes, got: %v", updated.Status.CompletedNodes)
 	}
 
 	// --- Step 5: Final reconcile should complete the upgrade ---
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
-	updated = getTalosUpgrade(t, cl, "test-upgrade")
+	updated = getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
 		t.Fatalf("step 5: expected phase Completed, got: %s", updated.Status.Phase)
 	}
@@ -1592,7 +1613,7 @@ func TestTalosReconcile_MultiNodeFullLifecycle(t *testing.T) {
 
 func TestTalosBuildJob_Properties(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tu.Spec.Talos.Version = fakeTalosVersion
 	tu.Spec.Policy.Placement = "hard"
 	tu.Spec.Policy.Debug = true
@@ -1601,21 +1622,21 @@ func TestTalosBuildJob_Properties(t *testing.T) {
 	tu.Spec.Policy.Stage = true
 
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{"10.0.0.1": "v1.10.0"},
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer:v1.10.0"},
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: testFactoryInstaller},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(tu, newNode(fakeNodeA, "10.0.0.1")).WithStatusSubresource(tu).Build()
+		WithObjects(tu, newNode(fakeNodeA, testNodeIP1)).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 	targetImage := "factory.talos.dev/installer:" + fakeTalosVersion
 
-	job := r.buildJob(context.Background(), tu, fakeNodeA, "10.0.0.1", targetImage)
+	job := r.buildJob(context.Background(), tu, fakeNodeA, testNodeIP1, targetImage)
 
-	if job.Labels["app.kubernetes.io/name"] != "talos-upgrade" {
-		t.Fatalf("expected talos-upgrade label, got: %s", job.Labels["app.kubernetes.io/name"])
+	if job.Labels[appLabelKey] != talosUpgradeAppName {
+		t.Fatalf("expected talos-upgrade label, got: %s", job.Labels[appLabelKey])
 	}
-	if job.Labels["tuppr.home-operations.com/target-node"] != fakeNodeA {
-		t.Fatalf("expected target-node label, got: %s", job.Labels["tuppr.home-operations.com/target-node"])
+	if job.Labels[targetNodeLabelKey] != fakeNodeA {
+		t.Fatalf("expected target-node label, got: %s", job.Labels[targetNodeLabelKey])
 	}
 
 	podSpec := job.Spec.Template.Spec
@@ -1666,22 +1687,22 @@ func TestTalosBuildJob_Properties(t *testing.T) {
 
 func TestTalosReconcile_HandleJobSuccess_NodeReady(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 
 	// Job is marked Successful
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "job-node-a",
-			Namespace: "default",
+			Name:      testJobNodeA,
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "talos-upgrade",
-				"app.kubernetes.io/instance":            "test-upgrade",
-				"app.kubernetes.io/part-of":             "tuppr",
-				"tuppr.home-operations.com/target-node": fakeNodeA,
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeA,
 			},
 		},
 		Spec: batchv1.JobSpec{
@@ -1691,8 +1712,8 @@ func TestTalosReconcile_HandleJobSuccess_NodeReady(t *testing.T) {
 	}
 
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{"10.0.0.1": fakeTalosVersion},
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/abc:" + fakeTalosVersion},
+		nodeVersions:  map[string]string{testNodeIP1: fakeTalosVersion},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/installer/abc:" + fakeTalosVersion},
 		checkReadyErr: nil, // Node is ready
 	}
 
@@ -1702,13 +1723,13 @@ func TestTalosReconcile_HandleJobSuccess_NodeReady(t *testing.T) {
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
 	// Run Reconcile
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 
 	if result.RequeueAfter != 5*time.Second {
 		t.Errorf("expected 5s requeue for success, got %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Errorf("expected phase Pending, got %s", updated.Status.Phase)
 	}
@@ -1718,7 +1739,7 @@ func TestTalosReconcile_HandleJobSuccess_NodeReady(t *testing.T) {
 	}
 
 	// Verify install image was synced
-	if len(tc.patchCalls) != 1 || tc.patchCalls[0] != "10.0.0.1" {
+	if len(tc.patchCalls) != 1 || tc.patchCalls[0] != testNodeIP1 {
 		t.Errorf("expected PatchNodeInstallImage called for 10.0.0.1, got: %v", tc.patchCalls)
 	}
 
@@ -1733,21 +1754,21 @@ func TestTalosReconcile_HandleJobSuccess_NodeReady(t *testing.T) {
 
 func TestTalosReconcile_HandleJobSuccess_NodeNotReady_Requeues(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "job-node-a",
-			Namespace: "default",
+			Name:      testJobNodeA,
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "talos-upgrade",
-				"app.kubernetes.io/instance":            "test-upgrade",
-				"app.kubernetes.io/part-of":             "tuppr",
-				"tuppr.home-operations.com/target-node": fakeNodeA,
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeA,
 			},
 		},
 		Spec: batchv1.JobSpec{
@@ -1767,13 +1788,13 @@ func TestTalosReconcile_HandleJobSuccess_NodeNotReady_Requeues(t *testing.T) {
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
 	// Run Reconcile
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 
 	if result.RequeueAfter != 30*time.Second {
 		t.Errorf("expected 30s requeue for wait, got %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseRebooting {
 		t.Errorf("expected phase Rebooting, got %s", updated.Status.Phase)
 	}
@@ -1789,20 +1810,20 @@ func TestTalosReconcile_HandleJobSuccess_NodeNotReady_Requeues(t *testing.T) {
 
 func TestTalosReconcile_HandleJobSuccess_VerificationFailed_Permanent(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "job-node-a",
-			Namespace: "default",
+			Name:      testJobNodeA,
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "talos-upgrade",
-				"app.kubernetes.io/instance":            "test-upgrade",
-				"app.kubernetes.io/part-of":             "tuppr",
-				"tuppr.home-operations.com/target-node": fakeNodeA,
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeA,
 			},
 		},
 		Spec: batchv1.JobSpec{
@@ -1813,7 +1834,7 @@ func TestTalosReconcile_HandleJobSuccess_VerificationFailed_Permanent(t *testing
 
 	// Talos Client: Node is Ready, BUT version is wrong (Upgrade failed silently)
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{"10.0.0.1": "v1.0.0"}, // Old version
+		nodeVersions:  map[string]string{testNodeIP1: "v1.0.0"}, // Old version
 		checkReadyErr: nil,
 	}
 
@@ -1822,13 +1843,13 @@ func TestTalosReconcile_HandleJobSuccess_VerificationFailed_Permanent(t *testing
 
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 
 	if result.RequeueAfter != 10*time.Minute {
 		t.Errorf("expected 10m requeue for failure, got %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
 		t.Errorf("expected phase Failed, got %s", updated.Status.Phase)
 	}
@@ -1853,61 +1874,61 @@ func TestNodeNeedsUpgrade(t *testing.T) {
 	}{
 		{
 			name:          "Standard: Versions match, no annotations -> No Upgrade",
-			nodeVersion:   "v1.12.0",
-			globalVersion: "v1.12.0",
+			nodeVersion:   fakeTalosVersion,
+			globalVersion: fakeTalosVersion,
 			wantUpgrade:   false,
 		},
 		{
 			name:          "Standard: Versions mismatch -> Upgrade",
-			nodeVersion:   "v1.11.0",
-			globalVersion: "v1.12.0",
+			nodeVersion:   testV111,
+			globalVersion: fakeTalosVersion,
 			wantUpgrade:   true,
 		},
 		{
 			name:          "Override: Version annotation differs from current -> Upgrade",
-			nodeVersion:   "v1.12.0",
-			globalVersion: "v1.12.0", // Global matches
+			nodeVersion:   fakeTalosVersion,
+			globalVersion: fakeTalosVersion, // Global matches
 			annotations: map[string]string{
-				constants.VersionAnnotation: "v1.12.1", // Override requests update
+				constants.VersionAnnotation: testV121, // Override requests update
 			},
 			wantUpgrade: true,
 		},
 		{
 			name:          "Override: Version annotation matches current (Global differs) -> No Upgrade",
-			nodeVersion:   "v1.12.0",
+			nodeVersion:   fakeTalosVersion,
 			globalVersion: "v1.13.0", // Global wants update
 			annotations: map[string]string{
-				constants.VersionAnnotation: "v1.12.0", // Override pins to current
+				constants.VersionAnnotation: fakeTalosVersion, // Override pins to current
 			},
 			wantUpgrade: false,
 		},
 		{
 			name:          "Schematic: Versions match, Schematic annotation differs -> Upgrade",
-			nodeVersion:   "v1.12.0",
-			globalVersion: "v1.12.0",
+			nodeVersion:   fakeTalosVersion,
+			globalVersion: fakeTalosVersion,
 			nodeImage:     "factory.talos.dev/installer/12345:v1.12.0",
 			annotations: map[string]string{
-				constants.SchematicAnnotation: "custom-schematic-id", // Request custom
+				constants.SchematicAnnotation: testCustomSchematic, // Request custom
 			},
 			wantUpgrade: true,
 		},
 		{
 			name:          "Schematic: Versions match, Schematic annotation matches -> No Upgrade",
-			nodeVersion:   "v1.12.0",
-			globalVersion: "v1.12.0",
+			nodeVersion:   fakeTalosVersion,
+			globalVersion: fakeTalosVersion,
 			nodeImage:     "factory.talos.dev/installer/custom-schematic-id:v1.12.0", // Already has schematic
 			annotations: map[string]string{
-				constants.SchematicAnnotation: "custom-schematic-id",
+				constants.SchematicAnnotation: testCustomSchematic,
 			},
 			wantUpgrade: false,
 		},
 		{
 			name:          "Schematic: Versions match, Image fetch fails -> Error",
-			nodeVersion:   "v1.12.0",
-			globalVersion: "v1.12.0",
+			nodeVersion:   fakeTalosVersion,
+			globalVersion: fakeTalosVersion,
 			nodeImage:     "error", // Simulates failure
 			annotations: map[string]string{
-				constants.SchematicAnnotation: "custom-schematic-id",
+				constants.SchematicAnnotation: testCustomSchematic,
 			},
 			wantError: true,
 		},
@@ -1915,7 +1936,7 @@ func TestNodeNeedsUpgrade(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			node := newNode("test-node", "10.0.0.1")
+			node := newNode("test-node", testNodeIP1)
 			if tt.annotations != nil {
 				node.Annotations = tt.annotations
 			}
@@ -1923,7 +1944,7 @@ func TestNodeNeedsUpgrade(t *testing.T) {
 			// Mock Client Setup
 			tc := &mockTalosClient{
 				nodeVersions: map[string]string{
-					"10.0.0.1": tt.nodeVersion,
+					testNodeIP1: tt.nodeVersion,
 				},
 			}
 
@@ -1931,7 +1952,7 @@ func TestNodeNeedsUpgrade(t *testing.T) {
 				tc.getInstallErr = fmt.Errorf("failed to fetch image")
 			} else if tt.nodeImage != "" {
 				tc.installImages = map[string]string{
-					"10.0.0.1": tt.nodeImage,
+					testNodeIP1: tt.nodeImage,
 				}
 			}
 
@@ -1952,17 +1973,17 @@ func TestNodeNeedsUpgrade(t *testing.T) {
 
 func TestTalosBuildJob_SoftPlacement(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tu.Spec.Policy.Placement = PlacementSoft
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{"10.0.0.1": "v1.10.0"},
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer:v1.10.0"},
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: testFactoryInstaller},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(tu, newNode(fakeNodeA, "10.0.0.1")).WithStatusSubresource(tu).Build()
+		WithObjects(tu, newNode(fakeNodeA, testNodeIP1)).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 	targetImage := "factory.talos.dev/installer:" + fakeTalosVersion
-	job := r.buildJob(context.Background(), tu, fakeNodeA, "10.0.0.1", targetImage)
+	job := r.buildJob(context.Background(), tu, fakeNodeA, testNodeIP1, targetImage)
 	podSpec := job.Spec.Template.Spec
 	if podSpec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution == nil {
 		t.Fatal("expected preferred node affinity for soft placement")
@@ -1974,11 +1995,11 @@ func TestTalosBuildJob_SoftPlacement(t *testing.T) {
 
 func TestTalosBuildTalosUpgradeImage(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tu.Spec.Talos.Version = fakeTalosVersion
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	tc := &mockTalosClient{
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/metal-installer/abc123:v1.10.0"},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/metal-installer/abc123:v1.10.0"},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node).WithStatusSubresource(tu).Build()
@@ -1995,10 +2016,10 @@ func TestTalosBuildTalosUpgradeImage(t *testing.T) {
 
 func TestTalosBuildTalosUpgradeImage_InvalidFormat(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade", withFinalizer)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
+	node := newNode(fakeNodeA, testNodeIP1)
 	tc := &mockTalosClient{
-		installImages: map[string]string{"10.0.0.1": "no-colon-image"},
+		installImages: map[string]string{testNodeIP1: "no-colon-image"},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node).WithStatusSubresource(tu).Build()
@@ -2029,9 +2050,9 @@ func TestTalosUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
 		tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{
 				{
-					Start:    "0 2 * * *",
+					Start:    testCronEvery2,
 					Duration: metav1.Duration{Duration: 4 * time.Hour},
-					Timezone: "UTC",
+					Timezone: testTimezoneUTC,
 				},
 			},
 		}
@@ -2043,7 +2064,7 @@ func TestTalosUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
 	r.Now = &fixedClock{now}
 
 	result, err := r.Reconcile(context.Background(), reconcile.Request{
-		NamespacedName: types.NamespacedName{Name: "test"},
+		NamespacedName: types.NamespacedName{Name: testNameStr},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -2054,7 +2075,7 @@ func TestTalosUpgradeReconciler_MaintenanceWindowBlocks(t *testing.T) {
 
 	// Verify status updated
 	var updated tupprv1alpha1.TalosUpgrade
-	if err := cl.Get(context.Background(), types.NamespacedName{Name: "test"}, &updated); err != nil {
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: testNameStr}, &updated); err != nil {
 		t.Fatalf("failed to get updated upgrade: %v", err)
 	}
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseMaintenanceWindow {
@@ -2077,9 +2098,9 @@ func TestTalosUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
 		tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 			Windows: []tupprv1alpha1.WindowSpec{
 				{
-					Start:    "0 2 * * *",
+					Start:    testCronEvery2,
 					Duration: metav1.Duration{Duration: 4 * time.Hour},
-					Timezone: "UTC",
+					Timezone: testTimezoneUTC,
 				},
 			},
 		}
@@ -2091,7 +2112,7 @@ func TestTalosUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
 			{
 				ObjectMeta: metav1.ObjectMeta{Name: fakeNodeA},
 				Status: corev1.NodeStatus{
-					Addresses: []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "10.0.0.1"}},
+					Addresses: []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: testNodeIP1}},
 				},
 			},
 		},
@@ -2102,7 +2123,7 @@ func TestTalosUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
 	r.Now = &fixedClock{now}
 	// Inside window — should proceed with upgrade logic (find next node)
 	result, err := r.Reconcile(context.Background(), reconcile.Request{
-		NamespacedName: types.NamespacedName{Name: "test"},
+		NamespacedName: types.NamespacedName{Name: testNameStr},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -2113,7 +2134,7 @@ func TestTalosUpgradeReconciler_MaintenanceWindowAllows(t *testing.T) {
 
 	// Should NOT be blocked by maintenance window
 	var updated tupprv1alpha1.TalosUpgrade
-	if err := cl.Get(context.Background(), types.NamespacedName{Name: "test"}, &updated); err != nil {
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: testNameStr}, &updated); err != nil {
 		t.Fatalf("failed to get updated upgrade: %v", err)
 	}
 	if strings.Contains(updated.Status.Message, "Waiting for maintenance window") {
@@ -2133,9 +2154,9 @@ func TestTalosReconcile_MaintenanceWindowBetweenNodes(t *testing.T) {
 			tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
 				Windows: []tupprv1alpha1.WindowSpec{
 					{
-						Start:    "0 2 * * *",
+						Start:    testCronEvery2,
 						Duration: metav1.Duration{Duration: 4 * time.Hour},
-						Timezone: "UTC",
+						Timezone: testTimezoneUTC,
 					},
 				},
 			}
@@ -2147,7 +2168,7 @@ func TestTalosReconcile_MaintenanceWindowBetweenNodes(t *testing.T) {
 	r.Now = &fixedClock{now}
 
 	result, err := r.Reconcile(context.Background(), reconcile.Request{
-		NamespacedName: types.NamespacedName{Name: "test"},
+		NamespacedName: types.NamespacedName{Name: testNameStr},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -2170,15 +2191,15 @@ func TestTalosReconcile_MaintenanceWindowBetweenNodes(t *testing.T) {
 
 func TestTalosReconcile_WaitsForImageAvailability(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{"10.0.0.1": "v1.10.0"},
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/abc:v1.10.0"},
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: testInstallerABC},
 	}
 
 	// Setup ImageChecker to fail (simulate 500 error)
@@ -2192,7 +2213,7 @@ func TestTalosReconcile_WaitsForImageAvailability(t *testing.T) {
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 	r.ImageChecker = ic
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 
 	if result.RequeueAfter != 1*time.Minute {
 		t.Fatalf("expected 1m requeue when image unavailable, got: %v", result.RequeueAfter)
@@ -2209,7 +2230,7 @@ func TestTalosReconcile_WaitsForImageAvailability(t *testing.T) {
 	}
 
 	// Verify Status message
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase Pending, got: %s", updated.Status.Phase)
 	}
@@ -2220,17 +2241,17 @@ func TestTalosReconcile_WaitsForImageAvailability(t *testing.T) {
 
 func TestTalosReconcile_ProceedsWhenImageAvailable(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 
 	targetImage := "factory.talos.dev/installer/abc:" + fakeTalosVersion
 
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{"10.0.0.1": "v1.10.0"},
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/abc:v1.10.0"},
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: testInstallerABC},
 	}
 
 	ic := &mockImageChecker{
@@ -2247,7 +2268,7 @@ func TestTalosReconcile_ProceedsWhenImageAvailable(t *testing.T) {
 	notifier := &mockNotifier{}
 	r.Notifier = notifier
 	// Run Reconcile
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 
 	if result.RequeueAfter != 30*time.Second {
 		t.Fatalf("expected 30s requeue (job created), got: %v", result.RequeueAfter)
@@ -2288,17 +2309,17 @@ func TestTalosReconcile_ProceedsWhenImageAvailable(t *testing.T) {
 
 func TestTalosReconcile_DoesNotSendDuplicateStartNotificationWithActiveJob(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 
 	targetImage := "factory.talos.dev/installer/abc:" + fakeTalosVersion
 
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{"10.0.0.1": "v1.10.0"},
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/abc:v1.10.0"},
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: testInstallerABC},
 	}
 
 	ic := &mockImageChecker{
@@ -2315,8 +2336,8 @@ func TestTalosReconcile_DoesNotSendDuplicateStartNotificationWithActiveJob(t *te
 	notifier := &mockNotifier{}
 	r.Notifier = notifier
 
-	reconcileTalos(t, r, "test-upgrade")
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
+	reconcileTalos(t, r, testUpgradeName)
 
 	if notifier.calls != 1 {
 		t.Fatalf("expected only one start notification while job is active, got %d", notifier.calls)
@@ -2344,16 +2365,16 @@ func (m *mockImageChecker) Check(ctx context.Context, imageRef string) error {
 
 func TestTalosBuildTalosUpgradeImage_WithSchematicAnnotation(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tu.Spec.Talos.Version = fakeTalosVersion // v1.12.0
 
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
 		constants.SchematicAnnotation: "abc123schematic",
 	}
 
 	tc := &mockTalosClient{
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/installer/b55fbf4fdc6aec0c43e108cc8bde16d5533fbdeec3cb114ff3913ed9e8d019fe:v1.10.0"},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/installer/b55fbf4fdc6aec0c43e108cc8bde16d5533fbdeec3cb114ff3913ed9e8d019fe:v1.10.0"},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -2374,18 +2395,18 @@ func TestTalosBuildTalosUpgradeImage_WithSchematicAnnotation(t *testing.T) {
 
 func TestTalosBuildTalosUpgradeImage_FactoryURLAnnotationWins(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tu.Spec.Talos.Version = fakeTalosVersion
 
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
 		constants.TalosSchematicAnnotation: "schematic-id",
 		constants.FactoryURLAnnotation:     "factory.talos.dev/aws-installer/",
 	}
 
 	tc := &mockTalosClient{
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/hcloud-installer/schematic-id:v1.11.0"},
-		platforms:     map[string]string{"10.0.0.1": "metal"},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/hcloud-installer/schematic-id:v1.11.0"},
+		platforms:     map[string]string{testNodeIP1: "metal"},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -2404,16 +2425,16 @@ func TestTalosBuildTalosUpgradeImage_FactoryURLAnnotationWins(t *testing.T) {
 
 func TestTalosBuildTalosUpgradeImage_PreservesFactoryFlavorFromInstallImage(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tu.Spec.Talos.Version = fakeTalosVersion
 
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.TalosSchematicAnnotation: "abc123",
+		constants.TalosSchematicAnnotation: testSchematicABC,
 	}
 
 	tc := &mockTalosClient{
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/hcloud-installer/abc123:v1.11.0"},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/hcloud-installer/abc123:v1.11.0"},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -2432,17 +2453,17 @@ func TestTalosBuildTalosUpgradeImage_PreservesFactoryFlavorFromInstallImage(t *t
 
 func TestTalosBuildTalosUpgradeImage_PlatformMetadataFallback(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tu.Spec.Talos.Version = fakeTalosVersion
 
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.TalosSchematicAnnotation: "abc123",
+		constants.TalosSchematicAnnotation: testSchematicABC,
 	}
 
 	tc := &mockTalosClient{
-		installImages: map[string]string{"10.0.0.1": "ghcr.io/siderolabs/installer:v1.11.0"},
-		platforms:     map[string]string{"10.0.0.1": "hcloud"},
+		installImages: map[string]string{testNodeIP1: testInstallerV111},
+		platforms:     map[string]string{testNodeIP1: "hcloud"},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -2461,17 +2482,17 @@ func TestTalosBuildTalosUpgradeImage_PlatformMetadataFallback(t *testing.T) {
 
 func TestTalosBuildTalosUpgradeImage_InstallImageBeatsPlatformMetadata(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tu.Spec.Talos.Version = fakeTalosVersion
 
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.TalosSchematicAnnotation: "abc123",
+		constants.TalosSchematicAnnotation: testSchematicABC,
 	}
 
 	tc := &mockTalosClient{
-		installImages: map[string]string{"10.0.0.1": "factory.talos.dev/aws-installer/abc123:v1.11.0"},
-		platforms:     map[string]string{"10.0.0.1": "metal"},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/aws-installer/abc123:v1.11.0"},
+		platforms:     map[string]string{testNodeIP1: "metal"},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -2490,16 +2511,16 @@ func TestTalosBuildTalosUpgradeImage_InstallImageBeatsPlatformMetadata(t *testin
 
 func TestTalosBuildTalosUpgradeImage_RefusesWhenPlatformReadFails(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tu.Spec.Talos.Version = fakeTalosVersion
 
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.TalosSchematicAnnotation: "abc123",
+		constants.TalosSchematicAnnotation: testSchematicABC,
 	}
 
 	tc := &mockTalosClient{
-		installImages:  map[string]string{"10.0.0.1": "ghcr.io/siderolabs/installer:v1.11.0"},
+		installImages:  map[string]string{testNodeIP1: testInstallerV111},
 		getPlatformErr: fmt.Errorf("rpc error: code = Unavailable"),
 	}
 
@@ -2518,17 +2539,17 @@ func TestTalosBuildTalosUpgradeImage_RefusesWhenPlatformReadFails(t *testing.T) 
 
 func TestTalosBuildTalosUpgradeImage_RefusesWhenPlatformEmpty(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tu.Spec.Talos.Version = fakeTalosVersion
 
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.TalosSchematicAnnotation: "abc123",
+		constants.TalosSchematicAnnotation: testSchematicABC,
 	}
 
 	tc := &mockTalosClient{
-		installImages: map[string]string{"10.0.0.1": "ghcr.io/siderolabs/installer:v1.11.0"},
-		platforms:     map[string]string{"10.0.0.1": ""},
+		installImages: map[string]string{testNodeIP1: testInstallerV111},
+		platforms:     map[string]string{testNodeIP1: ""},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -2571,14 +2592,14 @@ func TestTalosGetSortedNodes_FilteringAndSorting(t *testing.T) {
 	scheme := newTestScheme()
 
 	// Define nodes with varying labels and names
-	nodeA := newNode("node-alpha", "10.0.0.1")
-	nodeA.Labels = map[string]string{"tier": "frontend", "upgrade": "true"}
+	nodeA := newNode(testNodeAlpha, testNodeIP1)
+	nodeA.Labels = map[string]string{testLabelTier: "frontend", upgradeContainerName: upgradingLabelValue}
 
-	nodeB := newNode("node-beta", "10.0.0.2")
-	nodeB.Labels = map[string]string{"tier": "backend", "upgrade": "true"}
+	nodeB := newNode(testNodeBeta, testNodeIP2)
+	nodeB.Labels = map[string]string{testLabelTier: testLabelBackend, upgradeContainerName: upgradingLabelValue}
 
-	nodeC := newNode("node-charlie", "10.0.0.3")
-	nodeC.Labels = map[string]string{"tier": "backend", "upgrade": "false"}
+	nodeC := newNode(testNodeCharlie, testNodeIP3)
+	nodeC.Labels = map[string]string{testLabelTier: testLabelBackend, "upgrade": "false"}
 
 	tests := []struct {
 		name         string
@@ -2588,27 +2609,27 @@ func TestTalosGetSortedNodes_FilteringAndSorting(t *testing.T) {
 		{
 			name:         "No selector returns all nodes sorted",
 			nodeSelector: nil,
-			expected:     []string{"node-alpha", "node-beta", "node-charlie"},
+			expected:     []string{testNodeAlpha, testNodeBeta, testNodeCharlie},
 		},
 		{
 			name: "Simple matchLabels filter",
 			nodeSelector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{"tier": "backend"},
+				MatchLabels: map[string]string{testLabelTier: testLabelBackend},
 			},
-			expected: []string{"node-beta", "node-charlie"},
+			expected: []string{testNodeBeta, testNodeCharlie},
 		},
 		{
 			name: "Complex matchExpressions (operator: In)",
 			nodeSelector: &metav1.LabelSelector{
 				MatchExpressions: []metav1.LabelSelectorRequirement{
 					{
-						Key:      "tier",
+						Key:      testLabelTier,
 						Operator: metav1.LabelSelectorOpIn,
 						Values:   []string{"frontend", "other"},
 					},
 				},
 			},
-			expected: []string{"node-alpha"},
+			expected: []string{testNodeAlpha},
 		},
 		{
 			name: "Complex matchExpressions (operator: Exists)",
@@ -2620,15 +2641,15 @@ func TestTalosGetSortedNodes_FilteringAndSorting(t *testing.T) {
 					},
 				},
 			},
-			expected: []string{"node-alpha", "node-beta", "node-charlie"},
+			expected: []string{testNodeAlpha, testNodeBeta, testNodeCharlie},
 		},
 		{
 			name: "Filtering by value 'true' and verifying sort order",
 			nodeSelector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{"upgrade": "true"},
+				MatchLabels: map[string]string{upgradeContainerName: upgradingLabelValue},
 			},
 			// alpha comes before beta alphabetically
-			expected: []string{"node-alpha", "node-beta"},
+			expected: []string{testNodeAlpha, testNodeBeta},
 		},
 		{
 			name: "Empty result for non-matching selector",
@@ -2681,7 +2702,7 @@ func TestTalosGetSortedNodes_InvalidSelector(t *testing.T) {
 	ns := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
-				Key:      "tier",
+				Key:      testLabelTier,
 				Operator: "BadOperator",
 			},
 		},
@@ -2695,13 +2716,13 @@ func TestTalosGetSortedNodes_InvalidSelector(t *testing.T) {
 
 func TestDrainNode_CordonsAndDrains(t *testing.T) {
 	scheme := newTestScheme()
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 
 	// Add a running pod on the node
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-pod",
-			Namespace: "default",
+			Namespace: testNamespace,
 		},
 		Spec: corev1.PodSpec{
 			NodeName: fakeNodeA,
@@ -2711,7 +2732,7 @@ func TestDrainNode_CordonsAndDrains(t *testing.T) {
 		},
 	}
 
-	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{}
 
 	// Create client with field indexer for spec.nodeName
@@ -2741,9 +2762,9 @@ func TestDrainNode_CordonsAndDrains(t *testing.T) {
 
 func TestDrainNode_WithDisableEviction(t *testing.T) {
 	scheme := newTestScheme()
-	node := newNode(fakeNodeA, "10.0.0.1")
+	node := newNode(fakeNodeA, testNodeIP1)
 
-	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{
 		DisableEviction: ptr.To(true),
 	}
@@ -2776,7 +2797,7 @@ func TestDrainNode_WithDisableEviction(t *testing.T) {
 func TestDrainNode_InvalidNode(t *testing.T) {
 	scheme := newTestScheme()
 
-	tu := newTalosUpgrade("test-upgrade", withFinalizer)
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
@@ -2791,36 +2812,36 @@ func TestDrainNode_InvalidNode(t *testing.T) {
 
 func TestTalosReconcile_BatchParallelism2_CreatesMultipleJobs(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 		withParallelism(2),
 	)
-	nodeA := newNode(fakeNodeA, "10.0.0.1")
-	nodeB := newNode(fakeNodeB, "10.0.0.2")
-	nodeC := newNode(fakeNodeC, "10.0.0.3")
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	nodeB := newNode(fakeNodeB, testNodeIP2)
+	nodeC := newNode(fakeNodeC, testNodeIP3)
 
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{
-			"10.0.0.1": "v1.10.0",
-			"10.0.0.2": "v1.10.0",
-			"10.0.0.3": "v1.10.0",
+			testNodeIP1: testV110Talos,
+			testNodeIP2: testV110Talos,
+			testNodeIP3: testV110Talos,
 		},
 		installImages: map[string]string{
-			"10.0.0.1": "factory.talos.dev/installer:v1.10.0",
-			"10.0.0.2": "factory.talos.dev/installer:v1.10.0",
-			"10.0.0.3": "factory.talos.dev/installer:v1.10.0",
+			testNodeIP1: testFactoryInstaller,
+			testNodeIP2: testFactoryInstaller,
+			testNodeIP3: testFactoryInstaller,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, nodeA, nodeB, nodeC).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
 	// Should create 2 jobs (parallelism=2), not 1
 	var jobList batchv1.JobList
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	if len(jobList.Items) != 2 {
@@ -2830,14 +2851,14 @@ func TestTalosReconcile_BatchParallelism2_CreatesMultipleJobs(t *testing.T) {
 	// Jobs should be for node-a and node-b (alphabetical order)
 	jobNodes := map[string]bool{}
 	for _, job := range jobList.Items {
-		jobNodes[job.Labels["tuppr.home-operations.com/target-node"]] = true
+		jobNodes[job.Labels[targetNodeLabelKey]] = true
 	}
 	if !jobNodes[fakeNodeA] || !jobNodes[fakeNodeB] {
 		t.Fatalf("expected jobs for node-a and node-b, got: %v", jobNodes)
 	}
 
 	// Status should show Upgrading phase
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseUpgrading {
 		t.Fatalf("expected phase Upgrading, got: %s", updated.Status.Phase)
 	}
@@ -2845,25 +2866,25 @@ func TestTalosReconcile_BatchParallelism2_CreatesMultipleJobs(t *testing.T) {
 
 func TestTalosReconcile_BatchAllJobsSucceed_FullLifecycle(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 		withParallelism(2),
 	)
-	nodeA := newNode(fakeNodeA, "10.0.0.1")
-	nodeB := newNode(fakeNodeB, "10.0.0.2")
-	nodeC := newNode(fakeNodeC, "10.0.0.3")
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	nodeB := newNode(fakeNodeB, testNodeIP2)
+	nodeC := newNode(fakeNodeC, testNodeIP3)
 
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{
-			"10.0.0.1": "v1.10.0",
-			"10.0.0.2": "v1.10.0",
-			"10.0.0.3": "v1.10.0",
+			testNodeIP1: testV110Talos,
+			testNodeIP2: testV110Talos,
+			testNodeIP3: testV110Talos,
 		},
 		installImages: map[string]string{
-			"10.0.0.1": "factory.talos.dev/installer:v1.10.0",
-			"10.0.0.2": "factory.talos.dev/installer:v1.10.0",
-			"10.0.0.3": "factory.talos.dev/installer:v1.10.0",
+			testNodeIP1: testFactoryInstaller,
+			testNodeIP2: testFactoryInstaller,
+			testNodeIP3: testFactoryInstaller,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -2871,10 +2892,10 @@ func TestTalosReconcile_BatchAllJobsSucceed_FullLifecycle(t *testing.T) {
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
 	// --- Step 1: First reconcile creates jobs for node-a and node-b ---
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
 	var jobList batchv1.JobList
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	if len(jobList.Items) != 2 {
@@ -2888,27 +2909,27 @@ func TestTalosReconcile_BatchAllJobsSucceed_FullLifecycle(t *testing.T) {
 			t.Fatalf("failed to update job status: %v", err)
 		}
 	}
-	tc.nodeVersions["10.0.0.1"] = fakeTalosVersion
-	tc.nodeVersions["10.0.0.2"] = fakeTalosVersion
+	tc.nodeVersions[testNodeIP1] = fakeTalosVersion
+	tc.nodeVersions[testNodeIP2] = fakeTalosVersion
 
 	// Reconcile to process completed batch
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if !slices.Contains(updated.Status.CompletedNodes, fakeNodeA) || !slices.Contains(updated.Status.CompletedNodes, fakeNodeB) {
 		t.Fatalf("step 2: expected node-a and node-b in CompletedNodes, got: %v", updated.Status.CompletedNodes)
 	}
 
 	// --- Step 3: Next reconcile should create job for node-c (last batch) ---
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	// Find job for node-c
 	foundNodeC := false
 	for _, job := range jobList.Items {
-		if job.Labels["tuppr.home-operations.com/target-node"] == fakeNodeC {
+		if job.Labels[targetNodeLabelKey] == fakeNodeC {
 			foundNodeC = true
 			break
 		}
@@ -2918,25 +2939,25 @@ func TestTalosReconcile_BatchAllJobsSucceed_FullLifecycle(t *testing.T) {
 	}
 
 	// --- Step 4: Mark node-c job as succeeded ---
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	for i := range jobList.Items {
-		if jobList.Items[i].Labels["tuppr.home-operations.com/target-node"] == fakeNodeC {
+		if jobList.Items[i].Labels[targetNodeLabelKey] == fakeNodeC {
 			jobList.Items[i].Status.Succeeded = 1
 			if err := cl.Status().Update(context.Background(), &jobList.Items[i]); err != nil {
 				t.Fatalf("failed to update job status: %v", err)
 			}
 		}
 	}
-	tc.nodeVersions["10.0.0.3"] = fakeTalosVersion
+	tc.nodeVersions[testNodeIP3] = fakeTalosVersion
 
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
 	// --- Step 5: Final reconcile should complete ---
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
-	updated = getTalosUpgrade(t, cl, "test-upgrade")
+	updated = getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
 		t.Fatalf("step 5: expected phase Completed, got: %s", updated.Status.Phase)
 	}
@@ -2947,25 +2968,25 @@ func TestTalosReconcile_BatchAllJobsSucceed_FullLifecycle(t *testing.T) {
 
 func TestTalosReconcile_BatchOneJobFails(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 		withParallelism(2),
 	)
-	nodeA := newNode(fakeNodeA, "10.0.0.1")
-	nodeB := newNode(fakeNodeB, "10.0.0.2")
-	nodeC := newNode(fakeNodeC, "10.0.0.3")
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	nodeB := newNode(fakeNodeB, testNodeIP2)
+	nodeC := newNode(fakeNodeC, testNodeIP3)
 
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{
-			"10.0.0.1": "v1.10.0",
-			"10.0.0.2": "v1.10.0",
-			"10.0.0.3": "v1.10.0",
+			testNodeIP1: testV110Talos,
+			testNodeIP2: testV110Talos,
+			testNodeIP3: testV110Talos,
 		},
 		installImages: map[string]string{
-			"10.0.0.1": "factory.talos.dev/installer:v1.10.0",
-			"10.0.0.2": "factory.talos.dev/installer:v1.10.0",
-			"10.0.0.3": "factory.talos.dev/installer:v1.10.0",
+			testNodeIP1: testFactoryInstaller,
+			testNodeIP2: testFactoryInstaller,
+			testNodeIP3: testFactoryInstaller,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -2973,10 +2994,10 @@ func TestTalosReconcile_BatchOneJobFails(t *testing.T) {
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
 	// Step 1: Create batch
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
 	var jobList batchv1.JobList
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	if len(jobList.Items) != 2 {
@@ -2985,10 +3006,10 @@ func TestTalosReconcile_BatchOneJobFails(t *testing.T) {
 
 	// Step 2: Mark node-a succeeded, node-b failed
 	for i := range jobList.Items {
-		nodeName := jobList.Items[i].Labels["tuppr.home-operations.com/target-node"]
+		nodeName := jobList.Items[i].Labels[targetNodeLabelKey]
 		if nodeName == fakeNodeA {
 			jobList.Items[i].Status.Succeeded = 1
-			tc.nodeVersions["10.0.0.1"] = fakeTalosVersion
+			tc.nodeVersions[testNodeIP1] = fakeTalosVersion
 		} else {
 			jobList.Items[i].Status.Failed = *jobList.Items[i].Spec.BackoffLimit
 		}
@@ -2998,9 +3019,9 @@ func TestTalosReconcile_BatchOneJobFails(t *testing.T) {
 	}
 
 	// Step 3: Reconcile — should process both, then fail
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
 		t.Fatalf("expected phase Failed after one job in batch fails, got: %s", updated.Status.Phase)
 	}
@@ -3028,7 +3049,7 @@ func TestTalosReconcile_BatchOneJobFails(t *testing.T) {
 
 func TestTalosReconcile_BatchActiveJobsStillRunning(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 		withParallelism(2),
@@ -3038,12 +3059,12 @@ func TestTalosReconcile_BatchActiveJobsStillRunning(t *testing.T) {
 	jobA := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-upgrade-node-a-1234",
-			Namespace: "default",
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "talos-upgrade",
-				"app.kubernetes.io/instance":            "test-upgrade",
-				"app.kubernetes.io/part-of":             "tuppr",
-				"tuppr.home-operations.com/target-node": fakeNodeA,
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeA,
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
@@ -3052,12 +3073,12 @@ func TestTalosReconcile_BatchActiveJobsStillRunning(t *testing.T) {
 	jobB := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-upgrade-node-b-5678",
-			Namespace: "default",
+			Namespace: testNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":                "talos-upgrade",
-				"app.kubernetes.io/instance":            "test-upgrade",
-				"app.kubernetes.io/part-of":             "tuppr",
-				"tuppr.home-operations.com/target-node": fakeNodeB,
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeB,
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
@@ -3068,12 +3089,12 @@ func TestTalosReconcile_BatchActiveJobsStillRunning(t *testing.T) {
 		WithObjects(tu, jobA, jobB).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
 
-	result := reconcileTalos(t, r, "test-upgrade")
+	result := reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != 30*time.Second {
 		t.Fatalf("expected 30s requeue for active batch, got: %v", result.RequeueAfter)
 	}
 
-	updated := getTalosUpgrade(t, cl, "test-upgrade")
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseUpgrading {
 		t.Fatalf("expected phase Upgrading while batch running, got: %s", updated.Status.Phase)
 	}
@@ -3082,41 +3103,41 @@ func TestTalosReconcile_BatchActiveJobsStillRunning(t *testing.T) {
 func TestTalosReconcile_BatchDefaultParallelism(t *testing.T) {
 	// Nil parallelism should behave like parallelism=1 (create 1 job)
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
 	// Parallelism is nil (default)
 
-	nodeA := newNode(fakeNodeA, "10.0.0.1")
-	nodeB := newNode(fakeNodeB, "10.0.0.2")
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	nodeB := newNode(fakeNodeB, testNodeIP2)
 
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{
-			"10.0.0.1": "v1.10.0",
-			"10.0.0.2": "v1.10.0",
+			testNodeIP1: testV110Talos,
+			testNodeIP2: testV110Talos,
 		},
 		installImages: map[string]string{
-			"10.0.0.1": "factory.talos.dev/installer:v1.10.0",
-			"10.0.0.2": "factory.talos.dev/installer:v1.10.0",
+			testNodeIP1: testFactoryInstaller,
+			testNodeIP2: testFactoryInstaller,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, nodeA, nodeB).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
-	reconcileTalos(t, r, "test-upgrade")
+	reconcileTalos(t, r, testUpgradeName)
 
 	var jobList batchv1.JobList
-	if err := cl.List(context.Background(), &jobList, client.InNamespace("default")); err != nil {
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
 	if len(jobList.Items) != 1 {
 		t.Fatalf("expected 1 job for default parallelism, got: %d", len(jobList.Items))
 	}
-	if jobList.Items[0].Labels["tuppr.home-operations.com/target-node"] != fakeNodeA {
+	if jobList.Items[0].Labels[targetNodeLabelKey] != fakeNodeA {
 		t.Fatalf("expected job for node-a (first alphabetically), got: %s",
-			jobList.Items[0].Labels["tuppr.home-operations.com/target-node"])
+			jobList.Items[0].Labels[targetNodeLabelKey])
 	}
 }
 
@@ -3160,19 +3181,19 @@ func TestGetParallelism(t *testing.T) {
 
 func TestFindNextNodes(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
-	nodeA := newNode(fakeNodeA, "10.0.0.1")
-	nodeB := newNode(fakeNodeB, "10.0.0.2")
-	nodeC := newNode(fakeNodeC, "10.0.0.3")
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	nodeB := newNode(fakeNodeB, testNodeIP2)
+	nodeC := newNode(fakeNodeC, testNodeIP3)
 
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{
-			"10.0.0.1": "v1.10.0",
-			"10.0.0.2": "v1.10.0",
-			"10.0.0.3": "v1.10.0",
+			testNodeIP1: testV110Talos,
+			testNodeIP2: testV110Talos,
+			testNodeIP3: testV110Talos,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -3203,21 +3224,21 @@ func TestFindNextNodes(t *testing.T) {
 
 func TestFindNextNodes_SkipsCompletedAndFailed(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 		withCompletedNodes(fakeNodeA),
 		withFailedNodes(fakeNodeB),
 	)
-	nodeA := newNode(fakeNodeA, "10.0.0.1")
-	nodeB := newNode(fakeNodeB, "10.0.0.2")
-	nodeC := newNode(fakeNodeC, "10.0.0.3")
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	nodeB := newNode(fakeNodeB, testNodeIP2)
+	nodeC := newNode(fakeNodeC, testNodeIP3)
 
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{
-			"10.0.0.1": "v1.10.0",
-			"10.0.0.2": "v1.10.0",
-			"10.0.0.3": "v1.10.0",
+			testNodeIP1: testV110Talos,
+			testNodeIP2: testV110Talos,
+			testNodeIP3: testV110Talos,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -3235,19 +3256,19 @@ func TestFindNextNodes_SkipsCompletedAndFailed(t *testing.T) {
 
 func TestFindNextNodes_ControllerNodeLast(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
-	nodeA := newNode(fakeNodeA, "10.0.0.1")
-	nodeB := newNode(fakeNodeB, "10.0.0.2")
-	nodeC := newNode(fakeNodeC, "10.0.0.3")
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	nodeB := newNode(fakeNodeB, testNodeIP2)
+	nodeC := newNode(fakeNodeC, testNodeIP3)
 
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{
-			"10.0.0.1": "v1.10.0",
-			"10.0.0.2": "v1.10.0",
-			"10.0.0.3": "v1.10.0",
+			testNodeIP1: testV110Talos,
+			testNodeIP2: testV110Talos,
+			testNodeIP3: testV110Talos,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -3282,20 +3303,20 @@ func TestFindNextNodes_ControllerNodeLast(t *testing.T) {
 
 func TestFindNextNodes_ControllerNodeOnly(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade("test-upgrade",
+	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 		withCompletedNodes(fakeNodeB, fakeNodeC),
 	)
-	nodeA := newNode(fakeNodeA, "10.0.0.1")
-	nodeB := newNode(fakeNodeB, "10.0.0.2")
-	nodeC := newNode(fakeNodeC, "10.0.0.3")
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	nodeB := newNode(fakeNodeB, testNodeIP2)
+	nodeC := newNode(fakeNodeC, testNodeIP3)
 
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{
-			"10.0.0.1": "v1.10.0",
-			"10.0.0.2": "v1.10.0",
-			"10.0.0.3": "v1.10.0",
+			testNodeIP1: testV110Talos,
+			testNodeIP2: testV110Talos,
+			testNodeIP3: testV110Talos,
 		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).

@@ -65,8 +65,8 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 	currentVersion, err := r.VersionGetter.GetCurrentKubernetesVersion(ctx)
 	if err == nil {
 		if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-			"currentVersion": currentVersion,
-			"targetVersion":  targetVersion,
+			statusFieldCurrentVersion: currentVersion,
+			statusFieldTargetVersion:  targetVersion,
 		}); err != nil {
 			logger.Error(err, "Failed to update version status")
 		}
@@ -90,8 +90,8 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 		}
 
 		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseCompleted, "", fmt.Sprintf("Kubernetes successfully upgraded to %s", targetVersion), map[string]any{
-			"currentVersion": targetVersion,
-			"targetVersion":  targetVersion,
+			statusFieldCurrentVersion: targetVersion,
+			statusFieldTargetVersion:  targetVersion,
 		}); err != nil {
 			logger.Error(err, "Failed to update completion phase")
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
@@ -190,7 +190,7 @@ func (r *Reconciler) startUpgrade(ctx context.Context, kubernetesUpgrade *tupprv
 
 	message := fmt.Sprintf("Upgrading Kubernetes to %s on controller node %s", kubernetesUpgrade.Spec.Kubernetes.Version, controllerNode)
 	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseUpgrading, controllerNode, message, map[string]any{
-		"jobName": job.Name,
+		statusFieldJobName: job.Name,
 	}); err != nil {
 		logger.Error(err, "Failed to update status for job creation")
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err

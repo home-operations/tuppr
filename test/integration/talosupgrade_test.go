@@ -31,7 +31,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 		mockHealth = getMockHealthChecker()
 		mockVersion = getMockVersionGetter()
 
-		testNode = createTestNode("test-node", "10.0.0.10")
+		testNode = createTestNode(testNodeName, "10.0.0.10")
 		Expect(k8sClient.Create(ctx, testNode)).To(Succeed())
 
 		// Set up mock data for the test node
@@ -75,7 +75,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 				},
 				Spec: tupprv1alpha1.TalosUpgradeSpec{
 					Talos: tupprv1alpha1.TalosSpec{
-						Version: "v1.11.0",
+						Version: testTalosV111,
 					},
 				},
 			}
@@ -103,7 +103,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 				},
 				Spec: tupprv1alpha1.TalosUpgradeSpec{
 					Talos: tupprv1alpha1.TalosSpec{
-						Version: "v1.11.0",
+						Version: testTalosV111,
 					},
 				},
 			}
@@ -125,11 +125,11 @@ var _ = Describe("TalosUpgrade Integration", func() {
 		It("should add finalizer on creation", func() {
 			talosUpgrade := &tupprv1alpha1.TalosUpgrade{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "finalizer-test",
+					Name: testFinalizerTest,
 				},
 				Spec: tupprv1alpha1.TalosUpgradeSpec{
 					Talos: tupprv1alpha1.TalosSpec{
-						Version: "v1.11.0",
+						Version: testTalosV111,
 					},
 				},
 			}
@@ -137,7 +137,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 
 			By("verifying finalizer is added")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "finalizer-test"}, talosUpgrade)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testFinalizerTest}, talosUpgrade)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(talosUpgrade.Finalizers).To(ContainElement("tuppr.home-operations.com/talos-finalizer"))
 			}, 10*time.Second, 500*time.Millisecond).Should(Succeed())
@@ -147,7 +147,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 
 			By("verifying resource is eventually deleted")
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "finalizer-test"}, talosUpgrade)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testFinalizerTest}, talosUpgrade)
 				return err != nil
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
 		})
@@ -174,11 +174,11 @@ var _ = Describe("TalosUpgrade Integration", func() {
 			var parallelism int32 = 2
 			talosUpgrade := &tupprv1alpha1.TalosUpgrade{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "batch-test",
+					Name: testBatchTest,
 				},
 				Spec: tupprv1alpha1.TalosUpgradeSpec{
 					Talos: tupprv1alpha1.TalosSpec{
-						Version: "v1.11.0",
+						Version: testTalosV111,
 					},
 					Parallelism: &parallelism,
 				},
@@ -189,8 +189,8 @@ var _ = Describe("TalosUpgrade Integration", func() {
 			Eventually(func(g Gomega) {
 				jobList := &batchv1.JobList{}
 				err := k8sClient.List(ctx, jobList, client.MatchingLabels{
-					"app.kubernetes.io/name":     "talos-upgrade",
-					"app.kubernetes.io/instance": "batch-test",
+					testAppLabelKey:              testTalosUpgrade,
+					"app.kubernetes.io/instance": testBatchTest,
 				})
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(jobList.Items).To(HaveLen(2))
@@ -206,7 +206,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 			By("verifying both nodes have upgrading labels")
 			Eventually(func(g Gomega) {
 				var node1 corev1.Node
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "test-node"}, &node1)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testNodeName}, &node1)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(node1.Labels).To(HaveKey("tuppr.home-operations.com/upgrading"))
 
@@ -219,7 +219,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 			By("marking both jobs as succeeded")
 			jobList := &batchv1.JobList{}
 			Eventually(func(g Gomega) {
-				err := k8sClient.List(ctx, jobList, client.MatchingLabels{"app.kubernetes.io/name": "talos-upgrade"})
+				err := k8sClient.List(ctx, jobList, client.MatchingLabels{testAppLabelKey: testTalosUpgrade})
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(jobList.Items).To(HaveLen(2))
 			}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
@@ -235,20 +235,20 @@ var _ = Describe("TalosUpgrade Integration", func() {
 				}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
 			}
 
-			mockTalos.SetNodeVersion("10.0.0.10", "v1.11.0")
-			mockTalos.SetNodeVersion("10.0.0.11", "v1.11.0")
+			mockTalos.SetNodeVersion("10.0.0.10", testTalosV111)
+			mockTalos.SetNodeVersion("10.0.0.11", testTalosV111)
 
 			By("verifying both nodes are in completedNodes")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "batch-test"}, talosUpgrade)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testBatchTest}, talosUpgrade)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(talosUpgrade.Status.CompletedNodes).To(ContainElement("test-node"))
+				g.Expect(talosUpgrade.Status.CompletedNodes).To(ContainElement(testNodeName))
 				g.Expect(talosUpgrade.Status.CompletedNodes).To(ContainElement("test-node-2"))
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 			By("verifying upgrade completes")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "batch-test"}, talosUpgrade)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testBatchTest}, talosUpgrade)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(talosUpgrade.Status.Phase).To(Equal(tupprv1alpha1.JobPhaseCompleted))
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
@@ -267,7 +267,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 				},
 				Spec: tupprv1alpha1.TalosUpgradeSpec{
 					Talos: tupprv1alpha1.TalosSpec{
-						Version: "v1.11.0",
+						Version: testTalosV111,
 					},
 				},
 			}
@@ -276,7 +276,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 			By("waiting for upgrade job to be created")
 			Eventually(func(g Gomega) {
 				jobList := &batchv1.JobList{}
-				err := k8sClient.List(ctx, jobList, client.MatchingLabels{"app.kubernetes.io/name": "talos-upgrade"})
+				err := k8sClient.List(ctx, jobList, client.MatchingLabels{testAppLabelKey: testTalosUpgrade})
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(jobList.Items).To(HaveLen(1))
 			}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
@@ -284,7 +284,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 			By("verifying node has upgrading label")
 			Eventually(func(g Gomega) {
 				var node corev1.Node
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "test-node"}, &node)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testNodeName}, &node)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(node.Labels).To(HaveKey("tuppr.home-operations.com/upgrading"))
 				g.Expect(node.Labels["tuppr.home-operations.com/upgrading"]).To(Equal("true"))
@@ -302,7 +302,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 				},
 				Spec: tupprv1alpha1.TalosUpgradeSpec{
 					Talos: tupprv1alpha1.TalosSpec{
-						Version: "v1.11.0",
+						Version: testTalosV111,
 					},
 				},
 			}
@@ -311,7 +311,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 			By("waiting for node to get upgrading label")
 			Eventually(func(g Gomega) {
 				var node corev1.Node
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "test-node"}, &node)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testNodeName}, &node)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(node.Labels["tuppr.home-operations.com/upgrading"]).To(Equal("true"))
 			}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
@@ -320,7 +320,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 			var job batchv1.Job
 			Eventually(func(g Gomega) {
 				jobList := &batchv1.JobList{}
-				err := k8sClient.List(ctx, jobList, client.MatchingLabels{"app.kubernetes.io/name": "talos-upgrade"})
+				err := k8sClient.List(ctx, jobList, client.MatchingLabels{testAppLabelKey: testTalosUpgrade})
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(jobList.Items).To(HaveLen(1))
 				job = jobList.Items[0]
@@ -328,7 +328,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 
 			Eventually(func(g Gomega) {
 				jobList := &batchv1.JobList{}
-				err := k8sClient.List(ctx, jobList, client.MatchingLabels{"app.kubernetes.io/name": "talos-upgrade"})
+				err := k8sClient.List(ctx, jobList, client.MatchingLabels{testAppLabelKey: testTalosUpgrade})
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(jobList.Items).To(HaveLen(1))
 				job = jobList.Items[0]
@@ -336,12 +336,12 @@ var _ = Describe("TalosUpgrade Integration", func() {
 				g.Expect(k8sClient.Status().Update(ctx, &job)).To(Succeed())
 			}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
 
-			mockTalos.SetNodeVersion("10.0.0.10", "v1.11.0")
+			mockTalos.SetNodeVersion("10.0.0.10", testTalosV111)
 
 			By("verifying upgrading label is removed")
 			Eventually(func(g Gomega) {
 				var node corev1.Node
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: "test-node"}, &node)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: testNodeName}, &node)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(node.Labels).NotTo(HaveKey("tuppr.home-operations.com/upgrading"))
 			}, 30*time.Second, 1*time.Second).Should(Succeed())

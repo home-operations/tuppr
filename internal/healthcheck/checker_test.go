@@ -15,6 +15,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+const (
+	kindNode      = "Node"
+	kindConfigMap = "ConfigMap"
+	exprTrue      = "true"
+	exprHasData   = `has(object.data)`
+	cmName        = "test-cm"
+	defaultNS     = "default"
+	keyMetadata   = "metadata"
+	keyStatus     = "status"
+	keyReady      = "ready"
+	keyName       = "name"
+	nameTest      = "test"
+)
+
 func newTestScheme() *runtime.Scheme {
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
@@ -53,8 +67,8 @@ func TestHealthChecker_ValidateHealthChecks(t *testing.T) {
 			checks: []tupprv1alpha1.HealthCheckSpec{
 				{
 					APIVersion: "v1",
-					Kind:       "Node",
-					Expr:       "true",
+					Kind:       kindNode,
+					Expr:       exprTrue,
 				},
 			},
 			wantErr: false,
@@ -63,8 +77,8 @@ func TestHealthChecker_ValidateHealthChecks(t *testing.T) {
 			name: "missing apiVersion",
 			checks: []tupprv1alpha1.HealthCheckSpec{
 				{
-					Kind: "Node",
-					Expr: "true",
+					Kind: kindNode,
+					Expr: exprTrue,
 				},
 			},
 			wantErr: true,
@@ -74,7 +88,7 @@ func TestHealthChecker_ValidateHealthChecks(t *testing.T) {
 			checks: []tupprv1alpha1.HealthCheckSpec{
 				{
 					APIVersion: "v1",
-					Expr:       "true",
+					Expr:       exprTrue,
 				},
 			},
 			wantErr: true,
@@ -84,7 +98,7 @@ func TestHealthChecker_ValidateHealthChecks(t *testing.T) {
 			checks: []tupprv1alpha1.HealthCheckSpec{
 				{
 					APIVersion: "v1",
-					Kind:       "Node",
+					Kind:       kindNode,
 				},
 			},
 			wantErr: true,
@@ -94,7 +108,7 @@ func TestHealthChecker_ValidateHealthChecks(t *testing.T) {
 			checks: []tupprv1alpha1.HealthCheckSpec{
 				{
 					APIVersion: "v1",
-					Kind:       "Node",
+					Kind:       kindNode,
 					Expr:       "this is not valid CEL !!!",
 				},
 			},
@@ -103,8 +117,8 @@ func TestHealthChecker_ValidateHealthChecks(t *testing.T) {
 		{
 			name: "multiple errors",
 			checks: []tupprv1alpha1.HealthCheckSpec{
-				{Expr: "true"},
-				{APIVersion: "v1", Kind: "Node"},
+				{Expr: exprTrue},
+				{APIVersion: "v1", Kind: kindNode},
 			},
 			wantErr: true,
 		},
@@ -134,9 +148,9 @@ func TestHealthChecker_RunCELExpression(t *testing.T) {
 	}{
 		{
 			name: "simple true expression",
-			expr: "true",
+			expr: exprTrue,
 			resource: map[string]any{
-				"metadata": map[string]any{"name": "test"},
+				keyMetadata: map[string]any{keyName: nameTest},
 			},
 			want: true,
 		},
@@ -144,7 +158,7 @@ func TestHealthChecker_RunCELExpression(t *testing.T) {
 			name: "simple false expression",
 			expr: "false",
 			resource: map[string]any{
-				"metadata": map[string]any{"name": "test"},
+				keyMetadata: map[string]any{keyName: nameTest},
 			},
 			want: false,
 		},
@@ -152,7 +166,7 @@ func TestHealthChecker_RunCELExpression(t *testing.T) {
 			name: "check status field",
 			expr: `status.phase == "Running"`,
 			resource: map[string]any{
-				"status": map[string]any{"phase": "Running"},
+				keyStatus: map[string]any{"phase": "Running"},
 			},
 			want: true,
 		},
@@ -160,7 +174,7 @@ func TestHealthChecker_RunCELExpression(t *testing.T) {
 			name: "check status field mismatch",
 			expr: `status.phase == "Running"`,
 			resource: map[string]any{
-				"status": map[string]any{"phase": "Pending"},
+				keyStatus: map[string]any{"phase": "Pending"},
 			},
 			want: false,
 		},
@@ -168,7 +182,7 @@ func TestHealthChecker_RunCELExpression(t *testing.T) {
 			name: "check object metadata",
 			expr: `object.metadata.name == "my-resource"`,
 			resource: map[string]any{
-				"metadata": map[string]any{"name": "my-resource"},
+				keyMetadata: map[string]any{keyName: "my-resource"},
 			},
 			want: true,
 		},
@@ -176,7 +190,7 @@ func TestHealthChecker_RunCELExpression(t *testing.T) {
 			name: "status missing defaults to empty map",
 			expr: `!has(status.phase)`,
 			resource: map[string]any{
-				"metadata": map[string]any{"name": "test"},
+				keyMetadata: map[string]any{keyName: nameTest},
 			},
 			want: true,
 		},
@@ -218,9 +232,9 @@ func TestHealthChecker_EvaluateSpecificResource(t *testing.T) {
 	scheme := newTestScheme()
 
 	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
-	obj.SetName("test-cm")
-	obj.SetNamespace("default")
+	obj.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind(kindConfigMap))
+	obj.SetName(cmName)
+	obj.SetNamespace(defaultNS)
 	obj.Object["data"] = map[string]any{"key": "value"}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(obj).Build()
@@ -228,17 +242,17 @@ func TestHealthChecker_EvaluateSpecificResource(t *testing.T) {
 
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "v1",
-		Kind:       "ConfigMap",
-		Name:       "test-cm",
-		Namespace:  "default",
-		Expr:       `has(object.data)`,
+		Kind:       kindConfigMap,
+		Name:       cmName,
+		Namespace:  defaultNS,
+		Expr:       exprHasData,
 	}
 
 	env, _ := newCELEnv()
 	ast, _ := env.Compile(check.Expr)
 	program, _ := env.Program(ast)
 
-	gvk := corev1.SchemeGroupVersion.WithKind("ConfigMap")
+	gvk := corev1.SchemeGroupVersion.WithKind(kindConfigMap)
 	passed, err := hc.evaluateSpecificResource(context.Background(), check, program, gvk)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -255,17 +269,17 @@ func TestHealthChecker_EvaluateSpecificResource_NotFound(t *testing.T) {
 
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "v1",
-		Kind:       "ConfigMap",
+		Kind:       kindConfigMap,
 		Name:       "nonexistent",
-		Namespace:  "default",
-		Expr:       `true`,
+		Namespace:  defaultNS,
+		Expr:       exprTrue,
 	}
 
 	env, _ := newCELEnv()
 	ast, _ := env.Compile(check.Expr)
 	program, _ := env.Program(ast)
 
-	gvk := corev1.SchemeGroupVersion.WithKind("ConfigMap")
+	gvk := corev1.SchemeGroupVersion.WithKind(kindConfigMap)
 	_, err := hc.evaluateSpecificResource(context.Background(), check, program, gvk)
 	if err == nil {
 		t.Fatal("expected error for missing resource")
@@ -276,32 +290,32 @@ func TestHealthChecker_EvaluateAllResources(t *testing.T) {
 	scheme := newTestScheme()
 
 	cm1 := &unstructured.Unstructured{}
-	cm1.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
+	cm1.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind(kindConfigMap))
 	cm1.SetName("cm-1")
-	cm1.SetNamespace("default")
-	cm1.Object["data"] = map[string]any{"ready": "true"}
+	cm1.SetNamespace(defaultNS)
+	cm1.Object["data"] = map[string]any{keyReady: exprTrue}
 
 	cm2 := &unstructured.Unstructured{}
-	cm2.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
+	cm2.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind(kindConfigMap))
 	cm2.SetName("cm-2")
-	cm2.SetNamespace("default")
-	cm2.Object["data"] = map[string]any{"ready": "true"}
+	cm2.SetNamespace(defaultNS)
+	cm2.Object["data"] = map[string]any{keyReady: exprTrue}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm1, cm2).Build()
 	hc := &Checker{Client: cl}
 
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "v1",
-		Kind:       "ConfigMap",
-		Namespace:  "default",
-		Expr:       `has(object.data)`,
+		Kind:       kindConfigMap,
+		Namespace:  defaultNS,
+		Expr:       exprHasData,
 	}
 
 	env, _ := newCELEnv()
 	ast, _ := env.Compile(check.Expr)
 	program, _ := env.Program(ast)
 
-	gvk := corev1.SchemeGroupVersion.WithKind("ConfigMap")
+	gvk := corev1.SchemeGroupVersion.WithKind(kindConfigMap)
 	passed, err := hc.evaluateAllResources(context.Background(), check, program, gvk)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -315,18 +329,18 @@ func TestHealthChecker_EvaluateSpecificResource_FalseExpression(t *testing.T) {
 	scheme := newTestScheme()
 
 	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
-	obj.SetName("test-cm")
-	obj.SetNamespace("default")
+	obj.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind(kindConfigMap))
+	obj.SetName(cmName)
+	obj.SetNamespace(defaultNS)
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(obj).Build()
 	hc := &Checker{Client: cl}
 
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "v1",
-		Kind:       "ConfigMap",
-		Name:       "test-cm",
-		Namespace:  "default",
+		Kind:       kindConfigMap,
+		Name:       cmName,
+		Namespace:  defaultNS,
 		Expr:       `has(object.nonexistent)`,
 	}
 
@@ -334,7 +348,7 @@ func TestHealthChecker_EvaluateSpecificResource_FalseExpression(t *testing.T) {
 	ast, _ := env.Compile(check.Expr)
 	program, _ := env.Program(ast)
 
-	gvk := corev1.SchemeGroupVersion.WithKind("ConfigMap")
+	gvk := corev1.SchemeGroupVersion.WithKind(kindConfigMap)
 	passed, err := hc.evaluateSpecificResource(context.Background(), check, program, gvk)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -348,15 +362,15 @@ func TestHealthChecker_EvaluateAllResources_OneFails(t *testing.T) {
 	scheme := newTestScheme()
 
 	cm1 := &unstructured.Unstructured{}
-	cm1.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
+	cm1.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind(kindConfigMap))
 	cm1.SetName("cm-healthy")
-	cm1.SetNamespace("default")
-	cm1.Object["data"] = map[string]any{"ready": "true"}
+	cm1.SetNamespace(defaultNS)
+	cm1.Object["data"] = map[string]any{keyReady: exprTrue}
 
 	cm2 := &unstructured.Unstructured{}
-	cm2.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
+	cm2.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind(kindConfigMap))
 	cm2.SetName("cm-unhealthy")
-	cm2.SetNamespace("default")
+	cm2.SetNamespace(defaultNS)
 	// No data field - will fail has(object.data)
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm1, cm2).Build()
@@ -364,16 +378,16 @@ func TestHealthChecker_EvaluateAllResources_OneFails(t *testing.T) {
 
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "v1",
-		Kind:       "ConfigMap",
-		Namespace:  "default",
-		Expr:       `has(object.data)`,
+		Kind:       kindConfigMap,
+		Namespace:  defaultNS,
+		Expr:       exprHasData,
 	}
 
 	env, _ := newCELEnv()
 	ast, _ := env.Compile(check.Expr)
 	program, _ := env.Program(ast)
 
-	gvk := corev1.SchemeGroupVersion.WithKind("ConfigMap")
+	gvk := corev1.SchemeGroupVersion.WithKind(kindConfigMap)
 	passed, err := hc.evaluateAllResources(context.Background(), check, program, gvk)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -390,16 +404,16 @@ func TestHealthChecker_EvaluateAllResources_EmptyList(t *testing.T) {
 
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "v1",
-		Kind:       "ConfigMap",
-		Namespace:  "default",
-		Expr:       `has(object.data)`,
+		Kind:       kindConfigMap,
+		Namespace:  defaultNS,
+		Expr:       exprHasData,
 	}
 
 	env, _ := newCELEnv()
 	ast, _ := env.Compile(check.Expr)
 	program, _ := env.Program(ast)
 
-	gvk := corev1.SchemeGroupVersion.WithKind("ConfigMap")
+	gvk := corev1.SchemeGroupVersion.WithKind(kindConfigMap)
 	passed, err := hc.evaluateAllResources(context.Background(), check, program, gvk)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -413,9 +427,9 @@ func TestHealthChecker_CheckHealth_WithMetrics(t *testing.T) {
 	scheme := newTestScheme()
 
 	cm := &unstructured.Unstructured{}
-	cm.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
-	cm.SetName("test-cm")
-	cm.SetNamespace("default")
+	cm.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind(kindConfigMap))
+	cm.SetName(cmName)
+	cm.SetNamespace(defaultNS)
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build()
 	reporter := metrics.NewReporter()
@@ -424,10 +438,10 @@ func TestHealthChecker_CheckHealth_WithMetrics(t *testing.T) {
 	checks := []tupprv1alpha1.HealthCheckSpec{
 		{
 			APIVersion: "v1",
-			Kind:       "ConfigMap",
-			Name:       "test-cm",
-			Namespace:  "default",
-			Expr:       `true`,
+			Kind:       kindConfigMap,
+			Name:       cmName,
+			Namespace:  defaultNS,
+			Expr:       exprTrue,
 			Timeout:    &metav1.Duration{Duration: 30 * time.Second},
 		},
 	}
@@ -449,7 +463,7 @@ func TestHealthChecker_CheckHealth_InvalidExpression(t *testing.T) {
 	checks := []tupprv1alpha1.HealthCheckSpec{
 		{
 			APIVersion: "v1",
-			Kind:       "ConfigMap",
+			Kind:       kindConfigMap,
 			Expr:       "this is invalid !!!",
 		},
 	}
@@ -464,9 +478,9 @@ func TestHealthChecker_CheckHealth_NilMetricsReporter(t *testing.T) {
 	scheme := newTestScheme()
 
 	cm := &unstructured.Unstructured{}
-	cm.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("ConfigMap"))
-	cm.SetName("test-cm")
-	cm.SetNamespace("default")
+	cm.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind(kindConfigMap))
+	cm.SetName(cmName)
+	cm.SetNamespace(defaultNS)
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build()
 	hc := &Checker{Client: cl} // no MetricsReporter
@@ -474,10 +488,10 @@ func TestHealthChecker_CheckHealth_NilMetricsReporter(t *testing.T) {
 	checks := []tupprv1alpha1.HealthCheckSpec{
 		{
 			APIVersion: "v1",
-			Kind:       "ConfigMap",
-			Name:       "test-cm",
-			Namespace:  "default",
-			Expr:       `true`,
+			Kind:       kindConfigMap,
+			Name:       cmName,
+			Namespace:  defaultNS,
+			Expr:       exprTrue,
 			Timeout:    &metav1.Duration{Duration: 30 * time.Second},
 		},
 	}
