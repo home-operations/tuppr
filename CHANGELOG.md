@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.19](https://github.com/home-operations/tuppr/compare/0.1.18...0.1.19) (2026-05-05)
+
+
+### Features
+
+* improve metrics and grafanadashboard ([0aef4fa](https://github.com/home-operations/tuppr/commit/0aef4fac60513033a2d8a17edb2c82a1234bc231))
+
+
+### Miscellaneous Chores
+
+* **metrics:** add empty data at startup ([f79df1f](https://github.com/home-operations/tuppr/commit/f79df1f6522e3bbc09cf19a62594dc7268a03dc7))
+
 ## [0.1.18](https://github.com/home-operations/tuppr/compare/0.1.17...0.1.18) (2026-05-04)
 
 
