@@ -40,8 +40,25 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 	}
 
 	if kubernetesUpgrade.Status.Phase.IsTerminal() {
-		logger.V(1).Info("Kubernetes upgrade in terminal state, skipping", "phase", kubernetesUpgrade.Status.Phase)
-		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+		if kubernetesUpgrade.Status.Phase == tupprv1alpha1.JobPhaseFailed {
+			logger.V(1).Info("Kubernetes upgrade in terminal state, skipping", "phase", kubernetesUpgrade.Status.Phase)
+			return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+		}
+		targetVersion := kubernetesUpgrade.Spec.Kubernetes.Version
+		allUpgraded, err := r.areAllControlPlaneNodesUpgraded(ctx, targetVersion)
+		if err != nil {
+			logger.Error(err, "Failed to re-check control plane after completion")
+			return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+		}
+		if allUpgraded {
+			return ctrl.Result{RequeueAfter: time.Hour}, nil
+		}
+		logger.Info("Control plane node lagging target version, restarting campaign", "target", targetVersion)
+		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "Control plane node lagging target version, restarting upgrade"); err != nil {
+			logger.Error(err, "Failed to re-enter Pending after completion")
+			return ctrl.Result{RequeueAfter: time.Minute}, err
+		}
+		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
 
 	if !kubernetesUpgrade.Status.Phase.IsActive() {

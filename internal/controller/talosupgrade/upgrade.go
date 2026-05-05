@@ -51,8 +51,31 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 	}
 
 	if talosUpgrade.Status.Phase.IsTerminal() {
-		logger.V(1).Info("Talos upgrade in terminal state, skipping", "phase", talosUpgrade.Status.Phase)
-		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+		if talosUpgrade.Status.Phase == tupprv1alpha1.JobPhaseFailed {
+			logger.V(1).Info("Talos upgrade in terminal state, skipping", "phase", talosUpgrade.Status.Phase)
+			return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+		}
+		nextNodes, err := r.findNextNodes(ctx, talosUpgrade, 1)
+		if err != nil {
+			logger.Error(err, "Failed to re-check nodes after completion")
+			return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+		}
+		if len(nextNodes) == 0 {
+			return ctrl.Result{RequeueAfter: time.Hour}, nil
+		}
+		logger.Info("Node detected requiring upgrade after completion, restarting campaign", "node", nextNodes[0])
+		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, nil, "New node detected, restarting upgrade", map[string]any{
+			statusCompletedNodes: []string{},
+			statusFailedNodes:    []tupprv1alpha1.NodeUpgradeStatus{},
+			statusPreHookIndex:   0,
+			"postHookIndex":      0,
+			statusPreHookFailed:  false,
+		}); err != nil {
+			logger.Error(err, "Failed to re-enter Pending after completion")
+			return ctrl.Result{RequeueAfter: time.Minute}, err
+		}
+		resetHookProgress(&talosUpgrade.Status)
+		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
 
 	switch talosUpgrade.Status.Phase {

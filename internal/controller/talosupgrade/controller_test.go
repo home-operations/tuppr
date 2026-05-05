@@ -3370,3 +3370,93 @@ func TestFindNextNodes_ControllerNodeOnly(t *testing.T) {
 		t.Fatalf("expected [node-a], got: %v", nodes)
 	}
 }
+
+func TestTalosReconcile_CompletedReentersOnNewNode(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhaseCompleted),
+		withCompletedNodes(fakeNodeA),
+	)
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	nodeB := newNode(fakeNodeB, testNodeIP2)
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{
+			testNodeIP1: fakeTalosVersion, // already at target
+			testNodeIP2: testV110Talos,    // newly joined, lagging
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, nodeA, nodeB).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	result := reconcileTalos(t, r, testUpgradeName)
+	if result.RequeueAfter != 5*time.Second {
+		t.Fatalf("expected 5s requeue after re-entering Pending, got: %v", result.RequeueAfter)
+	}
+
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
+		t.Fatalf("expected phase Pending after detecting drift, got: %s", updated.Status.Phase)
+	}
+	if len(updated.Status.CompletedNodes) != 0 {
+		t.Fatalf("expected CompletedNodes cleared on re-entry, got: %v", updated.Status.CompletedNodes)
+	}
+	if len(updated.Status.FailedNodes) != 0 {
+		t.Fatalf("expected FailedNodes cleared on re-entry, got: %v", updated.Status.FailedNodes)
+	}
+}
+
+func TestTalosReconcile_CompletedStaysWhenNoDrift(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhaseCompleted),
+		withCompletedNodes(fakeNodeA),
+	)
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{testNodeIP1: fakeTalosVersion},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, nodeA).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	result := reconcileTalos(t, r, testUpgradeName)
+	if result.RequeueAfter != time.Hour {
+		t.Fatalf("expected 1h requeue when no drift, got: %v", result.RequeueAfter)
+	}
+
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
+		t.Fatalf("expected phase to remain Completed when no drift, got: %s", updated.Status.Phase)
+	}
+	if len(updated.Status.CompletedNodes) != 1 || updated.Status.CompletedNodes[0] != fakeNodeA {
+		t.Fatalf("expected CompletedNodes preserved, got: %v", updated.Status.CompletedNodes)
+	}
+}
+
+func TestTalosReconcile_FailedRemainsSticky(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhaseFailed),
+	)
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{testNodeIP1: testV110Talos}, // would need upgrade
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, nodeA).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	result := reconcileTalos(t, r, testUpgradeName)
+	if result.RequeueAfter != 5*time.Minute {
+		t.Fatalf("expected 5m requeue for sticky Failed state, got: %v", result.RequeueAfter)
+	}
+
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
+		t.Fatalf("expected phase to remain Failed (sticky), got: %s", updated.Status.Phase)
+	}
+}
