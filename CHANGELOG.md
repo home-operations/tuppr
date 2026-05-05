@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.21](https://github.com/home-operations/tuppr/compare/0.1.20...0.1.21) (2026-05-05)
+
+
+### Features
+
+* watch nodes instead ([8f46e37](https://github.com/home-operations/tuppr/commit/8f46e37185cb75ce88442de5f367d88df720a226))
+
+
+### Miscellaneous Chores
+
+* increase number of retries ([8d07361](https://github.com/home-operations/tuppr/commit/8d07361daa27f390af6905155b5775e3d3763d8a))
+
 ## [0.1.20](https://github.com/home-operations/tuppr/compare/0.1.19...0.1.20) (2026-05-05)
 
 
