@@ -48,6 +48,7 @@ const (
 	statusFailedNodes    = "failedNodes"
 	statusPreHookFailed  = "preHookFailed"
 	statusPreHookIndex   = "preHookIndex"
+	statusPostHookIndex  = "postHookIndex"
 )
 
 // TalosClient defines the interface for Talos operations

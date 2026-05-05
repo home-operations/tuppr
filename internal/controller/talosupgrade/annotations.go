@@ -67,7 +67,7 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, talosUpgrade *tu
 		statusCompletedNodes: []string{},
 		statusFailedNodes:    []tupprv1alpha1.NodeUpgradeStatus{},
 		statusPreHookIndex:   0,
-		"postHookIndex":      0,
+		statusPostHookIndex:  0,
 		statusPreHookFailed:  false,
 	}); err != nil {
 		logger.Error(err, "Failed to reset status after annotation")
