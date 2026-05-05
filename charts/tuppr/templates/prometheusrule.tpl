@@ -118,4 +118,31 @@ spec:
               A {{ "{{" }} $labels.upgrade_type {{ "}}" }} upgrade job has been
               active for more than 1 hour, which exceeds the expected duration.
               The job may be stuck. Check the job logs in the controller namespace.
+
+    - name: tuppr.operator
+      rules:
+        - alert: TupprOperatorAbsent
+          expr: absent(tuppr_build_info)
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: tuppr operator is not reporting metrics
+            description: >-
+              No tuppr operator instance has reported metrics for 5 minutes.
+              Upgrade alerts in this group will not fire while the operator is
+              down. Check the controller deployment and ServiceMonitor.
+
+        - alert: TupprUpgradeFailureRate
+          expr: >-
+            sum(increase(tuppr_upgrades_completed_total{result="failure"}[1h])) > 2
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: tuppr has recorded multiple upgrade failures
+            description: >-
+              tuppr recorded more than 2 failed upgrade completions in the last
+              hour. Inspect recent TalosUpgrade/KubernetesUpgrade objects and
+              the controller logs.
 {{- end }}
