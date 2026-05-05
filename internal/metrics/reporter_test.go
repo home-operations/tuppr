@@ -2,8 +2,11 @@ package metrics
 
 import (
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
+
+	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 )
 
 func TestRecordUpgradePhase(t *testing.T) {
@@ -121,4 +124,47 @@ func TestMetricsReporter_CleanupMaintenanceWindowMetrics(t *testing.T) {
 	mr.RecordMaintenanceWindow(UpgradeTypeTalos, "test", false, &nextTimestamp)
 
 	mr.CleanupUpgradeMetrics(UpgradeTypeTalos, "test")
+}
+
+func TestRecordUpgradeCompleted(t *testing.T) {
+	mr := NewReporter()
+
+	before := time.Now().Unix()
+	mr.RecordUpgradeCompleted(UpgradeTypeTalos, "cluster", ResultSuccess)
+	mr.RecordUpgradeCompleted(UpgradeTypeTalos, "cluster", ResultSuccess)
+	mr.RecordUpgradeCompleted(UpgradeTypeKubernetes, "cluster", ResultFailure)
+	after := time.Now().Unix()
+
+	if got := testutil.ToFloat64(upgradesCompletedTotal.WithLabelValues(UpgradeTypeTalos, ResultSuccess)); got != 2 {
+		t.Errorf("upgrades_completed_total{talos,success} = %v, want 2", got)
+	}
+	if got := testutil.ToFloat64(upgradesCompletedTotal.WithLabelValues(UpgradeTypeKubernetes, ResultFailure)); got != 1 {
+		t.Errorf("upgrades_completed_total{kubernetes,failure} = %v, want 1", got)
+	}
+
+	ts := testutil.ToFloat64(upgradeLastCompletionTimestamp.WithLabelValues(UpgradeTypeTalos, "cluster", ResultSuccess))
+	if int64(ts) < before || int64(ts) > after {
+		t.Errorf("last_completion_timestamp = %v, want in [%d, %d]", ts, before, after)
+	}
+
+	mr.CleanupUpgradeMetrics(UpgradeTypeTalos, "cluster")
+	if got := testutil.ToFloat64(upgradeLastCompletionTimestamp.WithLabelValues(UpgradeTypeTalos, "cluster", ResultSuccess)); got != 0 {
+		t.Errorf("last_completion_timestamp after cleanup = %v, want 0", got)
+	}
+}
+
+func TestTerminalResult(t *testing.T) {
+	cases := []struct {
+		phase tupprv1alpha1.JobPhase
+		want  string
+	}{
+		{tupprv1alpha1.JobPhaseCompleted, ResultSuccess},
+		{tupprv1alpha1.JobPhaseFailed, ResultFailure},
+		{tupprv1alpha1.JobPhasePending, ResultFailure},
+	}
+	for _, c := range cases {
+		if got := TerminalResult(c.phase); got != c.want {
+			t.Errorf("TerminalResult(%q) = %q, want %q", c.phase, got, c.want)
+		}
+	}
 }
