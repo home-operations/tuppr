@@ -29,7 +29,7 @@ import (
 
 const (
 	KubernetesUpgradeFinalizer    = "tuppr.home-operations.com/kubernetes-finalizer"
-	KubernetesJobBackoffLimit     = 2
+	KubernetesJobBackoffLimit     = 5
 	KubernetesJobActiveDeadline   = 3600
 	KubernetesJobGracePeriod      = 300
 	KubernetesJobTTLAfterFinished = 300
