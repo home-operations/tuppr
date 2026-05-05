@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.20](https://github.com/home-operations/tuppr/compare/0.1.19...0.1.20) (2026-05-05)
+
+
+### Features
+
+* add the build version ([2595b05](https://github.com/home-operations/tuppr/commit/2595b05a35349177df93efafc1f219577ac2cab9))
+* check for drift in talosUpgrade or kubernetesUpgrade ([caf239b](https://github.com/home-operations/tuppr/commit/caf239bd818616f9487b155d339c23fd16d0c616))
+* **dashboards:** add hooks to dashboards ([c7c1e8e](https://github.com/home-operations/tuppr/commit/c7c1e8e1c9fd938ed565d3b698c65726f1976100))
+* improve talos upgrade alerting rules ([a40c7cd](https://github.com/home-operations/tuppr/commit/a40c7cda333ae6243b6cc4d72f7093e3e80e2a03))
+
+
+### Bug Fixes
+
+* fix lint and tests ([b1269bc](https://github.com/home-operations/tuppr/commit/b1269bcc88560715d36e0eec103078a1d52ca261))
+* remove duplicated metrics ([1f5c48c](https://github.com/home-operations/tuppr/commit/1f5c48caeaaa51237c5555e5f3eb075f338f1832))
+
+
+### Documentation
+
+* remove list of metrics ([931045a](https://github.com/home-operations/tuppr/commit/931045a17dd9774c7188e8e69f462149afe22f30))
+
 ## [0.1.19](https://github.com/home-operations/tuppr/compare/0.1.18...0.1.19) (2026-05-05)
 
 
