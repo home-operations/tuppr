@@ -993,3 +993,73 @@ func newNode(name, ip string) *corev1.Node {
 		},
 	}
 }
+
+func TestK8sReconcile_CompletedReentersOnLaggingNode(t *testing.T) {
+	scheme := newTestScheme()
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		withK8sPhase(tupprv1alpha1.JobPhaseCompleted),
+	)
+	nodeAtTarget := newControllerNodeWithVersion("ctrl-1", testNodeIP, testK8sVersion)
+	nodeLagging := newControllerNodeWithVersion("ctrl-2", "10.0.0.2", testV1330)
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku, nodeAtTarget, nodeLagging).WithStatusSubresource(ku).Build()
+	r := newK8sReconciler(cl, &mockVersionGetter{version: testK8sVersion}, &mockTalosClient{}, &mockHealthChecker{})
+
+	result := reconcileK8s(t, r, "test-upgrade")
+	if result.RequeueAfter != 5*time.Second {
+		t.Fatalf("expected 5s requeue after re-entering Pending, got: %v", result.RequeueAfter)
+	}
+
+	updated := getK8sUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
+		t.Fatalf("expected phase Pending after detecting lagging node, got: %s", updated.Status.Phase)
+	}
+}
+
+func TestK8sReconcile_CompletedStaysWhenNoDrift(t *testing.T) {
+	scheme := newTestScheme()
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		withK8sPhase(tupprv1alpha1.JobPhaseCompleted),
+	)
+	node := newControllerNodeWithVersion("ctrl-1", testNodeIP, testK8sVersion)
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku, node).WithStatusSubresource(ku).Build()
+	r := newK8sReconciler(cl, &mockVersionGetter{version: testK8sVersion}, &mockTalosClient{}, &mockHealthChecker{})
+
+	result := reconcileK8s(t, r, "test-upgrade")
+	if result.RequeueAfter != time.Hour {
+		t.Fatalf("expected 1h requeue when no drift, got: %v", result.RequeueAfter)
+	}
+
+	updated := getK8sUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
+		t.Fatalf("expected phase to remain Completed when no drift, got: %s", updated.Status.Phase)
+	}
+}
+
+func TestK8sReconcile_FailedRemainsSticky(t *testing.T) {
+	scheme := newTestScheme()
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		withK8sPhase(tupprv1alpha1.JobPhaseFailed),
+	)
+	node := newControllerNodeWithVersion("ctrl-1", testNodeIP, testV1330)
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku, node).WithStatusSubresource(ku).Build()
+	r := newK8sReconciler(cl, &mockVersionGetter{version: testK8sVersion}, &mockTalosClient{}, &mockHealthChecker{})
+
+	result := reconcileK8s(t, r, "test-upgrade")
+	if result.RequeueAfter != 5*time.Minute {
+		t.Fatalf("expected 5m requeue for sticky Failed state, got: %v", result.RequeueAfter)
+	}
+
+	updated := getK8sUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
+		t.Fatalf("expected phase to remain Failed (sticky), got: %s", updated.Status.Phase)
+	}
+}
