@@ -15,7 +15,7 @@ import (
 )
 
 // Talos sets Node.status.nodeInfo.osImage to e.g. "Talos (v1.7.5)".
-var talosVersionRegexp = regexp.MustCompile(`v\d+\.\d+\.\d+\S*`)
+var talosVersionRegexp = regexp.MustCompile(`v\d+\.\d+\.\d+[^\s)]*`)
 
 type InventoryRefresher struct {
 	Client   client.Client
@@ -32,9 +32,8 @@ func (r *InventoryRefresher) Start(ctx context.Context) error {
 		interval = 30 * time.Second
 	}
 
-	// Non-leader-election runnables start before the manager waits for caches,
-	// so the first List would race the informer sync and silently zero the
-	// inventory metrics. Block until the cache is ready before the first refresh.
+	// Block until the informer cache is ready; otherwise the first List races
+	// the sync and silently zeroes the inventory metrics.
 	if r.Cache != nil && !r.Cache.WaitForCacheSync(ctx) {
 		return nil
 	}
@@ -54,9 +53,9 @@ func (r *InventoryRefresher) Start(ctx context.Context) error {
 	}
 }
 
-// Disabled so every replica publishes the same cache-backed inventory.
+// Leader-only: running on every replica double-counts sum-based aggregations.
 func (r *InventoryRefresher) NeedLeaderElection() bool {
-	return false
+	return true
 }
 
 func (r *InventoryRefresher) refresh(ctx context.Context, logger logr.Logger) {
