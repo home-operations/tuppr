@@ -3460,3 +3460,33 @@ func TestTalosReconcile_FailedRemainsSticky(t *testing.T) {
 		t.Fatalf("expected phase to remain Failed (sticky), got: %s", updated.Status.Phase)
 	}
 }
+
+func TestNodeToTalosUpgrades_EnqueuesOnlyCompleted(t *testing.T) {
+	scheme := newTestScheme()
+	completed := newTalosUpgrade("completed-upgrade", withPhase(tupprv1alpha1.JobPhaseCompleted))
+	pending := newTalosUpgrade("pending-upgrade", withPhase(tupprv1alpha1.JobPhasePending))
+	failed := newTalosUpgrade("failed-upgrade", withPhase(tupprv1alpha1.JobPhaseFailed))
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(completed, pending, failed).Build()
+	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+
+	requests := r.nodeToTalosUpgrades(context.Background(), &corev1.Node{})
+	if len(requests) != 1 {
+		t.Fatalf("expected 1 reconcile request (Completed only), got: %d", len(requests))
+	}
+	if requests[0].Name != "completed-upgrade" {
+		t.Fatalf("expected request for completed-upgrade, got: %s", requests[0].Name)
+	}
+}
+
+func TestNodeToTalosUpgrades_EmptyWhenNoneCompleted(t *testing.T) {
+	scheme := newTestScheme()
+	pending := newTalosUpgrade("pending-upgrade", withPhase(tupprv1alpha1.JobPhasePending))
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(pending).Build()
+	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+
+	requests := r.nodeToTalosUpgrades(context.Background(), &corev1.Node{})
+	if len(requests) != 0 {
+		t.Fatalf("expected 0 requests when no Completed upgrades, got: %d", len(requests))
+	}
+}
