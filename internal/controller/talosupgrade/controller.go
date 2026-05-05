@@ -250,6 +250,9 @@ func (r *Reconciler) recordPhaseTransition(talosUpgrade *tupprv1alpha1.TalosUpgr
 			r.MetricsReporter.EndPhaseTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, string(fromPhase))
 		}
 		r.MetricsReporter.StartPhaseTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, string(toPhase))
+		if toPhase.IsTerminal() {
+			r.MetricsReporter.RecordUpgradeCompleted(metrics.UpgradeTypeTalos, talosUpgrade.Name, metrics.TerminalResult(toPhase))
+		}
 	}
 }
 

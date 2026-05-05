@@ -1,4 +1,4 @@
-{{- if and .Values.monitoring.dashboards.grafanaOperator.enabled (.Capabilities.APIVersions.Has "grafana.integreatly.org/v1beta1/GrafanaDashboard") }}
+{{- if and .Values.monitoring.dashboards.enabled .Values.monitoring.dashboards.grafanaOperator.enabled (.Capabilities.APIVersions.Has "grafana.integreatly.org/v1beta1/GrafanaDashboard") }}
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:

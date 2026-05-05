@@ -18,13 +18,23 @@ const (
 )
 
 const (
+	ResultSuccess = "success"
+	ResultFailure = "failure"
+)
+
+const (
+	NodeRoleControlPlane = "control-plane"
+	NodeRoleWorker       = "worker"
+)
+
+const (
 	labelName        = "name"
 	labelUpgradeName = "upgrade_name"
 	labelPhase       = "phase"
 	labelUpgradeType = "upgrade_type"
+	labelResult      = "result"
 )
 
-// Complete phase lists for the state-set gauge: all labels are always present (0 or 1).
 var (
 	talosPhases = []string{
 		string(tupprv1alpha1.JobPhasePending),
@@ -143,7 +153,7 @@ var (
 			Help:    "Time taken for upgrade jobs to complete",
 			Buckets: []float64{60, 300, 600, 1200, 1800, 3600, 7200},
 		},
-		[]string{labelUpgradeType, labelUpgradeName, "node_name", "result"},
+		[]string{labelUpgradeType, labelUpgradeName, "node_name", labelResult},
 	)
 
 	hookExecutionsTotal = prometheus.NewCounterVec(
@@ -151,7 +161,7 @@ var (
 			Name: "tuppr_hook_executions_total",
 			Help: "Total hook executions",
 		},
-		[]string{labelUpgradeName, "hook_phase", "hook_name", "result"},
+		[]string{labelUpgradeName, "hook_phase", "hook_name", labelResult},
 	)
 
 	maintenanceWindowActive = prometheus.NewGaugeVec(
@@ -168,6 +178,54 @@ var (
 			Help: "Unix timestamp of the next maintenance window start",
 		},
 		[]string{labelUpgradeType, labelName},
+	)
+
+	buildInfo = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "tuppr_build_info",
+			Help: "Build info for the tuppr operator. Always 1; useful as a stat panel and a label-join source.",
+		},
+		[]string{"version", "commit", "go_version"},
+	)
+
+	upgradesByPhase = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "tuppr_upgrades",
+			Help: "Number of upgrade CRs currently in each phase, refreshed periodically by an inventory loop.",
+		},
+		[]string{labelUpgradeType, labelPhase},
+	)
+
+	managedNodes = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "tuppr_managed_nodes",
+			Help: "Number of cluster nodes the operator can see, by role.",
+		},
+		[]string{"role"},
+	)
+
+	nodeInfo = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "tuppr_node_info",
+			Help: "Per-node version inventory. Always 1; talos_version is parsed from Node.status.nodeInfo.osImage and may be empty for non-Talos nodes.",
+		},
+		[]string{"node", "role", "talos_version", "kubernetes_version"},
+	)
+
+	upgradesCompletedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "tuppr_upgrades_completed_total",
+			Help: "Total number of upgrades that reached a terminal phase, by type and result.",
+		},
+		[]string{labelUpgradeType, labelResult},
+	)
+
+	upgradeLastCompletionTimestamp = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "tuppr_upgrade_last_completion_timestamp_seconds",
+			Help: "Unix timestamp of the last completion for an upgrade, by type, name, and result.",
+		},
+		[]string{labelUpgradeType, labelName, labelResult},
 	)
 )
 
@@ -187,6 +245,12 @@ func init() {
 		hookExecutionsTotal,
 		maintenanceWindowActive,
 		maintenanceWindowNextOpenTimestamp,
+		buildInfo,
+		upgradesByPhase,
+		managedNodes,
+		nodeInfo,
+		upgradesCompletedTotal,
+		upgradeLastCompletionTimestamp,
 	)
 }
 
@@ -374,4 +438,72 @@ func (m *Reporter) CleanupUpgradeMetrics(upgradeType, name string) {
 
 	maintenanceWindowActive.DeleteLabelValues(upgradeType, name)
 	maintenanceWindowNextOpenTimestamp.DeleteLabelValues(upgradeType, name)
+	upgradeLastCompletionTimestamp.DeleteLabelValues(upgradeType, name, ResultSuccess)
+	upgradeLastCompletionTimestamp.DeleteLabelValues(upgradeType, name, ResultFailure)
+}
+
+func (m *Reporter) RecordBuildInfo(version, commit, goVersion string) {
+	buildInfo.Reset()
+	buildInfo.WithLabelValues(version, commit, goVersion).Set(1)
+}
+
+// InitializeAtBoot seeds always-on series at zero so dashboards render before any reconcile.
+func (m *Reporter) InitializeAtBoot() {
+	upgradeJobsActive.WithLabelValues(UpgradeTypeTalos).Set(0)
+	upgradeJobsActive.WithLabelValues(UpgradeTypeKubernetes).Set(0)
+	for _, p := range talosPhases {
+		upgradesByPhase.WithLabelValues(UpgradeTypeTalos, p).Set(0)
+	}
+	for _, p := range kubernetesPhases {
+		upgradesByPhase.WithLabelValues(UpgradeTypeKubernetes, p).Set(0)
+	}
+	for _, role := range []string{NodeRoleControlPlane, NodeRoleWorker} {
+		managedNodes.WithLabelValues(role).Set(0)
+	}
+}
+
+func (m *Reporter) RecordUpgradesByPhase(upgradeType string, byPhase map[string]int) {
+	var phases []string
+	switch upgradeType {
+	case UpgradeTypeTalos:
+		phases = talosPhases
+	case UpgradeTypeKubernetes:
+		phases = kubernetesPhases
+	}
+	for _, p := range phases {
+		upgradesByPhase.WithLabelValues(upgradeType, p).Set(float64(byPhase[p]))
+	}
+}
+
+func (m *Reporter) RecordManagedNodes(byRole map[string]int) {
+	for _, role := range []string{NodeRoleControlPlane, NodeRoleWorker} {
+		managedNodes.WithLabelValues(role).Set(float64(byRole[role]))
+	}
+}
+
+type NodeInfoSnapshot struct {
+	Node              string
+	Role              string
+	TalosVersion      string
+	KubernetesVersion string
+}
+
+func (m *Reporter) RecordNodeInfo(snapshot []NodeInfoSnapshot) {
+	// Resetting first prevents stale series when a node is removed or upgraded.
+	nodeInfo.Reset()
+	for _, n := range snapshot {
+		nodeInfo.WithLabelValues(n.Node, n.Role, n.TalosVersion, n.KubernetesVersion).Set(1)
+	}
+}
+
+func (m *Reporter) RecordUpgradeCompleted(upgradeType, name, result string) {
+	upgradesCompletedTotal.WithLabelValues(upgradeType, result).Inc()
+	upgradeLastCompletionTimestamp.WithLabelValues(upgradeType, name, result).Set(float64(time.Now().Unix()))
+}
+
+func TerminalResult(phase tupprv1alpha1.JobPhase) string {
+	if phase == tupprv1alpha1.JobPhaseCompleted {
+		return ResultSuccess
+	}
+	return ResultFailure
 }

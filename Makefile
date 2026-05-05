@@ -173,20 +173,23 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 
 ##@ Build
 
+GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+LDFLAGS ?= -X main.version=$(VERSION) -X main.commit=$(GIT_COMMIT)
+
 .PHONY: build
 build: manifests generate fmt vet helm-crds ## Build manager binary.
-	go build -o bin/manager cmd/main.go
+	go build -ldflags '$(LDFLAGS)' -o bin/manager cmd/main.go
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go
+	go run -ldflags '$(LDFLAGS)' ./cmd/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	$(CONTAINER_TOOL) build --build-arg VERSION=$(VERSION) --build-arg GIT_COMMIT=$(GIT_COMMIT) -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
@@ -205,7 +208,7 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
 	- $(CONTAINER_TOOL) buildx create --name tuppr-builder
 	$(CONTAINER_TOOL) buildx use tuppr-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --build-arg VERSION=$(VERSION) --build-arg GIT_COMMIT=$(GIT_COMMIT) --tag ${IMG} -f Dockerfile.cross .
 	- $(CONTAINER_TOOL) buildx rm tuppr-builder
 	rm Dockerfile.cross
 
