@@ -4,6 +4,7 @@ go 1.26.1
 
 require (
 	github.com/cosi-project/runtime v1.14.1
+	github.com/go-logr/logr v1.4.3
 	github.com/google/cel-go v0.28.0
 	github.com/google/go-containerregistry v0.21.5
 	github.com/google/uuid v1.6.0
@@ -58,7 +59,6 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/gertd/go-pluralize v0.2.1 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect

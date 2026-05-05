@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	goruntime "runtime"
 	"strings"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -42,6 +44,12 @@ var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
 	certDir  = "/tmp/k8s-webhook-server/serving-certs"
+)
+
+// Populated via -ldflags at build time.
+var (
+	version = "dev"
+	commit  = "unknown"
 )
 
 func init() {
@@ -110,6 +118,8 @@ func main() {
 	controllerNodeName := os.Getenv("CONTROLLER_NODE_NAME")
 
 	reporter := metrics.NewReporter()
+	reporter.RecordBuildInfo(version, commit, goruntime.Version())
+	reporter.InitializeAtBoot()
 
 	notificationURL := os.Getenv("NOTIFICATION_URL")
 	notifier := notification.NewShoutrrrNotifier(notificationURL)
@@ -267,6 +277,16 @@ func main() {
 		MetricsReporter:     reporter,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KubernetesUpgrade")
+		os.Exit(1)
+	}
+
+	if err := mgr.Add(&metrics.InventoryRefresher{
+		Client:   mgr.GetClient(),
+		Cache:    mgr.GetCache(),
+		Reporter: reporter,
+		Interval: 30 * time.Second,
+	}); err != nil {
+		setupLog.Error(err, "unable to register inventory metrics refresher")
 		os.Exit(1)
 	}
 

@@ -100,7 +100,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	r.MetricsReporter.Initialize(kubernetesUpgrade.Name, metrics.UpgradeTypeTalos)
+	r.MetricsReporter.Initialize(kubernetesUpgrade.Name, metrics.UpgradeTypeKubernetes)
 
 	if kubernetesUpgrade.DeletionTimestamp != nil {
 		return r.cleanup(ctx, &kubernetesUpgrade)
@@ -217,6 +217,9 @@ func (r *Reconciler) recordPhaseTransition(kubernetesUpgrade *tupprv1alpha1.Kube
 			r.MetricsReporter.EndPhaseTiming(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, string(fromPhase))
 		}
 		r.MetricsReporter.StartPhaseTiming(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, string(toPhase))
+		if toPhase.IsTerminal() {
+			r.MetricsReporter.RecordUpgradeCompleted(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, metrics.TerminalResult(toPhase))
+		}
 	}
 }
 
