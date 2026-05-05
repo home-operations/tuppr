@@ -39,9 +39,11 @@ var (
 	talosPhases = []string{
 		string(tupprv1alpha1.JobPhasePending),
 		string(tupprv1alpha1.JobPhaseHealthChecking),
+		string(tupprv1alpha1.JobPhasePreHook),
 		string(tupprv1alpha1.JobPhaseDraining),
 		string(tupprv1alpha1.JobPhaseUpgrading),
 		string(tupprv1alpha1.JobPhaseRebooting),
+		string(tupprv1alpha1.JobPhasePostHook),
 		string(tupprv1alpha1.JobPhaseMaintenanceWindow),
 		string(tupprv1alpha1.JobPhaseCompleted),
 		string(tupprv1alpha1.JobPhaseFailed),

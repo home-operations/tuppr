@@ -1090,6 +1090,24 @@
                   "index": 7
                 }
               }
+            },
+            {
+              "type": "value",
+              "options": {
+                "PreHook": {
+                  "color": "purple",
+                  "index": 2
+                }
+              }
+            },
+            {
+              "type": "value",
+              "options": {
+                "PostHook": {
+                  "color": "purple",
+                  "index": 7
+                }
+              }
             }
           ],
           "thresholds": {
