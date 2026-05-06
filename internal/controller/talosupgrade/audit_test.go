@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
 	"github.com/home-operations/tuppr/internal/metrics"
 )
 
@@ -154,10 +155,10 @@ func TestPrependHistoryCapsAtMax_Talos(t *testing.T) {
 		history[i] = base
 	}
 	fresh := tupprv1alpha1.TalosUpgradeHistoryEntry{ToVersion: "v2.0.0", Phase: tupprv1alpha1.JobPhaseCompleted}
-	result := prependHistory(history, fresh, historyMaxEntries)
+	result := upgradeaudit.PrependHistory(history, fresh, upgradeaudit.HistoryMaxEntries)
 
-	if len(result) != historyMaxEntries {
-		t.Fatalf("want history cap %d, got %d", historyMaxEntries, len(result))
+	if len(result) != upgradeaudit.HistoryMaxEntries {
+		t.Fatalf("want history cap %d, got %d", upgradeaudit.HistoryMaxEntries, len(result))
 	}
 	if result[0].ToVersion != "v2.0.0" {
 		t.Fatalf("newest entry should be first, got %q", result[0].ToVersion)

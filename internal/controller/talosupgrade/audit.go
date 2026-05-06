@@ -5,17 +5,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
 )
 
-const historyMaxEntries = 10
-
-// applyPhaseAuditFields adds startedAt/completedAt/history bookkeeping to
-// updates based on the transition from status.Phase to nextPhase.
-//
-// The CompletedAt != nil check on the terminal branch is an idempotency guard
-// against a stale client cache serving a copy where Phase has rolled back but
-// CompletedAt is still set. Stale caches that roll back both fields can still
-// produce a rare duplicate entry; historyMaxEntries bounds the blast radius.
+// CompletedAt != nil guard on terminal branch is idempotency against a stale
+// client cache serving a copy where Phase rolled back but CompletedAt is still
+// set. Stale caches rolling back both fields can still produce a rare duplicate
+// entry; HistoryMaxEntries bounds the blast radius.
 func applyPhaseAuditFields(status *tupprv1alpha1.TalosUpgradeStatus, updates map[string]any, nextPhase tupprv1alpha1.JobPhase, now metav1.Time, targetVersion string) {
 	prev := status.Phase
 
@@ -52,12 +48,12 @@ func applyPhaseAuditFields(status *tupprv1alpha1.TalosUpgradeStatus, updates map
 			CompletedNodes: completed,
 			FailedNodes:    failedNames,
 		}
-		updates["history"] = prependHistory(status.History, entry, historyMaxEntries)
+		updates["history"] = upgradeaudit.PrependHistory(status.History, entry, upgradeaudit.HistoryMaxEntries)
 	}
 }
 
-// syncLocalAuditFields applies updates to the in-memory status so re-entry
-// guards and metrics in the same reconcile see the just-patched state.
+// Mirror updates onto in-memory status so re-entry guards and metrics in the
+// same reconcile see the just-patched state.
 func syncLocalAuditFields(status *tupprv1alpha1.TalosUpgradeStatus, updates map[string]any) {
 	if v, ok := updates["startedAt"]; ok {
 		if t, isTime := v.(metav1.Time); isTime {
@@ -88,15 +84,6 @@ func syncLocalAuditFields(status *tupprv1alpha1.TalosUpgradeStatus, updates map[
 			status.FailedNodes = s
 		}
 	}
-}
-
-func prependHistory(history []tupprv1alpha1.TalosUpgradeHistoryEntry, entry tupprv1alpha1.TalosUpgradeHistoryEntry, max int) []tupprv1alpha1.TalosUpgradeHistoryEntry {
-	next := make([]tupprv1alpha1.TalosUpgradeHistoryEntry, 0, min(len(history)+1, max))
-	next = append(next, entry)
-	for i := 0; i < len(history) && len(next) < max; i++ {
-		next = append(next, history[i])
-	}
-	return next
 }
 
 func (r *Reconciler) emitPhaseEvent(tu *tupprv1alpha1.TalosUpgrade, prev, next tupprv1alpha1.JobPhase, message string) {

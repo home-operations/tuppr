@@ -27,6 +27,7 @@ import (
 	talosconfigresource "github.com/siderolabs/talos/pkg/machinery/resources/config"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/controller/jobs"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/healthcheck"
 	"github.com/home-operations/tuppr/internal/metrics"
@@ -42,13 +43,13 @@ const (
 )
 
 const (
-	appLabelKey               = "app.kubernetes.io/name"
+	appLabelKey               = jobs.AppLabelKey
 	kubernetesUpgradeAppName  = "kubernetes-upgrade"
 	statusFieldJobName        = "jobName"
 	statusFieldCurrentVersion = "currentVersion"
 	statusFieldTargetVersion  = "targetVersion"
 	statusFieldLastError      = "lastError"
-	targetNodeLabelKey        = "tuppr.home-operations.com/target-node"
+	targetNodeLabelKey        = jobs.TargetNodeLabelKey
 	upgradeK8sCommand         = "upgrade-k8s"
 )
 

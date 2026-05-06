@@ -24,6 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/controller/jobs"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/healthcheck"
 	"github.com/home-operations/tuppr/internal/image"
@@ -43,11 +44,11 @@ const (
 )
 
 const (
-	appLabelKey          = "app.kubernetes.io/name"
-	appInstanceLabelKey  = "app.kubernetes.io/instance"
-	appPartOfLabelKey    = "app.kubernetes.io/part-of"
-	appPartOfTuppr       = "tuppr"
-	targetNodeLabelKey   = "tuppr.home-operations.com/target-node"
+	appLabelKey          = jobs.AppLabelKey
+	appInstanceLabelKey  = jobs.AppInstanceLabelKey
+	appPartOfLabelKey    = jobs.AppPartOfLabelKey
+	appPartOfTuppr       = jobs.AppPartOfTuppr
+	targetNodeLabelKey   = jobs.TargetNodeLabelKey
 	talosUpgradeAppName  = "talos-upgrade"
 	statusCompletedNodes = "completedNodes"
 	statusFailedNodes    = "failedNodes"

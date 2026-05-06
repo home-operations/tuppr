@@ -284,10 +284,16 @@ func (r *Reconciler) areAllNodesUpgraded(ctx context.Context, targetVersion stri
 	}
 
 	for _, node := range nodeList.Items {
-		if node.Status.NodeInfo.KubeletVersion != targetVersion {
+		current := node.Status.NodeInfo.KubeletVersion
+		// Empty means kubelet has not reported yet (e.g. Node just registered).
+		// Skip rather than trigger a false drift; the hourly requeue re-checks.
+		if current == "" {
+			continue
+		}
+		if current != targetVersion {
 			log.FromContext(ctx).V(1).Info("Node not yet upgraded",
 				"node", node.Name,
-				"current", node.Status.NodeInfo.KubeletVersion,
+				"current", current,
 				"target", targetVersion)
 			return false, nil
 		}
