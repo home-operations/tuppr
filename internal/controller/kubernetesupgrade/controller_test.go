@@ -1094,6 +1094,30 @@ func TestK8sReconcile_CompletedReentersOnLaggingWorker(t *testing.T) {
 	}
 }
 
+func TestK8sReconcile_CompletedIgnoresEmptyKubeletVersion(t *testing.T) {
+	scheme := newTestScheme()
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		withK8sPhase(tupprv1alpha1.JobPhaseCompleted),
+	)
+	cpAtTarget := newControllerNodeWithVersion("ctrl-1", testNodeIP, testK8sVersion)
+	freshWorker := newNode("worker-1", "10.0.0.5") // KubeletVersion not yet reported
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku, cpAtTarget, freshWorker).WithStatusSubresource(ku).Build()
+	r := newK8sReconciler(cl, &mockVersionGetter{version: testK8sVersion}, &mockTalosClient{}, &mockHealthChecker{})
+
+	result := reconcileK8s(t, r, "test-upgrade")
+	if result.RequeueAfter != time.Hour {
+		t.Fatalf("expected 1h requeue (no false drift from empty KubeletVersion), got: %v", result.RequeueAfter)
+	}
+
+	updated := getK8sUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
+		t.Fatalf("expected phase to remain Completed, got: %s", updated.Status.Phase)
+	}
+}
+
 func TestK8sFindControllerNode_FallbackWhenAllControlPlanesAtTarget(t *testing.T) {
 	scheme := newTestScheme()
 	cpAtTarget := newControllerNodeWithVersion(fakeCrtl, testNodeIP, testK8sVersion)
