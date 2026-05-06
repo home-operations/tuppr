@@ -45,16 +45,16 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 		}
 		targetVersion := kubernetesUpgrade.Spec.Kubernetes.Version
-		allUpgraded, err := r.areAllControlPlaneNodesUpgraded(ctx, targetVersion)
+		allUpgraded, err := r.areAllNodesUpgraded(ctx, targetVersion)
 		if err != nil {
-			logger.Error(err, "Failed to re-check control plane after completion")
+			logger.Error(err, "Failed to re-check nodes after completion")
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 		}
 		if allUpgraded {
 			return ctrl.Result{RequeueAfter: time.Hour}, nil
 		}
-		logger.Info("Control plane node lagging target version, restarting campaign", "target", targetVersion)
-		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "Control plane node lagging target version, restarting upgrade"); err != nil {
+		logger.Info("Node lagging target version, restarting campaign", "target", targetVersion)
+		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "Node lagging target version, restarting upgrade"); err != nil {
 			logger.Error(err, "Failed to re-enter Pending after completion")
 			return ctrl.Result{RequeueAfter: time.Minute}, err
 		}
@@ -222,16 +222,25 @@ func (r *Reconciler) findControllerNode(ctx context.Context, targetVersion strin
 		return "", "", fmt.Errorf("failed to list nodes: %w", err)
 	}
 
+	var fallbackName, fallbackIP string
 	for _, node := range nodeList.Items {
-		if _, isController := node.Labels["node-role.kubernetes.io/control-plane"]; isController {
-			if node.Status.NodeInfo.KubeletVersion != targetVersion {
-				nodeIP, err := nodeutil.GetNodeIP(&node)
-				if err != nil {
-					continue
-				}
-				return node.Name, nodeIP, nil
-			}
+		if _, isController := node.Labels["node-role.kubernetes.io/control-plane"]; !isController {
+			continue
 		}
+		nodeIP, err := nodeutil.GetNodeIP(&node)
+		if err != nil {
+			continue
+		}
+		if node.Status.NodeInfo.KubeletVersion != targetVersion {
+			return node.Name, nodeIP, nil
+		}
+		if fallbackName == "" {
+			fallbackName, fallbackIP = node.Name, nodeIP
+		}
+	}
+
+	if fallbackName != "" {
+		return fallbackName, fallbackIP, nil
 	}
 
 	return "", "", fmt.Errorf("no controller node found with node-role.kubernetes.io/control-plane label")
@@ -254,6 +263,29 @@ func (r *Reconciler) areAllControlPlaneNodesUpgraded(ctx context.Context, target
 	for _, node := range nodeList.Items {
 		if node.Status.NodeInfo.KubeletVersion != targetVersion {
 			log.FromContext(ctx).V(1).Info("Control plane node not yet upgraded",
+				"node", node.Name,
+				"current", node.Status.NodeInfo.KubeletVersion,
+				"target", targetVersion)
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func (r *Reconciler) areAllNodesUpgraded(ctx context.Context, targetVersion string) (bool, error) {
+	nodeList := &corev1.NodeList{}
+	if err := r.List(ctx, nodeList); err != nil {
+		return false, fmt.Errorf("failed to list nodes: %w", err)
+	}
+
+	if len(nodeList.Items) == 0 {
+		return false, fmt.Errorf("no nodes found")
+	}
+
+	for _, node := range nodeList.Items {
+		if node.Status.NodeInfo.KubeletVersion != targetVersion {
+			log.FromContext(ctx).V(1).Info("Node not yet upgraded",
 				"node", node.Name,
 				"current", node.Status.NodeInfo.KubeletVersion,
 				"target", targetVersion)

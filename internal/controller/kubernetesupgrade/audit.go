@@ -5,9 +5,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
 )
-
-const historyMaxEntries = 10
 
 // applyPhaseAuditFields adds startedAt/completedAt/history bookkeeping to
 // updates based on the transition from status.Phase to nextPhase.
