@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.1.22](https://github.com/home-operations/tuppr/compare/0.1.21...0.1.22) (2026-05-06)
+
+
+### Features
+
+* add node watching for kubernetesupgrade ([1cd9cb7](https://github.com/home-operations/tuppr/commit/1cd9cb76b025845a96db3ec45a2a80a8176e6459))
+* **mise:** update tool aqua:operator-framework/operator-registry (1.55.0 → 1.67.0) ([ac02ccd](https://github.com/home-operations/tuppr/commit/ac02ccd3f4f935abf46eff97578a0b923876ec2b))
+* **mise:** update tool kube-controller-tools (v0.18.0 → v0.21.0) ([e7f7689](https://github.com/home-operations/tuppr/commit/e7f7689508d401fb7de3f4ba1fbeb015474465df))
+
+
+### Bug Fixes
+
+* use mise for ci ([e03f69a](https://github.com/home-operations/tuppr/commit/e03f69a729e75a28f17c2e84087d6f6680368c07))
+
+
+### Miscellaneous Chores
+
+* move deps to mise ([a9e3ad1](https://github.com/home-operations/tuppr/commit/a9e3ad1f14b5d5702a632a7129a66a53b990a730))
+
+
+### Code Refactoring
+
+* extract audit to a shared package ([2f4e8b5](https://github.com/home-operations/tuppr/commit/2f4e8b5dbfe4900bb64dd52e9f4fcec07f5dcbbb))
+
 ## [0.1.21](https://github.com/home-operations/tuppr/compare/0.1.20...0.1.21) (2026-05-05)
 
 
