@@ -3,7 +3,7 @@ module github.com/home-operations/tuppr
 go 1.26.1
 
 require (
-	github.com/cosi-project/runtime v1.14.1
+	github.com/cosi-project/runtime v1.14.2
 	github.com/go-logr/logr v1.4.3
 	github.com/google/cel-go v0.28.0
 	github.com/google/go-containerregistry v0.21.5
