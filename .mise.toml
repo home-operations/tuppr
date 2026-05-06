@@ -1,3 +1,11 @@
 [tools]
-"go" = "1.26.2"
+go = "1.26.2"
 helm = "4.1.4"
+kubectl = "latest"
+kind = "latest"
+kustomize = "5.6.0"
+golangci-lint = "2.12.2"
+kube-controller-tools = "0.18.0"
+setup-envtest = "0.24.0"
+operator-sdk = "1.41.1"
+"aqua:operator-framework/operator-registry" = "1.55.0"
