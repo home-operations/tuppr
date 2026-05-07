@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.23](https://github.com/home-operations/tuppr/compare/0.1.22...0.1.23) (2026-05-07)
+
+
+### Features
+
+* **kubernetesupgrade:** removes superflous version ([#250](https://github.com/home-operations/tuppr/issues/250)) ([2a037ff](https://github.com/home-operations/tuppr/commit/2a037ff98db2026e1e1a6d1ff0a306bad2590a1b))
+* **mise:** update tool kustomize (5.6.0 → 5.8.1) ([82ad48f](https://github.com/home-operations/tuppr/commit/82ad48f5648d73c0b5cc201b12e90e077bff8205))
+* **mise:** update tool operator-sdk (1.41.1 → 1.42.2) ([160df5c](https://github.com/home-operations/tuppr/commit/160df5cfac86b4fd5c957a47dd336d2f1f54280e))
+
 ## [0.1.22](https://github.com/home-operations/tuppr/compare/0.1.21...0.1.22) (2026-05-06)
 
 
