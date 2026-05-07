@@ -1,5 +1,5 @@
 [tools]
-go = "1.26.2"
+go = "1.26.3"
 helm = "4.1.4"
 kubectl = "latest"
 kind = "latest"
