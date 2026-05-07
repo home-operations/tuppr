@@ -253,28 +253,28 @@ func TestComponentImageArgs(t *testing.T) {
 			name:       "trailing slash trimmed",
 			repository: "registry.example.com/k8s/",
 			want: []string{
-				"--apiserver-image=registry.example.com/k8s/kube-apiserver:v1.34.0",
-				"--controller-manager-image=registry.example.com/k8s/kube-controller-manager:v1.34.0",
-				"--scheduler-image=registry.example.com/k8s/kube-scheduler:v1.34.0",
-				"--proxy-image=registry.example.com/k8s/kube-proxy:v1.34.0",
-				"--kubelet-image=registry.example.com/k8s/kubelet:v1.34.0",
+				"--apiserver-image=registry.example.com/k8s/kube-apiserver",
+				"--controller-manager-image=registry.example.com/k8s/kube-controller-manager",
+				"--scheduler-image=registry.example.com/k8s/kube-scheduler",
+				"--proxy-image=registry.example.com/k8s/kube-proxy",
+				"--kubelet-image=registry.example.com/k8s/kubelet",
 			},
 		},
 		{
 			name:       "no trailing slash",
 			repository: "registry.example.com/k8s",
 			want: []string{
-				"--apiserver-image=registry.example.com/k8s/kube-apiserver:v1.34.0",
-				"--controller-manager-image=registry.example.com/k8s/kube-controller-manager:v1.34.0",
-				"--scheduler-image=registry.example.com/k8s/kube-scheduler:v1.34.0",
-				"--proxy-image=registry.example.com/k8s/kube-proxy:v1.34.0",
-				"--kubelet-image=registry.example.com/k8s/kubelet:v1.34.0",
+				"--apiserver-image=registry.example.com/k8s/kube-apiserver",
+				"--controller-manager-image=registry.example.com/k8s/kube-controller-manager",
+				"--scheduler-image=registry.example.com/k8s/kube-scheduler",
+				"--proxy-image=registry.example.com/k8s/kube-proxy",
+				"--kubelet-image=registry.example.com/k8s/kubelet",
 			},
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := componentImageArgs(c.repository, "v1.34.0")
+			got := componentImageArgs(c.repository)
 			if !slices.Equal(got, c.want) {
 				t.Fatalf("got %v, want %v", got, c.want)
 			}

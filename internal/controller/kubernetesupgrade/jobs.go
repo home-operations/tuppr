@@ -188,7 +188,7 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 		"--nodes="+controllerIP,
 		"--to="+k8sSpec.Version,
 	)
-	args = append(args, componentImageArgs(k8sSpec.ImageRepository, k8sSpec.Version)...)
+	args = append(args, componentImageArgs(k8sSpec.ImageRepository)...)
 
 	pullPolicy := corev1.PullIfNotPresent
 	if kubernetesUpgrade.Spec.Talosctl.Image.PullPolicy != "" {
@@ -236,17 +236,17 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 	}, nil
 }
 
-func componentImageArgs(repository, version string) []string {
+func componentImageArgs(repository string) []string {
 	repo := strings.TrimRight(repository, "/")
 	if repo == "" {
 		return nil
 	}
 	return []string{
-		"--apiserver-image=" + repo + "/kube-apiserver:" + version,
-		"--controller-manager-image=" + repo + "/kube-controller-manager:" + version,
-		"--scheduler-image=" + repo + "/kube-scheduler:" + version,
-		"--proxy-image=" + repo + "/kube-proxy:" + version,
-		"--kubelet-image=" + repo + "/kubelet:" + version,
+		"--apiserver-image=" + repo + "/kube-apiserver",
+		"--controller-manager-image=" + repo + "/kube-controller-manager",
+		"--scheduler-image=" + repo + "/kube-scheduler",
+		"--proxy-image=" + repo + "/kube-proxy",
+		"--kubelet-image=" + repo + "/kubelet",
 	}
 }
 
