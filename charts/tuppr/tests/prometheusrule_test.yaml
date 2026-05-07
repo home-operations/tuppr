@@ -2,9 +2,6 @@
 suite: prometheusrule
 templates:
   - prometheusrule.tpl
-capabilities:
-  apiVersions:
-    - monitoring.coreos.com/v1
 tests:
   - it: should not create PrometheusRule by default
     asserts:
