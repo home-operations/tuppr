@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.26](https://github.com/home-operations/tuppr/compare/0.1.25...0.1.26) (2026-05-08)
+
+
+### Bug Fixes
+
+* fix kubernetes endpoint selection ([418c244](https://github.com/home-operations/tuppr/commit/418c24423a10818f76549cea74e8e91de8addbe4))
+
 ## [0.1.25](https://github.com/home-operations/tuppr/compare/0.1.24...0.1.25) (2026-05-08)
 
 
