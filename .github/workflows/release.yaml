@@ -131,10 +131,10 @@ jobs:
         with:
           version: v3.19.0
 
-      - name: Setup Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+      - name: Install Mise and required tools
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
-          go-version-file: go.mod
+          cache_key: "mise-v1-{{file_hash}}"
 
       - name: Generate manifests and CRDs
         run: make helm-crds
