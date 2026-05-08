@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.25](https://github.com/home-operations/tuppr/compare/0.1.24...0.1.25) (2026-05-08)
+
+
+### Bug Fixes
+
+* **ci:** release helm job needs controller-gen from mise ([#260](https://github.com/home-operations/tuppr/issues/260)) ([678907a](https://github.com/home-operations/tuppr/commit/678907ac2cfbdd1e0d29b8173b65d771a89cb390))
+* **mise:** update tool go (1.26.2 → 1.26.3) ([edf5088](https://github.com/home-operations/tuppr/commit/edf50882b282218c689097f81a1a48eab89a8541))
+* remove capabilities gate for argocd ([f46bda4](https://github.com/home-operations/tuppr/commit/f46bda47b84c1fbac0de40b4b90c697234c980e5))
+
+
+### Miscellaneous Chores
+
+* **deps:** update k8s.io/utils digest (28399d8 → ff6756f) ([#259](https://github.com/home-operations/tuppr/issues/259)) ([7e6ff72](https://github.com/home-operations/tuppr/commit/7e6ff72c779f1e411e0e6af37d5608b5055367b0))
+
 ## [0.1.24](https://github.com/home-operations/tuppr/compare/0.1.23...0.1.24) (2026-05-07)
 
 
