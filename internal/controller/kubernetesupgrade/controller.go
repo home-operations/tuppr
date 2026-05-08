@@ -24,8 +24,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	talosconfigresource "github.com/siderolabs/talos/pkg/machinery/resources/config"
-
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/controller/jobs"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
@@ -51,12 +49,15 @@ const (
 	statusFieldLastError      = "lastError"
 	targetNodeLabelKey        = jobs.TargetNodeLabelKey
 	upgradeK8sCommand         = "upgrade-k8s"
+
+	// In-cluster apiserver URL — avoids depending on the external
+	// control-plane endpoint being reachable from the pod network.
+	defaultKubernetesAPIEndpoint = "https://kubernetes.default.svc.cluster.local:443"
 )
 
 // TalosClient defines the interface for Talos operations
 type TalosClient interface {
 	GetNodeVersion(ctx context.Context, nodeIP string) (string, error)
-	GetNodeMachineConfig(ctx context.Context, nodeIP string) (*talosconfigresource.MachineConfig, error)
 }
 
 // HealthCheckRunner defines the interface for health checking

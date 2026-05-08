@@ -1,0 +1,335 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: kubernetesupgrades.tuppr.home-operations.com
+spec:
+  group: tuppr.home-operations.com
+  names:
+    kind: KubernetesUpgrade
+    listKind: KubernetesUpgradeList
+    plural: kubernetesupgrades
+    singular: kubernetesupgrade
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.currentVersion
+      name: Current
+      type: string
+    - jsonPath: .status.targetVersion
+      name: Target
+      type: string
+    - jsonPath: .status.controllerNode
+      name: Controller Node
+      priority: 1
+      type: string
+    - jsonPath: .status.retries
+      name: Retries
+      priority: 1
+      type: integer
+    - jsonPath: .status.completedAt
+      name: Completed
+      priority: 1
+      type: date
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: KubernetesUpgrade is the Schema for the kubernetesupgrades API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: KubernetesUpgradeSpec defines the desired state of KubernetesUpgrade
+            properties:
+              healthChecks:
+                description: HealthChecks defines a list of CEL-based health checks
+                  to perform before the upgrade
+                items:
+                  description: HealthCheck defines a CEL-based health check
+                  properties:
+                    apiVersion:
+                      description: APIVersion of the resource to check
+                      type: string
+                    description:
+                      description: Description of what this check validates (for status/logging)
+                      type: string
+                    expr:
+                      description: |-
+                        CEL expression that must evaluate to true for the check to pass
+                        The resource object is available as 'object' and status as 'status'
+                      type: string
+                    kind:
+                      description: Kind of the resource to check
+                      type: string
+                    name:
+                      description: Name of the specific resource (optional, if empty
+                        checks all resources of this kind)
+                      type: string
+                    namespace:
+                      description: Namespace of the resource (optional, for namespaced
+                        resources)
+                      type: string
+                    timeout:
+                      description: Timeout for this health check
+                      minLength: 2
+                      pattern: ^([0-9]+[smh])+$
+                      type: string
+                  required:
+                  - apiVersion
+                  - expr
+                  - kind
+                  type: object
+                type: array
+              kubernetes:
+                description: Kubernetes defines the target Kubernetes configuration
+                properties:
+                  endpoint:
+                    description: |-
+                      Endpoint overrides the Kubernetes API URL the upgrade Job queries.
+                      Defaults to https://kubernetes.default.svc.cluster.local:443 so the Job
+                      does not rely on the external control-plane endpoint being reachable
+                      from the pod network.
+                    pattern: ^https://[^/\s]+
+                    type: string
+                  hostAliases:
+                    description: HostAliases are appended to the upgrade Job pod's
+                      /etc/hosts.
+                    items:
+                      description: |-
+                        HostAlias holds the mapping between IP and hostnames that will be injected as an entry in the
+                        pod's hosts file.
+                      properties:
+                        hostnames:
+                          description: Hostnames for the above IP address.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        ip:
+                          description: IP address of the host file entry.
+                          type: string
+                      required:
+                      - ip
+                      type: object
+                    type: array
+                  imageRepository:
+                    description: |-
+                      ImageRepository overrides the registry+path prefix for Kubernetes component
+                      images. When set, each component (kube-apiserver, kube-controller-manager,
+                      kube-scheduler, kube-proxy, kubelet) is pulled from
+                      "<imageRepository>/<component>:<version>".
+                    type: string
+                  version:
+                    description: Version is the target Kubernetes version to upgrade
+                      to (e.g., "v1.34.0")
+                    pattern: ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\-\.]+)?$
+                    type: string
+                required:
+                - version
+                type: object
+              maintenance:
+                description: Maintenance configuration behavior for upgrade operations
+                properties:
+                  windows:
+                    items:
+                      properties:
+                        duration:
+                          description: How long the window stays open (e.g., "4h",
+                            "2h30m")
+                          pattern: ^([0-9]+[smh])+$
+                          type: string
+                        start:
+                          description: 'Cron expression (5-field): minute hour day-of-month
+                            month day-of-week'
+                          minLength: 9
+                          type: string
+                        timezone:
+                          default: UTC
+                          description: IANA timezone (e.g., "UTC", "Europe/Paris")
+                          type: string
+                      required:
+                      - duration
+                      - start
+                      type: object
+                    minItems: 1
+                    type: array
+                type: object
+              talosctl:
+                description: Talosctl specifies the talosctl configuration for upgrade
+                  operations
+                properties:
+                  image:
+                    description: Image specifies the talosctl container image
+                    properties:
+                      pullPolicy:
+                        default: IfNotPresent
+                        description: PullPolicy describes a policy for if/when to
+                          pull a container image
+                        enum:
+                        - Always
+                        - Never
+                        - IfNotPresent
+                        type: string
+                      repository:
+                        default: ghcr.io/siderolabs/talosctl
+                        description: Repository is the talosctl container image repository
+                        type: string
+                      tag:
+                        description: |-
+                          Tag is the talosctl container image tag
+                          If not specified, defaults to the target version
+                        type: string
+                    type: object
+                type: object
+            required:
+            - kubernetes
+            type: object
+          status:
+            description: KubernetesUpgradeStatus defines the observed state of KubernetesUpgrade
+            properties:
+              completedAt:
+                description: CompletedAt is the time the upgrade reached a terminal
+                  phase
+                format: date-time
+                type: string
+              controllerNode:
+                description: ControllerNode is the controller node being used for
+                  the upgrade
+                type: string
+              currentVersion:
+                description: CurrentVersion is the current Kubernetes version detected
+                  in the cluster
+                type: string
+              history:
+                description: History records past version transitions on this CR,
+                  newest first
+                items:
+                  description: UpgradeHistoryEntry records a single completed version
+                    transition
+                  properties:
+                    completedAt:
+                      description: CompletedAt is when the run reached its terminal
+                        phase
+                      format: date-time
+                      type: string
+                    fromVersion:
+                      description: FromVersion is the cluster version detected at
+                        the start of the run
+                      type: string
+                    lastError:
+                      description: LastError is the final error message when Phase
+                        is Failed
+                      type: string
+                    phase:
+                      description: Phase is the terminal phase reached (Completed
+                        or Failed)
+                      enum:
+                      - Pending
+                      - HealthChecking
+                      - PreHook
+                      - Draining
+                      - Upgrading
+                      - Rebooting
+                      - PostHook
+                      - Completed
+                      - Failed
+                      - MaintenanceWindow
+                      type: string
+                    retries:
+                      description: Retries is the number of retries recorded during
+                        the run
+                      minimum: 0
+                      type: integer
+                    startedAt:
+                      description: StartedAt is when the run began
+                      format: date-time
+                      type: string
+                    toVersion:
+                      description: ToVersion is the spec-target version at the time
+                        of completion
+                      type: string
+                  required:
+                  - completedAt
+                  - phase
+                  - startedAt
+                  - toVersion
+                  type: object
+                maxItems: 10
+                type: array
+              jobName:
+                description: JobName is the name of the job handling the upgrade
+                type: string
+              lastError:
+                description: LastError contains the last error message
+                type: string
+              lastUpdated:
+                description: LastUpdated timestamp of last status update
+                format: date-time
+                type: string
+              message:
+                description: Message provides details about the current state
+                type: string
+              nextMaintenanceWindow:
+                description: NextMaintenanceWindow reflect the next time a maintenance
+                  can happen
+                format: date-time
+                type: string
+              observedGeneration:
+                description: ObservedGeneration reflects the generation of the most
+                  recently observed spec
+                format: int64
+                type: integer
+              phase:
+                description: Phase represents the current phase of the upgrade
+                enum:
+                - Pending
+                - HealthChecking
+                - PreHook
+                - Draining
+                - Upgrading
+                - Rebooting
+                - PostHook
+                - Completed
+                - Failed
+                - MaintenanceWindow
+                type: string
+              retries:
+                description: Retries is the number of times the upgrade was attempted
+                minimum: 0
+                type: integer
+              startedAt:
+                description: StartedAt is the time the current upgrade attempt began
+                format: date-time
+                type: string
+              targetVersion:
+                description: TargetVersion is the target version from the spec
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -3,41 +3,16 @@ package kubernetesupgrade
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
-	"github.com/siderolabs/talos/pkg/machinery/config/configloader"
-	talosconfigresource "github.com/siderolabs/talos/pkg/machinery/resources/config"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-func mustMachineConfigFromYAML(t *testing.T, yaml string) *talosconfigresource.MachineConfig {
-	t.Helper()
-	provider, err := configloader.NewFromBytes([]byte(yaml))
-	if err != nil {
-		t.Fatalf("failed to load machine config yaml: %v", err)
-	}
-	return talosconfigresource.NewMachineConfig(provider)
-}
-
-const hcloudHostnameMachineConfig = `version: v1alpha1
-machine:
-  type: controlplane
-  network:
-    extraHostEntries:
-      - ip: 10.0.1.100
-        aliases:
-          - kube.cluster.local
-cluster:
-  controlPlane:
-    endpoint: https://kube.cluster.local:6443
-`
-
 const (
-	testK8sVersion        = "v1.34.0"
-	testKubeClusterHost   = "kube.cluster.local"
-	testHostAliasOverride = "192.168.99.99"
-	testV110              = "v1.10.0"
+	testK8sVersion = "v1.34.0"
+	testV110       = "v1.10.0"
 )
 
 func TestK8sBuildJob_Properties(t *testing.T) {
@@ -111,16 +86,13 @@ func TestK8sBuildJob_CustomImage(t *testing.T) {
 	}
 }
 
-func TestK8sBuildJob_AutoDiscoversHostAlias(t *testing.T) {
+func TestK8sBuildJob_DefaultEndpointFlag(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade", withK8sFinalizer)
 	ku.Spec.Kubernetes.Version = testK8sVersion
 
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{testNodeIP: testV110},
-		machineConfigs: map[string]*talosconfigresource.MachineConfig{
-			testNodeIP: mustMachineConfigFromYAML(t, hcloudHostnameMachineConfig),
-		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, newControllerNode(fakeCrtl, testNodeIP)).WithStatusSubresource(ku).Build()
@@ -131,31 +103,20 @@ func TestK8sBuildJob_AutoDiscoversHostAlias(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	aliases := job.Spec.Template.Spec.HostAliases
-	if len(aliases) != 1 {
-		t.Fatalf("expected 1 hostAlias, got %d: %+v", len(aliases), aliases)
-	}
-	if aliases[0].IP != "10.0.1.100" {
-		t.Fatalf("expected VIP 10.0.1.100, got: %s", aliases[0].IP)
-	}
-	if len(aliases[0].Hostnames) != 1 || aliases[0].Hostnames[0] != testKubeClusterHost {
-		t.Fatalf("expected single hostname kube.cluster.local, got: %v", aliases[0].Hostnames)
+	want := "--endpoint=" + defaultKubernetesAPIEndpoint
+	if !slices.Contains(job.Spec.Template.Spec.Containers[0].Args, want) {
+		t.Fatalf("expected %q in args, got: %v", want, job.Spec.Template.Spec.Containers[0].Args)
 	}
 }
 
-func TestK8sBuildJob_ExplicitHostAliasOverridesAutoDiscovery(t *testing.T) {
+func TestK8sBuildJob_CustomEndpoint(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade", withK8sFinalizer)
 	ku.Spec.Kubernetes.Version = testK8sVersion
-	ku.Spec.Kubernetes.HostAliases = []corev1.HostAlias{
-		{IP: testHostAliasOverride, Hostnames: []string{testKubeClusterHost}},
-	}
+	ku.Spec.Kubernetes.Endpoint = "https://api.example.com:6443"
 
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{testNodeIP: testV110},
-		machineConfigs: map[string]*talosconfigresource.MachineConfig{
-			testNodeIP: mustMachineConfigFromYAML(t, hcloudHostnameMachineConfig),
-		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, newControllerNode(fakeCrtl, testNodeIP)).WithStatusSubresource(ku).Build()
@@ -166,48 +127,19 @@ func TestK8sBuildJob_ExplicitHostAliasOverridesAutoDiscovery(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	aliases := job.Spec.Template.Spec.HostAliases
-	if len(aliases) != 1 {
-		t.Fatalf("expected only the explicit hostAlias, got %d: %+v", len(aliases), aliases)
+	args := job.Spec.Template.Spec.Containers[0].Args
+	want := "--endpoint=https://api.example.com:6443"
+	if !slices.Contains(args, want) {
+		t.Fatalf("expected %q in args, got: %v", want, args)
 	}
-	if aliases[0].IP != testHostAliasOverride {
-		t.Fatalf("expected explicit override IP 192.168.99.99, got: %s", aliases[0].IP)
-	}
-}
-
-func TestK8sBuildJob_ExplicitHostAliasOverrideMatchesAnyHostnameInEntry(t *testing.T) {
-	scheme := newTestScheme()
-	ku := newKubernetesUpgrade("test-upgrade", withK8sFinalizer)
-	ku.Spec.Kubernetes.Version = testK8sVersion
-	ku.Spec.Kubernetes.HostAliases = []corev1.HostAlias{
-		{IP: testHostAliasOverride, Hostnames: []string{"other.host", testKubeClusterHost}},
-	}
-
-	tc := &mockTalosClient{
-		nodeVersions: map[string]string{testNodeIP: testV110},
-		machineConfigs: map[string]*talosconfigresource.MachineConfig{
-			testNodeIP: mustMachineConfigFromYAML(t, hcloudHostnameMachineConfig),
-		},
-	}
-	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku, newControllerNode(fakeCrtl, testNodeIP)).WithStatusSubresource(ku).Build()
-	r := newK8sReconciler(cl, &mockVersionGetter{}, tc, &mockHealthChecker{})
-
-	job, err := r.buildJob(context.Background(), ku, fakeCrtl, testNodeIP)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	aliases := job.Spec.Template.Spec.HostAliases
-	if len(aliases) != 1 {
-		t.Fatalf("expected only the explicit hostAlias when endpoint hostname is covered as a non-first entry, got %d: %+v", len(aliases), aliases)
-	}
-	if aliases[0].IP != testHostAliasOverride {
-		t.Fatalf("expected explicit override IP, got: %s", aliases[0].IP)
+	for _, a := range args {
+		if strings.HasPrefix(a, "--endpoint=") && a != want {
+			t.Fatalf("unexpected extra --endpoint flag: %q", a)
+		}
 	}
 }
 
-func TestK8sBuildJob_ExplicitHostAliasMergedWhenNoOverlap(t *testing.T) {
+func TestK8sBuildJob_ExplicitHostAliasesPassThrough(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade", withK8sFinalizer)
 	ku.Spec.Kubernetes.Version = testK8sVersion
@@ -217,9 +149,6 @@ func TestK8sBuildJob_ExplicitHostAliasMergedWhenNoOverlap(t *testing.T) {
 
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{testNodeIP: testV110},
-		machineConfigs: map[string]*talosconfigresource.MachineConfig{
-			testNodeIP: mustMachineConfigFromYAML(t, hcloudHostnameMachineConfig),
-		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, newControllerNode(fakeCrtl, testNodeIP)).WithStatusSubresource(ku).Build()
@@ -231,14 +160,11 @@ func TestK8sBuildJob_ExplicitHostAliasMergedWhenNoOverlap(t *testing.T) {
 	}
 
 	aliases := job.Spec.Template.Spec.HostAliases
-	if len(aliases) != 2 {
-		t.Fatalf("expected explicit + auto entries (2), got %d: %+v", len(aliases), aliases)
+	if len(aliases) != 1 {
+		t.Fatalf("expected single explicit hostAlias passed through, got %d: %+v", len(aliases), aliases)
 	}
 	if aliases[0].IP != "10.99.99.99" {
-		t.Fatalf("expected explicit entry first, got: %s", aliases[0].IP)
-	}
-	if aliases[1].IP != "10.0.1.100" {
-		t.Fatalf("expected auto-discovered entry second, got: %s", aliases[1].IP)
+		t.Fatalf("expected explicit IP, got: %s", aliases[0].IP)
 	}
 }
 
@@ -279,37 +205,5 @@ func TestComponentImageArgs(t *testing.T) {
 				t.Fatalf("got %v, want %v", got, c.want)
 			}
 		})
-	}
-}
-
-func TestK8sBuildJob_NoHostAliasForIPLiteralEndpoint(t *testing.T) {
-	scheme := newTestScheme()
-	ku := newKubernetesUpgrade("test-upgrade", withK8sFinalizer)
-	ku.Spec.Kubernetes.Version = testK8sVersion
-
-	const ipLiteralConfig = `version: v1alpha1
-machine:
-  type: controlplane
-cluster:
-  controlPlane:
-    endpoint: https://10.0.1.100:6443
-`
-	tc := &mockTalosClient{
-		nodeVersions: map[string]string{testNodeIP: testV110},
-		machineConfigs: map[string]*talosconfigresource.MachineConfig{
-			testNodeIP: mustMachineConfigFromYAML(t, ipLiteralConfig),
-		},
-	}
-	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku, newControllerNode(fakeCrtl, testNodeIP)).WithStatusSubresource(ku).Build()
-	r := newK8sReconciler(cl, &mockVersionGetter{}, tc, &mockHealthChecker{})
-
-	job, err := r.buildJob(context.Background(), ku, fakeCrtl, testNodeIP)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(job.Spec.Template.Spec.HostAliases) != 0 {
-		t.Fatalf("expected no hostAliases for IP-literal endpoint, got: %+v", job.Spec.Template.Spec.HostAliases)
 	}
 }

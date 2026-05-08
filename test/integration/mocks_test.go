@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	talosconfigresource "github.com/siderolabs/talos/pkg/machinery/resources/config"
-
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 )
 
@@ -84,12 +82,6 @@ func (m *mockTalosClient) PatchNodeInstallImage(ctx context.Context, nodeIP, new
 	defer m.mu.Unlock()
 	m.installImages[nodeIP] = newImage
 	return nil
-}
-
-func (m *mockTalosClient) GetNodeMachineConfig(
-	ctx context.Context, nodeIP string,
-) (*talosconfigresource.MachineConfig, error) {
-	return nil, fmt.Errorf("machine config not configured for %s", nodeIP)
 }
 
 func (m *mockTalosClient) Reset() {

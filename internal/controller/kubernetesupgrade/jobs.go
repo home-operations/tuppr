@@ -19,7 +19,6 @@ import (
 	"github.com/home-operations/tuppr/internal/controller/jobs"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/metrics"
-	"github.com/home-operations/tuppr/internal/talos"
 )
 
 func (r *Reconciler) findActiveJob(ctx context.Context) (*batchv1.Job, error) {
@@ -182,11 +181,17 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 	talosctlImage := talosctlRepo + ":" + talosctlTag
 
 	k8sSpec := kubernetesUpgrade.Spec.Kubernetes
+	endpoint := k8sSpec.Endpoint
+	if endpoint == "" {
+		endpoint = defaultKubernetesAPIEndpoint
+	}
+
 	args := make([]string, 0, 8)
 	args = append(args,
 		upgradeK8sCommand,
 		"--nodes="+controllerIP,
 		"--to="+k8sSpec.Version,
+		"--endpoint="+endpoint,
 	)
 	args = append(args, componentImageArgs(k8sSpec.ImageRepository)...)
 
@@ -195,7 +200,7 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 		pullPolicy = kubernetesUpgrade.Spec.Talosctl.Image.PullPolicy
 	}
 
-	hostAliases := r.resolveHostAliases(ctx, kubernetesUpgrade, controllerIP)
+	hostAliases := k8sSpec.HostAliases
 
 	logger.V(1).Info("Building Kubernetes upgrade job specification",
 		"controllerNode", controllerNode,
@@ -248,34 +253,4 @@ func componentImageArgs(repository string) []string {
 		"--proxy-image=" + repo + "/kube-proxy",
 		"--kubelet-image=" + repo + "/kubelet",
 	}
-}
-
-// resolveHostAliases combines explicit entries from the spec with one
-// auto-discovered from the live machine config. Explicit wins: if any
-// explicit entry already covers the endpoint hostname, autodiscovery is
-// skipped. Autodiscovery failures don't block the upgrade.
-func (r *Reconciler) resolveHostAliases(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, controllerIP string) []corev1.HostAlias {
-	explicit := kubernetesUpgrade.Spec.Kubernetes.HostAliases
-
-	mc, err := r.TalosClient.GetNodeMachineConfig(ctx, controllerIP)
-	if err != nil {
-		log.FromContext(ctx).V(1).Info("Skipping HostAlias autodiscovery", "err", err)
-		return explicit
-	}
-
-	auto := talos.ResolveControlPlaneHostAlias(mc.Config(), controllerIP)
-	if auto == nil {
-		return explicit
-	}
-
-	endpointHost := auto.Hostnames[0]
-	for _, a := range explicit {
-		for _, h := range a.Hostnames {
-			if strings.EqualFold(h, endpointHost) {
-				return explicit
-			}
-		}
-	}
-
-	return append(append([]corev1.HostAlias(nil), explicit...), *auto)
 }

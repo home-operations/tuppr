@@ -1,0 +1,73 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - tuppr.home-operations.com
+  resources:
+  - kubernetesupgrades
+  - talosupgrades
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - tuppr.home-operations.com
+  resources:
+  - kubernetesupgrades/finalizers
+  - talosupgrades/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - tuppr.home-operations.com
+  resources:
+  - kubernetesupgrades/status
+  - talosupgrades/status
+  verbs:
+  - get
+  - patch
+  - update
