@@ -548,6 +548,13 @@ func (m *Reporter) RecordUpgradeCompleted(upgradeType, name, result string) {
 	upgradeLastCompletionTimestamp.WithLabelValues(upgradeType, name, result).Set(float64(time.Now().Unix()))
 }
 
+// RecordLastCompletionTimestamp sets the timestamp gauge without touching the
+// completion counter, so it is safe to call on every reconcile to re-seed from
+// Status.CompletedAt after an operator restart.
+func (m *Reporter) RecordLastCompletionTimestamp(upgradeType, name, result string, t time.Time) {
+	upgradeLastCompletionTimestamp.WithLabelValues(upgradeType, name, result).Set(float64(t.Unix()))
+}
+
 func TerminalResult(phase tupprv1alpha1.JobPhase) string {
 	if phase == tupprv1alpha1.JobPhaseCompleted {
 		return ResultSuccess

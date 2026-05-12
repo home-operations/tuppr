@@ -119,6 +119,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	r.MetricsReporter.Initialize(talosUpgrade.Name, metrics.UpgradeTypeTalos)
+	r.syncMetricsFromStatus(&talosUpgrade)
 
 	if talosUpgrade.DeletionTimestamp != nil {
 		return r.cleanup(ctx, &talosUpgrade)
@@ -295,6 +296,36 @@ func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, talosUpgrade *tupp
 		len(talosUpgrade.Status.FailedNodes),
 	)
 	return nil
+}
+
+// syncMetricsFromStatus re-emits gauges from CR status so an operator pod that
+// starts after a terminal transition reflects the right state. The completion
+// counter is intentionally not touched — only recordPhaseTransition increments it.
+func (r *Reconciler) syncMetricsFromStatus(talosUpgrade *tupprv1alpha1.TalosUpgrade) {
+	phase := talosUpgrade.Status.Phase
+	if phase == "" {
+		return
+	}
+
+	currentNode := ""
+	if len(talosUpgrade.Status.CurrentNodes) > 0 {
+		currentNode = talosUpgrade.Status.CurrentNodes[0]
+	}
+	r.MetricsReporter.RecordTalosUpgradePhase(talosUpgrade.Name, string(phase), currentNode)
+
+	if phase.IsTerminal() {
+		completed := len(talosUpgrade.Status.CompletedNodes)
+		failed := len(talosUpgrade.Status.FailedNodes)
+		r.MetricsReporter.RecordTalosUpgradeNodes(talosUpgrade.Name, completed+failed, completed, failed)
+		if talosUpgrade.Status.CompletedAt != nil {
+			r.MetricsReporter.RecordLastCompletionTimestamp(
+				metrics.UpgradeTypeTalos,
+				talosUpgrade.Name,
+				metrics.TerminalResult(phase),
+				talosUpgrade.Status.CompletedAt.Time,
+			)
+		}
+	}
 }
 
 func (r *Reconciler) recordPhaseTransition(talosUpgrade *tupprv1alpha1.TalosUpgrade, fromPhase, toPhase tupprv1alpha1.JobPhase) {

@@ -111,6 +111,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	r.MetricsReporter.Initialize(kubernetesUpgrade.Name, metrics.UpgradeTypeKubernetes)
+	r.syncMetricsFromStatus(&kubernetesUpgrade)
 
 	if kubernetesUpgrade.DeletionTimestamp != nil {
 		return r.cleanup(ctx, &kubernetesUpgrade)
@@ -267,6 +268,24 @@ func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, kubernetesUpgrade 
 		r.MetricsReporter.RecordProgressing(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, prog.Reason, prog.Status == metav1.ConditionTrue)
 	}
 	return nil
+}
+
+func (r *Reconciler) syncMetricsFromStatus(kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade) {
+	phase := kubernetesUpgrade.Status.Phase
+	if phase == "" {
+		return
+	}
+
+	r.MetricsReporter.RecordKubernetesUpgradePhase(kubernetesUpgrade.Name, string(phase))
+
+	if phase.IsTerminal() && kubernetesUpgrade.Status.CompletedAt != nil {
+		r.MetricsReporter.RecordLastCompletionTimestamp(
+			metrics.UpgradeTypeKubernetes,
+			kubernetesUpgrade.Name,
+			metrics.TerminalResult(phase),
+			kubernetesUpgrade.Status.CompletedAt.Time,
+		)
+	}
 }
 
 func (r *Reconciler) recordPhaseTransition(kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, fromPhase, toPhase tupprv1alpha1.JobPhase) {
