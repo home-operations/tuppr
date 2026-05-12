@@ -192,6 +192,14 @@ type TalosUpgradeSpec struct {
 
 // TalosUpgradeStatus defines the observed state of TalosUpgrade
 type TalosUpgradeStatus struct {
+	// Conditions report the upgrade's "Progressing" and "Ready" status.
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
 	// Phase represents the current phase of the upgrade
 	// +optional
 	Phase JobPhase `json:"phase,omitempty"`
@@ -307,6 +315,8 @@ type NodeUpgradeStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=`.status.conditions[?(@.type=="Progressing")].reason`
 // +kubebuilder:printcolumn:name="Current Node",type="string",JSONPath=".status.currentNode"
 // +kubebuilder:printcolumn:name="Completed",type="integer",JSONPath=".status.completedNodes",priority=1
 // +kubebuilder:printcolumn:name="Failed",type="integer",JSONPath=".status.failedNodes",priority=1

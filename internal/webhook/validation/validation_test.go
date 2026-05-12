@@ -356,18 +356,38 @@ func TestValidateUpdateInProgress(t *testing.T) {
 	specA := tupprv1alpha1.TalosSpec{Version: "v1.0.0"}
 	specB := tupprv1alpha1.TalosSpec{Version: "v1.1.0"}
 
+	progressingTrue := []metav1.Condition{{
+		Type:   tupprv1alpha1.ConditionTypeProgressing,
+		Status: metav1.ConditionTrue,
+		Reason: "Upgrading",
+	}}
+	progressingFalse := []metav1.Condition{{
+		Type:   tupprv1alpha1.ConditionTypeProgressing,
+		Status: metav1.ConditionFalse,
+		Reason: "Pending",
+	}}
+
 	// Case 1: Not in progress -> Change allowed
-	err := ValidateUpdateInProgress(tupprv1alpha1.JobPhasePending, specA, specB)
+	err := ValidateUpdateInProgress(progressingFalse, tupprv1alpha1.JobPhasePending, specA, specB)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	// Case 2: In progress -> Same spec -> Allowed
-	err = ValidateUpdateInProgress(tupprv1alpha1.JobPhaseUpgrading, specA, specA)
+	err = ValidateUpdateInProgress(progressingTrue, tupprv1alpha1.JobPhaseUpgrading, specA, specA)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	// Case 3: In progress -> Different spec -> Denied
-	err = ValidateUpdateInProgress(tupprv1alpha1.JobPhaseUpgrading, specA, specB)
+	err = ValidateUpdateInProgress(progressingTrue, tupprv1alpha1.JobPhaseUpgrading, specA, specB)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring("cannot update spec while upgrade is in progress"))
+
+	// Case 4: nil Conditions falls back to Phase.IsInFlight()
+	err = ValidateUpdateInProgress(nil, tupprv1alpha1.JobPhaseUpgrading, specA, specB)
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("cannot update spec while upgrade is in progress"))
+
+	// Case 5: HealthChecking is not in-flight
+	err = ValidateUpdateInProgress(nil, tupprv1alpha1.JobPhaseHealthChecking, specA, specB)
+	g.Expect(err).NotTo(HaveOccurred())
 }
 
 func TestGenerateCommonWarnings(t *testing.T) {

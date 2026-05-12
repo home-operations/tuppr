@@ -184,7 +184,7 @@ func TestSetPhase_Talos_WritesTimestampsAndEmitsEvent(t *testing.T) {
 		Recorder:        recorder,
 	}
 
-	if err := r.setPhase(context.Background(), tu, tupprv1alpha1.JobPhaseCompleted, "", "done"); err != nil {
+	if err := r.setPhase(context.Background(), tu, tupprv1alpha1.JobPhaseCompleted, "done"); err != nil {
 		t.Fatalf("setPhase: %v", err)
 	}
 
@@ -225,7 +225,7 @@ func TestSetPhase_Talos_NoRecorderIsSafe(t *testing.T) {
 		MetricsReporter: metrics.NewReporter(),
 		Now:             &fixedClock{t: time.Now()},
 	}
-	if err := r.setPhase(context.Background(), tu, tupprv1alpha1.JobPhaseHealthChecking, "", "ok"); err != nil {
+	if err := r.setPhase(context.Background(), tu, tupprv1alpha1.JobPhaseHealthChecking, "ok"); err != nil {
 		t.Fatalf("setPhase without recorder must not fail: %v", err)
 	}
 }
@@ -258,10 +258,10 @@ func TestSetPhase_Talos_IdempotentOnRepeatedTerminalCalls(t *testing.T) {
 		MetricsReporter: metrics.NewReporter(),
 		Now:             &fixedClock{t: now},
 	}
-	if err := r.setPhase(context.Background(), tu, tupprv1alpha1.JobPhaseCompleted, "", "done"); err != nil {
+	if err := r.setPhase(context.Background(), tu, tupprv1alpha1.JobPhaseCompleted, "done"); err != nil {
 		t.Fatalf("first setPhase: %v", err)
 	}
-	if err := r.setPhase(context.Background(), tu, tupprv1alpha1.JobPhaseCompleted, "", "done again"); err != nil {
+	if err := r.setPhase(context.Background(), tu, tupprv1alpha1.JobPhaseCompleted, "done again"); err != nil {
 		t.Fatalf("second setPhase: %v", err)
 	}
 	var got tupprv1alpha1.TalosUpgrade

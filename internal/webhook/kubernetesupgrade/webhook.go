@@ -35,7 +35,7 @@ func (v *Validator) ValidateCreate(ctx context.Context, k *tupprv1alpha1.Kuberne
 func (v *Validator) ValidateUpdate(ctx context.Context, old, k *tupprv1alpha1.KubernetesUpgrade) (admission.Warnings, error) {
 	kuberneteslog.Info("validate update", "name", k.Name)
 
-	if err := validation.ValidateUpdateInProgress(old.Status.Phase, old.Spec, k.Spec); err != nil {
+	if err := validation.ValidateUpdateInProgress(old.Status.Conditions, old.Status.Phase, old.Spec, k.Spec); err != nil {
 		return nil, err
 	}
 	return v.validate(ctx, k)

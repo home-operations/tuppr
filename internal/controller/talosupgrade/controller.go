@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"slices"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -26,6 +28,7 @@ import (
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/controller/jobs"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
+	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
 	"github.com/home-operations/tuppr/internal/healthcheck"
 	"github.com/home-operations/tuppr/internal/image"
 	"github.com/home-operations/tuppr/internal/metrics"
@@ -218,32 +221,48 @@ func (r *Reconciler) updateStatus(ctx context.Context, talosUpgrade *tupprv1alph
 	return r.Status().Patch(ctx, statusObj, client.RawPatch(types.MergePatchType, patchBytes))
 }
 
-func (r *Reconciler) setPhase(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, currentNode, message string) error {
+func (r *Reconciler) setPhase(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, message string) error {
+	return r.setPhaseWithNodes(ctx, talosUpgrade, phase, nil, message)
+}
+
+func (r *Reconciler) setPhaseWithNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, currentNodes []string, message string) error {
+	return r.setPhaseWithUpdates(ctx, talosUpgrade, phase, "", currentNodes, message, nil)
+}
+
+// setPhaseWithReason is like setPhase but pins the Progressing condition's Reason.
+func (r *Reconciler) setPhaseWithReason(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, reason, currentNode, message string) error {
 	var currentNodes []string
 	if currentNode != "" {
 		currentNodes = []string{currentNode}
 	}
-	return r.setPhaseWithNodes(ctx, talosUpgrade, phase, currentNodes, message)
-}
-
-func (r *Reconciler) setPhaseWithNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, currentNodes []string, message string) error {
-	return r.setPhaseWithUpdates(ctx, talosUpgrade, phase, currentNodes, message, nil)
+	return r.setPhaseWithUpdates(ctx, talosUpgrade, phase, reason, currentNodes, message, nil)
 }
 
 // setPhaseWithUpdates writes phase plus any additional status fields atomically
 // and runs the shared audit/event/metric bookkeeping. All phase transitions
 // must go through this function (directly or via setPhase/setPhaseWithNodes).
-func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, currentNodes []string, message string, extra map[string]any) error {
+// No-ops when the resulting status would be identical to the current one.
+func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, reason string, currentNodes []string, message string, extra map[string]any) error {
 	prevPhase := talosUpgrade.Status.Phase
-
-	totalNodes, err := r.getTotalNodeCount(ctx)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to get total node count for metrics")
-	}
 
 	currentNode := ""
 	if len(currentNodes) > 0 {
 		currentNode = currentNodes[0]
+	}
+
+	conditions := upgradeaudit.ApplyConditions(talosUpgrade.Status.Conditions, phase, reason, message, talosUpgrade.Generation)
+
+	if len(extra) == 0 &&
+		prevPhase == phase &&
+		talosUpgrade.Status.Message == message &&
+		slices.Equal(talosUpgrade.Status.CurrentNodes, currentNodes) &&
+		upgradeaudit.ConditionsEqual(talosUpgrade.Status.Conditions, conditions) {
+		return nil
+	}
+
+	totalNodes, err := r.getTotalNodeCount(ctx)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to get total node count for metrics")
 	}
 
 	updates := map[string]any{
@@ -251,6 +270,7 @@ func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, talosUpgrade *tupp
 		"currentNode":  currentNode,
 		"currentNodes": currentNodes,
 		"message":      message,
+		"conditions":   conditions,
 	}
 	maps.Copy(updates, extra)
 	applyPhaseAuditFields(&talosUpgrade.Status, updates, phase, metav1.Now(), talosUpgrade.Spec.Talos.Version)
@@ -260,9 +280,14 @@ func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, talosUpgrade *tupp
 	}
 	talosUpgrade.Status.Phase = phase
 	talosUpgrade.Status.CurrentNodes = currentNodes
+	talosUpgrade.Status.Message = message
+	talosUpgrade.Status.Conditions = conditions
 	syncLocalAuditFields(&talosUpgrade.Status, updates)
 	r.recordPhaseTransition(talosUpgrade, prevPhase, phase)
 	r.emitPhaseEvent(talosUpgrade, prevPhase, phase, message)
+	if prog := meta.FindStatusCondition(conditions, tupprv1alpha1.ConditionTypeProgressing); prog != nil {
+		r.MetricsReporter.RecordProgressing(metrics.UpgradeTypeTalos, talosUpgrade.Name, prog.Reason, prog.Status == metav1.ConditionTrue)
+	}
 	r.MetricsReporter.RecordTalosUpgradeNodes(
 		talosUpgrade.Name,
 		totalNodes,

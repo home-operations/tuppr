@@ -9,6 +9,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -27,6 +28,7 @@ import (
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/controller/jobs"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
+	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
 	"github.com/home-operations/tuppr/internal/healthcheck"
 	"github.com/home-operations/tuppr/internal/metrics"
 	"github.com/home-operations/tuppr/internal/talos"
@@ -217,19 +219,36 @@ func (r *Reconciler) updateStatus(ctx context.Context, kubernetesUpgrade *tupprv
 }
 
 func (r *Reconciler) setPhase(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, phase tupprv1alpha1.JobPhase, controllerNode, message string) error {
-	return r.setPhaseWithUpdates(ctx, kubernetesUpgrade, phase, controllerNode, message, nil)
+	return r.setPhaseWithUpdates(ctx, kubernetesUpgrade, phase, "", controllerNode, message, nil)
+}
+
+// setPhaseWithReason is like setPhase but pins the Progressing condition's Reason.
+func (r *Reconciler) setPhaseWithReason(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, phase tupprv1alpha1.JobPhase, reason, controllerNode, message string) error {
+	return r.setPhaseWithUpdates(ctx, kubernetesUpgrade, phase, reason, controllerNode, message, nil)
 }
 
 // setPhaseWithUpdates writes phase plus any additional status fields atomically
 // and runs the shared audit/event/metric bookkeeping. All phase transitions
 // must go through this function (directly or via setPhase).
-func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, phase tupprv1alpha1.JobPhase, controllerNode, message string, extra map[string]any) error {
+// No-ops when the resulting status would be identical to the current one.
+func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, phase tupprv1alpha1.JobPhase, reason, controllerNode, message string, extra map[string]any) error {
 	prevPhase := kubernetesUpgrade.Status.Phase
+
+	conditions := upgradeaudit.ApplyConditions(kubernetesUpgrade.Status.Conditions, phase, reason, message, kubernetesUpgrade.Generation)
+
+	if len(extra) == 0 &&
+		prevPhase == phase &&
+		kubernetesUpgrade.Status.Message == message &&
+		kubernetesUpgrade.Status.ControllerNode == controllerNode &&
+		upgradeaudit.ConditionsEqual(kubernetesUpgrade.Status.Conditions, conditions) {
+		return nil
+	}
 
 	updates := map[string]any{
 		"phase":          phase,
 		"controllerNode": controllerNode,
 		"message":        message,
+		"conditions":     conditions,
 	}
 	maps.Copy(updates, extra)
 	applyPhaseAuditFields(&kubernetesUpgrade.Status, updates, phase, metav1.Now(), message)
@@ -238,9 +257,15 @@ func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, kubernetesUpgrade 
 		return err
 	}
 	kubernetesUpgrade.Status.Phase = phase
+	kubernetesUpgrade.Status.ControllerNode = controllerNode
+	kubernetesUpgrade.Status.Message = message
+	kubernetesUpgrade.Status.Conditions = conditions
 	syncLocalAuditFields(&kubernetesUpgrade.Status, updates)
 	r.recordPhaseTransition(kubernetesUpgrade, prevPhase, phase)
 	r.emitPhaseEvent(kubernetesUpgrade, prevPhase, phase, message)
+	if prog := meta.FindStatusCondition(conditions, tupprv1alpha1.ConditionTypeProgressing); prog != nil {
+		r.MetricsReporter.RecordProgressing(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, prog.Reason, prog.Status == metav1.ConditionTrue)
+	}
 	return nil
 }
 

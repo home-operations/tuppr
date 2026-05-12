@@ -16,6 +16,7 @@ import (
 	"github.com/home-operations/tuppr/internal/controller/coordination"
 	"github.com/home-operations/tuppr/internal/controller/maintenance"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
+	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
 	"github.com/home-operations/tuppr/internal/metrics"
 )
 
@@ -106,7 +107,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
 
-		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseCompleted, "", fmt.Sprintf("Kubernetes successfully upgraded to %s", targetVersion), map[string]any{
+		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseCompleted, "", "", fmt.Sprintf("Kubernetes successfully upgraded to %s", targetVersion), map[string]any{
 			statusFieldCurrentVersion: targetVersion,
 			statusFieldTargetVersion:  targetVersion,
 		}); err != nil {
@@ -150,7 +151,7 @@ func (r *Reconciler) checkMaintenanceWindow(ctx context.Context, kubernetesUpgra
 		nextTimestamp := maintenanceRes.NextWindowStart.Unix()
 		r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, false, &nextTimestamp)
 		message := fmt.Sprintf("Waiting for maintenance window (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339))
-		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseMaintenanceWindow, "", message, map[string]any{
+		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseMaintenanceWindow, "", "", message, map[string]any{
 			"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
 		}); err != nil {
 			logger.Error(err, "Failed to update status for maintenance window")
@@ -171,7 +172,7 @@ func (r *Reconciler) checkCoordination(ctx context.Context, kubernetesUpgrade *t
 	}
 	if blocked {
 		logger.Info("Waiting for another upgrade to complete", "reason", message)
-		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
+		if err := r.setPhaseWithReason(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, upgradeaudit.ReasonWaitingForOtherUpgrade, "", message); err != nil {
 			logger.Error(err, "Failed to update phase for coordination wait")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute * 2}, true
@@ -206,7 +207,7 @@ func (r *Reconciler) startUpgrade(ctx context.Context, kubernetesUpgrade *tupprv
 	logger.Info("Successfully created Kubernetes upgrade job", "job", job.Name, "controllerNode", controllerNode)
 
 	message := fmt.Sprintf("Upgrading Kubernetes to %s on controller node %s", kubernetesUpgrade.Spec.Kubernetes.Version, controllerNode)
-	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseUpgrading, controllerNode, message, map[string]any{
+	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseUpgrading, "", controllerNode, message, map[string]any{
 		statusFieldJobName: job.Name,
 	}); err != nil {
 		logger.Error(err, "Failed to update status for job creation")

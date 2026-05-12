@@ -43,7 +43,7 @@ func (v *Validator) ValidateCreate(ctx context.Context, t *tupprv1alpha1.TalosUp
 func (v *Validator) ValidateUpdate(ctx context.Context, old, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
 	taloslog.Info("validate update", "name", t.Name)
 
-	if err := validation.ValidateUpdateInProgress(old.Status.Phase, old.Spec, t.Spec); err != nil {
+	if err := validation.ValidateUpdateInProgress(old.Status.Conditions, old.Status.Phase, old.Spec, t.Spec); err != nil {
 		return nil, err
 	}
 	return v.validate(ctx, t)

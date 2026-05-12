@@ -99,6 +99,28 @@ spec:
               {{ "{{" }} $labels.phase {{ "}}" }} phase for more than 45 minutes.
               Check the upgrade job and control-plane nodes for errors.
 
+    - name: tuppr.blocked
+      rules:
+        # Fires when an upgrade has been blocked on an external dependency
+        # (image registry, another active upgrade, suspended annotation) long
+        # enough to suggest the dependency itself is broken, not just slow.
+        - alert: TupprUpgradeBlocked
+          expr: tuppr_upgrade_progressing{reason=~"Waiting.*|Suspended"} == 0
+          for: {{ .Values.monitoring.prometheusRule.blockedDuration | default "30m" }}
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              {{ "{{" }} $labels.upgrade_type | title {{ "}}" }} upgrade
+              {{ "{{" }} $labels.name {{ "}}" }} blocked
+              ({{ "{{" }} $labels.reason {{ "}}" }})
+            description: >-
+              {{ "{{" }} $labels.upgrade_type {{ "}}" }} upgrade
+              {{ "{{" }} $labels.name {{ "}}" }} has been blocked with reason
+              {{ "{{" }} $labels.reason {{ "}}" }} for more than
+              {{ .Values.monitoring.prometheusRule.blockedDuration | default "30m" }}.
+              Check the upgrade's status conditions and message.
+
     - name: tuppr.jobs
       rules:
         # Fires when an upgrade job has been running longer than the configured

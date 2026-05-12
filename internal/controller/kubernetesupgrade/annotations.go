@@ -9,6 +9,7 @@ import (
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
+	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
 )
 
 func (r *Reconciler) handleSuspendAnnotation(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade) (bool, error) {
@@ -27,7 +28,7 @@ func (r *Reconciler) handleSuspendAnnotation(ctx context.Context, kubernetesUpgr
 		"kubernetesupgrade", kubernetesUpgrade.Name)
 
 	message := fmt.Sprintf("Controller suspended via annotation (value: %s) - remove annotation to resume", suspendValue)
-	if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
+	if err := r.setPhaseWithReason(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, upgradeaudit.ReasonSuspended, "", message); err != nil {
 		logger.Error(err, "Failed to update phase for suspension")
 		return true, err
 	}
@@ -63,7 +64,7 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, kubernetesUpgrad
 		return false, err
 	}
 
-	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "Reset requested via annotation", map[string]any{
+	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "", "Reset requested via annotation", map[string]any{
 		statusFieldJobName:   "",
 		"retries":            0,
 		statusFieldLastError: "",
@@ -87,7 +88,7 @@ func (r *Reconciler) handleGenerationChange(ctx context.Context, kubernetesUpgra
 		"newVersion", kubernetesUpgrade.Spec.Kubernetes.Version)
 
 	message := fmt.Sprintf("Spec updated to %s, restarting upgrade process", kubernetesUpgrade.Spec.Kubernetes.Version)
-	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", message, map[string]any{
+	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "", message, map[string]any{
 		statusFieldJobName:   "",
 		"retries":            0,
 		statusFieldLastError: "",

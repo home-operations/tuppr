@@ -229,6 +229,14 @@ var (
 		},
 		[]string{labelUpgradeType, labelName, labelResult},
 	)
+
+	upgradeProgressing = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "tuppr_upgrade_progressing",
+			Help: "1 when the Progressing condition is True, 0 otherwise. The reason label exposes the sub-state (e.g. WaitingForImage).",
+		},
+		[]string{labelUpgradeType, labelName, "reason"},
+	)
 )
 
 func init() {
@@ -253,6 +261,7 @@ func init() {
 		nodeInfo,
 		upgradesCompletedTotal,
 		upgradeLastCompletionTimestamp,
+		upgradeProgressing,
 	)
 }
 
@@ -261,11 +270,17 @@ type talosPhaseNode struct {
 	node  string
 }
 
+type progressingKey struct {
+	upgradeType string
+	name        string
+}
+
 type Reporter struct {
 	mu               sync.RWMutex
 	startTimes       map[string]*prometheus.Timer
 	jobStartTimes    map[string]time.Time
 	talosUpgradePrev map[string]talosPhaseNode
+	progressingPrev  map[progressingKey]string
 }
 
 func NewReporter() *Reporter {
@@ -273,6 +288,7 @@ func NewReporter() *Reporter {
 		startTimes:       make(map[string]*prometheus.Timer),
 		jobStartTimes:    make(map[string]time.Time),
 		talosUpgradePrev: make(map[string]talosPhaseNode),
+		progressingPrev:  make(map[progressingKey]string),
 	}
 }
 
@@ -327,6 +343,29 @@ func (m *Reporter) RecordKubernetesUpgradePhase(name, phase string) {
 		}
 		kubernetesUpgradePhaseGauge.WithLabelValues(name, p).Set(val)
 	}
+}
+
+// RecordProgressing mirrors the Progressing condition. Deletes the previous
+// reason's series so only one reason is exposed per (type,name) at a time.
+func (m *Reporter) RecordProgressing(upgradeType, name, reason string, progressing bool) {
+	if reason == "" {
+		reason = "Unknown"
+	}
+	key := progressingKey{upgradeType: upgradeType, name: name}
+
+	m.mu.Lock()
+	prev, hadPrev := m.progressingPrev[key]
+	m.progressingPrev[key] = reason
+	m.mu.Unlock()
+
+	if hadPrev && prev != reason {
+		upgradeProgressing.DeleteLabelValues(upgradeType, name, prev)
+	}
+	val := 0.0
+	if progressing {
+		val = 1.0
+	}
+	upgradeProgressing.WithLabelValues(upgradeType, name, reason).Set(val)
 }
 
 func (m *Reporter) StartPhaseTiming(upgradeType, name, phase string) {
@@ -442,6 +481,12 @@ func (m *Reporter) CleanupUpgradeMetrics(upgradeType, name string) {
 	maintenanceWindowNextOpenTimestamp.DeleteLabelValues(upgradeType, name)
 	upgradeLastCompletionTimestamp.DeleteLabelValues(upgradeType, name, ResultSuccess)
 	upgradeLastCompletionTimestamp.DeleteLabelValues(upgradeType, name, ResultFailure)
+
+	progKey := progressingKey{upgradeType: upgradeType, name: name}
+	if prevReason, ok := m.progressingPrev[progKey]; ok {
+		upgradeProgressing.DeleteLabelValues(upgradeType, name, prevReason)
+		delete(m.progressingPrev, progKey)
+	}
 }
 
 func (m *Reporter) RecordBuildInfo(version, commit, goVersion string) {

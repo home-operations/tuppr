@@ -164,7 +164,7 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 		failedCount := len(failedNodes)
 		message := fmt.Sprintf("Batch upgrade stopped: %d nodes failed - stopping", failedCount)
 
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseFailed, "", message); err != nil {
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseFailed, message); err != nil {
 			logger.Error(err, "Failed to update phase for batch failure")
 			return ctrl.Result{}, err
 		}
@@ -183,7 +183,7 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 	completedCount := len(talosUpgrade.Status.CompletedNodes)
 	message := fmt.Sprintf("Batch completed successfully (%d total completed)", completedCount)
 
-	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
+	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, message); err != nil {
 		logger.Error(err, "Failed to update phase after batch completion")
 		return ctrl.Result{}, err
 	}

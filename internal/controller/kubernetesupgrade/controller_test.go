@@ -21,6 +21,7 @@ import (
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
+	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
 	"github.com/home-operations/tuppr/internal/metrics"
 )
 
@@ -337,6 +338,49 @@ func TestK8sReconcile_BlockedByTalosUpgrade(t *testing.T) {
 	if updated.Status.Message == "" {
 		t.Fatal("expected blocking message in status")
 	}
+}
+
+func TestK8sReconcile_DoesNotFlickerWhileBlockedByCoordination(t *testing.T) {
+	scheme := newTestScheme()
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		withK8sPhase(tupprv1alpha1.JobPhasePending),
+	)
+	tu := newTalosUpgrade("talos-upgrade",
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
+	)
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku, tu).WithStatusSubresource(ku, tu).Build()
+	r := newK8sReconciler(cl, &mockVersionGetter{}, &mockTalosClient{}, &mockHealthChecker{})
+
+	for i := 0; i < 3; i++ {
+		reconcileK8s(t, r, "test-upgrade")
+		updated := getK8sUpgrade(t, cl, "test-upgrade")
+		if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
+			t.Fatalf("reconcile %d: expected Pending throughout, got: %s", i, updated.Status.Phase)
+		}
+		cond := findK8sCondition(updated.Status.Conditions, tupprv1alpha1.ConditionTypeProgressing)
+		if cond == nil {
+			t.Fatalf("reconcile %d: missing Progressing condition", i)
+			return
+		}
+		if cond.Status != metav1.ConditionFalse {
+			t.Fatalf("reconcile %d: expected Progressing=False, got %s", i, cond.Status)
+		}
+		if cond.Reason != upgradeaudit.ReasonWaitingForOtherUpgrade {
+			t.Fatalf("reconcile %d: expected Reason=%s, got %s", i, upgradeaudit.ReasonWaitingForOtherUpgrade, cond.Reason)
+		}
+	}
+}
+
+func findK8sCondition(conditions []metav1.Condition, condType string) *metav1.Condition {
+	for i := range conditions {
+		if conditions[i].Type == condType {
+			return &conditions[i]
+		}
+	}
+	return nil
 }
 
 func TestK8sReconcile_AlreadyAtTargetVersion(t *testing.T) {

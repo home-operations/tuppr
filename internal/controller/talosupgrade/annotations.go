@@ -9,6 +9,7 @@ import (
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
+	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
 )
 
 func (r *Reconciler) handleSuspendAnnotation(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (bool, error) {
@@ -27,7 +28,7 @@ func (r *Reconciler) handleSuspendAnnotation(ctx context.Context, talosUpgrade *
 		"talosupgrade", talosUpgrade.Name)
 
 	message := fmt.Sprintf("Controller suspended via annotation (value: %s) - remove annotation to resume", suspendValue)
-	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
+	if err := r.setPhaseWithReason(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, upgradeaudit.ReasonSuspended, "", message); err != nil {
 		logger.Error(err, "Failed to update phase for suspension")
 		return true, err
 	}
@@ -63,7 +64,7 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, talosUpgrade *tu
 		return false, err
 	}
 
-	if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, nil, "Reset requested via annotation", map[string]any{
+	if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", nil, "Reset requested via annotation", map[string]any{
 		statusCompletedNodes: []string{},
 		statusFailedNodes:    []tupprv1alpha1.NodeUpgradeStatus{},
 		statusPreHookIndex:   0,
@@ -88,7 +89,7 @@ func (r *Reconciler) handleGenerationChange(ctx context.Context, talosUpgrade *t
 		"generation", talosUpgrade.Generation,
 		"observed", talosUpgrade.Status.ObservedGeneration)
 
-	if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, nil, "Spec updated, restarting upgrade process", map[string]any{
+	if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", nil, "Spec updated, restarting upgrade process", map[string]any{
 		statusCompletedNodes: []string{},
 		statusFailedNodes:    []tupprv1alpha1.NodeUpgradeStatus{},
 		statusPreHookIndex:   0,

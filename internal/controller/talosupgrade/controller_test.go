@@ -11,6 +11,7 @@ import (
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
+	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
 	"github.com/home-operations/tuppr/internal/metrics"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -2237,6 +2238,96 @@ func TestTalosReconcile_WaitsForImageAvailability(t *testing.T) {
 	}
 	if !strings.Contains(updated.Status.Message, "Waiting for image availability") {
 		t.Fatalf("expected waiting message, got: %s", updated.Status.Message)
+	}
+}
+
+func TestTalosReconcile_DoesNotFlickerWhileWaitingForImage(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhasePending),
+	)
+	node := newNode(fakeNodeA, testNodeIP1)
+
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: testInstallerABC},
+	}
+	ic := &mockImageChecker{availableImages: map[string]bool{}}
+	hc := &mockHealthChecker{}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, hc)
+	r.ImageChecker = ic
+
+	for i := 0; i < 3; i++ {
+		reconcileTalos(t, r, testUpgradeName)
+		updated := getTalosUpgrade(t, cl, testUpgradeName)
+		if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
+			t.Fatalf("reconcile %d: expected Pending throughout, got: %s", i, updated.Status.Phase)
+		}
+		cond := findCondition(updated.Status.Conditions, tupprv1alpha1.ConditionTypeProgressing)
+		if cond == nil {
+			t.Fatalf("reconcile %d: missing Progressing condition", i)
+			return
+		}
+		if cond.Status != metav1.ConditionFalse {
+			t.Fatalf("reconcile %d: expected Progressing=False, got %s", i, cond.Status)
+		}
+		if cond.Reason != upgradeaudit.ReasonWaitingForImage {
+			t.Fatalf("reconcile %d: expected Reason=%s, got %s", i, upgradeaudit.ReasonWaitingForImage, cond.Reason)
+		}
+	}
+}
+
+func findCondition(conditions []metav1.Condition, condType string) *metav1.Condition {
+	for i := range conditions {
+		if conditions[i].Type == condType {
+			return &conditions[i]
+		}
+	}
+	return nil
+}
+
+func TestTalosReconcile_SetPhaseIsIdempotent(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhasePending),
+	)
+
+	var statusPatches int
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu).WithStatusSubresource(tu).
+		WithInterceptorFuncs(interceptor.Funcs{
+			SubResourcePatch: func(ctx context.Context, c client.Client, subResourceName string, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+				statusPatches++
+				return c.Status().Patch(ctx, obj, patch, opts...)
+			},
+		}).Build()
+
+	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+
+	if err := r.setPhase(context.Background(), tu, tupprv1alpha1.JobPhaseHealthChecking, "Running health checks"); err != nil {
+		t.Fatalf("first setPhase: %v", err)
+	}
+	if statusPatches != 1 {
+		t.Fatalf("first setPhase should patch once, got %d", statusPatches)
+	}
+
+	if err := r.setPhase(context.Background(), tu, tupprv1alpha1.JobPhaseHealthChecking, "Running health checks"); err != nil {
+		t.Fatalf("second setPhase: %v", err)
+	}
+	if statusPatches != 1 {
+		t.Fatalf("identical second setPhase should not patch, got %d total", statusPatches)
+	}
+
+	if err := r.setPhase(context.Background(), tu, tupprv1alpha1.JobPhaseHealthChecking, "different message"); err != nil {
+		t.Fatalf("third setPhase: %v", err)
+	}
+	if statusPatches != 2 {
+		t.Fatalf("changed message should patch, got %d total", statusPatches)
 	}
 }
 

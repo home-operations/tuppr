@@ -27,6 +27,7 @@ import (
 	"github.com/home-operations/tuppr/internal/controller/drain"
 	"github.com/home-operations/tuppr/internal/controller/maintenance"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
+	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
 	"github.com/home-operations/tuppr/internal/metrics"
 )
 
@@ -64,7 +65,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 			return ctrl.Result{RequeueAfter: time.Hour}, nil
 		}
 		logger.Info("Node detected requiring upgrade after completion, restarting campaign", "node", nextNodes[0])
-		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, nil, "New node detected, restarting upgrade", map[string]any{
+		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", nil, "New node detected, restarting upgrade", map[string]any{
 			statusCompletedNodes: []string{},
 			statusFailedNodes:    []tupprv1alpha1.NodeUpgradeStatus{},
 			statusPreHookIndex:   0,
@@ -91,7 +92,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 			logger.Info("Pre-hook failed; running post-hooks then failing")
 			return r.transitionToFinalize(ctx, talosUpgrade)
 		}
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", "Pre-hooks complete; starting upgrade"); err != nil {
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "Pre-hooks complete; starting upgrade"); err != nil {
 			logger.Error(err, "Failed to advance phase past pre-hooks")
 		}
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
@@ -141,7 +142,7 @@ func (r *Reconciler) maybeEnterPreHook(ctx context.Context, talosUpgrade *tupprv
 		talosUpgrade.Status.PreHookIndex >= len(talosUpgrade.Spec.Hooks.Pre) {
 		return ctrl.Result{}, false, nil
 	}
-	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePreHook, "", "Running pre-upgrade hooks"); err != nil {
+	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePreHook, "Running pre-upgrade hooks"); err != nil {
 		log.FromContext(ctx).Error(err, "Failed to enter PreHook phase")
 		return ctrl.Result{RequeueAfter: time.Minute}, true, err
 	}
@@ -153,7 +154,7 @@ func (r *Reconciler) maybeEnterPreHook(ctx context.Context, talosUpgrade *tupprv
 func (r *Reconciler) transitionToFinalize(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	if hasPostHooks(talosUpgrade) && talosUpgrade.Status.PostHookIndex < len(talosUpgrade.Spec.Hooks.Post) {
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePostHook, "", "Running post-hooks"); err != nil {
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePostHook, "Running post-hooks"); err != nil {
 			logger.Error(err, "Failed to transition to PostHook")
 			return ctrl.Result{RequeueAfter: time.Second * 30}, err
 		}
@@ -185,7 +186,7 @@ func (r *Reconciler) checkMaintenanceWindow(ctx context.Context, talosUpgrade *t
 		nextTimestamp := maintenanceRes.NextWindowStart.Unix()
 		r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, false, &nextTimestamp)
 		message := fmt.Sprintf("Waiting for maintenance window (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339))
-		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhaseMaintenanceWindow, nil, message, map[string]any{
+		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhaseMaintenanceWindow, "", nil, message, map[string]any{
 			"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
 		}); err != nil {
 			logger.Error(err, "Failed to update status for maintenance window")
@@ -206,7 +207,7 @@ func (r *Reconciler) checkCoordination(ctx context.Context, talosUpgrade *tupprv
 	}
 	if blocked {
 		logger.Info("Waiting for another upgrade to complete", "reason", message)
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", message); err != nil {
+		if err := r.setPhaseWithReason(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, upgradeaudit.ReasonWaitingForOtherUpgrade, "", message); err != nil {
 			logger.Error(err, "Failed to update phase for coordination wait")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute * 2}, true
@@ -237,7 +238,7 @@ func (r *Reconciler) completeUpgrade(ctx context.Context, talosUpgrade *tupprv1a
 		logger.Info("Upgrade completed successfully", "nodes", completedCount)
 	}
 
-	if err := r.setPhase(ctx, talosUpgrade, phase, "", message); err != nil {
+	if err := r.setPhase(ctx, talosUpgrade, phase, message); err != nil {
 		logger.Error(err, "Failed to update completion phase")
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, err
 	}
@@ -260,7 +261,7 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		nextTimestamp := maintenanceRes.NextWindowStart.Unix()
 		r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, false, &nextTimestamp)
 		message := fmt.Sprintf("Maintenance window closed between nodes, waiting (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339))
-		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhaseMaintenanceWindow, nil, message, map[string]any{
+		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhaseMaintenanceWindow, "", nil, message, map[string]any{
 			"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
 		}); err != nil {
 			logger.Error(err, "Failed to update status for maintenance window")
@@ -271,32 +272,6 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 
 	ctx = context.WithValue(ctx, metrics.ContextKeyUpgradeType, metrics.UpgradeTypeTalos)
 	ctx = context.WithValue(ctx, metrics.ContextKeyUpgradeName, talosUpgrade.Name)
-
-	// Skip the inter-batch health check re-run when pre-hooks are configured and
-	// have already run: pre-hooks own cluster state for the rest of the upgrade
-	// window, so re-checking would fail (e.g. Ceph reports HEALTH_WARN while
-	// `noout` is set). The initial check (first batch, no completed nodes yet)
-	// still runs.
-	skipHealthCheck := hasPreHooks(talosUpgrade) &&
-		talosUpgrade.Status.PreHookIndex >= len(talosUpgrade.Spec.Hooks.Pre) &&
-		len(talosUpgrade.Status.CompletedNodes) > 0
-
-	if !skipHealthCheck {
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", "Running health checks"); err != nil {
-			logger.Error(err, "Failed to update phase for health check")
-		}
-		if err := r.HealthChecker.CheckHealth(ctx, talosUpgrade.Spec.HealthChecks); err != nil {
-			logger.Info("Waiting for health checks to pass", "error", err.Error())
-			if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
-				logger.Error(err, "Failed to update phase for health check")
-			}
-			return ctrl.Result{RequeueAfter: time.Minute}, nil
-		}
-	}
-
-	if result, entered, err := r.maybeEnterPreHook(ctx, talosUpgrade); entered {
-		return result, err
-	}
 
 	parallelism := getParallelism(talosUpgrade.Spec)
 	nextNodes, err := r.findNextNodes(ctx, talosUpgrade, parallelism)
@@ -312,7 +287,8 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		return r.transitionToFinalize(ctx, talosUpgrade)
 	}
 
-	// Build and verify images for all nodes in this batch
+	// Image availability is checked before HealthChecking: a stuck external
+	// registry must not flip the phase on every reconcile.
 	type nodeImage struct {
 		nodeName string
 		image    string
@@ -330,13 +306,39 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		if err := r.ImageChecker.Check(ctx, targetImage); err != nil {
 			logger.Info("Waiting for target image to become available", "node", nodeName, "image", targetImage, "error", err.Error())
 			message := fmt.Sprintf("Waiting for image availability for node %s: %s", nodeName, err.Error())
-			if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, nodeName, message); err != nil {
+			if err := r.setPhaseWithReason(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, upgradeaudit.ReasonWaitingForImage, "", message); err != nil {
 				logger.Error(err, "Failed to update phase while waiting for image")
 			}
 			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 		}
 
 		batch = append(batch, nodeImage{nodeName: nodeName, image: targetImage})
+	}
+
+	// Skip the inter-batch health check re-run when pre-hooks are configured and
+	// have already run: pre-hooks own cluster state for the rest of the upgrade
+	// window, so re-checking would fail (e.g. Ceph reports HEALTH_WARN while
+	// `noout` is set). The initial check (first batch, no completed nodes yet)
+	// still runs.
+	skipHealthCheck := hasPreHooks(talosUpgrade) &&
+		talosUpgrade.Status.PreHookIndex >= len(talosUpgrade.Spec.Hooks.Pre) &&
+		len(talosUpgrade.Status.CompletedNodes) > 0
+
+	if !skipHealthCheck {
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "Running health checks"); err != nil {
+			logger.Error(err, "Failed to update phase for health check")
+		}
+		if err := r.HealthChecker.CheckHealth(ctx, talosUpgrade.Spec.HealthChecks); err != nil {
+			logger.Info("Waiting for health checks to pass", "error", err.Error())
+			if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
+				logger.Error(err, "Failed to update phase for health check")
+			}
+			return ctrl.Result{RequeueAfter: time.Minute}, nil
+		}
+	}
+
+	if result, entered, err := r.maybeEnterPreHook(ctx, talosUpgrade); entered {
+		return result, err
 	}
 
 	logger.Info("Starting batch upgrade", "nodes", nextNodes, "batchSize", len(batch))

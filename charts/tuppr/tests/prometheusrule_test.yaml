@@ -15,13 +15,13 @@ tests:
       - isKind:
           of: PrometheusRule
 
-  - it: should have three rule groups
+  - it: should have five rule groups
     set:
       monitoring.prometheusRule.enabled: true
     asserts:
       - lengthEqual:
           path: spec.groups
-          count: 4
+          count: 5
 
   - it: should add extra labels
     set:

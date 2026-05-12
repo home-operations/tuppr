@@ -53,6 +53,14 @@ type KubernetesUpgradeSpec struct {
 
 // KubernetesUpgradeStatus defines the observed state of KubernetesUpgrade
 type KubernetesUpgradeStatus struct {
+	// Conditions report the upgrade's "Progressing" and "Ready" status.
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
 	// Phase represents the current phase of the upgrade
 	// +optional
 	Phase JobPhase `json:"phase,omitempty"`
@@ -148,6 +156,8 @@ type UpgradeHistoryEntry struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=`.status.conditions[?(@.type=="Progressing")].reason`
 // +kubebuilder:printcolumn:name="Current",type="string",JSONPath=".status.currentVersion"
 // +kubebuilder:printcolumn:name="Target",type="string",JSONPath=".status.targetVersion"
 // +kubebuilder:printcolumn:name="Controller Node",type="string",JSONPath=".status.controllerNode",priority=1

@@ -153,6 +153,28 @@ func TestRecordUpgradeCompleted(t *testing.T) {
 	}
 }
 
+func TestRecordProgressing(t *testing.T) {
+	mr := NewReporter()
+
+	mr.RecordProgressing(UpgradeTypeTalos, "talos", "Upgrading", true)
+	if got := testutil.ToFloat64(upgradeProgressing.WithLabelValues(UpgradeTypeTalos, "talos", "Upgrading")); got != 1 {
+		t.Errorf("progressing{Upgrading} = %v, want 1", got)
+	}
+
+	mr.RecordProgressing(UpgradeTypeTalos, "talos", "WaitingForImage", false)
+	if got := testutil.ToFloat64(upgradeProgressing.WithLabelValues(UpgradeTypeTalos, "talos", "WaitingForImage")); got != 0 {
+		t.Errorf("progressing{WaitingForImage} = %v, want 0", got)
+	}
+	if got := testutil.CollectAndCount(upgradeProgressing); got != 1 {
+		t.Errorf("expected 1 series after reason change, got %d", got)
+	}
+
+	mr.CleanupUpgradeMetrics(UpgradeTypeTalos, "talos")
+	if got := testutil.CollectAndCount(upgradeProgressing); got != 0 {
+		t.Errorf("expected 0 series after cleanup, got %d", got)
+	}
+}
+
 func TestTerminalResult(t *testing.T) {
 	cases := []struct {
 		phase tupprv1alpha1.JobPhase

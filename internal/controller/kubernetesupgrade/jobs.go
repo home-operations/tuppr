@@ -37,7 +37,7 @@ func (r *Reconciler) handleJobStatus(ctx context.Context, kubernetesUpgrade *tup
 
 	if job.Status.Succeeded == 0 && (job.Status.Failed == 0 || job.Status.Failed < *job.Spec.BackoffLimit) {
 		message := fmt.Sprintf("Upgrading Kubernetes to %s (job: %s)", kubernetesUpgrade.Spec.Kubernetes.Version, job.Name)
-		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseUpgrading, kubernetesUpgrade.Status.ControllerNode, message, map[string]any{
+		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseUpgrading, "", kubernetesUpgrade.Status.ControllerNode, message, map[string]any{
 			statusFieldJobName: job.Name,
 		}); err != nil {
 			logger.Error(err, "Failed to update phase for active job", "job", job.Name)
@@ -71,7 +71,7 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tu
 		logger.Info("All control plane nodes at target version", "version", targetVersion)
 		r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, nodeName, "success")
 		r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeKubernetes, 0)
-		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseCompleted, "", fmt.Sprintf("Cluster successfully upgraded to %s", targetVersion), map[string]any{
+		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseCompleted, "", "", fmt.Sprintf("Cluster successfully upgraded to %s", targetVersion), map[string]any{
 			statusFieldCurrentVersion: targetVersion,
 			statusFieldTargetVersion:  targetVersion,
 		}); err != nil {
@@ -87,7 +87,7 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tu
 
 	logger.Info("Node upgraded, continuing to next control plane node", "version", targetVersion)
 	message := fmt.Sprintf("Upgrading Kubernetes to %s, continuing to next node", targetVersion)
-	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseUpgrading, "", message, map[string]any{
+	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseUpgrading, "", "", message, map[string]any{
 		statusFieldJobName: "",
 	}); err != nil {
 		logger.Error(err, "Failed to update status after partial upgrade")
@@ -104,7 +104,7 @@ func (r *Reconciler) handleJobFailure(ctx context.Context, kubernetesUpgrade *tu
 	logger.Info("Kubernetes upgrade job failed", "job", job.Name)
 
 	nodeName := job.Labels[targetNodeLabelKey]
-	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseFailed, kubernetesUpgrade.Status.ControllerNode, "Kubernetes upgrade job failed permanently", map[string]any{
+	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseFailed, "", kubernetesUpgrade.Status.ControllerNode, "Kubernetes upgrade job failed permanently", map[string]any{
 		statusFieldLastError: "Job failed permanently",
 		statusFieldJobName:   job.Name,
 		"observedGeneration": kubernetesUpgrade.Generation - 1,

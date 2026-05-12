@@ -117,7 +117,22 @@ func (p JobPhase) IsActive() bool {
 		p == JobPhasePostHook
 }
 
+// IsInFlight is the subset of IsActive() during which spec edits are unsafe.
+// HealthChecking is excluded: it is a probe that re-runs every reconcile.
+func (p JobPhase) IsInFlight() bool {
+	return p == JobPhasePreHook ||
+		p == JobPhaseDraining ||
+		p == JobPhaseUpgrading ||
+		p == JobPhaseRebooting ||
+		p == JobPhasePostHook
+}
+
 // IsTerminal returns true if the phase is a terminal state (no further processing)
 func (p JobPhase) IsTerminal() bool {
 	return p == JobPhaseCompleted || p == JobPhaseFailed
 }
+
+const (
+	ConditionTypeProgressing = "Progressing"
+	ConditionTypeReady       = "Ready"
+)

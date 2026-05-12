@@ -10,6 +10,8 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -138,14 +140,25 @@ func ValidateSingleton(ctx context.Context, c client.Client, kindName, currentNa
 	return nil
 }
 
-// ValidateUpdateInProgress checks if specs are changing while an upgrade is running
-func ValidateUpdateInProgress(oldPhase tupprv1alpha1.JobPhase, oldSpec, newSpec interface{}) error {
-	if oldPhase.IsActive() {
-		if !reflect.DeepEqual(oldSpec, newSpec) {
-			return fmt.Errorf("cannot update spec while upgrade is in progress (phase: %s)", oldPhase)
-		}
+// ValidateUpdateInProgress rejects spec changes while an upgrade job is in
+// flight, gated on the Progressing condition. Falls back to Phase.IsInFlight()
+// for resources whose status predates the conditions feature.
+func ValidateUpdateInProgress(oldConditions []metav1.Condition, oldPhase tupprv1alpha1.JobPhase, oldSpec, newSpec interface{}) error {
+	cond := meta.FindStatusCondition(oldConditions, tupprv1alpha1.ConditionTypeProgressing)
+
+	inFlight := oldPhase.IsInFlight()
+	if cond != nil {
+		inFlight = cond.Status == metav1.ConditionTrue
 	}
-	return nil
+	if !inFlight || reflect.DeepEqual(oldSpec, newSpec) {
+		return nil
+	}
+
+	reason := string(oldPhase)
+	if cond != nil && cond.Reason != "" {
+		reason = cond.Reason
+	}
+	return fmt.Errorf("cannot update spec while upgrade is in progress (reason: %s)", reason)
 }
 
 // GenerateCommonWarnings checks for PreReleases, Timeouts, and defaults

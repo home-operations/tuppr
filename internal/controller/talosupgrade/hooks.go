@@ -119,7 +119,7 @@ func (r *Reconciler) startHookJob(ctx context.Context, tu *tupprv1alpha1.TalosUp
 	if phase == hookPhasePost {
 		parentPhase = tupprv1alpha1.JobPhasePostHook
 	}
-	if err := r.setPhase(ctx, tu, parentPhase, "", fmt.Sprintf("Running %s-hook %q (%d/%d)", phase, hook.Name, idx+1, total)); err != nil {
+	if err := r.setPhase(ctx, tu, parentPhase, fmt.Sprintf("Running %s-hook %q (%d/%d)", phase, hook.Name, idx+1, total)); err != nil {
 		logger.Error(err, "Failed to update phase for hook start")
 	}
 	return ctrl.Result{RequeueAfter: 10 * time.Second}, false, nil
