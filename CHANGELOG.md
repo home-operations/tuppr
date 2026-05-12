@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.27](https://github.com/home-operations/tuppr/compare/0.1.26...0.1.27) (2026-05-12)
+
+
+### Features
+
+* **deps:** update module github.com/cosi-project/runtime (v1.14.1 → v1.15.0) ([#261](https://github.com/home-operations/tuppr/issues/261)) ([519b1a6](https://github.com/home-operations/tuppr/commit/519b1a69c9e2eec02a3f7c5a9d9e41d9d5078fef))
+* report upgrade progress via Conditions and stop phase flicker ([e40fbe1](https://github.com/home-operations/tuppr/commit/e40fbe16097af690d9fa8b42fcc965cd55176b70))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/cosi-project/runtime (v1.15.0 → v1.15.1) ([#265](https://github.com/home-operations/tuppr/issues/265)) ([ee084de](https://github.com/home-operations/tuppr/commit/ee084dec315fa7932bea02e200487172507d5264))
+
 ## [0.1.26](https://github.com/home-operations/tuppr/compare/0.1.25...0.1.26) (2026-05-08)
 
 
