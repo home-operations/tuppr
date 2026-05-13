@@ -72,6 +72,19 @@ func syncLocalAuditFields(status *tupprv1alpha1.KubernetesUpgradeStatus, updates
 	}
 }
 
+// completionCyclesForVersion counts consecutive newest-first Completed entries
+// for the given target version.
+func completionCyclesForVersion(history []tupprv1alpha1.UpgradeHistoryEntry, version string) int {
+	count := 0
+	for _, e := range history {
+		if e.Phase != tupprv1alpha1.JobPhaseCompleted || e.ToVersion != version {
+			break
+		}
+		count++
+	}
+	return count
+}
+
 func (r *Reconciler) emitPhaseEvent(ku *tupprv1alpha1.KubernetesUpgrade, prev, next tupprv1alpha1.JobPhase, message string) {
 	if r.Recorder == nil || prev == next {
 		return

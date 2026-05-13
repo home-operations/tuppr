@@ -486,7 +486,7 @@ func TestK8sReconcile_NoControllerNodeFailsWhenWorkerLags(t *testing.T) {
 		withK8sFinalizer,
 		withK8sPhase(tupprv1alpha1.JobPhasePending),
 	)
-	workerLagging := newWorkerNodeWithVersion("worker-1", "10.0.0.2", testV1330)
+	workerLagging := newLaggingWorkerNode("10.0.0.2")
 	vg := &mockVersionGetter{version: testV1330}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, workerLagging).WithStatusSubresource(ku).Build()
@@ -593,9 +593,9 @@ func TestK8sReconcile_HandlesJobFailure(t *testing.T) {
 	if updated.Status.JobName == "" {
 		t.Fatal("expected jobName to be preserved on failure")
 	}
-	if updated.Status.ObservedGeneration >= ku.Generation {
-		t.Fatalf("expected observedGeneration < generation after failure (so controller retries), got observedGeneration=%d generation=%d",
-			updated.Status.ObservedGeneration, ku.Generation)
+	if updated.Status.ObservedGeneration != ku.Generation {
+		t.Fatalf("expected observedGeneration=%d after failure, got %d",
+			ku.Generation, updated.Status.ObservedGeneration)
 	}
 
 	var jobList batchv1.JobList
@@ -831,7 +831,7 @@ func TestK8sFindControllerNode(t *testing.T) {
 	ctrlNode := newControllerNodeWithVersion(fakeCrtl, testNodeIP, testV1330)
 	upgradedNode := newControllerNodeWithVersion("ctrl-2", "10.0.0.3", testK8sVersion)
 
-	workerNode := newNode("worker-1", "10.0.0.2")
+	workerNode := newWorkerNode("10.0.0.2")
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ctrlNode, upgradedNode, workerNode).Build()
@@ -851,7 +851,7 @@ func TestK8sFindControllerNode(t *testing.T) {
 func TestK8sFindControllerNode_NoControlPlane(t *testing.T) {
 	scheme := newTestScheme()
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(newNode("worker-1", "10.0.0.2")).Build()
+		WithObjects(newWorkerNode("10.0.0.2")).Build()
 	r := newK8sReconciler(cl, &mockVersionGetter{}, &mockTalosClient{}, &mockHealthChecker{})
 
 	_, _, err := r.findControllerNode(context.Background(), testK8sVersion)
@@ -1020,10 +1020,10 @@ func withPhase(phase tupprv1alpha1.JobPhase) func(*tupprv1alpha1.TalosUpgrade) {
 	}
 }
 
-func newNode(name, ip string) *corev1.Node {
+func newWorkerNode(ip string) *corev1.Node {
 	return &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name: "worker-1",
 		},
 		Status: corev1.NodeStatus{
 			Addresses: []corev1.NodeAddress{
@@ -1103,9 +1103,9 @@ func TestK8sReconcile_FailedRemainsSticky(t *testing.T) {
 	}
 }
 
-func newWorkerNodeWithVersion(name, ip, version string) *corev1.Node {
-	n := newNode(name, ip)
-	n.Status.NodeInfo.KubeletVersion = version
+func newLaggingWorkerNode(ip string) *corev1.Node {
+	n := newWorkerNode(ip)
+	n.Status.NodeInfo.KubeletVersion = testV1330
 	return n
 }
 
@@ -1116,7 +1116,7 @@ func TestK8sReconcile_CompletedReentersOnLaggingWorker(t *testing.T) {
 		withK8sPhase(tupprv1alpha1.JobPhaseCompleted),
 	)
 	cpAtTarget := newControllerNodeWithVersion("ctrl-1", testNodeIP, testK8sVersion)
-	workerLagging := newWorkerNodeWithVersion("worker-1", "10.0.0.5", testV1330)
+	workerLagging := newLaggingWorkerNode("10.0.0.5")
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, cpAtTarget, workerLagging).WithStatusSubresource(ku).Build()
@@ -1140,7 +1140,7 @@ func TestK8sReconcile_PendingFromLaggingWorkerStartsUpgrade(t *testing.T) {
 		withK8sPhase(tupprv1alpha1.JobPhasePending),
 	)
 	cpAtTarget := newControllerNodeWithVersion(fakeCrtl, testNodeIP, testK8sVersion)
-	workerLagging := newWorkerNodeWithVersion("worker-1", "10.0.0.5", testV1330)
+	workerLagging := newLaggingWorkerNode("10.0.0.5")
 	tc := &mockTalosClient{nodeVersions: map[string]string{testNodeIP: testK8sVersion}}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -1169,6 +1169,43 @@ func TestK8sReconcile_PendingFromLaggingWorkerStartsUpgrade(t *testing.T) {
 	}
 }
 
+func TestK8sReconcile_CompletedCyclesExhaustedTransitionsToFailed(t *testing.T) {
+	scheme := newTestScheme()
+	now := metav1.Now()
+	history := make([]tupprv1alpha1.UpgradeHistoryEntry, upgradeaudit.MaxCompletionCycles)
+	for i := range history {
+		history[i] = tupprv1alpha1.UpgradeHistoryEntry{
+			ToVersion:   testK8sVersion,
+			Phase:       tupprv1alpha1.JobPhaseCompleted,
+			StartedAt:   now,
+			CompletedAt: now,
+		}
+	}
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		withK8sPhase(tupprv1alpha1.JobPhaseCompleted),
+		func(ku *tupprv1alpha1.KubernetesUpgrade) {
+			ku.Status.History = history
+		},
+	)
+	cpAtTarget := newControllerNodeWithVersion("ctrl-1", testNodeIP, testK8sVersion)
+	workerLagging := newLaggingWorkerNode("10.0.0.5")
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku, cpAtTarget, workerLagging).WithStatusSubresource(ku).Build()
+	r := newK8sReconciler(cl, &mockVersionGetter{version: testK8sVersion}, &mockTalosClient{}, &mockHealthChecker{})
+
+	reconcileK8s(t, r, "test-upgrade")
+
+	updated := getK8sUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
+		t.Fatalf("expected phase Failed after exhausting completion cycles, got: %s", updated.Status.Phase)
+	}
+	if !strings.Contains(updated.Status.Message, "never converged") {
+		t.Fatalf("expected Failed message to mention non-convergence, got: %q", updated.Status.Message)
+	}
+}
+
 func TestK8sReconcile_CompletedIgnoresEmptyKubeletVersion(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",
@@ -1176,7 +1213,7 @@ func TestK8sReconcile_CompletedIgnoresEmptyKubeletVersion(t *testing.T) {
 		withK8sPhase(tupprv1alpha1.JobPhaseCompleted),
 	)
 	cpAtTarget := newControllerNodeWithVersion("ctrl-1", testNodeIP, testK8sVersion)
-	freshWorker := newNode("worker-1", "10.0.0.5") // KubeletVersion not yet reported
+	freshWorker := newWorkerNode("10.0.0.5") // KubeletVersion not yet reported
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, cpAtTarget, freshWorker).WithStatusSubresource(ku).Build()
@@ -1196,7 +1233,7 @@ func TestK8sReconcile_CompletedIgnoresEmptyKubeletVersion(t *testing.T) {
 func TestK8sFindControllerNode_FallbackWhenAllControlPlanesAtTarget(t *testing.T) {
 	scheme := newTestScheme()
 	cpAtTarget := newControllerNodeWithVersion(fakeCrtl, testNodeIP, testK8sVersion)
-	workerLagging := newWorkerNodeWithVersion("worker-1", "10.0.0.5", testV1330)
+	workerLagging := newLaggingWorkerNode("10.0.0.5")
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(cpAtTarget, workerLagging).Build()

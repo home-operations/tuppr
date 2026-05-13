@@ -1063,9 +1063,9 @@ func TestTalosReconcile_HandlesJobFailure(t *testing.T) {
 	if updated.Status.FailedNodes[0].NodeName != fakeNodeA {
 		t.Fatalf("expected failed node name node-1, got: %s", updated.Status.FailedNodes[0].NodeName)
 	}
-	if updated.Status.ObservedGeneration >= tu.Generation {
-		t.Fatalf("expected observedGeneration < generation after failure (so controller retries), got observedGeneration=%d generation=%d",
-			updated.Status.ObservedGeneration, tu.Generation)
+	if updated.Status.ObservedGeneration != tu.Generation {
+		t.Fatalf("expected observedGeneration=%d after failure, got %d",
+			tu.Generation, updated.Status.ObservedGeneration)
 	}
 
 	var jobList batchv1.JobList
@@ -1148,6 +1148,47 @@ func TestTalosReconcile_OutOfBandUpgradedNodeRecorded(t *testing.T) {
 		if !slices.Contains(updated.Status.CompletedNodes, n) {
 			t.Fatalf("expected %s in CompletedNodes, got %v", n, updated.Status.CompletedNodes)
 		}
+	}
+}
+
+func TestTalosReconcile_CompletedCyclesExhaustedTransitionsToFailed(t *testing.T) {
+	scheme := newTestScheme()
+	now := metav1.Now()
+	history := make([]tupprv1alpha1.TalosUpgradeHistoryEntry, upgradeaudit.MaxCompletionCycles)
+	for i := range history {
+		history[i] = tupprv1alpha1.TalosUpgradeHistoryEntry{
+			ToVersion:   fakeTalosVersion,
+			Phase:       tupprv1alpha1.JobPhaseCompleted,
+			StartedAt:   now,
+			CompletedAt: now,
+		}
+	}
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhaseCompleted),
+		func(tu *tupprv1alpha1.TalosUpgrade) {
+			tu.Status.History = history
+		},
+	)
+	laggingNode := newNode(fakeNodeA, testNodeIP1)
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{
+			testNodeIP1: "factory.talos.dev/installer:" + testV110Talos,
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, laggingNode).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	reconcileTalos(t, r, testUpgradeName)
+
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
+		t.Fatalf("expected phase Failed after exhausting completion cycles, got: %s", updated.Status.Phase)
+	}
+	if !strings.Contains(updated.Status.Message, "never converged") {
+		t.Fatalf("expected Failed message to mention non-convergence, got: %q", updated.Status.Message)
 	}
 }
 

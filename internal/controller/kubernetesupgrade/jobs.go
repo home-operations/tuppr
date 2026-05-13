@@ -107,7 +107,6 @@ func (r *Reconciler) handleJobFailure(ctx context.Context, kubernetesUpgrade *tu
 	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseFailed, "", kubernetesUpgrade.Status.ControllerNode, "Kubernetes upgrade job failed permanently", map[string]any{
 		statusFieldLastError: "Job failed permanently",
 		statusFieldJobName:   job.Name,
-		"observedGeneration": kubernetesUpgrade.Generation - 1,
 	}); err != nil {
 		logger.Error(err, "Failed to update failure status")
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, err

@@ -455,15 +455,29 @@ kubectl annotate talosupgrade cluster-upgrade tuppr.home-operations.com/suspend-
 kubectl annotate kubernetesupgrade kubernetes tuppr.home-operations.com/suspend-
 ```
 
+### Retrying a Failed Upgrade
+
+`Failed` is terminal — the controller stops reconciling the upgrade until you take action. Three ways to retry:
+
+```bash
+# Reset annotation: wipes runtime state (phase, completedNodes, failedNodes,
+# hook progress), keeps the spec, restarts from scratch.
+kubectl annotate talosupgrade talos tuppr.home-operations.com/reset="$(date)"
+kubectl annotate kubernetesupgrade kubernetes tuppr.home-operations.com/reset="$(date)"
+
+# Spec edit: any change to .spec bumps generation and restarts the upgrade.
+kubectl edit talosupgrade talos
+kubectl edit kubernetesupgrade kubernetes
+
+# Delete + recreate: loses history. Use only if the CR itself is corrupt.
+kubectl delete talosupgrade talos && kubectl apply -f talos-upgrade.yaml
+```
+
+If the upgrade keeps reaching `Completed` but a node never catches up to the target version, the controller marks the run `Failed` after 5 completion cycles with a message like *"Node(s) never converged to v1.34.0 after 5 completion cycles"*. Investigate the lagging node before retrying.
+
 ### Troubleshooting
 
 ```bash
-# Reset failed Talos upgrade
-kubectl annotate talosupgrade talos tuppr.home-operations.com/reset="$(date)"
-
-# Reset failed Kubernetes upgrade
-kubectl annotate kubernetesupgrade kubernetes tuppr.home-operations.com/reset="$(date)"
-
 # Check job logs
 kubectl logs job/tuppr-xyz -n system-upgrade
 

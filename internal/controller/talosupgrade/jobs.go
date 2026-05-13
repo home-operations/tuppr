@@ -169,12 +169,6 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 			return ctrl.Result{}, err
 		}
 
-		if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
-			"observedGeneration": talosUpgrade.Generation - 1,
-		}); err != nil {
-			logger.Error(err, "Failed to reset observedGeneration for retry")
-		}
-
 		r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeTalos, 0)
 		return ctrl.Result{RequeueAfter: time.Minute * 10}, nil
 	}

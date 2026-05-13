@@ -64,7 +64,21 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 		if len(nextNodes) == 0 {
 			return ctrl.Result{RequeueAfter: time.Hour}, nil
 		}
-		logger.Info("Node detected requiring upgrade after completion, restarting campaign", "node", nextNodes[0])
+		targetVersion := talosUpgrade.Spec.Talos.Version
+		cycles := completionCyclesForVersion(talosUpgrade.Status.History, targetVersion)
+		if cycles >= upgradeaudit.MaxCompletionCycles {
+			message := fmt.Sprintf(
+				"Node(s) never converged to %s after %d completion cycles; add the %s annotation or bump the spec to retry",
+				targetVersion, cycles, constants.ResetAnnotation,
+			)
+			logger.Info("Completion cycles exhausted, marking upgrade Failed", "target", targetVersion, "cycles", cycles)
+			if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseFailed, message); err != nil {
+				logger.Error(err, "Failed to set Failed phase after exhausting completion cycles")
+				return ctrl.Result{RequeueAfter: time.Minute}, err
+			}
+			return ctrl.Result{RequeueAfter: time.Hour}, nil
+		}
+		logger.Info("Node detected requiring upgrade after completion, restarting campaign", "node", nextNodes[0], "cycle", cycles+1)
 		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", nil, "New node detected, restarting upgrade", map[string]any{
 			statusCompletedNodes: []string{},
 			statusFailedNodes:    []tupprv1alpha1.NodeUpgradeStatus{},
@@ -325,14 +339,16 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		len(talosUpgrade.Status.CompletedNodes) > 0
 
 	if !skipHealthCheck {
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "Running health checks"); err != nil {
+		checkErr := r.HealthChecker.CheckHealth(ctx, talosUpgrade.Spec.HealthChecks)
+		message := "Running health checks"
+		if checkErr != nil {
+			message = fmt.Sprintf("Waiting for health checks: %s", checkErr.Error())
+		}
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, message); err != nil {
 			logger.Error(err, "Failed to update phase for health check")
 		}
-		if err := r.HealthChecker.CheckHealth(ctx, talosUpgrade.Spec.HealthChecks); err != nil {
-			logger.Info("Waiting for health checks to pass", "error", err.Error())
-			if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
-				logger.Error(err, "Failed to update phase for health check")
-			}
+		if checkErr != nil {
+			logger.Info("Waiting for health checks to pass", "error", checkErr.Error())
 			return ctrl.Result{RequeueAfter: time.Minute}, nil
 		}
 	}
@@ -355,11 +371,14 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 			if err := r.drainNode(ctx, ni.nodeName, talosUpgrade.Spec.Drain); err != nil {
 				logger.Error(err, "Failed to drain node, rolling back already-drained nodes in batch", "node", ni.nodeName)
 				drainer := drain.NewDrainer(r.Client)
-				for _, drained := range drainedNodes {
-					if uncordonErr := drainer.UncordonNode(ctx, drained); uncordonErr != nil {
-						logger.Error(uncordonErr, "Failed to uncordon node during rollback", "node", drained)
+				// Include the failing node: cordon may have landed before the
+				// drain error. UncordonNode is a no-op on already-schedulable nodes.
+				rollback := append(drainedNodes, ni.nodeName)
+				for _, n := range rollback {
+					if uncordonErr := drainer.UncordonNode(ctx, n); uncordonErr != nil {
+						logger.Error(uncordonErr, "Failed to uncordon node during rollback", "node", n)
 					} else {
-						logger.Info("Rolled back drain for node", "node", drained)
+						logger.Info("Rolled back drain for node", "node", n)
 					}
 				}
 				return ctrl.Result{RequeueAfter: time.Minute}, nil
@@ -425,6 +444,11 @@ func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpg
 	}
 
 	logger.Info("Recording nodes upgraded out of band", "nodes", added)
+	if r.Recorder != nil {
+		r.Recorder.Eventf(talosUpgrade, corev1.EventTypeNormal, "OutOfBandUpgrade",
+			"Recorded %d node(s) already at target version %s: %v",
+			len(added), crdTargetVersion, added)
+	}
 	talosUpgrade.Status.CompletedNodes = append(talosUpgrade.Status.CompletedNodes, added...)
 	return r.updateStatus(ctx, talosUpgrade, map[string]any{
 		statusCompletedNodes: talosUpgrade.Status.CompletedNodes,

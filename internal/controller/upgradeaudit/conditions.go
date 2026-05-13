@@ -25,8 +25,21 @@ func ConditionsEqual(a, b []metav1.Condition) bool {
 	return true
 }
 
-// Reasons for Progressing=False when an upgrade is parked on external state.
+// Canonical Reason strings for Progressing / Ready. Phase-derived reasons mirror
+// tupprv1alpha1.JobPhase values; renaming a JobPhase is an API change.
 const (
+	ReasonInitializing      = "Initializing"
+	ReasonPending           = "Pending"
+	ReasonHealthChecking    = "HealthChecking"
+	ReasonPreHook           = "PreHook"
+	ReasonDraining          = "Draining"
+	ReasonUpgrading         = "Upgrading"
+	ReasonRebooting         = "Rebooting"
+	ReasonPostHook          = "PostHook"
+	ReasonCompleted         = "Completed"
+	ReasonFailed            = "Failed"
+	ReasonMaintenanceWindow = "MaintenanceWindow"
+
 	ReasonWaitingForImage        = "WaitingForImage"
 	ReasonWaitingForOtherUpgrade = "WaitingForOtherUpgrade"
 	ReasonSuspended              = "Suspended"

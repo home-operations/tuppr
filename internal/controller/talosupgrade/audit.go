@@ -86,6 +86,19 @@ func syncLocalAuditFields(status *tupprv1alpha1.TalosUpgradeStatus, updates map[
 	}
 }
 
+// completionCyclesForVersion counts consecutive newest-first Completed entries
+// for the given target version.
+func completionCyclesForVersion(history []tupprv1alpha1.TalosUpgradeHistoryEntry, version string) int {
+	count := 0
+	for _, e := range history {
+		if e.Phase != tupprv1alpha1.JobPhaseCompleted || e.ToVersion != version {
+			break
+		}
+		count++
+	}
+	return count
+}
+
 func (r *Reconciler) emitPhaseEvent(tu *tupprv1alpha1.TalosUpgrade, prev, next tupprv1alpha1.JobPhase, message string) {
 	if r.Recorder == nil || prev == next {
 		return

@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/constants"
 	"github.com/home-operations/tuppr/internal/controller/coordination"
 	"github.com/home-operations/tuppr/internal/controller/maintenance"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
@@ -54,7 +55,20 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 		if allUpgraded {
 			return ctrl.Result{RequeueAfter: time.Hour}, nil
 		}
-		logger.Info("Node lagging target version, restarting campaign", "target", targetVersion)
+		cycles := completionCyclesForVersion(kubernetesUpgrade.Status.History, targetVersion)
+		if cycles >= upgradeaudit.MaxCompletionCycles {
+			message := fmt.Sprintf(
+				"Some nodes never converged to %s after %d completion cycles; add the %s annotation or bump the spec to retry",
+				targetVersion, cycles, constants.ResetAnnotation,
+			)
+			logger.Info("Completion cycles exhausted, marking upgrade Failed", "target", targetVersion, "cycles", cycles)
+			if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseFailed, "", message); err != nil {
+				logger.Error(err, "Failed to set Failed phase after exhausting completion cycles")
+				return ctrl.Result{RequeueAfter: time.Minute}, err
+			}
+			return ctrl.Result{RequeueAfter: time.Hour}, nil
+		}
+		logger.Info("Node lagging target version, restarting campaign", "target", targetVersion, "cycle", cycles+1)
 		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "Node lagging target version, restarting upgrade"); err != nil {
 			logger.Error(err, "Failed to re-enter Pending after completion")
 			return ctrl.Result{RequeueAfter: time.Minute}, err
@@ -122,14 +136,16 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 
 	logger.Info("Kubernetes upgrade needed", "current", currentVersion, "target", targetVersion)
 
-	if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", "Running health checks"); err != nil {
+	checkErr := r.HealthChecker.CheckHealth(ctx, kubernetesUpgrade.Spec.HealthChecks)
+	message := "Running health checks"
+	if checkErr != nil {
+		message = fmt.Sprintf("Waiting for health checks: %s", checkErr.Error())
+	}
+	if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", message); err != nil {
 		logger.Error(err, "Failed to update phase for health check")
 	}
-	if err := r.HealthChecker.CheckHealth(ctx, kubernetesUpgrade.Spec.HealthChecks); err != nil {
-		logger.Info("Waiting for health checks to pass", "error", err.Error())
-		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", fmt.Sprintf("Waiting for health checks: %s", err.Error())); err != nil {
-			logger.Error(err, "Failed to update phase for health check")
-		}
+	if checkErr != nil {
+		logger.Info("Waiting for health checks to pass", "error", checkErr.Error())
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
