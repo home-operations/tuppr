@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -197,9 +198,20 @@ func (hc *Checker) evaluateAllResources(ctx context.Context, check tupprv1alpha1
 	if check.Namespace != "" {
 		listOpts = append(listOpts, client.InNamespace(check.Namespace))
 	}
+	if check.LabelSelector != nil {
+		selector, err := metav1.LabelSelectorAsSelector(check.LabelSelector)
+		if err != nil {
+			return false, fmt.Errorf("invalid label selector: %w", err)
+		}
+		listOpts = append(listOpts, client.MatchingLabelsSelector{Selector: selector})
+	}
 
 	if err := hc.List(ctx, list, listOpts...); err != nil {
 		return false, fmt.Errorf("failed to list resources: %w", err)
+	}
+
+	if check.LabelSelector != nil && len(list.Items) == 0 {
+		return false, nil
 	}
 
 	for _, item := range list.Items {
@@ -252,6 +264,14 @@ func (hc *Checker) validateHealthChecks(healthChecks []tupprv1alpha1.HealthCheck
 		}
 		if check.Expr == "" {
 			validationErrors = append(validationErrors, fmt.Errorf("health check %d: expr expression is required", i))
+		}
+		if check.Name != "" && check.LabelSelector != nil {
+			validationErrors = append(validationErrors, fmt.Errorf("health check %d: name and labelSelector are mutually exclusive", i))
+		}
+		if check.LabelSelector != nil {
+			if _, err := metav1.LabelSelectorAsSelector(check.LabelSelector); err != nil {
+				validationErrors = append(validationErrors, fmt.Errorf("health check %d: invalid labelSelector: %w", i, err))
+			}
 		}
 
 		env, err := cel.NewEnv(

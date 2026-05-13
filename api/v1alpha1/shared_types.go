@@ -23,6 +23,10 @@ type HealthCheckSpec struct {
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
 
+	// LabelSelector selects resources to check when name is empty
+	// +optional
+	LabelSelector *metav1.LabelSelector `json:"labelSelector,omitempty"`
+
 	// CEL expression that must evaluate to true for the check to pass
 	// The resource object is available as 'object' and status as 'status'
 	// +kubebuilder:validation:Required

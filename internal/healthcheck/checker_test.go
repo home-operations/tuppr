@@ -74,6 +74,49 @@ func TestHealthChecker_ValidateHealthChecks(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "selector only",
+			checks: []tupprv1alpha1.HealthCheckSpec{
+				{
+					APIVersion:    "v1",
+					Kind:          kindNode,
+					LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"role": "worker"}},
+					Expr:          exprTrue,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "name and selector",
+			checks: []tupprv1alpha1.HealthCheckSpec{
+				{
+					APIVersion:    "v1",
+					Kind:          kindNode,
+					Name:          "node-1",
+					LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"role": "worker"}},
+					Expr:          exprTrue,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "bad selector",
+			checks: []tupprv1alpha1.HealthCheckSpec{
+				{
+					APIVersion: "v1",
+					Kind:       kindNode,
+					LabelSelector: &metav1.LabelSelector{
+						MatchExpressions: []metav1.LabelSelectorRequirement{{
+							Key:      "role",
+							Operator: metav1.LabelSelectorOperator("BadOperator"),
+							Values:   []string{"worker"},
+						}},
+					},
+					Expr: exprTrue,
+				},
+			},
+			wantErr: true,
+		},
+		{
 			name: "missing apiVersion",
 			checks: []tupprv1alpha1.HealthCheckSpec{
 				{
@@ -394,6 +437,89 @@ func TestHealthChecker_EvaluateAllResources_OneFails(t *testing.T) {
 	}
 	if passed {
 		t.Fatal("expected evaluateAllResources to return false when one resource fails")
+	}
+}
+
+func TestHealthChecker_ListSelector(t *testing.T) {
+	scheme := newTestScheme()
+
+	matchingHealthy := &unstructured.Unstructured{}
+	matchingHealthy.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind(kindConfigMap))
+	matchingHealthy.SetName("cm-matching-healthy")
+	matchingHealthy.SetNamespace(defaultNS)
+	matchingHealthy.SetLabels(map[string]string{"app": "critical", "tier": "frontend"})
+	matchingHealthy.Object["data"] = map[string]any{keyReady: exprTrue}
+
+	nonMatchingUnhealthy := &unstructured.Unstructured{}
+	nonMatchingUnhealthy.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind(kindConfigMap))
+	nonMatchingUnhealthy.SetName("cm-non-matching-unhealthy")
+	nonMatchingUnhealthy.SetNamespace(defaultNS)
+	nonMatchingUnhealthy.SetLabels(map[string]string{"app": "other", "tier": "frontend"})
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(matchingHealthy, nonMatchingUnhealthy).Build()
+	hc := &Checker{Client: cl}
+
+	check := tupprv1alpha1.HealthCheckSpec{
+		APIVersion: "v1",
+		Kind:       kindConfigMap,
+		Namespace:  defaultNS,
+		LabelSelector: &metav1.LabelSelector{
+			MatchLabels: map[string]string{"app": "critical"},
+			MatchExpressions: []metav1.LabelSelectorRequirement{{
+				Key:      "tier",
+				Operator: metav1.LabelSelectorOpIn,
+				Values:   []string{"frontend"},
+			}},
+		},
+		Expr: exprHasData,
+	}
+
+	env, _ := newCELEnv()
+	ast, _ := env.Compile(check.Expr)
+	program, _ := env.Program(ast)
+
+	gvk := corev1.SchemeGroupVersion.WithKind(kindConfigMap)
+	passed, err := hc.evaluateAllResources(context.Background(), check, program, gvk)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !passed {
+		t.Fatal("expected matching resources to pass while ignoring non-matching unhealthy resources")
+	}
+}
+
+func TestHealthChecker_ListSelectorEmpty(t *testing.T) {
+	scheme := newTestScheme()
+
+	cm := &unstructured.Unstructured{}
+	cm.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind(kindConfigMap))
+	cm.SetName("cm-other")
+	cm.SetNamespace(defaultNS)
+	cm.SetLabels(map[string]string{"app": "other"})
+	cm.Object["data"] = map[string]any{keyReady: exprTrue}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build()
+	hc := &Checker{Client: cl}
+
+	check := tupprv1alpha1.HealthCheckSpec{
+		APIVersion:    "v1",
+		Kind:          kindConfigMap,
+		Namespace:     defaultNS,
+		LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "critical"}},
+		Expr:          exprHasData,
+	}
+
+	env, _ := newCELEnv()
+	ast, _ := env.Compile(check.Expr)
+	program, _ := env.Program(ast)
+
+	gvk := corev1.SchemeGroupVersion.WithKind(kindConfigMap)
+	passed, err := hc.evaluateAllResources(context.Background(), check, program, gvk)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if passed {
+		t.Fatal("expected selected empty list to fail")
 	}
 }
 
