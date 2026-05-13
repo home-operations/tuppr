@@ -1,7 +1,6 @@
 package v1alpha1
 
 import (
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -20,16 +19,10 @@ type KubernetesSpec struct {
 	ImageRepository string `json:"imageRepository,omitempty"`
 
 	// Endpoint overrides the Kubernetes API URL the upgrade Job queries.
-	// Defaults to https://kubernetes.default.svc.cluster.local:443 so the Job
-	// does not rely on the external control-plane endpoint being reachable
-	// from the pod network.
+	// Defaults to the in-cluster apiserver ClusterIP, which avoids CoreDNS.
 	// +optional
 	// +kubebuilder:validation:Pattern=`^https://[^/\s]+`
 	Endpoint string `json:"endpoint,omitempty"`
-
-	// HostAliases are appended to the upgrade Job pod's /etc/hosts.
-	// +optional
-	HostAliases []corev1.HostAlias `json:"hostAliases,omitempty"`
 }
 
 // KubernetesUpgradeSpec defines the desired state of KubernetesUpgrade

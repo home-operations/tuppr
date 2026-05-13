@@ -52,8 +52,7 @@ const (
 	targetNodeLabelKey        = jobs.TargetNodeLabelKey
 	upgradeK8sCommand         = "upgrade-k8s"
 
-	// In-cluster apiserver URL — avoids depending on the external
-	// control-plane endpoint being reachable from the pod network.
+	// Fallback when Reconciler.DefaultEndpoint is unset (tests).
 	defaultKubernetesAPIEndpoint = "https://kubernetes.default.svc.cluster.local:443"
 )
 
@@ -93,6 +92,7 @@ type Reconciler struct {
 	TalosConfigSecret   string
 	ControllerNamespace string
 	ControllerNodeName  string
+	DefaultEndpoint     string
 	HealthChecker       HealthCheckRunner
 	TalosClient         TalosClient
 	MetricsReporter     *metrics.Reporter

@@ -1703,11 +1703,12 @@ func TestTalosBuildJob_Properties(t *testing.T) {
 	}
 
 	wantArgs := map[string]bool{
-		"--debug=true":             false,
-		"--force=true":             false,
-		"--reboot-mode=powercycle": false,
-		"--stage":                  false,
-		"--image=" + targetImage:   false,
+		"--debug=true":               false,
+		"--force=true":               false,
+		"--reboot-mode=powercycle":   false,
+		"--stage":                    false,
+		"--image=" + targetImage:     false,
+		"--endpoints=" + testNodeIP1: false,
 	}
 	for _, arg := range container.Args {
 		if _, ok := wantArgs[arg]; ok {

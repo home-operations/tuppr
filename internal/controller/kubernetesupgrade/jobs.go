@@ -182,12 +182,16 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 	k8sSpec := kubernetesUpgrade.Spec.Kubernetes
 	endpoint := k8sSpec.Endpoint
 	if endpoint == "" {
-		endpoint = defaultKubernetesAPIEndpoint
+		endpoint = r.DefaultEndpoint
+		if endpoint == "" {
+			endpoint = defaultKubernetesAPIEndpoint
+		}
 	}
 
 	args := make([]string, 0, 8)
 	args = append(args,
 		upgradeK8sCommand,
+		"--endpoints="+controllerIP,
 		"--nodes="+controllerIP,
 		"--to="+k8sSpec.Version,
 		"--endpoint="+endpoint,
@@ -199,14 +203,11 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 		pullPolicy = kubernetesUpgrade.Spec.Talosctl.Image.PullPolicy
 	}
 
-	hostAliases := k8sSpec.HostAliases
-
 	logger.V(1).Info("Building Kubernetes upgrade job specification",
 		"controllerNode", controllerNode,
 		"talosctlImage", talosctlImage,
 		"pullPolicy", pullPolicy,
-		"args", args,
-		"hostAliases", hostAliases)
+		"args", args)
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -233,7 +234,6 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 					TalosConfigSecret: r.TalosConfigSecret,
 					GracePeriod:       KubernetesJobGracePeriod,
 					Affinity:          nil,
-					HostAliases:       hostAliases,
 				}),
 			},
 		},

@@ -115,32 +115,9 @@ spec:
                   endpoint:
                     description: |-
                       Endpoint overrides the Kubernetes API URL the upgrade Job queries.
-                      Defaults to https://kubernetes.default.svc.cluster.local:443 so the Job
-                      does not rely on the external control-plane endpoint being reachable
-                      from the pod network.
+                      Defaults to the in-cluster apiserver ClusterIP, which avoids CoreDNS.
                     pattern: ^https://[^/\s]+
                     type: string
-                  hostAliases:
-                    description: HostAliases are appended to the upgrade Job pod's
-                      /etc/hosts.
-                    items:
-                      description: |-
-                        HostAlias holds the mapping between IP and hostnames that will be injected as an entry in the
-                        pod's hosts file.
-                      properties:
-                        hostnames:
-                          description: Hostnames for the above IP address.
-                          items:
-                            type: string
-                          type: array
-                          x-kubernetes-list-type: atomic
-                        ip:
-                          description: IP address of the host file entry.
-                          type: string
-                      required:
-                      - ip
-                      type: object
-                    type: array
                   imageRepository:
                     description: |-
                       ImageRepository overrides the registry+path prefix for Kubernetes component

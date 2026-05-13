@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	goruntime "runtime"
@@ -116,6 +117,15 @@ func main() {
 
 	// Get controller node name from environment (injected via downward API)
 	controllerNodeName := os.Getenv("CONTROLLER_NODE_NAME")
+
+	// Default the upgrade Job's --endpoint to the apiserver ClusterIP so it
+	// keeps working when CoreDNS is drained mid-upgrade.
+	kubernetesAPIEndpoint := ""
+	host := os.Getenv("KUBERNETES_SERVICE_HOST")
+	port := os.Getenv("KUBERNETES_SERVICE_PORT_HTTPS")
+	if host != "" && port != "" {
+		kubernetesAPIEndpoint = fmt.Sprintf("https://%s", net.JoinHostPort(host, port))
+	}
 
 	reporter := metrics.NewReporter()
 	reporter.RecordBuildInfo(version, commit, goruntime.Version())
@@ -273,6 +283,7 @@ func main() {
 		TalosConfigSecret:   talosConfigSecret,
 		ControllerNamespace: controllerNamespace,
 		ControllerNodeName:  controllerNodeName,
+		DefaultEndpoint:     kubernetesAPIEndpoint,
 		Recorder:            kubernetesRecorder,
 		MetricsReporter:     reporter,
 	}).SetupWithManager(mgr); err != nil {

@@ -141,12 +141,6 @@ spec:
     # (kube-apiserver, kube-controller-manager, kube-scheduler, kube-proxy, kubelet)
     # imageRepository: registry.example.com/k8s
 
-    # Optional - extra /etc/hosts entries for the upgrade Job pod
-    # (controlPlane.endpoint is auto-discovered from the machine config)
-    # hostAliases:
-    #   - ip: 10.0.1.100
-    #     hostnames: [kube.cluster.local]
-
   # Custom health checks (optional)
   healthChecks:
     - apiVersion: v1

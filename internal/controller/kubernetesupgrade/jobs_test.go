@@ -45,7 +45,7 @@ func TestK8sBuildJob_Properties(t *testing.T) {
 		t.Fatalf("expected container name 'upgrade-k8s', got: %s", container.Name)
 	}
 
-	foundUpgradeCmd, foundVersion := false, false
+	foundUpgradeCmd, foundVersion, foundEndpoints := false, false, false
 	for _, arg := range container.Args {
 		if arg == upgradeK8sCommand {
 			foundUpgradeCmd = true
@@ -53,12 +53,18 @@ func TestK8sBuildJob_Properties(t *testing.T) {
 		if arg == "--to="+testK8sVersion {
 			foundVersion = true
 		}
+		if arg == "--endpoints="+testNodeIP {
+			foundEndpoints = true
+		}
 	}
 	if !foundUpgradeCmd {
 		t.Fatal("expected upgrade-k8s command in args")
 	}
 	if !foundVersion {
 		t.Fatalf("expected --to=%s in args", testK8sVersion)
+	}
+	if !foundEndpoints {
+		t.Fatalf("expected --endpoints=%s in args", testNodeIP)
 	}
 }
 
@@ -136,35 +142,6 @@ func TestK8sBuildJob_CustomEndpoint(t *testing.T) {
 		if strings.HasPrefix(a, "--endpoint=") && a != want {
 			t.Fatalf("unexpected extra --endpoint flag: %q", a)
 		}
-	}
-}
-
-func TestK8sBuildJob_ExplicitHostAliasesPassThrough(t *testing.T) {
-	scheme := newTestScheme()
-	ku := newKubernetesUpgrade("test-upgrade", withK8sFinalizer)
-	ku.Spec.Kubernetes.Version = testK8sVersion
-	ku.Spec.Kubernetes.HostAliases = []corev1.HostAlias{
-		{IP: "10.99.99.99", Hostnames: []string{"unrelated.example"}},
-	}
-
-	tc := &mockTalosClient{
-		nodeVersions: map[string]string{testNodeIP: testV110},
-	}
-	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku, newControllerNode(fakeCrtl, testNodeIP)).WithStatusSubresource(ku).Build()
-	r := newK8sReconciler(cl, &mockVersionGetter{}, tc, &mockHealthChecker{})
-
-	job, err := r.buildJob(context.Background(), ku, fakeCrtl, testNodeIP)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	aliases := job.Spec.Template.Spec.HostAliases
-	if len(aliases) != 1 {
-		t.Fatalf("expected single explicit hostAlias passed through, got %d: %+v", len(aliases), aliases)
-	}
-	if aliases[0].IP != "10.99.99.99" {
-		t.Fatalf("expected explicit IP, got: %s", aliases[0].IP)
 	}
 }
 

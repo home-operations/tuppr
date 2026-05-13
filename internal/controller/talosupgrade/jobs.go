@@ -443,6 +443,7 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 
 	args := []string{
 		upgradeContainerName,
+		"--endpoints=" + nodeIP,
 		"--nodes=" + nodeIP,
 		"--image=" + targetImage,
 		"--timeout=" + timeout.String(),
