@@ -224,6 +224,9 @@ var _ = Describe("TalosUpgrade Integration", func() {
 				g.Expect(jobList.Items).To(HaveLen(2))
 			}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
 
+			mockTalos.SetNodeVersion("10.0.0.10", testTalosV111)
+			mockTalos.SetNodeVersion("10.0.0.11", testTalosV111)
+
 			for i := range jobList.Items {
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, types.NamespacedName{
@@ -234,9 +237,6 @@ var _ = Describe("TalosUpgrade Integration", func() {
 					g.Expect(k8sClient.Status().Update(ctx, &jobList.Items[i])).To(Succeed())
 				}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
 			}
-
-			mockTalos.SetNodeVersion("10.0.0.10", testTalosV111)
-			mockTalos.SetNodeVersion("10.0.0.11", testTalosV111)
 
 			By("verifying both nodes are in completedNodes")
 			Eventually(func(g Gomega) {
