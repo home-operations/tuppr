@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.29](https://github.com/home-operations/tuppr/compare/0.1.28...0.1.29) (2026-05-13)
+
+
+### Bug Fixes
+
+* **upgrade:** pin talosctl endpoints to IPs to survive CoreDNS drain ([eecc2e1](https://github.com/home-operations/tuppr/commit/eecc2e1f3f85a568f6e9fd4f90ab7fd4930acf79))
+
+
+### Miscellaneous Chores
+
+* fix metrics and cleanup dashboards ([3623587](https://github.com/home-operations/tuppr/commit/3623587aefc5825027b01afe23fc3e0889a428ad))
+
 ## [0.1.28](https://github.com/home-operations/tuppr/compare/0.1.27...0.1.28) (2026-05-13)
 
 
