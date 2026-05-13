@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.28](https://github.com/home-operations/tuppr/compare/0.1.27...0.1.28) (2026-05-13)
+
+
+### Features
+
+* **mise:** update tool aqua:operator-framework/operator-registry (1.67.0 → 1.68.0) ([756a584](https://github.com/home-operations/tuppr/commit/756a584ee3cd59a97dcac202f8f69e103cb62552))
+
+
+### Bug Fixes
+
+* **deps:** update kubernetes monorepo (v0.36.0 → v0.36.1) ([#271](https://github.com/home-operations/tuppr/issues/271)) ([329ccd4](https://github.com/home-operations/tuppr/commit/329ccd4da3b9fa95bd212291007f7db33a572390))
+* **deps:** update module github.com/siderolabs/talos/pkg/machinery (v1.13.0 → v1.13.2) ([#266](https://github.com/home-operations/tuppr/issues/266)) ([6691a96](https://github.com/home-operations/tuppr/commit/6691a96abb0a2b341ca7129fe787e26966689499))
+* **deps:** update module sigs.k8s.io/controller-runtime (v0.24.0 → v0.24.1) ([#268](https://github.com/home-operations/tuppr/issues/268)) ([dfc5a96](https://github.com/home-operations/tuppr/commit/dfc5a96e042e3a54f572e90b798f3c5d85cd39dd))
+* **kubernetesupgrade:** upgrade lagging worker that joins after completion ([841a9cf](https://github.com/home-operations/tuppr/commit/841a9cf1d60e9b72e869e5ec74cc07f842b028b8))
+* make Failed terminal and cap completion-cycle thrash ([de8062e](https://github.com/home-operations/tuppr/commit/de8062e0964388ba98f0ad09bf9c7f296101ec27))
+* **mise:** update tool setup-envtest (0.24.0 → 0.24.1) ([4dab561](https://github.com/home-operations/tuppr/commit/4dab5612df9b773739ec63d44cec4252e85f33fe))
+
 ## [0.1.27](https://github.com/home-operations/tuppr/compare/0.1.26...0.1.27) (2026-05-12)
 
 
