@@ -81,6 +81,14 @@ func ValidateHealthChecks(checks []tupprv1alpha1.HealthCheckSpec) error {
 		if check.Timeout != nil && check.Timeout.Duration <= 0 {
 			return fmt.Errorf("healthChecks[%d]: timeout must be positive", i)
 		}
+		if check.Name != "" && check.LabelSelector != nil {
+			return fmt.Errorf("healthChecks[%d]: name and labelSelector are mutually exclusive", i)
+		}
+		if check.LabelSelector != nil {
+			if _, err := metav1.LabelSelectorAsSelector(check.LabelSelector); err != nil {
+				return fmt.Errorf("healthChecks[%d]: invalid labelSelector: %w", i, err)
+			}
+		}
 	}
 	return nil
 }

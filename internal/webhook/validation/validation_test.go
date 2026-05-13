@@ -180,6 +180,16 @@ func TestValidateHealthChecks(t *testing.T) {
 			}},
 		},
 		{
+			name:    "selector only",
+			wantErr: false,
+			checks: []tupprv1alpha1.HealthCheckSpec{{
+				APIVersion:    "v1",
+				Kind:          testKindNode,
+				Expr:          testExprTrue,
+				LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"role": "worker"}},
+			}},
+		},
+		{
 			name:        "missing apiVersion",
 			wantErr:     true,
 			errContains: "apiVersion cannot be empty",
@@ -210,6 +220,35 @@ func TestValidateHealthChecks(t *testing.T) {
 			checks: []tupprv1alpha1.HealthCheckSpec{{
 				APIVersion: "v1", Kind: testKindNode, Expr: testExprTrue,
 				Timeout: &metav1.Duration{Duration: -1 * time.Second},
+			}},
+		},
+		{
+			name:        "name and selector",
+			wantErr:     true,
+			errContains: "name and labelSelector are mutually exclusive",
+			checks: []tupprv1alpha1.HealthCheckSpec{{
+				APIVersion:    "v1",
+				Kind:          testKindNode,
+				Name:          "node-1",
+				Expr:          testExprTrue,
+				LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"role": "worker"}},
+			}},
+		},
+		{
+			name:        "bad selector",
+			wantErr:     true,
+			errContains: "invalid labelSelector",
+			checks: []tupprv1alpha1.HealthCheckSpec{{
+				APIVersion: "v1",
+				Kind:       testKindNode,
+				Expr:       testExprTrue,
+				LabelSelector: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{{
+						Key:      "role",
+						Operator: metav1.LabelSelectorOperator("BadOperator"),
+						Values:   []string{"worker"},
+					}},
+				},
 			}},
 		},
 	}

@@ -192,6 +192,19 @@ healthChecks:
     namespace: production
     expr: status.readyReplicas == status.replicas
 
+  # Check deployments selected by labels
+  - apiVersion: apps/v1
+    kind: Deployment
+    namespace: production
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/part-of: critical-platform
+      matchExpressions:
+        - key: app.kubernetes.io/component
+          operator: In
+          values: ["api", "worker"]
+    expr: status.readyReplicas == status.replicas
+
   # Check custom resources
   - apiVersion: ceph.rook.io/v1
     kind: CephCluster
