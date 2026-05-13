@@ -446,7 +446,7 @@ func TestK8sReconcile_StartsUpgrade(t *testing.T) {
 		withK8sFinalizer,
 		withK8sPhase(tupprv1alpha1.JobPhasePending),
 	)
-	ctrlNode := newControllerNode(fakeCrtl, testNodeIP)
+	ctrlNode := newControllerNodeWithVersion(fakeCrtl, testNodeIP, testV1330)
 	vg := &mockVersionGetter{version: testV1330}
 	tc := &mockTalosClient{nodeVersions: map[string]string{testNodeIP: testV1330}}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -480,22 +480,26 @@ func TestK8sReconcile_StartsUpgrade(t *testing.T) {
 	}
 }
 
-func TestK8sReconcile_NoControllerNode(t *testing.T) {
+func TestK8sReconcile_NoControllerNodeFailsWhenWorkerLags(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
 		withK8sPhase(tupprv1alpha1.JobPhasePending),
 	)
-	workerNode := newNode("worker-1", "10.0.0.2")
+	workerLagging := newWorkerNodeWithVersion("worker-1", "10.0.0.2", testV1330)
 	vg := &mockVersionGetter{version: testV1330}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku, workerNode).WithStatusSubresource(ku).Build()
+		WithObjects(ku, workerLagging).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, vg, &mockTalosClient{}, &mockHealthChecker{})
 
 	result := reconcileK8s(t, r, "test-upgrade")
 
-	if result.RequeueAfter != time.Minute {
-		t.Fatalf("expected 1m requeue when no control plane nodes found, got: %v", result.RequeueAfter)
+	if result.RequeueAfter != 5*time.Minute {
+		t.Fatalf("expected 5m requeue when no control plane nodes found, got: %v", result.RequeueAfter)
+	}
+	updated := getK8sUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
+		t.Fatalf("expected phase Failed when no control plane node exists, got: %s", updated.Status.Phase)
 	}
 }
 
@@ -1126,6 +1130,42 @@ func TestK8sReconcile_CompletedReentersOnLaggingWorker(t *testing.T) {
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
 	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase Pending after detecting lagging worker, got: %s", updated.Status.Phase)
+	}
+}
+
+func TestK8sReconcile_PendingFromLaggingWorkerStartsUpgrade(t *testing.T) {
+	scheme := newTestScheme()
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		withK8sPhase(tupprv1alpha1.JobPhasePending),
+	)
+	cpAtTarget := newControllerNodeWithVersion(fakeCrtl, testNodeIP, testK8sVersion)
+	workerLagging := newWorkerNodeWithVersion("worker-1", "10.0.0.5", testV1330)
+	tc := &mockTalosClient{nodeVersions: map[string]string{testNodeIP: testK8sVersion}}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku, cpAtTarget, workerLagging).WithStatusSubresource(ku).Build()
+	r := newK8sReconciler(cl, &mockVersionGetter{version: testK8sVersion}, tc, &mockHealthChecker{})
+
+	result := reconcileK8s(t, r, "test-upgrade")
+	if result.RequeueAfter != 30*time.Second {
+		t.Fatalf("expected 30s requeue after job creation, got: %v", result.RequeueAfter)
+	}
+
+	var jobList batchv1.JobList
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
+		t.Fatalf("failed to list jobs: %v", err)
+	}
+	if len(jobList.Items) != 1 {
+		t.Fatalf("expected upgrade job to be created when worker lags, got: %d jobs", len(jobList.Items))
+	}
+	if jobList.Items[0].Labels[targetNodeLabelKey] != fakeCrtl {
+		t.Fatalf("expected job for %s (CP node), got: %s", fakeCrtl, jobList.Items[0].Labels[targetNodeLabelKey])
+	}
+
+	updated := getK8sUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseUpgrading {
+		t.Fatalf("expected phase Upgrading (not flicker back to Completed) when worker lags, got: %s", updated.Status.Phase)
 	}
 }
 

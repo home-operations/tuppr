@@ -90,14 +90,14 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 		}
 	}
 
-	allUpgraded, err := r.areAllControlPlaneNodesUpgraded(ctx, targetVersion)
+	allUpgraded, err := r.areAllNodesUpgraded(ctx, targetVersion)
 	if err != nil {
-		logger.Error(err, "Failed to verify control plane node versions")
+		logger.Error(err, "Failed to verify node versions")
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
 	if allUpgraded {
-		logger.V(1).Info("All control plane nodes verified at target version", "version", targetVersion)
+		logger.V(1).Info("All nodes verified at target version", "version", targetVersion)
 
 		if !strings.HasPrefix(currentVersion, "v") {
 			currentVersion = "v" + currentVersion
