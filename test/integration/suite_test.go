@@ -57,6 +57,7 @@ var (
 	sharedMockTalos   *mockTalosClient
 	sharedMockHealth  *mockHealthChecker
 	sharedMockVersion *mockVersionGetter
+	sharedMockImage   *mockImageChecker
 )
 
 // Helper functions to access mocks from tests
@@ -139,10 +140,12 @@ var _ = BeforeSuite(func() {
 	}
 	sharedMockHealth = &mockHealthChecker{}
 	sharedMockVersion = &mockVersionGetter{version: testK8sVersionV1330}
+	sharedMockImage = &mockImageChecker{}
 
 	mockTalos := sharedMockTalos
 	mockHealth := sharedMockHealth
 	mockVersion := sharedMockVersion
+	mockImage := sharedMockImage
 
 	By("setting up TalosUpgrade controller with mocks")
 	talosReconciler := &talosupgrade.Reconciler{
@@ -152,6 +155,7 @@ var _ = BeforeSuite(func() {
 		ControllerNamespace: testTupprNS,
 		TalosClient:         mockTalos,
 		HealthChecker:       mockHealth,
+		ImageChecker:        mockImage,
 	}
 	err = talosReconciler.SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())

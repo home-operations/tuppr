@@ -113,6 +113,25 @@ func (m *mockHealthChecker) SetError(err error) {
 	m.err = err
 }
 
+// mockImageChecker implements ImageChecker for testing without hitting a
+// real registry (image.NewChecker would block on remote.Head).
+type mockImageChecker struct {
+	mu  sync.RWMutex
+	err error
+}
+
+func (m *mockImageChecker) Check(ctx context.Context, imageRef string) error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.err
+}
+
+func (m *mockImageChecker) SetError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.err = err
+}
+
 // mockVersionGetter implements VersionGetter interface for testing
 type mockVersionGetter struct {
 	mu      sync.RWMutex
