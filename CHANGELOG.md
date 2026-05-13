@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.30](https://github.com/home-operations/tuppr/compare/0.1.29...0.1.30) (2026-05-13)
+
+
+### Bug Fixes
+
+* run generate ([3cf7047](https://github.com/home-operations/tuppr/commit/3cf70479bcdf4933845bfafa03d69bfdb2dc8713))
+
 ## [0.1.29](https://github.com/home-operations/tuppr/compare/0.1.28...0.1.29) (2026-05-13)
 
 
