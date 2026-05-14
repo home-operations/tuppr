@@ -648,6 +648,9 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 		if !ok || repo == "" {
 			return "", fmt.Errorf("invalid current image format for node %s: %s", nodeName, currentImage)
 		}
+		if err := r.refuseGenericInstallerOnManagedPlatform(ctx, nodeName, nodeIP, repo); err != nil {
+			return "", err
+		}
 		imageBase = repo
 	}
 
@@ -686,6 +689,30 @@ func (r *Reconciler) resolveFactoryBase(ctx context.Context, node *corev1.Node, 
 	}
 
 	return fmt.Sprintf("%s/%s-installer", constants.FactoryDomain, platform), "platformMetadata", nil
+}
+
+const (
+	platformMetal     = "metal"
+	platformContainer = "container"
+)
+
+// refuseGenericInstallerOnManagedPlatform refuses to version-swap onto the
+// generic installer when the node is on a managed platform: reinstalling
+// without a schematic wipes the platform extension.
+func (r *Reconciler) refuseGenericInstallerOnManagedPlatform(ctx context.Context, nodeName, nodeIP, imageRepo string) error {
+	if imageRepo != constants.GenericInstallerRepo {
+		return nil
+	}
+	platform, err := r.TalosClient.GetNodePlatform(ctx, nodeIP)
+	if err != nil {
+		return nil
+	}
+	if platform == "" || platform == platformMetal || platform == platformContainer {
+		return nil
+	}
+	return fmt.Errorf(
+		"node %s: install image is the generic %s but platform is %q; reinstalling would wipe the platform extension. Set annotation %s on the node (e.g. factory.talos.dev/%s-installer) and %s (schematic ID) to upgrade with a factory image",
+		nodeName, imageRepo, platform, constants.FactoryURLAnnotation, platform, constants.TalosSchematicAnnotation)
 }
 
 // parseSchematicBase returns the base URL when image has the form

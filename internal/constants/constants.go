@@ -3,6 +3,7 @@ package constants
 // Default image constants
 const (
 	DefaultTalosctlImage = "ghcr.io/siderolabs/talosctl"
+	GenericInstallerRepo = "ghcr.io/siderolabs/installer"
 )
 
 // Annotation keys

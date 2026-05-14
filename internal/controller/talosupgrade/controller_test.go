@@ -55,6 +55,7 @@ const (
 	testUpgradeName                 = "test-upgrade"
 	testNameStr                     = "test"
 	testInstallerABC                = "factory.talos.dev/installer/abc:v1.10.0"
+	testPlatformHcloud              = "hcloud"
 )
 
 type mockTalosClient struct {
@@ -2541,7 +2542,7 @@ func TestTalosBuildTalosUpgradeImage_FactoryURLAnnotationWins(t *testing.T) {
 
 	tc := &mockTalosClient{
 		installImages: map[string]string{testNodeIP1: "factory.talos.dev/hcloud-installer/schematic-id:v1.11.0"},
-		platforms:     map[string]string{testNodeIP1: "metal"},
+		platforms:     map[string]string{testNodeIP1: platformMetal},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -2598,7 +2599,7 @@ func TestTalosBuildTalosUpgradeImage_PlatformMetadataFallback(t *testing.T) {
 
 	tc := &mockTalosClient{
 		installImages: map[string]string{testNodeIP1: testInstallerV111},
-		platforms:     map[string]string{testNodeIP1: "hcloud"},
+		platforms:     map[string]string{testNodeIP1: testPlatformHcloud},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -2627,7 +2628,7 @@ func TestTalosBuildTalosUpgradeImage_InstallImageBeatsPlatformMetadata(t *testin
 
 	tc := &mockTalosClient{
 		installImages: map[string]string{testNodeIP1: "factory.talos.dev/aws-installer/abc:v1.11.0"},
-		platforms:     map[string]string{testNodeIP1: "metal"},
+		platforms:     map[string]string{testNodeIP1: platformMetal},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -2697,6 +2698,137 @@ func TestTalosBuildTalosUpgradeImage_RefusesWhenPlatformEmpty(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), constants.FactoryURLAnnotation) {
 		t.Fatalf("error should point user at %s; got: %v", constants.FactoryURLAnnotation, err)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_RefusesGenericInstallerOnManagedPlatform(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+
+	node := newNode(fakeNodeA, testNodeIP1)
+
+	tc := &mockTalosClient{
+		installImages: map[string]string{testNodeIP1: testInstallerV111},
+		platforms:     map[string]string{testNodeIP1: testPlatformHcloud},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	_, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err == nil {
+		t.Fatal("expected error when version-swapping generic installer on managed platform")
+	}
+	if !strings.Contains(err.Error(), constants.FactoryURLAnnotation) ||
+		!strings.Contains(err.Error(), constants.TalosSchematicAnnotation) {
+		t.Fatalf("error should point user at %s and %s; got: %v",
+			constants.FactoryURLAnnotation, constants.TalosSchematicAnnotation, err)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_AllowsGenericInstallerOnMetal(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+
+	node := newNode(fakeNodeA, testNodeIP1)
+
+	tc := &mockTalosClient{
+		installImages: map[string]string{testNodeIP1: testInstallerV111},
+		platforms:     map[string]string{testNodeIP1: platformMetal},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := constants.GenericInstallerRepo + ":" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("generic installer should be preserved on metal: got %s, want %s", image, expected)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_AllowsGenericInstallerWhenPlatformEmpty(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+
+	node := newNode(fakeNodeA, testNodeIP1)
+
+	tc := &mockTalosClient{
+		installImages: map[string]string{testNodeIP1: testInstallerV111},
+		platforms:     map[string]string{testNodeIP1: ""},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("empty platform should not block upgrade: %v", err)
+	}
+	expected := constants.GenericInstallerRepo + ":" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("expected %s, got %s", expected, image)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_AllowsFactoryImageWithoutAnnotation(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+
+	node := newNode(fakeNodeA, testNodeIP1)
+
+	tc := &mockTalosClient{
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/hcloud-installer/abc:v1.11.0"},
+		platforms:     map[string]string{testNodeIP1: testPlatformHcloud},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("factory image without annotation should not be refused: %v", err)
+	}
+	expected := "factory.talos.dev/hcloud-installer/abc:" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("expected %s, got %s", expected, image)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_AllowsGenericInstallerWhenPlatformReadFails(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+
+	node := newNode(fakeNodeA, testNodeIP1)
+
+	tc := &mockTalosClient{
+		installImages:  map[string]string{testNodeIP1: testInstallerV111},
+		getPlatformErr: fmt.Errorf("rpc error: code = Unavailable"),
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("transient platform-read error should not block upgrade: %v", err)
+	}
+	expected := constants.GenericInstallerRepo + ":" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("expected %s, got %s", expected, image)
 	}
 }
 
