@@ -16,8 +16,10 @@ import (
 )
 
 const (
-	testKindNode = "Node"
-	testExprTrue = "true"
+	testKindNode  = "Node"
+	testExprTrue  = "true"
+	testLabelRole = "role"
+	testValWorker = "worker"
 )
 
 // Helper to create a fake client with objects
@@ -186,7 +188,7 @@ func TestValidateHealthChecks(t *testing.T) {
 				APIVersion:    "v1",
 				Kind:          testKindNode,
 				Expr:          testExprTrue,
-				LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"role": "worker"}},
+				LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{testLabelRole: testValWorker}},
 			}},
 		},
 		{
@@ -231,7 +233,7 @@ func TestValidateHealthChecks(t *testing.T) {
 				Kind:          testKindNode,
 				Name:          "node-1",
 				Expr:          testExprTrue,
-				LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"role": "worker"}},
+				LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{testLabelRole: testValWorker}},
 			}},
 		},
 		{
@@ -244,9 +246,9 @@ func TestValidateHealthChecks(t *testing.T) {
 				Expr:       testExprTrue,
 				LabelSelector: &metav1.LabelSelector{
 					MatchExpressions: []metav1.LabelSelectorRequirement{{
-						Key:      "role",
+						Key:      testLabelRole,
 						Operator: metav1.LabelSelectorOperator("BadOperator"),
-						Values:   []string{"worker"},
+						Values:   []string{testValWorker},
 					}},
 				},
 			}},

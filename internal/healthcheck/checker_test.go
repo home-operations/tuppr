@@ -27,6 +27,12 @@ const (
 	keyReady      = "ready"
 	keyName       = "name"
 	nameTest      = "test"
+	labelRole     = "role"
+	labelApp      = "app"
+	valWorker     = "worker"
+	valCritical   = "critical"
+	labelTier     = "tier"
+	valFrontend   = "frontend"
 )
 
 func newTestScheme() *runtime.Scheme {
@@ -79,7 +85,7 @@ func TestHealthChecker_ValidateHealthChecks(t *testing.T) {
 				{
 					APIVersion:    "v1",
 					Kind:          kindNode,
-					LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"role": "worker"}},
+					LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{labelRole: valWorker}},
 					Expr:          exprTrue,
 				},
 			},
@@ -92,7 +98,7 @@ func TestHealthChecker_ValidateHealthChecks(t *testing.T) {
 					APIVersion:    "v1",
 					Kind:          kindNode,
 					Name:          "node-1",
-					LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"role": "worker"}},
+					LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{labelRole: valWorker}},
 					Expr:          exprTrue,
 				},
 			},
@@ -106,9 +112,9 @@ func TestHealthChecker_ValidateHealthChecks(t *testing.T) {
 					Kind:       kindNode,
 					LabelSelector: &metav1.LabelSelector{
 						MatchExpressions: []metav1.LabelSelectorRequirement{{
-							Key:      "role",
+							Key:      labelRole,
 							Operator: metav1.LabelSelectorOperator("BadOperator"),
-							Values:   []string{"worker"},
+							Values:   []string{valWorker},
 						}},
 					},
 					Expr: exprTrue,
@@ -447,14 +453,14 @@ func TestHealthChecker_ListSelector(t *testing.T) {
 	matchingHealthy.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind(kindConfigMap))
 	matchingHealthy.SetName("cm-matching-healthy")
 	matchingHealthy.SetNamespace(defaultNS)
-	matchingHealthy.SetLabels(map[string]string{"app": "critical", "tier": "frontend"})
+	matchingHealthy.SetLabels(map[string]string{labelApp: valCritical, labelTier: valFrontend})
 	matchingHealthy.Object["data"] = map[string]any{keyReady: exprTrue}
 
 	nonMatchingUnhealthy := &unstructured.Unstructured{}
 	nonMatchingUnhealthy.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind(kindConfigMap))
 	nonMatchingUnhealthy.SetName("cm-non-matching-unhealthy")
 	nonMatchingUnhealthy.SetNamespace(defaultNS)
-	nonMatchingUnhealthy.SetLabels(map[string]string{"app": "other", "tier": "frontend"})
+	nonMatchingUnhealthy.SetLabels(map[string]string{labelApp: "other", labelTier: valFrontend})
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(matchingHealthy, nonMatchingUnhealthy).Build()
 	hc := &Checker{Client: cl}
@@ -464,11 +470,11 @@ func TestHealthChecker_ListSelector(t *testing.T) {
 		Kind:       kindConfigMap,
 		Namespace:  defaultNS,
 		LabelSelector: &metav1.LabelSelector{
-			MatchLabels: map[string]string{"app": "critical"},
+			MatchLabels: map[string]string{labelApp: valCritical},
 			MatchExpressions: []metav1.LabelSelectorRequirement{{
-				Key:      "tier",
+				Key:      labelTier,
 				Operator: metav1.LabelSelectorOpIn,
-				Values:   []string{"frontend"},
+				Values:   []string{valFrontend},
 			}},
 		},
 		Expr: exprHasData,
@@ -505,7 +511,7 @@ func TestHealthChecker_ListSelectorEmpty(t *testing.T) {
 		APIVersion:    "v1",
 		Kind:          kindConfigMap,
 		Namespace:     defaultNS,
-		LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "critical"}},
+		LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{labelApp: valCritical}},
 		Expr:          exprHasData,
 	}
 
