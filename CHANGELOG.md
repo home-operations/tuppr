@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.32](https://github.com/home-operations/tuppr/compare/0.1.31...0.1.32) (2026-05-14)
+
+
+### Bug Fixes
+
+* **talosupgrade:** pick a control-plane IP for --endpoints on workers ([84e822a](https://github.com/home-operations/tuppr/commit/84e822a85fb3b018555ee1e02ea8f118280a9918))
+* **talosupgrade:** refuse generic installer reuse on managed platforms ([1e80a16](https://github.com/home-operations/tuppr/commit/1e80a164cb94da10f2f620b00634b0351dd1f434))
+* **talosupgrade:** retry node label updates on conflict ([bf8ec45](https://github.com/home-operations/tuppr/commit/bf8ec45fa09e3d37c6d74d398807e221aa8c87a9))
+
 ## [0.1.31](https://github.com/home-operations/tuppr/compare/0.1.30...0.1.31) (2026-05-14)
 
 
