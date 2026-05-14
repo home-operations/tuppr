@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.31](https://github.com/home-operations/tuppr/compare/0.1.30...0.1.31) (2026-05-14)
+
+
+### Features
+
+* **healthcheck:** support label selectors ([#275](https://github.com/home-operations/tuppr/issues/275)) ([2860e05](https://github.com/home-operations/tuppr/commit/2860e05967521b6ef745fff47d9eca21d1d5a0a6))
+* **mise:** update tool helm (4.1.4 → 4.2.0) ([096ca0e](https://github.com/home-operations/tuppr/commit/096ca0e98385057bfa4d3a55447b8673abe0e009))
+
+
+### Miscellaneous Chores
+
+* fix linter issue ([24bae4e](https://github.com/home-operations/tuppr/commit/24bae4ed3bf418e1637df782f3ef957993a5c34f))
+
 ## [0.1.30](https://github.com/home-operations/tuppr/compare/0.1.29...0.1.30) (2026-05-13)
 
 
