@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -194,7 +195,10 @@ const (
 	jobResultFailed              // verification failed
 )
 
-const upgradeContainerName = "upgrade"
+const (
+	upgradeContainerName = "upgrade"
+	controlPlaneLabel    = "node-role.kubernetes.io/control-plane"
+)
 
 // processSingleJobSuccess handles a single succeeded job: verify, uncordon, cleanup.
 // Returns the result without setting overall phase or metrics.
@@ -320,7 +324,9 @@ func (r *Reconciler) createJob(ctx context.Context, talosUpgrade *tupprv1alpha1.
 		return nil, err
 	}
 
-	job := r.buildJob(ctx, talosUpgrade, nodeName, nodeIP, targetImage)
+	endpointIP := r.pickEndpointIP(ctx, targetNode, nodeIP)
+
+	job := r.buildJob(ctx, talosUpgrade, nodeName, nodeIP, endpointIP, targetImage)
 	if err := controllerutil.SetControllerReference(talosUpgrade, job, r.Scheme); err != nil {
 		logger.Error(err, "Failed to set controller reference", "job", job.Name)
 		return nil, err
@@ -367,7 +373,7 @@ func (r *Reconciler) createJob(ctx context.Context, talosUpgrade *tupprv1alpha1.
 	return job, nil
 }
 
-func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName, nodeIP, targetImage string) *batchv1.Job {
+func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName, nodeIP, endpointIP, targetImage string) *batchv1.Job {
 	logger := log.FromContext(ctx)
 
 	jobName := nodeutil.GenerateSafeJobName(talosUpgrade.Name, nodeName)
@@ -441,14 +447,16 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 		timeout = talosUpgrade.Spec.Policy.Timeout.Duration
 	}
 
-	args := []string{
-		upgradeContainerName,
-		"--endpoints=" + nodeIP,
-		"--nodes=" + nodeIP,
-		"--image=" + targetImage,
-		"--timeout=" + timeout.String(),
-		"--wait=true",
+	args := []string{upgradeContainerName}
+	if endpointIP != "" {
+		args = append(args, "--endpoints="+endpointIP)
 	}
+	args = append(args,
+		"--nodes="+nodeIP,
+		"--image="+targetImage,
+		"--timeout="+timeout.String(),
+		"--wait=true",
+	)
 
 	if talosUpgrade.Spec.Policy.Debug {
 		args = append(args, "--debug=true")
@@ -536,4 +544,37 @@ func getActiveDeadlineSeconds(timeout time.Duration) int64 {
 	attempts := int64(TalosJobBackoffLimit + 1)
 	timeoutSeconds := int64(timeout.Seconds())
 	return attempts*timeoutSeconds + TalosJobActiveDeadlineBuffer
+}
+
+// pickEndpointIP returns a control-plane IP for talosctl --endpoints, or "" to
+// fall back to the talosconfig defaults. Workers must proxy through a CP
+// because talosctl upgrade --wait calls MachineService/Kubeconfig, which is
+// control-plane only.
+func (r *Reconciler) pickEndpointIP(ctx context.Context, targetNode *corev1.Node, targetIP string) string {
+	if _, isCP := targetNode.Labels[controlPlaneLabel]; isCP {
+		return targetIP
+	}
+
+	logger := log.FromContext(ctx)
+	cpNodes := &corev1.NodeList{}
+	if err := r.List(ctx, cpNodes, client.MatchingLabels{controlPlaneLabel: ""}); err != nil {
+		logger.V(1).Info("Failed to list control-plane nodes; omitting --endpoints", "error", err)
+		return ""
+	}
+
+	slices.SortFunc(cpNodes.Items, func(a, b corev1.Node) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	for i := range cpNodes.Items {
+		cp := &cpNodes.Items[i]
+		if cp.Labels[constants.NodeUpgradingLabel] != "" || !isNodeReady(cp) {
+			continue
+		}
+		if ip, err := nodeutil.GetNodeIP(cp); err == nil {
+			return ip
+		}
+	}
+	logger.V(1).Info("No Ready control-plane node available; omitting --endpoints")
+	return ""
 }

@@ -1674,7 +1674,7 @@ func TestTalosBuildJob_Properties(t *testing.T) {
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 	targetImage := "factory.talos.dev/installer:" + fakeTalosVersion
 
-	job := r.buildJob(context.Background(), tu, fakeNodeA, testNodeIP1, targetImage)
+	job := r.buildJob(context.Background(), tu, fakeNodeA, testNodeIP1, testNodeIP1, targetImage)
 
 	if job.Labels[appLabelKey] != talosUpgradeAppName {
 		t.Fatalf("expected talos-upgrade label, got: %s", job.Labels[appLabelKey])
@@ -2028,13 +2028,87 @@ func TestTalosBuildJob_SoftPlacement(t *testing.T) {
 		WithObjects(tu, newNode(fakeNodeA, testNodeIP1)).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 	targetImage := "factory.talos.dev/installer:" + fakeTalosVersion
-	job := r.buildJob(context.Background(), tu, fakeNodeA, testNodeIP1, targetImage)
+	job := r.buildJob(context.Background(), tu, fakeNodeA, testNodeIP1, testNodeIP1, targetImage)
 	podSpec := job.Spec.Template.Spec
 	if podSpec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution == nil {
 		t.Fatal("expected preferred node affinity for soft placement")
 	}
 	if podSpec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution != nil {
 		t.Fatal("soft placement should not have required affinity")
+	}
+}
+
+func TestTalosPickEndpointIP(t *testing.T) {
+	scheme := newTestScheme()
+
+	makeCP := func(name, ip string, ready bool, upgrading bool) *corev1.Node {
+		n := newNode(name, ip)
+		n.Labels = map[string]string{controlPlaneLabel: ""}
+		if upgrading {
+			n.Labels[constants.NodeUpgradingLabel] = "true"
+		}
+		status := corev1.ConditionTrue
+		if !ready {
+			status = corev1.ConditionFalse
+		}
+		n.Status.Conditions = []corev1.NodeCondition{{Type: corev1.NodeReady, Status: status}}
+		return n
+	}
+	worker := newNode(fakeNodeA, testNodeIP1)
+
+	tests := []struct {
+		name    string
+		target  *corev1.Node
+		objects []client.Object
+		want    string
+	}{
+		{
+			name:    "control-plane target returns target IP",
+			target:  makeCP(fakeNodeB, testNodeIP2, true, false),
+			objects: []client.Object{makeCP(fakeNodeB, testNodeIP2, true, false)},
+			want:    testNodeIP2,
+		},
+		{
+			name:    "worker target picks Ready control-plane IP",
+			target:  worker,
+			objects: []client.Object{worker, makeCP(fakeNodeB, testNodeIP2, true, false)},
+			want:    testNodeIP2,
+		},
+		{
+			name:   "worker target skips NotReady and upgrading control planes",
+			target: worker,
+			objects: []client.Object{
+				worker,
+				makeCP("cp-a", "10.0.0.30", false, false), // NotReady, skipped
+				makeCP("cp-b", "10.0.0.31", true, true),   // upgrading, skipped
+				makeCP("cp-c", "10.0.0.32", true, false),  // picked
+			},
+			want: "10.0.0.32",
+		},
+		{
+			name:    "worker target with only NotReady control planes returns empty",
+			target:  worker,
+			objects: []client.Object{worker, makeCP(fakeNodeB, testNodeIP2, false, false)},
+			want:    "",
+		},
+		{
+			name:    "worker target with no control-plane returns empty",
+			target:  worker,
+			objects: []client.Object{worker},
+			want:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tt.objects...).Build()
+			r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+			targetIP, _ := nodeutil.GetNodeIP(tt.target)
+			got := r.pickEndpointIP(context.Background(), tt.target, targetIP)
+			if got != tt.want {
+				t.Fatalf("pickEndpointIP = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
