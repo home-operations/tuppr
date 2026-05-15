@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.33](https://github.com/home-operations/tuppr/compare/0.1.32...0.1.33) (2026-05-15)
+
+
+### Features
+
+* **metrics:** expose per-node target version and active upgrade node ([f1ecb13](https://github.com/home-operations/tuppr/commit/f1ecb1327de7dc946140da0e733e75484eed8dce))
+
 ## [0.1.32](https://github.com/home-operations/tuppr/compare/0.1.31...0.1.32) (2026-05-14)
 
 
