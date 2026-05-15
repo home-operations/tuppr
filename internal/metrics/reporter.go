@@ -33,6 +33,7 @@ const (
 	labelPhase       = "phase"
 	labelUpgradeType = "upgrade_type"
 	labelResult      = "result"
+	labelRole        = "role"
 )
 
 var (
@@ -203,7 +204,7 @@ var (
 			Name: "tuppr_managed_nodes",
 			Help: "Number of cluster nodes the operator can see, by role.",
 		},
-		[]string{"role"},
+		[]string{labelRole},
 	)
 
 	nodeInfo = prometheus.NewGaugeVec(
@@ -211,7 +212,15 @@ var (
 			Name: "tuppr_node_info",
 			Help: "Per-node version inventory. Always 1; talos_version is parsed from Node.status.nodeInfo.osImage and may be empty for non-Talos nodes.",
 		},
-		[]string{"node", "role", "talos_version", "kubernetes_version"},
+		[]string{"node", labelRole, "talos_version", "kubernetes_version"},
+	)
+
+	nodeTargetVersion = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "tuppr_node_target_version",
+			Help: "Per-node target version from an active upgrade. Pair with tuppr_node_info to spot drift.",
+		},
+		[]string{"node", labelRole, "kind", "version", labelUpgradeName},
 	)
 
 	upgradesCompletedTotal = prometheus.NewCounterVec(
@@ -259,6 +268,7 @@ func init() {
 		upgradesByPhase,
 		managedNodes,
 		nodeInfo,
+		nodeTargetVersion,
 		upgradesCompletedTotal,
 		upgradeLastCompletionTimestamp,
 		upgradeProgressing,
@@ -540,6 +550,21 @@ func (m *Reporter) RecordNodeInfo(snapshot []NodeInfoSnapshot) {
 	nodeInfo.Reset()
 	for _, n := range snapshot {
 		nodeInfo.WithLabelValues(n.Node, n.Role, n.TalosVersion, n.KubernetesVersion).Set(1)
+	}
+}
+
+type NodeTargetSnapshot struct {
+	Node        string
+	Role        string
+	Kind        string
+	Version     string
+	UpgradeName string
+}
+
+func (m *Reporter) RecordNodeTargets(snapshot []NodeTargetSnapshot) {
+	nodeTargetVersion.Reset()
+	for _, t := range snapshot {
+		nodeTargetVersion.WithLabelValues(t.Node, t.Role, t.Kind, t.Version, t.UpgradeName).Set(1)
 	}
 }
 

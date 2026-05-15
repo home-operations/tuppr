@@ -7,6 +7,8 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8slabel "k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -59,15 +61,18 @@ func (r *InventoryRefresher) NeedLeaderElection() bool {
 }
 
 func (r *InventoryRefresher) refresh(ctx context.Context, logger logr.Logger) {
-	r.refreshNodes(ctx, logger)
-	r.refreshUpgrades(ctx, logger)
+	nodes, nodesOK := r.refreshNodes(ctx, logger)
+	talosList, k8sList, upgradesOK := r.refreshUpgrades(ctx, logger)
+	if nodesOK && upgradesOK {
+		r.refreshNodeTargets(logger, nodes, talosList, k8sList)
+	}
 }
 
-func (r *InventoryRefresher) refreshNodes(ctx context.Context, logger logr.Logger) {
+func (r *InventoryRefresher) refreshNodes(ctx context.Context, logger logr.Logger) ([]corev1.Node, bool) {
 	var nodes corev1.NodeList
 	if err := r.Client.List(ctx, &nodes); err != nil {
 		logger.Error(err, "failed to list nodes for inventory metrics")
-		return
+		return nil, false
 	}
 
 	byRole := map[string]int{NodeRoleControlPlane: 0, NodeRoleWorker: 0}
@@ -87,12 +92,16 @@ func (r *InventoryRefresher) refreshNodes(ctx context.Context, logger logr.Logge
 
 	r.Reporter.RecordManagedNodes(byRole)
 	r.Reporter.RecordNodeInfo(snapshot)
+	return nodes.Items, true
 }
 
-func (r *InventoryRefresher) refreshUpgrades(ctx context.Context, logger logr.Logger) {
+func (r *InventoryRefresher) refreshUpgrades(ctx context.Context, logger logr.Logger) (*tupprv1alpha1.TalosUpgradeList, *tupprv1alpha1.KubernetesUpgradeList, bool) {
+	ok := true
+
 	var talos tupprv1alpha1.TalosUpgradeList
 	if err := r.Client.List(ctx, &talos); err != nil {
 		logger.Error(err, "failed to list TalosUpgrades for inventory metrics")
+		ok = false
 	} else {
 		byPhase := make(map[string]int, len(talos.Items))
 		for i := range talos.Items {
@@ -104,6 +113,7 @@ func (r *InventoryRefresher) refreshUpgrades(ctx context.Context, logger logr.Lo
 	var k8s tupprv1alpha1.KubernetesUpgradeList
 	if err := r.Client.List(ctx, &k8s); err != nil {
 		logger.Error(err, "failed to list KubernetesUpgrades for inventory metrics")
+		ok = false
 	} else {
 		byPhase := make(map[string]int, len(k8s.Items))
 		for i := range k8s.Items {
@@ -111,6 +121,71 @@ func (r *InventoryRefresher) refreshUpgrades(ctx context.Context, logger logr.Lo
 		}
 		r.Reporter.RecordUpgradesByPhase(UpgradeTypeKubernetes, byPhase)
 	}
+
+	return &talos, &k8s, ok
+}
+
+func (r *InventoryRefresher) refreshNodeTargets(logger logr.Logger, nodes []corev1.Node, talos *tupprv1alpha1.TalosUpgradeList, k8s *tupprv1alpha1.KubernetesUpgradeList) {
+	var targets []NodeTargetSnapshot
+
+	for i := range talos.Items {
+		tu := &talos.Items[i]
+		if tu.Status.Phase.IsTerminal() {
+			continue
+		}
+		version := tu.Spec.Talos.Version
+		if version == "" {
+			continue
+		}
+		selector, err := selectorFor(tu.Spec.NodeSelector)
+		if err != nil {
+			logger.Error(err, "skipping TalosUpgrade for target metric", "name", tu.Name)
+			continue
+		}
+		for j := range nodes {
+			n := &nodes[j]
+			if !selector.Matches(k8slabel.Set(n.Labels)) {
+				continue
+			}
+			targets = append(targets, NodeTargetSnapshot{
+				Node:        n.Name,
+				Role:        nodeRole(n),
+				Kind:        UpgradeTypeTalos,
+				Version:     version,
+				UpgradeName: tu.Name,
+			})
+		}
+	}
+
+	for i := range k8s.Items {
+		ku := &k8s.Items[i]
+		if ku.Status.Phase.IsTerminal() {
+			continue
+		}
+		version := ku.Spec.Kubernetes.Version
+		if version == "" {
+			continue
+		}
+		for j := range nodes {
+			n := &nodes[j]
+			targets = append(targets, NodeTargetSnapshot{
+				Node:        n.Name,
+				Role:        nodeRole(n),
+				Kind:        UpgradeTypeKubernetes,
+				Version:     version,
+				UpgradeName: ku.Name,
+			})
+		}
+	}
+
+	r.Reporter.RecordNodeTargets(targets)
+}
+
+func selectorFor(ls *metav1.LabelSelector) (k8slabel.Selector, error) {
+	if ls == nil {
+		return k8slabel.Everything(), nil
+	}
+	return metav1.LabelSelectorAsSelector(ls)
 }
 
 func nodeRole(n *corev1.Node) string {

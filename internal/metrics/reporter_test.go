@@ -153,6 +153,40 @@ func TestRecordUpgradeCompleted(t *testing.T) {
 	}
 }
 
+func TestRecordNodeTargets(t *testing.T) {
+	mr := NewReporter()
+
+	const fleet = "fleet"
+
+	mr.RecordNodeTargets([]NodeTargetSnapshot{
+		{Node: "n1", Role: NodeRoleControlPlane, Kind: UpgradeTypeTalos, Version: "v1.11.0", UpgradeName: fleet},
+		{Node: "n2", Role: NodeRoleWorker, Kind: UpgradeTypeTalos, Version: "v1.11.0", UpgradeName: fleet},
+		{Node: "n1", Role: NodeRoleControlPlane, Kind: UpgradeTypeKubernetes, Version: "v1.34.0", UpgradeName: "cluster"},
+	})
+
+	if got := testutil.CollectAndCount(nodeTargetVersion); got != 3 {
+		t.Errorf("nodeTargetVersion series after first record = %d, want 3", got)
+	}
+	if got := testutil.ToFloat64(nodeTargetVersion.WithLabelValues("n1", NodeRoleControlPlane, UpgradeTypeTalos, "v1.11.0", fleet)); got != 1 {
+		t.Errorf("nodeTargetVersion{n1,talos,fleet} = %v, want 1", got)
+	}
+
+	mr.RecordNodeTargets([]NodeTargetSnapshot{
+		{Node: "n1", Role: NodeRoleControlPlane, Kind: UpgradeTypeTalos, Version: "v1.12.0", UpgradeName: fleet},
+	})
+	if got := testutil.CollectAndCount(nodeTargetVersion); got != 1 {
+		t.Errorf("nodeTargetVersion series after replacement = %d, want 1", got)
+	}
+	if got := testutil.ToFloat64(nodeTargetVersion.WithLabelValues("n1", NodeRoleControlPlane, UpgradeTypeTalos, "v1.12.0", fleet)); got != 1 {
+		t.Errorf("nodeTargetVersion{n1,talos,v1.12.0} = %v, want 1", got)
+	}
+
+	mr.RecordNodeTargets(nil)
+	if got := testutil.CollectAndCount(nodeTargetVersion); got != 0 {
+		t.Errorf("nodeTargetVersion series after empty record = %d, want 0", got)
+	}
+}
+
 func TestRecordProgressing(t *testing.T) {
 	mr := NewReporter()
 
