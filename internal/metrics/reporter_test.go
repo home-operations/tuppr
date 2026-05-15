@@ -9,6 +9,14 @@ import (
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 )
 
+const (
+	testWindowStartA = "0 2 * * *"
+	testWindowStartB = "0 14 * * 0"
+	testDuration4h   = "4h0m0s"
+	fleet            = "fleet"
+	cluster          = "cluster"
+)
+
 func TestRecordUpgradePhase(t *testing.T) {
 	mr := NewReporter()
 
@@ -130,9 +138,9 @@ func TestRecordUpgradeCompleted(t *testing.T) {
 	mr := NewReporter()
 
 	before := time.Now().Unix()
-	mr.RecordUpgradeCompleted(UpgradeTypeTalos, "cluster", ResultSuccess)
-	mr.RecordUpgradeCompleted(UpgradeTypeTalos, "cluster", ResultSuccess)
-	mr.RecordUpgradeCompleted(UpgradeTypeKubernetes, "cluster", ResultFailure)
+	mr.RecordUpgradeCompleted(UpgradeTypeTalos, cluster, ResultSuccess)
+	mr.RecordUpgradeCompleted(UpgradeTypeTalos, cluster, ResultSuccess)
+	mr.RecordUpgradeCompleted(UpgradeTypeKubernetes, cluster, ResultFailure)
 	after := time.Now().Unix()
 
 	if got := testutil.ToFloat64(upgradesCompletedTotal.WithLabelValues(UpgradeTypeTalos, ResultSuccess)); got != 2 {
@@ -142,13 +150,13 @@ func TestRecordUpgradeCompleted(t *testing.T) {
 		t.Errorf("upgrades_completed_total{kubernetes,failure} = %v, want 1", got)
 	}
 
-	ts := testutil.ToFloat64(upgradeLastCompletionTimestamp.WithLabelValues(UpgradeTypeTalos, "cluster", ResultSuccess))
+	ts := testutil.ToFloat64(upgradeLastCompletionTimestamp.WithLabelValues(UpgradeTypeTalos, cluster, ResultSuccess))
 	if int64(ts) < before || int64(ts) > after {
 		t.Errorf("last_completion_timestamp = %v, want in [%d, %d]", ts, before, after)
 	}
 
-	mr.CleanupUpgradeMetrics(UpgradeTypeTalos, "cluster")
-	if got := testutil.ToFloat64(upgradeLastCompletionTimestamp.WithLabelValues(UpgradeTypeTalos, "cluster", ResultSuccess)); got != 0 {
+	mr.CleanupUpgradeMetrics(UpgradeTypeTalos, cluster)
+	if got := testutil.ToFloat64(upgradeLastCompletionTimestamp.WithLabelValues(UpgradeTypeTalos, cluster, ResultSuccess)); got != 0 {
 		t.Errorf("last_completion_timestamp after cleanup = %v, want 0", got)
 	}
 }
@@ -156,12 +164,10 @@ func TestRecordUpgradeCompleted(t *testing.T) {
 func TestRecordNodeTargets(t *testing.T) {
 	mr := NewReporter()
 
-	const fleet = "fleet"
-
 	mr.RecordNodeTargets([]NodeTargetSnapshot{
 		{Node: "n1", Role: NodeRoleControlPlane, Kind: UpgradeTypeTalos, Version: "v1.11.0", UpgradeName: fleet},
 		{Node: "n2", Role: NodeRoleWorker, Kind: UpgradeTypeTalos, Version: "v1.11.0", UpgradeName: fleet},
-		{Node: "n1", Role: NodeRoleControlPlane, Kind: UpgradeTypeKubernetes, Version: "v1.34.0", UpgradeName: "cluster"},
+		{Node: "n1", Role: NodeRoleControlPlane, Kind: UpgradeTypeKubernetes, Version: "v1.34.0", UpgradeName: cluster},
 	})
 
 	if got := testutil.CollectAndCount(nodeTargetVersion); got != 3 {
@@ -185,6 +191,52 @@ func TestRecordNodeTargets(t *testing.T) {
 	if got := testutil.CollectAndCount(nodeTargetVersion); got != 0 {
 		t.Errorf("nodeTargetVersion series after empty record = %d, want 0", got)
 	}
+}
+
+func TestRecordMaintenanceWindows(t *testing.T) {
+	mr := NewReporter()
+
+	mr.RecordMaintenanceWindows([]MaintenanceWindowSnapshot{
+		{UpgradeType: UpgradeTypeTalos, Name: fleet, Index: "0", Start: testWindowStartA, Duration: testDuration4h, Timezone: defaultTimezone},
+		{UpgradeType: UpgradeTypeTalos, Name: fleet, Index: "1", Start: testWindowStartB, Duration: "2h0m0s", Timezone: "Europe/Paris"},
+		{UpgradeType: UpgradeTypeKubernetes, Name: cluster, Index: "0", Start: "0 3 * * *", Duration: "1h0m0s", Timezone: defaultTimezone},
+	})
+
+	if got := testutil.CollectAndCount(maintenanceWindowInfo); got != 3 {
+		t.Errorf("maintenanceWindowInfo series after first record = %d, want 3", got)
+	}
+	if got := testutil.ToFloat64(maintenanceWindowInfo.WithLabelValues(UpgradeTypeTalos, fleet, "0", testWindowStartA, testDuration4h, defaultTimezone)); got != 1 {
+		t.Errorf("maintenanceWindowInfo{talos,fleet,0} = %v, want 1", got)
+	}
+
+	mr.RecordMaintenanceWindows([]MaintenanceWindowSnapshot{
+		{UpgradeType: UpgradeTypeTalos, Name: fleet, Index: "0", Start: "30 1 * * *", Duration: testDuration4h, Timezone: defaultTimezone},
+	})
+	if got := testutil.CollectAndCount(maintenanceWindowInfo); got != 1 {
+		t.Errorf("maintenanceWindowInfo series after replacement = %d, want 1", got)
+	}
+	if got := testutil.ToFloat64(maintenanceWindowInfo.WithLabelValues(UpgradeTypeTalos, fleet, "0", "30 1 * * *", testDuration4h, defaultTimezone)); got != 1 {
+		t.Errorf("maintenanceWindowInfo after start change = %v, want 1", got)
+	}
+
+	mr.RecordMaintenanceWindows(nil)
+	if got := testutil.CollectAndCount(maintenanceWindowInfo); got != 0 {
+		t.Errorf("maintenanceWindowInfo series after empty record = %d, want 0", got)
+	}
+
+	mr.RecordMaintenanceWindows([]MaintenanceWindowSnapshot{
+		{UpgradeType: UpgradeTypeTalos, Name: fleet, Index: "0", Start: testWindowStartA, Duration: testDuration4h, Timezone: defaultTimezone},
+		{UpgradeType: UpgradeTypeTalos, Name: fleet, Index: "1", Start: testWindowStartB, Duration: "2h0m0s", Timezone: defaultTimezone},
+		{UpgradeType: UpgradeTypeKubernetes, Name: cluster, Index: "0", Start: "0 3 * * *", Duration: "1h0m0s", Timezone: defaultTimezone},
+	})
+	mr.CleanupUpgradeMetrics(UpgradeTypeTalos, fleet)
+	if got := testutil.CollectAndCount(maintenanceWindowInfo); got != 1 {
+		t.Errorf("maintenanceWindowInfo series after cleanup of fleet = %d, want 1", got)
+	}
+	if got := testutil.ToFloat64(maintenanceWindowInfo.WithLabelValues(UpgradeTypeKubernetes, cluster, "0", "0 3 * * *", "1h0m0s", defaultTimezone)); got != 1 {
+		t.Errorf("maintenanceWindowInfo{kubernetes,cluster} = %v, want 1 (sibling CR's series should survive cleanup)", got)
+	}
+	mr.RecordMaintenanceWindows(nil)
 }
 
 func TestRecordProgressing(t *testing.T) {

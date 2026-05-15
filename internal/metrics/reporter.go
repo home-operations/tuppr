@@ -183,6 +183,14 @@ var (
 		[]string{labelUpgradeType, labelName},
 	)
 
+	maintenanceWindowInfo = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "tuppr_maintenance_window_info",
+			Help: "Configured maintenance windows from upgrade specs. Always 1; one series per window (start cron, duration, timezone).",
+		},
+		[]string{labelUpgradeType, labelName, "index", "start", "duration", "timezone"},
+	)
+
 	buildInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "tuppr_build_info",
@@ -264,6 +272,7 @@ func init() {
 		hookExecutionsTotal,
 		maintenanceWindowActive,
 		maintenanceWindowNextOpenTimestamp,
+		maintenanceWindowInfo,
 		buildInfo,
 		upgradesByPhase,
 		managedNodes,
@@ -489,6 +498,7 @@ func (m *Reporter) CleanupUpgradeMetrics(upgradeType, name string) {
 
 	maintenanceWindowActive.DeleteLabelValues(upgradeType, name)
 	maintenanceWindowNextOpenTimestamp.DeleteLabelValues(upgradeType, name)
+	maintenanceWindowInfo.DeletePartialMatch(prometheus.Labels{labelUpgradeType: upgradeType, labelName: name})
 	upgradeLastCompletionTimestamp.DeleteLabelValues(upgradeType, name, ResultSuccess)
 	upgradeLastCompletionTimestamp.DeleteLabelValues(upgradeType, name, ResultFailure)
 
@@ -565,6 +575,22 @@ func (m *Reporter) RecordNodeTargets(snapshot []NodeTargetSnapshot) {
 	nodeTargetVersion.Reset()
 	for _, t := range snapshot {
 		nodeTargetVersion.WithLabelValues(t.Node, t.Role, t.Kind, t.Version, t.UpgradeName).Set(1)
+	}
+}
+
+type MaintenanceWindowSnapshot struct {
+	UpgradeType string
+	Name        string
+	Index       string
+	Start       string
+	Duration    string
+	Timezone    string
+}
+
+func (m *Reporter) RecordMaintenanceWindows(snapshot []MaintenanceWindowSnapshot) {
+	maintenanceWindowInfo.Reset()
+	for _, w := range snapshot {
+		maintenanceWindowInfo.WithLabelValues(w.UpgradeType, w.Name, w.Index, w.Start, w.Duration, w.Timezone).Set(1)
 	}
 }
 

@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -18,6 +19,8 @@ import (
 
 // Talos sets Node.status.nodeInfo.osImage to e.g. "Talos (v1.7.5)".
 var talosVersionRegexp = regexp.MustCompile(`v\d+\.\d+\.\d+[^\s)]*`)
+
+const defaultTimezone = "UTC"
 
 type InventoryRefresher struct {
 	Client   client.Client
@@ -63,6 +66,9 @@ func (r *InventoryRefresher) NeedLeaderElection() bool {
 func (r *InventoryRefresher) refresh(ctx context.Context, logger logr.Logger) {
 	nodes, nodesOK := r.refreshNodes(ctx, logger)
 	talosList, k8sList, upgradesOK := r.refreshUpgrades(ctx, logger)
+	if upgradesOK {
+		r.refreshMaintenanceWindows(talosList, k8sList)
+	}
 	if nodesOK && upgradesOK {
 		r.refreshNodeTargets(logger, nodes, talosList, k8sList)
 	}
@@ -123,6 +129,46 @@ func (r *InventoryRefresher) refreshUpgrades(ctx context.Context, logger logr.Lo
 	}
 
 	return &talos, &k8s, ok
+}
+
+func (r *InventoryRefresher) refreshMaintenanceWindows(talos *tupprv1alpha1.TalosUpgradeList, k8s *tupprv1alpha1.KubernetesUpgradeList) {
+	var windows []MaintenanceWindowSnapshot
+
+	for i := range talos.Items {
+		tu := &talos.Items[i]
+		if tu.Status.Phase.IsTerminal() || tu.Spec.Maintenance == nil {
+			continue
+		}
+		windows = appendWindows(windows, UpgradeTypeTalos, tu.Name, tu.Spec.Maintenance.Windows)
+	}
+
+	for i := range k8s.Items {
+		ku := &k8s.Items[i]
+		if ku.Status.Phase.IsTerminal() || ku.Spec.Maintenance == nil {
+			continue
+		}
+		windows = appendWindows(windows, UpgradeTypeKubernetes, ku.Name, ku.Spec.Maintenance.Windows)
+	}
+
+	r.Reporter.RecordMaintenanceWindows(windows)
+}
+
+func appendWindows(out []MaintenanceWindowSnapshot, upgradeType, name string, windows []tupprv1alpha1.WindowSpec) []MaintenanceWindowSnapshot {
+	for i, w := range windows {
+		tz := w.Timezone
+		if tz == "" {
+			tz = defaultTimezone
+		}
+		out = append(out, MaintenanceWindowSnapshot{
+			UpgradeType: upgradeType,
+			Name:        name,
+			Index:       strconv.Itoa(i),
+			Start:       w.Start,
+			Duration:    w.Duration.Duration.String(),
+			Timezone:    tz,
+		})
+	}
+	return out
 }
 
 func (r *InventoryRefresher) refreshNodeTargets(logger logr.Logger, nodes []corev1.Node, talos *tupprv1alpha1.TalosUpgradeList, k8s *tupprv1alpha1.KubernetesUpgradeList) {

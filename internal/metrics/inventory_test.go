@@ -2,10 +2,13 @@ package metrics
 
 import (
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8slabel "k8s.io/apimachinery/pkg/labels"
+
+	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 )
 
 const (
@@ -56,6 +59,31 @@ func TestSelectorFor(t *testing.T) {
 	bad := &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{Key: "x", Operator: "BadOperator"}}}
 	if _, err := selectorFor(bad); err == nil {
 		t.Errorf("expected error for invalid selector operator")
+	}
+}
+
+func TestAppendWindows(t *testing.T) {
+	windows := []tupprv1alpha1.WindowSpec{
+		{Start: testWindowStartA, Duration: metav1.Duration{Duration: 4 * time.Hour}, Timezone: defaultTimezone},
+		{Start: testWindowStartB, Duration: metav1.Duration{Duration: 2*time.Hour + 30*time.Minute}},
+	}
+
+	got := appendWindows(nil, UpgradeTypeTalos, fleet, windows)
+	want := []MaintenanceWindowSnapshot{
+		{UpgradeType: UpgradeTypeTalos, Name: fleet, Index: "0", Start: testWindowStartA, Duration: testDuration4h, Timezone: defaultTimezone},
+		{UpgradeType: UpgradeTypeTalos, Name: fleet, Index: "1", Start: testWindowStartB, Duration: "2h30m0s", Timezone: defaultTimezone},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("appendWindows length = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("appendWindows[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+
+	if out := appendWindows(nil, UpgradeTypeKubernetes, "cluster", nil); len(out) != 0 {
+		t.Errorf("appendWindows(nil) = %v, want empty", out)
 	}
 }
 
