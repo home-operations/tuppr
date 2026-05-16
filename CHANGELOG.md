@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.1.34](https://github.com/home-operations/tuppr/compare/0.1.33...0.1.34) (2026-05-16)
+
+
+### Features
+
+* expose maintenance Window Info ([63f4e4d](https://github.com/home-operations/tuppr/commit/63f4e4d9c74c7d37bcec211a08fbae3f2012d989))
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/grpc (v1.81.0 → v1.81.1) ([#279](https://github.com/home-operations/tuppr/issues/279)) ([3285689](https://github.com/home-operations/tuppr/commit/3285689c813d91e3556a7cc9299bf59293c674cb))
+* **jobs:** error when multiple jobs share the same app label ([ae790dc](https://github.com/home-operations/tuppr/commit/ae790dcb6f8a1bebafe03a65f65183ce9386a24c))
+* **kubernetesupgrade:** requeue instead of failing on transient verify errors ([43f04f1](https://github.com/home-operations/tuppr/commit/43f04f17da44bce785682bfa37f0326f9306bd2b))
+* **kubernetesupgrade:** use shared label constants for job metadata ([8b748f8](https://github.com/home-operations/tuppr/commit/8b748f812f93b31d78d5506bbe1fcafcb287ccd7))
+* **talos:** only retry transient errors in client ([0dcf6dd](https://github.com/home-operations/tuppr/commit/0dcf6dde99cf28cd65d2e22f19f25d4aaf92c89d))
+* **talosupgrade:** honor per-node version annotation in verification ([248fd84](https://github.com/home-operations/tuppr/commit/248fd8482e981f97d9bcaa7a79fe5d17ea192d2c))
+* **talosupgrade:** pick upgrade image from runtime extensions ([1c35fdd](https://github.com/home-operations/tuppr/commit/1c35fdd9e57f968b4e43817a6a86deeba0317f8a))
+* **talosupgrade:** use IsAlreadyExists to detect job conflicts ([97633b8](https://github.com/home-operations/tuppr/commit/97633b86241d07763c204a046c95db795f1e40fe))
+* **talosupgrade:** use named constant for postHookIndex status key ([3ddcc1e](https://github.com/home-operations/tuppr/commit/3ddcc1e187c202223c466995d410fed4f735c226))
+
+
+### Code Refactoring
+
+* **kubernetesupgrade:** cache discovery client across reconciles ([cb5df26](https://github.com/home-operations/tuppr/commit/cb5df2609f82f748b487a2924a1a6c078211cd70))
+* **maintenance:** move 5m requeue cap into WindowResult.RequeueAfter ([c236a63](https://github.com/home-operations/tuppr/commit/c236a63d4bfebd57fc2b48efbdc2c1c6722d8cba))
+* **upgradeaudit:** share status-patch helper across controllers ([355ab57](https://github.com/home-operations/tuppr/commit/355ab57806b160ef2403774bb5ade366571ec6b1))
+* **upgradeaudit:** share timing-field sync between audit helpers ([cee251a](https://github.com/home-operations/tuppr/commit/cee251a0184c8fd3bab8f2e490aece5f7ffe22f7))
+
 ## [0.1.33](https://github.com/home-operations/tuppr/compare/0.1.32...0.1.33) (2026-05-15)
 
 
