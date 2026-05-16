@@ -2,7 +2,6 @@ package kubernetesupgrade
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"time"
@@ -206,24 +205,8 @@ func (r *Reconciler) nodeToKubernetesUpgrades(ctx context.Context, _ client.Obje
 }
 
 func (r *Reconciler) updateStatus(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, updates map[string]any) error {
-	if _, ok := updates["observedGeneration"]; !ok {
-		updates["observedGeneration"] = kubernetesUpgrade.Generation
-	}
-	updates["lastUpdated"] = metav1.Now()
-
-	patch := map[string]any{
-		"status": updates,
-	}
-
-	patchBytes, err := json.Marshal(patch)
-	if err != nil {
-		return fmt.Errorf("failed to marshal patch: %w", err)
-	}
-
-	statusObj := &tupprv1alpha1.KubernetesUpgrade{}
-	statusObj.Name = kubernetesUpgrade.Name
-
-	return r.Status().Patch(ctx, statusObj, client.RawPatch(types.MergePatchType, patchBytes))
+	statusObj := &tupprv1alpha1.KubernetesUpgrade{ObjectMeta: metav1.ObjectMeta{Name: kubernetesUpgrade.Name}}
+	return upgradeaudit.PatchStatus(ctx, r.Client, statusObj, kubernetesUpgrade.Generation, updates)
 }
 
 func (r *Reconciler) setPhase(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, phase tupprv1alpha1.JobPhase, controllerNode, message string) error {

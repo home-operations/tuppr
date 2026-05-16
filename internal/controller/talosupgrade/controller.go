@@ -2,7 +2,6 @@ package talosupgrade
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
@@ -207,19 +206,8 @@ func (r *Reconciler) nodeToTalosUpgrades(ctx context.Context, _ client.Object) [
 }
 
 func (r *Reconciler) updateStatus(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, updates map[string]any) error {
-	if _, ok := updates["observedGeneration"]; !ok {
-		updates["observedGeneration"] = talosUpgrade.Generation
-	}
-	updates["lastUpdated"] = metav1.Now()
-
-	patch := map[string]any{"status": updates}
-	patchBytes, err := json.Marshal(patch)
-	if err != nil {
-		return fmt.Errorf("failed to marshal patch: %w", err)
-	}
-
 	statusObj := &tupprv1alpha1.TalosUpgrade{ObjectMeta: metav1.ObjectMeta{Name: talosUpgrade.Name}}
-	return r.Status().Patch(ctx, statusObj, client.RawPatch(types.MergePatchType, patchBytes))
+	return upgradeaudit.PatchStatus(ctx, r.Client, statusObj, talosUpgrade.Generation, updates)
 }
 
 func (r *Reconciler) setPhase(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, message string) error {
