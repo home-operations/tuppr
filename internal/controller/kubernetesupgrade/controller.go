@@ -44,6 +44,9 @@ const (
 
 const (
 	appLabelKey               = jobs.AppLabelKey
+	appInstanceLabelKey       = jobs.AppInstanceLabelKey
+	appPartOfLabelKey         = jobs.AppPartOfLabelKey
+	appPartOfTuppr            = jobs.AppPartOfTuppr
 	kubernetesUpgradeAppName  = "kubernetes-upgrade"
 	statusFieldJobName        = "jobName"
 	statusFieldCurrentVersion = "currentVersion"

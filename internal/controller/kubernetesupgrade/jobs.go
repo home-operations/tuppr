@@ -155,10 +155,10 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 	jobName := nodeutil.GenerateSafeJobName(kubernetesUpgrade.Name, controllerNode)
 
 	labels := map[string]string{
-		appLabelKey:                  kubernetesUpgradeAppName,
-		"app.kubernetes.io/instance": kubernetesUpgrade.Name,
-		"app.kubernetes.io/part-of":  "tuppr",
-		targetNodeLabelKey:           controllerNode,
+		appLabelKey:         kubernetesUpgradeAppName,
+		appInstanceLabelKey: kubernetesUpgrade.Name,
+		appPartOfLabelKey:   appPartOfTuppr,
+		targetNodeLabelKey:  controllerNode,
 	}
 
 	talosctlRepo := constants.DefaultTalosctlImage
