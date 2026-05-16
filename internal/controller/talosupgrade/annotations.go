@@ -93,7 +93,7 @@ func (r *Reconciler) handleGenerationChange(ctx context.Context, talosUpgrade *t
 		statusCompletedNodes: []string{},
 		statusFailedNodes:    []tupprv1alpha1.NodeUpgradeStatus{},
 		statusPreHookIndex:   0,
-		"postHookIndex":      0,
+		statusPostHookIndex:  0,
 		statusPreHookFailed:  false,
 	}); err != nil {
 		return false, err

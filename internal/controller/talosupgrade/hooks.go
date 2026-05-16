@@ -170,7 +170,7 @@ func (r *Reconciler) advanceHookIndex(ctx context.Context, tu *tupprv1alpha1.Tal
 		updates[statusPreHookIndex] = next
 		tu.Status.PreHookIndex = next
 	} else {
-		updates["postHookIndex"] = next
+		updates[statusPostHookIndex] = next
 		tu.Status.PostHookIndex = next
 	}
 	return r.updateStatus(ctx, tu, updates)
