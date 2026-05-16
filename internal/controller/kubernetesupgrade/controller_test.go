@@ -735,7 +735,7 @@ func TestK8sReconcile_JobSuccess_PartialUpgrade_ContinuesToNextNode(t *testing.T
 	}
 }
 
-func TestK8sReconcile_JobSuccessButVersionMismatch(t *testing.T) {
+func TestK8sReconcile_JobSuccess_VerifyErrorRequeues(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
@@ -753,20 +753,19 @@ func TestK8sReconcile_JobSuccessButVersionMismatch(t *testing.T) {
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
 		Status: batchv1.JobStatus{Succeeded: 1},
 	}
-	// Version doesn't match target - upgrade didn't actually work
 	vg := &mockVersionGetter{version: testV1330}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, job).WithStatusSubresource(ku).Build()
 	r := newK8sReconciler(cl, vg, &mockTalosClient{}, &mockHealthChecker{})
 
 	result := reconcileK8s(t, r, "test-upgrade")
-	if result.RequeueAfter != 10*time.Minute {
-		t.Fatalf("expected 10m requeue after verification failure, got: %v", result.RequeueAfter)
+	if result.RequeueAfter != 30*time.Second {
+		t.Fatalf("expected 30s requeue after verification error, got: %v", result.RequeueAfter)
 	}
 
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
-	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
-		t.Fatalf("expected phase Failed after version mismatch, got: %s", updated.Status.Phase)
+	if updated.Status.Phase == tupprv1alpha1.JobPhaseFailed {
+		t.Fatalf("verification error must not flip phase to Failed, got: %s", updated.Status.Phase)
 	}
 }
 
