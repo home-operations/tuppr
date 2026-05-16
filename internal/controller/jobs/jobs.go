@@ -182,7 +182,7 @@ func ListJobsByLabel(ctx context.Context, c client.Client, namespace, appName st
 	return jobList.Items, nil
 }
 
-// FindActiveJobByLabel returns the first Job matching appName in namespace, or nil if none.
+// FindActiveJobByLabel returns the Job matching appName in namespace, nil if none, or an error if more than one.
 func FindActiveJobByLabel(ctx context.Context, c client.Client, namespace, appName string) (*batchv1.Job, error) {
 	jobs, err := ListJobsByLabel(ctx, c, namespace, appName)
 	if err != nil {
@@ -190,6 +190,13 @@ func FindActiveJobByLabel(ctx context.Context, c client.Client, namespace, appNa
 	}
 	if len(jobs) == 0 {
 		return nil, nil
+	}
+	if len(jobs) > 1 {
+		names := make([]string, 0, len(jobs))
+		for i := range jobs {
+			names = append(names, jobs[i].Name)
+		}
+		return nil, fmt.Errorf("multiple jobs match app.kubernetes.io/name=%s in %s: %v", appName, namespace, names)
 	}
 	return &jobs[0], nil
 }

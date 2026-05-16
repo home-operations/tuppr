@@ -191,12 +191,21 @@ func TestFindActiveJobByLabel(t *testing.T) {
 		objects []*batchv1.Job
 		wantNil bool
 		wantJob string
+		wantErr bool
 	}{
 		{name: "no jobs returns nil", wantNil: true},
 		{
 			name:    "returns job when present",
 			objects: []*batchv1.Job{newJob("job-1", "default", "talos-upgrade")},
 			wantJob: "job-1",
+		},
+		{
+			name: "multiple matches return error",
+			objects: []*batchv1.Job{
+				newJob("job-1", "default", "talos-upgrade"),
+				newJob("job-2", "default", "talos-upgrade"),
+			},
+			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
@@ -206,6 +215,12 @@ func TestFindActiveJobByLabel(t *testing.T) {
 				builder = builder.WithObjects(o)
 			}
 			got, err := FindActiveJobByLabel(context.Background(), builder.Build(), "default", "talos-upgrade")
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil (job=%v)", got)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
