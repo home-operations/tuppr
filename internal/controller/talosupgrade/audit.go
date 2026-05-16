@@ -55,20 +55,7 @@ func applyPhaseAuditFields(status *tupprv1alpha1.TalosUpgradeStatus, updates map
 // Mirror updates onto in-memory status so re-entry guards and metrics in the
 // same reconcile see the just-patched state.
 func syncLocalAuditFields(status *tupprv1alpha1.TalosUpgradeStatus, updates map[string]any) {
-	if v, ok := updates["startedAt"]; ok {
-		if t, isTime := v.(metav1.Time); isTime {
-			status.StartedAt = &t
-		} else {
-			status.StartedAt = nil
-		}
-	}
-	if v, ok := updates["completedAt"]; ok {
-		if t, isTime := v.(metav1.Time); isTime {
-			status.CompletedAt = &t
-		} else {
-			status.CompletedAt = nil
-		}
-	}
+	upgradeaudit.SyncTimingFields(updates, &status.StartedAt, &status.CompletedAt)
 	if v, ok := updates["history"]; ok {
 		if h, isHistory := v.([]tupprv1alpha1.TalosUpgradeHistoryEntry); isHistory {
 			status.History = h

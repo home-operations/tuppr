@@ -25,3 +25,22 @@ func PatchStatus(ctx context.Context, c client.Client, obj client.Object, genera
 
 	return c.Status().Patch(ctx, obj, client.RawPatch(types.MergePatchType, patchBytes))
 }
+
+// SyncTimingFields mirrors startedAt and completedAt from updates onto the in-memory
+// status pointers so re-entry guards in the same reconcile see the just-patched state.
+func SyncTimingFields(updates map[string]any, startedAt, completedAt **metav1.Time) {
+	if v, ok := updates["startedAt"]; ok {
+		if t, isTime := v.(metav1.Time); isTime {
+			*startedAt = &t
+		} else {
+			*startedAt = nil
+		}
+	}
+	if v, ok := updates["completedAt"]; ok {
+		if t, isTime := v.(metav1.Time); isTime {
+			*completedAt = &t
+		} else {
+			*completedAt = nil
+		}
+	}
+}
