@@ -188,10 +188,7 @@ func (r *Reconciler) checkMaintenanceWindow(ctx context.Context, talosUpgrade *t
 		return ctrl.Result{RequeueAfter: time.Second * 30}, true, err
 	}
 	if !maintenanceRes.Allowed {
-		requeueAfter := time.Until(*maintenanceRes.NextWindowStart)
-		if requeueAfter > 5*time.Minute {
-			requeueAfter = 5 * time.Minute
-		}
+		requeueAfter := maintenanceRes.RequeueAfter(r.Now.Now())
 		nextTimestamp := maintenanceRes.NextWindowStart.Unix()
 		r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, false, &nextTimestamp)
 		message := fmt.Sprintf("Waiting for maintenance window (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339))
@@ -263,10 +260,7 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
 	}
 	if !maintenanceRes.Allowed {
-		requeueAfter := time.Until(*maintenanceRes.NextWindowStart)
-		if requeueAfter > 5*time.Minute {
-			requeueAfter = 5 * time.Minute
-		}
+		requeueAfter := maintenanceRes.RequeueAfter(r.Now.Now())
 		nextTimestamp := maintenanceRes.NextWindowStart.Unix()
 		r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, false, &nextTimestamp)
 		message := fmt.Sprintf("Maintenance window closed between nodes, waiting (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339))

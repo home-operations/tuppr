@@ -160,10 +160,7 @@ func (r *Reconciler) checkMaintenanceWindow(ctx context.Context, kubernetesUpgra
 		return ctrl.Result{RequeueAfter: time.Second * 30}, true, err
 	}
 	if !maintenanceRes.Allowed {
-		requeueAfter := time.Until(*maintenanceRes.NextWindowStart)
-		if requeueAfter > 5*time.Minute {
-			requeueAfter = 5 * time.Minute
-		}
+		requeueAfter := maintenanceRes.RequeueAfter(r.Now.Now())
 		nextTimestamp := maintenanceRes.NextWindowStart.Unix()
 		r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, false, &nextTimestamp)
 		message := fmt.Sprintf("Waiting for maintenance window (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339))

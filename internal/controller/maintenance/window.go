@@ -9,10 +9,25 @@ import (
 
 var CronjobDefaultOption = cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow
 
+const RequeueCap = 5 * time.Minute
+
 type WindowResult struct {
 	Allowed          bool
 	NextWindowStart  *time.Time
 	CurrentWindowEnd *time.Time
+}
+
+// RequeueAfter returns the delay until NextWindowStart, capped at RequeueCap.
+// Returns 0 when the window is currently open or no next window is known.
+func (r *WindowResult) RequeueAfter(now time.Time) time.Duration {
+	if r.Allowed || r.NextWindowStart == nil {
+		return 0
+	}
+	d := r.NextWindowStart.Sub(now)
+	if d > RequeueCap {
+		return RequeueCap
+	}
+	return d
 }
 
 func CheckWindow(spec *v1alpha1.MaintenanceSpec, now time.Time) (*WindowResult, error) {

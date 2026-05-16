@@ -160,6 +160,31 @@ func TestCheckWindow_SpansMidnight(t *testing.T) {
 	}
 }
 
+func TestWindowResult_RequeueAfter(t *testing.T) {
+	now := time.Date(2025, 6, 15, 10, 0, 0, 0, time.UTC)
+	soon := now.Add(2 * time.Minute)
+	far := now.Add(2 * time.Hour)
+
+	tests := []struct {
+		name   string
+		result WindowResult
+		want   time.Duration
+	}{
+		{"allowed returns zero", WindowResult{Allowed: true}, 0},
+		{"nil next returns zero", WindowResult{Allowed: false, NextWindowStart: nil}, 0},
+		{"under cap returns delta", WindowResult{Allowed: false, NextWindowStart: &soon}, 2 * time.Minute},
+		{"over cap is capped", WindowResult{Allowed: false, NextWindowStart: &far}, RequeueCap},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.result.RequeueAfter(now)
+			if got != tc.want {
+				t.Fatalf("expected %v, got %v", tc.want, got)
+			}
+		})
+	}
+}
+
 func TestCheckWindow_InvalidInputs(t *testing.T) {
 	tests := []struct {
 		name string
