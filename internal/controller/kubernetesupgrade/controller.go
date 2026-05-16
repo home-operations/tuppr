@@ -153,7 +153,11 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		r.HealthChecker = healthcheck.NewChecker(mgr.GetClient(), r.MetricsReporter)
 	}
 	if r.VersionGetter == nil {
-		r.VersionGetter = &DiscoveryVersionGetter{}
+		discoveryClient, err := discovery.NewDiscoveryClientForConfig(mgr.GetConfig())
+		if err != nil {
+			return fmt.Errorf("failed to create discovery client: %w", err)
+		}
+		r.VersionGetter = &DiscoveryVersionGetter{client: discoveryClient}
 	}
 	if r.TalosClient == nil {
 		talosClient, err := talos.NewClient(context.Background())
@@ -301,23 +305,14 @@ func (r *Reconciler) recordPhaseTransition(kubernetesUpgrade *tupprv1alpha1.Kube
 	}
 }
 
-type DiscoveryVersionGetter struct{}
+type DiscoveryVersionGetter struct {
+	client discovery.DiscoveryInterface
+}
 
 func (d *DiscoveryVersionGetter) GetCurrentKubernetesVersion(ctx context.Context) (string, error) {
-	config, err := ctrl.GetConfig()
-	if err != nil {
-		return "", fmt.Errorf("failed to get REST config: %w", err)
-	}
-
-	discoveryClient, err := discovery.NewDiscoveryClientForConfig(config)
-	if err != nil {
-		return "", fmt.Errorf("failed to create discovery client: %w", err)
-	}
-
-	serverVersion, err := discoveryClient.ServerVersion()
+	serverVersion, err := d.client.ServerVersion()
 	if err != nil {
 		return "", fmt.Errorf("failed to get server version: %w", err)
 	}
-
 	return serverVersion.GitVersion, nil
 }
