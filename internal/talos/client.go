@@ -20,6 +20,7 @@ import (
 type talosClient interface {
 	Version(ctx context.Context, opts ...grpc.CallOption) (*machine.VersionResponse, error)
 	COSIGet(ctx context.Context, namespace, typ, id string) (resource.Resource, error)
+	COSIList(ctx context.Context, namespace, typ string) ([]resource.Resource, error)
 	ApplyConfiguration(ctx context.Context, req *machine.ApplyConfigurationRequest, opts ...grpc.CallOption) (*machine.ApplyConfigurationResponse, error)
 	Close() error
 }
@@ -31,6 +32,15 @@ type realTalosClient struct {
 func (r *realTalosClient) COSIGet(ctx context.Context, namespace, typ, id string) (resource.Resource, error) {
 	md := resource.NewMetadata(namespace, typ, id, resource.VersionUndefined)
 	return r.COSI.Get(ctx, md)
+}
+
+func (r *realTalosClient) COSIList(ctx context.Context, namespace, typ string) ([]resource.Resource, error) {
+	kind := resource.NewMetadata(namespace, typ, "", resource.VersionUndefined)
+	list, err := r.COSI.List(ctx, kind)
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
 }
 
 type Client struct {
@@ -122,25 +132,38 @@ func (s *Client) GetNodeMachineConfig(ctx context.Context, nodeIP string) (*conf
 	return mc, nil
 }
 
-func (s *Client) GetNodePlatform(ctx context.Context, nodeIP string) (string, error) {
+type ExtensionInfo struct {
+	Schematic  string
+	Extensions []string
+}
+
+func (s *Client) GetNodeExtensions(ctx context.Context, nodeIP string) (ExtensionInfo, error) {
 	nodeCtx := client.WithNode(ctx, nodeIP)
-	var r resource.Resource
+	var items []resource.Resource
 
 	err := s.executeWithRetry(ctx, func() error {
 		var err error
-		r, err = s.talos.COSIGet(nodeCtx, talosruntime.NamespaceName, talosruntime.PlatformMetadataType, talosruntime.PlatformMetadataID)
+		items, err = s.talos.COSIList(nodeCtx, talosruntime.NamespaceName, talosruntime.ExtensionStatusType)
 		return err
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to get platform metadata from node %s: %w", nodeIP, err)
+		return ExtensionInfo{}, fmt.Errorf("failed to list extensions from node %s: %w", nodeIP, err)
 	}
 
-	pm, ok := r.(*talosruntime.PlatformMetadata)
-	if !ok {
-		return "", fmt.Errorf("unexpected resource type for platform metadata from node %s", nodeIP)
+	var info ExtensionInfo
+	for _, r := range items {
+		es, ok := r.(*talosruntime.ExtensionStatus)
+		if !ok {
+			continue
+		}
+		name := es.TypedSpec().Metadata.Name
+		if name == "schematic" {
+			info.Schematic = es.TypedSpec().Metadata.Version
+			continue
+		}
+		info.Extensions = append(info.Extensions, name)
 	}
-
-	return pm.TypedSpec().Platform, nil
+	return info, nil
 }
 
 func (s *Client) GetNodeInstallImage(ctx context.Context, nodeIP string) (string, error) {

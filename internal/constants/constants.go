@@ -14,14 +14,9 @@ const (
 
 const (
 	// Override annotations
-	SchematicAnnotation  = "tuppr.home-operations.com/schematic"
 	VersionAnnotation    = "tuppr.home-operations.com/version"
 	FactoryURLAnnotation = "tuppr.home-operations.com/factory-url"
-
-	// Used as a fallback when SchematicAnnotation is not set.
-	TalosSchematicAnnotation = "extensions.talos.dev/schematic"
-
-	FactoryDomain = "factory.talos.dev"
+	SchematicAnnotation  = "tuppr.home-operations.com/schematic"
 )
 
 // Node label constants

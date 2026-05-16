@@ -6,18 +6,19 @@ import (
 	"sync"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/talos"
 )
 
 // mockTalosClient implements TalosClient interface for testing
 type mockTalosClient struct {
-	mu             sync.RWMutex
-	nodeVersions   map[string]string
-	installImages  map[string]string
-	platforms      map[string]string
-	waitReadyErr   error
-	getVersionErr  error
-	getInstallErr  error
-	getPlatformErr error
+	mu               sync.RWMutex
+	nodeVersions     map[string]string
+	installImages    map[string]string
+	extensions       map[string]talos.ExtensionInfo
+	waitReadyErr     error
+	getVersionErr    error
+	getInstallErr    error
+	getExtensionsErr error
 }
 
 func (m *mockTalosClient) GetNodeVersion(ctx context.Context, nodeIP string) (string, error) {
@@ -58,17 +59,17 @@ func (m *mockTalosClient) GetNodeInstallImage(ctx context.Context, nodeIP string
 	return "", fmt.Errorf("install image not found for %s", nodeIP)
 }
 
-func (m *mockTalosClient) GetNodePlatform(ctx context.Context, nodeIP string) (string, error) {
+func (m *mockTalosClient) GetNodeExtensions(ctx context.Context, nodeIP string) (talos.ExtensionInfo, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	if m.getPlatformErr != nil {
-		return "", m.getPlatformErr
+	if m.getExtensionsErr != nil {
+		return talos.ExtensionInfo{}, m.getExtensionsErr
 	}
-	if p, ok := m.platforms[nodeIP]; ok {
-		return p, nil
+	if e, ok := m.extensions[nodeIP]; ok {
+		return e, nil
 	}
-	return "", fmt.Errorf("platform not found for %s", nodeIP)
+	return talos.ExtensionInfo{}, nil
 }
 
 func (m *mockTalosClient) SetNodeInstallImage(nodeIP, image string) {
@@ -89,10 +90,10 @@ func (m *mockTalosClient) Reset() {
 	defer m.mu.Unlock()
 	m.nodeVersions = make(map[string]string)
 	m.installImages = make(map[string]string)
-	m.platforms = make(map[string]string)
+	m.extensions = make(map[string]talos.ExtensionInfo)
 	m.getVersionErr = nil
 	m.getInstallErr = nil
-	m.getPlatformErr = nil
+	m.getExtensionsErr = nil
 }
 
 // mockHealthChecker implements HealthCheckRunner interface for testing

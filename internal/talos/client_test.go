@@ -26,6 +26,8 @@ type mockTalosClient struct {
 	cosiGetCalls    int
 	closed          bool
 	cosiResource    resource.Resource
+	cosiListItems   []resource.Resource
+	cosiListErr     error
 	applyConfigReq  *machine.ApplyConfigurationRequest
 	applyConfigErr  error
 }
@@ -50,6 +52,13 @@ func (m *mockTalosClient) COSIGet(_ context.Context, _, _, _ string) (resource.R
 		return nil, m.cosiGetErr
 	}
 	return m.cosiResource, nil
+}
+
+func (m *mockTalosClient) COSIList(_ context.Context, _, _ string) ([]resource.Resource, error) {
+	if m.cosiListErr != nil {
+		return nil, m.cosiListErr
+	}
+	return m.cosiListItems, nil
 }
 
 func (m *mockTalosClient) ApplyConfiguration(_ context.Context, req *machine.ApplyConfigurationRequest, _ ...grpc.CallOption) (*machine.ApplyConfigurationResponse, error) {

@@ -562,21 +562,6 @@ func (r *Reconciler) nodeNeedsUpgrade(ctx context.Context, node *corev1.Node, cr
 			"target", targetVersion)
 		return true, nil
 	}
-	if targetSchematic, ok := node.Annotations[constants.SchematicAnnotation]; ok && targetSchematic != "" {
-		currentImage, err := r.TalosClient.GetNodeInstallImage(ctx, nodeIP)
-		if err != nil {
-			logger.Error(err, "Failed to get install image to verify schematic", "node", node.Name)
-			return false, err
-		}
-
-		if !strings.Contains(currentImage, targetSchematic) {
-			logger.V(1).Info("Node schematic mismatch detected",
-				"node", node.Name,
-				"currentImage", currentImage,
-				"targetSchematic", targetSchematic)
-			return true, nil
-		}
-	}
 
 	return false, nil
 }
@@ -603,6 +588,11 @@ func (r *Reconciler) drainNode(ctx context.Context, nodeName string, drainSpec *
 	return nil
 }
 
+// Matches the canonical generic installer and any mirror that keeps the "/siderolabs/installer" suffix.
+func looksLikeGenericInstaller(repo string) bool {
+	return repo == constants.GenericInstallerRepo || strings.HasSuffix(repo, "/siderolabs/installer")
+}
+
 func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (string, error) {
 	logger := log.FromContext(ctx)
 
@@ -623,117 +613,49 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 
 	targetVersion := r.getTargetVersion(node, talosUpgrade.Spec.Talos.Version)
 
-	schematic := node.Annotations[constants.SchematicAnnotation]
-	schematicSource := constants.SchematicAnnotation
-	if schematic == "" {
-		schematic = node.Annotations[constants.TalosSchematicAnnotation]
-		schematicSource = constants.TalosSchematicAnnotation
-	}
-
-	var imageBase string
-	if schematic != "" {
-		factoryBase, factorySource, err := r.resolveFactoryBase(ctx, node, nodeIP, currentImage, schematic)
+	if base := node.Annotations[constants.FactoryURLAnnotation]; base != "" {
+		ext, err := r.TalosClient.GetNodeExtensions(ctx, nodeIP)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to read extensions for node %s: %w", nodeName, err)
 		}
-		imageBase = fmt.Sprintf("%s/%s", factoryBase, schematic)
-		logger.V(1).Info("Resolved factory image base",
-			"node", nodeName,
-			"schematic", schematic,
-			"schematicSource", schematicSource,
-			"factoryBase", factoryBase,
-			"factorySource", factorySource)
-	} else {
-		repo, _, ok := strings.Cut(currentImage, ":")
-		if !ok || repo == "" {
-			return "", fmt.Errorf("invalid current image format for node %s: %s", nodeName, currentImage)
+		schematic := ext.Schematic
+		if schematic == "" {
+			schematic = node.Annotations[constants.SchematicAnnotation]
 		}
-		if err := r.refuseGenericInstallerOnManagedPlatform(ctx, nodeName, nodeIP, repo); err != nil {
-			return "", err
+		if schematic == "" {
+			return "", fmt.Errorf(
+				"node %s: annotation %s is set but no schematic is available — runtime reports none and annotation %s is unset",
+				nodeName, constants.FactoryURLAnnotation, constants.SchematicAnnotation)
 		}
-		imageBase = repo
+		targetImage := fmt.Sprintf("%s/%s:%s", strings.TrimRight(base, "/"), schematic, targetVersion)
+		logger.V(1).Info("Built target image from FactoryURL override",
+			"node", nodeName, "targetImage", targetImage, "schematic", schematic)
+		return targetImage, nil
 	}
 
-	targetImage := fmt.Sprintf("%s:%s", imageBase, targetVersion)
+	repo, _, ok := strings.Cut(currentImage, ":")
+	if !ok || repo == "" {
+		return "", fmt.Errorf("invalid current image format for node %s: %s", nodeName, currentImage)
+	}
 
-	logger.V(1).Info("Built target image",
-		"node", nodeName,
-		"targetImage", targetImage,
-		"version", targetVersion)
+	ext, err := r.TalosClient.GetNodeExtensions(ctx, nodeIP)
+	if err != nil {
+		return "", fmt.Errorf("failed to read extensions for node %s: %w", nodeName, err)
+	}
+	if ext.Schematic != "" && !strings.HasSuffix(repo, "/"+ext.Schematic) {
+		return "", fmt.Errorf(
+			"node %s: install image %q does not embed the runtime schematic %s; reinstalling would wipe extensions. Fix .machine.install.image to a factory image, or set annotation %s",
+			nodeName, currentImage, ext.Schematic, constants.FactoryURLAnnotation)
+	}
+	if ext.Schematic == "" && len(ext.Extensions) > 0 && looksLikeGenericInstaller(repo) {
+		return "", fmt.Errorf(
+			"node %s: install image %q has no schematic but the node has extensions=%v; reinstalling would wipe them. Set annotation %s with %s to upgrade to a factory image",
+			nodeName, currentImage, ext.Extensions, constants.FactoryURLAnnotation, constants.SchematicAnnotation)
+	}
 
+	targetImage := fmt.Sprintf("%s:%s", repo, targetVersion)
+	logger.V(1).Info("Built target image", "node", nodeName, "targetImage", targetImage, "version", targetVersion)
 	return targetImage, nil
-}
-
-// resolveFactoryBase returns the base URL to pair with a schematic for a
-// node's upgrade image. It refuses rather than guessing on ambiguity: a wrong
-// flavor flips the node's platform on reboot.
-func (r *Reconciler) resolveFactoryBase(ctx context.Context, node *corev1.Node, nodeIP, currentImage, schematic string) (string, string, error) {
-	if v, ok := node.Annotations[constants.FactoryURLAnnotation]; ok && v != "" {
-		return strings.TrimRight(v, "/"), "annotation", nil
-	}
-
-	if base := parseSchematicBase(currentImage, schematic); base != "" {
-		return base, "installImage", nil
-	}
-
-	platform, err := r.TalosClient.GetNodePlatform(ctx, nodeIP)
-	if err != nil {
-		return "", "", fmt.Errorf(
-			"node %s: set annotation %s to pick a factory flavor (install image %q does not embed schematic %s, PlatformMetadata read failed: %w)",
-			node.Name, constants.FactoryURLAnnotation, currentImage, schematic, err)
-	}
-	if platform == "" {
-		return "", "", fmt.Errorf(
-			"node %s: set annotation %s to pick a factory flavor (install image %q does not embed schematic %s, PlatformMetadata.platform is empty)",
-			node.Name, constants.FactoryURLAnnotation, currentImage, schematic)
-	}
-
-	return fmt.Sprintf("%s/%s-installer", constants.FactoryDomain, platform), "platformMetadata", nil
-}
-
-const (
-	platformMetal     = "metal"
-	platformContainer = "container"
-)
-
-// refuseGenericInstallerOnManagedPlatform refuses to version-swap onto the
-// generic installer when the node is on a managed platform: reinstalling
-// without a schematic wipes the platform extension.
-func (r *Reconciler) refuseGenericInstallerOnManagedPlatform(ctx context.Context, nodeName, nodeIP, imageRepo string) error {
-	if imageRepo != constants.GenericInstallerRepo {
-		return nil
-	}
-	platform, err := r.TalosClient.GetNodePlatform(ctx, nodeIP)
-	if err != nil {
-		return nil
-	}
-	if platform == "" || platform == platformMetal || platform == platformContainer {
-		return nil
-	}
-	return fmt.Errorf(
-		"node %s: install image is the generic %s but platform is %q; reinstalling would wipe the platform extension. Set annotation %s on the node (e.g. factory.talos.dev/%s-installer) and %s (schematic ID) to upgrade with a factory image",
-		nodeName, imageRepo, platform, constants.FactoryURLAnnotation, platform, constants.TalosSchematicAnnotation)
-}
-
-// parseSchematicBase returns the base URL when image has the form
-// "<base>/<schematic>:<version>", or "" otherwise.
-func parseSchematicBase(image, schematic string) string {
-	if schematic == "" {
-		return ""
-	}
-	repo, _, ok := strings.Cut(image, ":")
-	if !ok {
-		return ""
-	}
-	suffix := "/" + schematic
-	if !strings.HasSuffix(repo, suffix) {
-		return ""
-	}
-	base := strings.TrimSuffix(repo, suffix)
-	if base == "" {
-		return ""
-	}
-	return base
 }
 
 func (r *Reconciler) getTargetVersion(node *corev1.Node, crdTargetVersion string) string {

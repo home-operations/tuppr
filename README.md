@@ -15,7 +15,7 @@ A Kubernetes controller for managing automated upgrades of Talos Linux and Kuber
 - 📋 **Comprehensive status tracking** with real-time progress reporting
 - ⚡ **Resilient job execution** with automatic retry and pod replacement
 - 📈 **Prometheus metrics** - detailed monitoring of upgrade progress and health
-- 🎯 **Per-node overrides** - use annotations to specify unique versions or schematics for specific nodes
+- 🎯 **Per-node overrides** - use annotations to pin unique versions or switch installer flavors per node
 - 🏷️ **Node labeling** - automatic labels during upgrades for integration with remediation systems
 
 ## 🚀 Quick Start
@@ -331,8 +331,8 @@ Tuppr supports overriding the global TalosUpgrade configuration on a per-node ba
 | Annotation | Description | Example |
 | -------- | ------- | ------- |
 | tuppr.home-operations.com/version | Overrides the target Talos version for this node. | v1.12.1 |
-| tuppr.home-operations.com/schematic | Overrides the Talos schematic hash for this node. On Talos v1.8+ the schematic is auto-detected from `extensions.talos.dev/schematic`, so this is only needed to switch a node to a different schematic. | b55fbf... |
-| tuppr.home-operations.com/factory-url | Forces a specific factory image base (e.g. to switch flavors). Normally not needed, see "Factory flavor resolution" below. | factory.talos.dev/aws-installer |
+| tuppr.home-operations.com/factory-url | Switch the node's installer flavor on the next upgrade (e.g. migrate from generic to factory, or from one flavor to another). Paired with the schematic that Talos reports at runtime via `ExtensionStatus`. | factory.talos.dev/aws-installer |
+| tuppr.home-operations.com/schematic | Companion to `factory-url`, only needed when migrating a node that has no runtime schematic yet (e.g. a freshly-joined node still on `ghcr.io/siderolabs/installer`). Ignored otherwise. | b55fbf... |
 
 
 Example: Applying an override
@@ -341,31 +341,25 @@ Example: Applying an override
 # Upgrade a specific node to a different version than the global policy
 kubectl annotate node worker-01 tuppr.home-operations.com/version="v1.12.1"
 
-# Apply a custom schematic (with specific extensions) to one node
-kubectl annotate node worker-02 tuppr.home-operations.com/schematic="314b18a3f89d..."
-
-# Force a specific factory flavor (only needed when auto-detection fails;
-# see "Factory flavor resolution" below)
+# Switch a node from the generic installer to a factory flavor at the next upgrade
 kubectl annotate node hcloud-01 \
-  tuppr.home-operations.com/factory-url="factory.talos.dev/hcloud-installer"
+  tuppr.home-operations.com/factory-url="factory.talos.dev/hcloud-installer" \
+  tuppr.home-operations.com/schematic="314b18a3f89d..."
 ```
-
-How it works:
-- The controller checks if a node version or schematic matches the annotation instead of the global TalosUpgrade spec.
-- If an inconsistency is found, an upgrade job is triggered for that node using the override values.
 
 #### Image base resolution
 
-Tuppr needs the registry/flavor to pair with the schematic when building the upgrade image. For public factory images the flavor (`installer`, `aws-installer`, `hcloud-installer`, etc.) ships the matching Talos platform module; using the wrong one flips `PlatformMetadata.platform` on reboot and breaks cloud integrations (CCM routes, metadata-driven hostnames). Private registry mirrors must preserve the registry and path.
+Tuppr derives the upgrade image directly from each node's runtime state and `.machine.install.image`. Identical handling for hcloud / aws / metal — no platform branching.
 
-Resolution order per node:
+Resolution per node:
 
-1. `tuppr.home-operations.com/factory-url` annotation.
-2. Prefix of `machine.install.image` when it has the shape `<base>/<schematic>:<version>` and the trailing schematic matches the schematic annotation. Works for the public factory and any private mirror.
-3. `PlatformMetadata.spec.platform` mapped to `factory.talos.dev/<platform>-installer`.
-4. Otherwise the upgrade is refused. No fallback to vanilla.
+1. **`tuppr.home-operations.com/factory-url` override** — when set, tuppr builds `<factory-url>/<schematic>:<target-version>`. The schematic comes from the runtime `ExtensionStatus` (the virtual `schematic` extension that Image Factory appends to every model), falling back to `tuppr.home-operations.com/schematic` if the runtime doesn't have one yet (first-time migration off the generic installer).
+2. **Default** — version-swap the node's current `.machine.install.image`. A factory install stays on its factory base + schematic; a private registry path is preserved; a vanilla generic install stays vanilla.
+3. **Safety net** — refused with a clear error when:
+   - the runtime schematic doesn't appear in the install-image path (install-image and the running system disagree about which extensions are installed), or
+   - the install image is the canonical generic Sidero installer (or a `/siderolabs/installer` mirror of it) AND the node has system extensions installed (reinstalling would silently wipe them).
 
-Steps 2 and 3 cover the common cases. Set the annotation when switching flavors or schematics, on custom platforms without a matching factory flavor, or when the install image's registry can't be auto-detected.
+   Both error messages point at the `factory-url` annotation as the fix.
 
 ## ⚠️ Safe Talos Upgrade Paths
 
@@ -434,9 +428,8 @@ kubectl describe kubernetesupgrade kubernetes
 # View upgrade logs
 kubectl logs -f deployment/tuppr -n system-upgrade
 
-# Force a node to a specific version/schematic
+# Force a node to a specific version
 kubectl annotate node <node-name> tuppr.home-operations.com/version="v1.10.7"
-kubectl annotate node <node-name> tuppr.home-operations.com/schematic="<hash>"
 
 # Check if a node has overrides applied
 kubectl get nodes -o custom-columns=NAME:.metadata.name,VERSION-OVERRIDE:.metadata.annotations."tuppr\.home-operations\.com/version"
