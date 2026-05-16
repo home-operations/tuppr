@@ -9,6 +9,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
@@ -333,7 +334,7 @@ func (r *Reconciler) createJob(ctx context.Context, talosUpgrade *tupprv1alpha1.
 	}
 
 	if err := r.Create(ctx, job); err != nil {
-		if err.Error() == "already exists" {
+		if apierrors.IsAlreadyExists(err) {
 			existingJob := &batchv1.Job{}
 			if getErr := r.Get(ctx, types.NamespacedName{Name: job.Name, Namespace: job.Namespace}, existingJob); getErr != nil {
 				logger.Error(getErr, "Failed to get existing job", "job", job.Name)
