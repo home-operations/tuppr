@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type mockTalosClient struct {
@@ -106,7 +108,7 @@ func TestClient_ExecuteWithRetry_Success(t *testing.T) {
 
 func TestClient_ExecuteWithRetry_RetriesOnError(t *testing.T) {
 	ctx := context.Background()
-	testErr := errors.New("test error")
+	testErr := status.Error(codes.Unavailable, "test error")
 
 	mock := &mockTalosClient{
 		versionErr:      testErr,
@@ -134,7 +136,7 @@ func TestClient_ExecuteWithRetry_RetriesOnError(t *testing.T) {
 
 func TestClient_ExecuteWithRetry_RefreshesClientOnError(t *testing.T) {
 	ctx := context.Background()
-	testErr := errors.New("connection error")
+	testErr := status.Error(codes.Unavailable, "connection error")
 
 	mock := &mockTalosClient{
 		versionErr:      testErr,
@@ -208,7 +210,7 @@ func TestClient_GetNodeVersion_Success(t *testing.T) {
 
 func TestClient_GetNodeVersion_RetriesOnCertError(t *testing.T) {
 	ctx := context.Background()
-	certErr := errors.New("rpc error: code = Unavailable desc = tls: expired certificate")
+	certErr := status.Error(codes.Unavailable, "tls: expired certificate")
 
 	mock := &mockTalosClient{
 		versionErr:      certErr,
@@ -288,7 +290,7 @@ func TestClient_GetNodeMachineConfig_Success(t *testing.T) {
 
 func TestClient_GetNodeMachineConfig_RetriesOnCertError(t *testing.T) {
 	ctx := context.Background()
-	certErr := errors.New("rpc error: code = Unavailable desc = tls: expired certificate")
+	certErr := status.Error(codes.Unavailable, "tls: expired certificate")
 
 	mc := &config.MachineConfig{}
 	mock := &mockTalosClient{
@@ -405,7 +407,7 @@ func TestClient_RefreshTalosClient_CloseError(t *testing.T) {
 
 func TestClient_ExecuteWithRetry_MultipleRetries(t *testing.T) {
 	ctx := context.Background()
-	certErr := errors.New("tls: expired certificate")
+	certErr := status.Error(codes.Unavailable, "tls: expired certificate")
 
 	mock := &mockTalosClient{
 		versionErr:      certErr,
