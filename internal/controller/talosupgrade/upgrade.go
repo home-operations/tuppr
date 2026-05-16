@@ -674,7 +674,7 @@ func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv
 		return false, fmt.Errorf("failed to get node IP for %s: %w", nodeName, err)
 	}
 
-	targetVersion := talosUpgrade.Spec.Talos.Version
+	targetVersion := r.getTargetVersion(node, talosUpgrade.Spec.Talos.Version)
 
 	if err := r.TalosClient.CheckNodeReady(ctx, nodeIP, nodeName); err != nil {
 		if talos.IsTransientError(err) {
