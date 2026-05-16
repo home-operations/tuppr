@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/home-operations/tuppr/internal/constants"
+	"github.com/home-operations/tuppr/internal/talos"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
@@ -136,9 +137,9 @@ func TestIsTransientError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isTransientError(tt.err)
+			got := talos.IsTransientError(tt.err)
 			if got != tt.want {
-				t.Errorf("isTransientError(%v) = %v, want %v", tt.err, got, tt.want)
+				t.Errorf("IsTransientError(%v) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
 	}

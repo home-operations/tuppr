@@ -2,16 +2,10 @@ package talosupgrade
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net"
 	"slices"
 	"strings"
-	"syscall"
 	"time"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,6 +23,7 @@ import (
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
 	"github.com/home-operations/tuppr/internal/metrics"
+	"github.com/home-operations/tuppr/internal/talos"
 )
 
 func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {
@@ -682,7 +677,7 @@ func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv
 	targetVersion := talosUpgrade.Spec.Talos.Version
 
 	if err := r.TalosClient.CheckNodeReady(ctx, nodeIP, nodeName); err != nil {
-		if isTransientError(err) {
+		if talos.IsTransientError(err) {
 			logger.V(1).Info("Node not ready yet, will retry", "node", nodeName, "error", err)
 			return false, nil
 		}
@@ -691,7 +686,7 @@ func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv
 
 	currentVersion, err := r.TalosClient.GetNodeVersion(ctx, nodeIP)
 	if err != nil {
-		if isTransientError(err) {
+		if talos.IsTransientError(err) {
 			logger.V(1).Info("Node not ready yet, will retry", "node", nodeName, "error", err)
 			return false, nil
 		}
@@ -719,59 +714,3 @@ func isNodeReady(node *corev1.Node) bool {
 	return false
 }
 
-func isTransientError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	// Check Standard Go Context Timeouts
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-
-	// Check gRPC Status
-	if st, ok := status.FromError(err); ok {
-		switch st.Code() {
-		case codes.Unavailable, codes.ResourceExhausted, codes.DeadlineExceeded:
-			return true
-		default:
-			// If it's a valid gRPC error but NOT one of the above, it's likely permanent (e.g. Unauthenticated)
-			// We return false here to stop falling through to string matching.
-			return false
-		}
-	}
-
-	// Check Network Errors
-	var netErr net.Error
-	if errors.As(err, &netErr) {
-		if netErr.Timeout() {
-			return true
-		}
-	}
-
-	//  Check Syscall Errors (Connection issues)
-	var errno syscall.Errno
-	if errors.As(err, &errno) {
-		switch errno {
-		case syscall.ECONNREFUSED, syscall.ECONNRESET, syscall.ETIMEDOUT, syscall.EPIPE:
-			return true
-		}
-	}
-
-	//  Fallback String Matching
-	errStr := strings.ToLower(err.Error())
-	transientIndicators := []string{
-		"connection refused",
-		"connection reset",
-		"i/o timeout",
-		"eof", // Often happens if server restarts mid-stream
-	}
-
-	for _, indicator := range transientIndicators {
-		if strings.Contains(errStr, indicator) {
-			return true
-		}
-	}
-
-	return false
-}

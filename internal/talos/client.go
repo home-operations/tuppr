@@ -2,7 +2,11 @@ package talos
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cosi-project/runtime/pkg/resource"
@@ -14,6 +18,8 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/resources/config"
 	talosruntime "github.com/siderolabs/talos/pkg/machinery/resources/runtime"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -256,14 +262,64 @@ func (s *Client) refreshTalosClient(ctx context.Context) error {
 
 func (s *Client) executeWithRetry(ctx context.Context, operation func() error) error {
 	return retry.Constant(10*time.Second, retry.WithUnits(100*time.Millisecond)).Retry(func() error {
-		if err := operation(); err != nil {
-			if refreshErr := s.refreshTalosClient(ctx); refreshErr != nil {
-				return retry.ExpectedError(refreshErr)
-			}
-			return retry.ExpectedError(err)
+		err := operation()
+		if err == nil {
+			return nil
 		}
-		return nil
+		if !IsTransientError(err) {
+			return err
+		}
+		if refreshErr := s.refreshTalosClient(ctx); refreshErr != nil {
+			return retry.ExpectedError(refreshErr)
+		}
+		return retry.ExpectedError(err)
 	})
+}
+
+func IsTransientError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	if st, ok := status.FromError(err); ok {
+		switch st.Code() {
+		case codes.Unavailable, codes.ResourceExhausted, codes.DeadlineExceeded:
+			return true
+		default:
+			return false
+		}
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		switch errno {
+		case syscall.ECONNREFUSED, syscall.ECONNRESET, syscall.ETIMEDOUT, syscall.EPIPE:
+			return true
+		}
+	}
+
+	errStr := strings.ToLower(err.Error())
+	for _, indicator := range []string{
+		"connection refused",
+		"connection reset",
+		"i/o timeout",
+		"eof",
+	} {
+		if strings.Contains(errStr, indicator) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (s *Client) checkNodeReady(ctx context.Context, nodeIP string) error {
