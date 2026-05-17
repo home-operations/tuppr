@@ -48,7 +48,7 @@ func TestApplyConditions_ProgressingFalseOffInFlight(t *testing.T) {
 	}
 }
 
-func TestApplyConditions_ReadyOnlyOnCompleted(t *testing.T) {
+func TestApplyConditions_ReadyOnceAccepted(t *testing.T) {
 	completed := ApplyConditions(nil, tupprv1alpha1.JobPhaseCompleted, "", "done", 1)
 	if r := findCond(completed, tupprv1alpha1.ConditionTypeReady); r == nil || r.Status != metav1.ConditionTrue {
 		t.Fatalf("want Ready=True on Completed, got %+v", r)
@@ -62,10 +62,23 @@ func TestApplyConditions_ReadyOnlyOnCompleted(t *testing.T) {
 		t.Run(string(phase), func(t *testing.T) {
 			conds := ApplyConditions(nil, phase, "", "msg", 1)
 			r := findCond(conds, tupprv1alpha1.ConditionTypeReady)
-			if r == nil || r.Status != metav1.ConditionFalse {
-				t.Fatalf("want Ready=False, got %+v", r)
+			if r == nil || r.Status != metav1.ConditionTrue {
+				t.Fatalf("want Ready=True, got %+v", r)
 			}
 		})
+	}
+}
+
+func TestApplyConditions_NotReadyUntilAccepted(t *testing.T) {
+	completed := ApplyConditions(nil, tupprv1alpha1.JobPhaseCompleted, "", "done", 1)
+	if r := findCond(completed, tupprv1alpha1.ConditionTypeReady); r == nil || r.Status != metav1.ConditionTrue {
+		t.Fatalf("want Ready=True on Completed, got %+v", r)
+	}
+
+	conds := ApplyConditions(nil, "", "", "msg", 1)
+	r := findCond(conds, tupprv1alpha1.ConditionTypeReady)
+	if r == nil || r.Status != metav1.ConditionFalse {
+		t.Fatalf("want Ready=False, got %+v", r)
 	}
 }
 
