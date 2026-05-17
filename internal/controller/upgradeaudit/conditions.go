@@ -48,11 +48,13 @@ const (
 // ApplyConditions sets Progressing and Ready for the given phase. Empty reason
 // defaults to the phase name.
 func ApplyConditions(existing []metav1.Condition, phase tupprv1alpha1.JobPhase, reason, message string, observedGeneration int64) []metav1.Condition {
+	initialized := true
 	if reason == "" {
 		reason = string(phase)
 	}
 	if reason == "" {
 		reason = "Initializing"
+		initialized = false
 	}
 
 	progressing := metav1.Condition{
@@ -73,7 +75,7 @@ func ApplyConditions(existing []metav1.Condition, phase tupprv1alpha1.JobPhase, 
 		Message:            message,
 		ObservedGeneration: observedGeneration,
 	}
-	if phase == tupprv1alpha1.JobPhaseCompleted {
+	if initialized {
 		ready.Status = metav1.ConditionTrue
 	}
 
