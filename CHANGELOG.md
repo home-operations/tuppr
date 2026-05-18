@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.0](https://github.com/home-operations/tuppr/compare/0.1.35...0.2.0) (2026-05-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **container:** Update image ghcr.io/devcontainers/features/docker-in-docker (2 → 3) ([#287](https://github.com/home-operations/tuppr/issues/287))
+
+### Features
+
+* **container:** Update image ghcr.io/devcontainers/features/docker-in-docker (2 → 3) ([#287](https://github.com/home-operations/tuppr/issues/287)) ([ec76db7](https://github.com/home-operations/tuppr/commit/ec76db76610445b099baf884613204a790318329))
+
+
+### Miscellaneous Chores
+
+* consolidation and standardization ([75f9603](https://github.com/home-operations/tuppr/commit/75f960371dd53826d5991f651d521f358849066c))
+* more standardizing ([ca2fd84](https://github.com/home-operations/tuppr/commit/ca2fd84e810ebb981bbaf0d165382f45738804e4))
+
 ## [0.1.35](https://github.com/home-operations/tuppr/compare/0.1.34...0.1.35) (2026-05-18)
 
 
