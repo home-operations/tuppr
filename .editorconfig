@@ -1,4 +1,5 @@
-# editorconfig.org
+; https://editorconfig.org/
+
 root = true
 
 [*]
@@ -9,19 +10,16 @@ charset = utf-8
 trim_trailing_whitespace = true
 insert_final_newline = true
 
-[*.{bash,sh}]
+[*.md]
 indent_size = 4
+trim_trailing_whitespace = false
 
-[Dockerfile]
-indent_size = 4
-
-[*.go]
-indent_style = tabs
+[{Dockerfile,*.bash,*.sh,*.py}]
 indent_size = 4
 
 [{*.just,*.justfile}]
 indent_size = 4
 
-[{Makefile,*.mk}]
+[{Makefile,*.mk,*.go,go.mod,go.sum,.gitmodules}]
 indent_style = tab
 indent_size = 4

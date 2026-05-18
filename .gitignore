@@ -1,9 +1,9 @@
 # Binaries for programs and plugins
+*.dll
+*.dylib
 *.exe
 *.exe~
-*.dll
 *.so
-*.dylib
 bin/*
 Dockerfile.cross
 
@@ -20,9 +20,10 @@ go.work
 !vendor/**/zz_generated.*
 
 # editor and IDE paraphernalia
+*.swo
+*.swp
+*~
+.claude
 .idea
 .private
 .vscode
-*.swp
-*.swo
-*~
