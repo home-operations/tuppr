@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.35](https://github.com/home-operations/tuppr/compare/0.1.34...0.1.35) (2026-05-18)
+
+
+### Features
+
+* **deps:** update module github.com/onsi/ginkgo/v2 (v2.28.2 → v2.29.0) ([#285](https://github.com/home-operations/tuppr/issues/285)) ([bc3600b](https://github.com/home-operations/tuppr/commit/bc3600bc86a87b949a5845fab6a2bdb8cdec8c66))
+* **deps:** update module github.com/onsi/gomega (v1.39.1 → v1.41.0) ([#286](https://github.com/home-operations/tuppr/issues/286)) ([4377294](https://github.com/home-operations/tuppr/commit/437729429c6f73b0c9ec47e4c7cd7fd814cd23eb))
+
+
+### Code Refactoring
+
+* set Ready condition on resource acceptance ([#283](https://github.com/home-operations/tuppr/issues/283)) ([5058c2c](https://github.com/home-operations/tuppr/commit/5058c2c56ea6e0a4dc80014e615c9c7dc8a71c50))
+
 ## [0.1.34](https://github.com/home-operations/tuppr/compare/0.1.33...0.1.34) (2026-05-16)
 
 
