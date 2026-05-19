@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
@@ -59,10 +61,11 @@ jobs:
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
-          mkdir -p ${{ runner.temp }}/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+          mkdir -p "${RUNNER_TEMP}/digests"
+          touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
 
       - name: Upload digest
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -113,8 +116,10 @@ jobs:
             $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
 
       - name: Inspect image
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          docker buildx imagetools inspect ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}
+          docker buildx imagetools inspect "ghcr.io/${{ github.repository }}:${VERSION}"
 
   helm:
     runs-on: ubuntu-24.04-arm
@@ -122,9 +127,13 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      VERSION: ${{ needs.merge.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up Helm
         uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
@@ -134,7 +143,7 @@ jobs:
       - name: Install Mise and required tools
         uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
-          cache_key: "mise-v1-{{file_hash}}"
+          cache: false
 
       - name: Generate manifests and CRDs
         run: make helm-crds
@@ -142,8 +151,8 @@ jobs:
       - name: Package Helm chart
         run: |
           helm package charts/tuppr \
-            --version ${{ needs.merge.outputs.version }} \
-            --app-version ${{ needs.merge.outputs.version }}
+            --version "${VERSION}" \
+            --app-version "${VERSION}"
 
       - name: Log in to Container Registry
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
@@ -154,4 +163,4 @@ jobs:
 
       - name: Publish Helm chart to GHCR
         run: |-
-          helm push tuppr-${{ needs.merge.outputs.version }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+          helm push "tuppr-${VERSION}.tgz" "oci://ghcr.io/${{ github.repository_owner }}/charts"
