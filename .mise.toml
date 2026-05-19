@@ -11,6 +11,7 @@ operator-sdk = "1.42.2"
 "aqua:evilmartians/lefthook" = "2.1.8"
 "aqua:google/yamlfmt" = "0.21.0"
 "aqua:operator-framework/operator-registry" = "1.68.0"
+"aqua:zizmorcore/zizmor" = "1.25.2"
 "go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "latest"
 
 [hooks]
