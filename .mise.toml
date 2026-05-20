@@ -1,18 +1,100 @@
 [tools]
-"aqua:operator-framework/operator-registry" = "1.68.0"
 go = "1.26.3"
-"go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "0.21.0"
 golangci-lint = "2.12.2"
 helm = "4.2.0"
 kind = "0.31.0"
 kube-controller-tools = "0.21.0"
 kubectl = "1.36.1"
-kustomize = "5.8.1"
 lefthook = "2.1.8"
-operator-sdk = "1.42.2"
 setup-envtest = "0.24.1"
 yamlfmt = "0.21.0"
 zizmor = "1.25.2"
+
+[tasks.manifests]
+description = "Generate CRD, RBAC, and webhook manifests"
+run = "controller-gen rbac:roleName=manager-role crd webhook paths='./...' output:crd:artifacts:config=config/crd/bases"
+
+[tasks.generate]
+description = "Generate DeepCopy methods"
+run = "controller-gen object:headerFile=hack/boilerplate.go.txt paths='./...'"
+
+[tasks.fmt]
+description = "Run go fmt against code"
+run = "go fmt ./..."
+
+[tasks.vet]
+description = "Run go vet against code"
+run = "go vet ./..."
+
+[tasks.lint]
+description = "Run golangci-lint"
+run = "golangci-lint run"
+
+[tasks.lint-fix]
+description = "Run golangci-lint with --fix"
+run = "golangci-lint run --fix"
+
+[tasks.helm-lint]
+description = "Run helm lint"
+run = "helm lint charts/tuppr"
+
+[tasks.helm-test]
+description = "Run helm unit tests"
+run = "helm unittest charts/tuppr"
+
+[tasks.helm-crds]
+description = "Generate CRDs and copy them into the Helm chart"
+depends = ["manifests"]
+run = '''
+mkdir -p charts/tuppr/crds
+cp config/crd/bases/*.yaml charts/tuppr/crds/
+'''
+
+[tasks.test]
+description = "Run unit tests"
+depends = ["manifests", "generate", "fmt", "vet"]
+run = "go test $(go list ./... | grep -v /e2e | grep -v /integration) -coverprofile cover.out"
+
+[tasks.test-integration]
+description = "Run integration tests with envtest"
+depends = ["manifests", "generate", "fmt", "vet"]
+run = '''
+envtest_k8s="${ENVTEST_K8S_VERSION:-$(go list -m k8s.io/api | sed -E 's/.*v0\.([0-9]+).*/1.\1/')}"
+bin_dir="$PWD/bin"
+mkdir -p "$bin_dir"
+export KUBEBUILDER_ASSETS="$(setup-envtest use "$envtest_k8s" --bin-dir "$bin_dir" -p path)"
+go test ./test/integration/ -v -ginkgo.v
+'''
+
+[tasks.test-e2e]
+description = "Run e2e tests against a Kind cluster"
+depends = ["manifests", "generate", "fmt", "vet"]
+run = '''
+cluster="${KIND_CLUSTER:-tuppr-test-e2e}"
+if ! kind get clusters | grep -qx "$cluster"; then
+  kind create cluster --name "$cluster"
+fi
+trap 'kind delete cluster --name "$cluster"' EXIT
+KIND_CLUSTER="$cluster" go test ./test/e2e/ -v -ginkgo.v
+'''
+
+[tasks.build]
+description = "Build manager binary"
+depends = ["generate", "fmt", "vet", "helm-crds"]
+run = '''
+version="${VERSION:-$(git describe --tags --always 2>/dev/null || echo dev)}"
+commit="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+go build -ldflags "-X main.version=$version -X main.commit=$commit" -o bin/manager cmd/main.go
+'''
+
+[tasks.run]
+description = "Run controller from your host"
+depends = ["manifests", "generate", "fmt", "vet"]
+run = '''
+version="${VERSION:-$(git describe --tags --always 2>/dev/null || echo dev)}"
+commit="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+go run -ldflags "-X main.version=$version -X main.commit=$commit" ./cmd/main.go
+'''
 
 [hooks]
 postinstall = "lefthook install"
