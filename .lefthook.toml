@@ -1,38 +1,4 @@
-[pre-commit]
-parallel = true
-
-[pre-commit.commands.format-just]
-run = """
-for file in {staged_files}; do
-    just --justfile "$file" --fmt --unstable
-done
-"""
-glob = ["*.just", ".justfile"]
-stage_fixed = true
-
-[pre-commit.commands.format-go]
-run = "make lint-fix"
-glob = ["*.go"]
-tags = "lint"
-stage_fixed = true
-
-[pre-commit.commands.format-yaml]
-run = "yamlfmt {staged_files}"
-glob = ["*.yml", "*.yaml"]
-stage_fixed = true
-
-[pre-commit.commands.helm-lint]
-run = "make helm-lint"
-glob = ["charts/**"]
-
-[pre-commit.commands.helm-test]
-run = "make helm-test"
-glob = ["charts/**"]
-
-[pre-commit.commands.mise-lock]
-glob = [".mise.toml"]
-run = "mise lock && git add mise.lock"
-
-[pre-commit.commands.zizmor]
-glob = [".github/workflows/*.yaml", ".github/actions/**/action.yaml"]
-run = "zizmor --offline {staged_files}"
+[[remotes]]
+git_url = "https://github.com/home-operations/.github"
+ref = "main"
+configs = ["lefthook.common.toml"]
