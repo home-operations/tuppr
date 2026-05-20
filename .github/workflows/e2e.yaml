@@ -72,6 +72,7 @@ jobs:
         uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
           working_directory: test/e2e-hetzner
+          install_args: --locked
 
       - run: tofu -chdir=tofu init
 
