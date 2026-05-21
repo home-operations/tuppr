@@ -1,6 +1,5 @@
 ---
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
-
 name: Renovate
 
 on:
@@ -55,7 +54,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           RUN_ID: ${{ steps.dispatch.outputs.run_id }}
-        run: |
+        run: |-
           gh run view \
             --repo "${{ github.repository_owner }}/.github" \
             --log "${RUN_ID}"

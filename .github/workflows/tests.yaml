@@ -1,6 +1,5 @@
 ---
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
-
 name: Tests
 
 on:
@@ -66,6 +65,6 @@ jobs:
           install_args: --locked
 
       - name: Run helm unit tests
-        run: |
+        run: |-
           helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.0.3 --verify=false
           mise run helm-test

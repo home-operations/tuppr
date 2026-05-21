@@ -1,6 +1,5 @@
 ---
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
-
 name: E2E
 
 on:
@@ -97,7 +96,7 @@ jobs:
         if: always()
         env:
           HCLOUD_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
-        run: |
+        run: |-
           CLUSTER_NAME=$(echo "local.cluster_name" | tofu -chdir=tofu console -state=ignore.state | tr -d '"')
           if [[ -z "$CLUSTER_NAME" ]]; then
             echo "ERROR: Could not determine cluster name - resources may be orphaned!"

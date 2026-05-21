@@ -1,6 +1,5 @@
 ---
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
-
 name: Release
 
 on:
@@ -162,5 +161,5 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish Helm chart to GHCR
-        run: |
+        run: |-
           helm push "tuppr-${VERSION}.tgz" "oci://ghcr.io/${{ github.repository_owner }}/charts"
