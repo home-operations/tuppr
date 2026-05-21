@@ -1,5 +1,8 @@
 ---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+
 name: Build
+
 on:
   push:
     branches:
@@ -104,7 +107,7 @@ jobs:
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
         with:
           images: ghcr.io/${{ github.repository }}
-          tags: |-
+          tags: |
             type=sha,prefix={{branch}}-
 
       - name: Create manifest list and push
@@ -131,7 +134,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Mise and required tools
+      - name: Setup Mise
         uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
           experimental: true
@@ -154,5 +157,5 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish Helm chart to GHCR
-        run: |-
+        run: |
           helm push tuppr-0.0.0.tgz oci://ghcr.io/${{ github.repository_owner }}/charts

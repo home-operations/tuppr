@@ -1,4 +1,6 @@
 ---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+
 name: Lint
 
 on:
@@ -50,7 +52,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Mise and required tools
+      - name: Setup Mise
         uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
           experimental: true

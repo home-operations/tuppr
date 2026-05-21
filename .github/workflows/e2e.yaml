@@ -1,4 +1,6 @@
 ---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+
 name: E2E
 
 on:
@@ -68,30 +70,34 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup tools
+      - name: Setup Mise
         uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
           experimental: true
           working_directory: test/e2e-hetzner
           install_args: --locked
 
-      - run: tofu -chdir=tofu init
+      - name: OpenTofu init
+        run: tofu -chdir=tofu init
 
       # The module's hcloud_image data source has a count expression that
       # depends on imager_image.talos_x86.image_id (known only after apply),
       # so materialize the snapshot first.
-      - run: tofu -chdir=tofu apply -auto-approve -target=imager_image.talos_x86
+      - name: Materialize Talos snapshot
+        run: tofu -chdir=tofu apply -auto-approve -target=imager_image.talos_x86
 
-      - run: tofu -chdir=tofu apply -auto-approve
+      - name: Apply infrastructure
+        run: tofu -chdir=tofu apply -auto-approve
 
-      - run: mise exec -- ./test.sh
+      - name: Run e2e tests
+        run: mise exec -- ./test.sh
         working-directory: test/e2e-hetzner
 
       - name: Cleanup all resources
         if: always()
         env:
           HCLOUD_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
-        run: |-
+        run: |
           CLUSTER_NAME=$(echo "local.cluster_name" | tofu -chdir=tofu console -state=ignore.state | tr -d '"')
           if [[ -z "$CLUSTER_NAME" ]]; then
             echo "ERROR: Could not determine cluster name - resources may be orphaned!"
