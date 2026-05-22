@@ -156,6 +156,7 @@ jobs:
         with:
           dependency-snapshot: true
           image: ghcr.io/${{ github.repository }}@${{ needs.merge.outputs.digest }}
+          upload-release-assets: false
 
       - name: Attestation
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
