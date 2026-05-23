@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.1.36](https://github.com/home-operations/tuppr/compare/0.1.35...0.1.36) (2026-05-22)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/cosi-project/runtime (v1.16.0 → v1.16.1) ([#291](https://github.com/home-operations/tuppr/issues/291)) ([c41028e](https://github.com/home-operations/tuppr/commit/c41028e013bca0d4d95263674d15b60fe40e2994))
+* **deps:** update module github.com/google/go-containerregistry (v0.21.5 → v0.21.6) ([#289](https://github.com/home-operations/tuppr/issues/289)) ([be6e624](https://github.com/home-operations/tuppr/commit/be6e62476c81d2fea58d5edf45942fdb1fe3d2aa))
+* **mise:** update tool aqua:evilmartians/lefthook (2.1.6 → 2.1.7) ([e448987](https://github.com/home-operations/tuppr/commit/e448987fd79fd2e30363d570e3d58e56a0faabc8))
+* **mise:** update tool aqua:evilmartians/lefthook (2.1.7 → 2.1.8) ([35a344f](https://github.com/home-operations/tuppr/commit/35a344f7609f2816d3995e2e48cc527a53f0f3e0))
+
+
+### Miscellaneous Chores
+
+* add mise lockfile and update hooks ([21b77d3](https://github.com/home-operations/tuppr/commit/21b77d38a1868ed8a87482599a562a44ccd4dd6f))
+* consolidation and standardization ([75f9603](https://github.com/home-operations/tuppr/commit/75f960371dd53826d5991f651d521f358849066c))
+* drop strict lockfile mode to unblock Renovate ([82db2c9](https://github.com/home-operations/tuppr/commit/82db2c9c21ab3fc3dba3a84dbca1b0ab1b46448d))
+* enable strict lockfile mode ([cc5c04d](https://github.com/home-operations/tuppr/commit/cc5c04d77613b150cbed178160351fd9ee2de906))
+* extend lefthook from .github and split editorconfig ([e6bab2f](https://github.com/home-operations/tuppr/commit/e6bab2f91bf8aa8ecf16bddd6c10c001dc20b3b2))
+* ignore devcontainers in release-please config ([c2621e0](https://github.com/home-operations/tuppr/commit/c2621e0be76cd3a66cb77fb26b90897c02100a16))
+* ignore mise and github deps in release please ([1ad4553](https://github.com/home-operations/tuppr/commit/1ad45535b66403bccac7c03830a048464f1e3161))
+* ignore self config in release-please config ([e11cfb6](https://github.com/home-operations/tuppr/commit/e11cfb666dd9d650b63916e9138d0553ee3eb987))
+* migrate from makefile to mise ([#290](https://github.com/home-operations/tuppr/issues/290)) ([29fac8d](https://github.com/home-operations/tuppr/commit/29fac8d7ad39a00643e122b8bc44a80915a0c8d7))
+* more standardizing ([ca2fd84](https://github.com/home-operations/tuppr/commit/ca2fd84e810ebb981bbaf0d165382f45738804e4))
+* remove agent / claude file ([c3252e8](https://github.com/home-operations/tuppr/commit/c3252e88fd7150c3cff14dc3778ac59d2bfa7e49))
+* shorten mise tool names and pin to semver ([94cbeae](https://github.com/home-operations/tuppr/commit/94cbeae2ffc4cf4367b589f0eacb6a84c3ae4dab))
+
 ## [0.1.35](https://github.com/home-operations/tuppr/compare/0.1.34...0.1.35) (2026-05-18)
 
 
