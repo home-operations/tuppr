@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.37](https://github.com/home-operations/tuppr/compare/0.1.36...0.1.37) (2026-05-27)
+
+
+### Features
+
+* allow custom annotations and labels for prometheusRule ([c3371ed](https://github.com/home-operations/tuppr/commit/c3371ed5c30efb35d8b0b7e23aaf8bd557db91cc))
+
 ## [0.1.36](https://github.com/home-operations/tuppr/compare/0.1.35...0.1.36) (2026-05-22)
 
 
