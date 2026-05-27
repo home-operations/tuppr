@@ -32,3 +32,61 @@ tests:
       - equal:
           path: metadata.labels.role
           value: alert-rules
+
+  - it: should add additional labels to all rules
+    set:
+      monitoring.prometheusRule.enabled: true
+      monitoring.prometheusRule.additionalRuleLabels:
+        team: platform
+    asserts:
+      - equal:
+          path: spec.groups[0].rules[0].labels.team
+          value: platform
+      - equal:
+          path: spec.groups[1].rules[0].labels.team
+          value: platform
+      - equal:
+          path: spec.groups[2].rules[0].labels.team
+          value: platform
+      - equal:
+          path: spec.groups[3].rules[0].labels.team
+          value: platform
+      - equal:
+          path: spec.groups[4].rules[0].labels.team
+          value: platform
+
+  - it: should add additional annotations to all rules
+    set:
+      monitoring.prometheusRule.enabled: true
+      monitoring.prometheusRule.additionalRuleAnnotations:
+        runbook_url: https://runbooks.example.com/tuppr
+    asserts:
+      - equal:
+          path: spec.groups[0].rules[0].annotations.runbook_url
+          value: https://runbooks.example.com/tuppr
+      - equal:
+          path: spec.groups[1].rules[0].annotations.runbook_url
+          value: https://runbooks.example.com/tuppr
+      - equal:
+          path: spec.groups[2].rules[0].annotations.runbook_url
+          value: https://runbooks.example.com/tuppr
+      - equal:
+          path: spec.groups[3].rules[0].annotations.runbook_url
+          value: https://runbooks.example.com/tuppr
+      - equal:
+          path: spec.groups[4].rules[0].annotations.runbook_url
+          value: https://runbooks.example.com/tuppr
+
+  - it: should let rule-level labels take precedence over additionalRuleLabels
+    set:
+      monitoring.prometheusRule.enabled: true
+      monitoring.prometheusRule.additionalRuleLabels:
+        severity: warning
+        team: platform
+    asserts:
+      - equal:
+          path: spec.groups[0].rules[0].labels.severity
+          value: critical
+      - equal:
+          path: spec.groups[0].rules[0].labels.team
+          value: platform

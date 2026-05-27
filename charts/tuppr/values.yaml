@@ -252,6 +252,10 @@ monitoring:
     annotations: {}
     # Additional labels for PrometheusRule
     labels: {}
+    # Additional labels to add to every alert rule
+    additionalRuleLabels: {}
+    # Additional annotations to add to every alert rule
+    additionalRuleAnnotations: {}
 
   # Grafana dashboard shipped with the chart
   dashboards:

@@ -22,8 +22,16 @@ spec:
         - alert: TalosUpgradeNodeFailed
           expr: tuppr_talos_upgrade_nodes_failed > 0
           for: 1m
+          {{- $ruleLabels := dict "severity" "critical" }}
+          {{- $ruleAnnotations := dict }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- $ruleLabels = merge $ruleLabels .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- end }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- $ruleAnnotations = merge $ruleAnnotations .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- end }}
           labels:
-            severity: critical
+            {{- $ruleLabels | toYaml | nindent 12 }}
           annotations:
             summary: >-
               Talos upgrade {{ "{{" }} $labels.name {{ "}}" }} has
@@ -34,19 +42,33 @@ spec:
               The upgrade has stopped and requires manual intervention
               (e.g. remove the failed nodes from status or fix the underlying
               issue and reset with the reset annotation).
+            {{- with $ruleAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
 
         # Fires when the upgrade object itself is in Failed phase.
         - alert: TalosUpgradeFailed
           expr: tuppr_talos_upgrade_phase{phase="Failed"} == 1
           for: 1m
+          {{- $ruleLabels := dict "severity" "critical" }}
+          {{- $ruleAnnotations := dict }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- $ruleLabels = merge $ruleLabels .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- end }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- $ruleAnnotations = merge $ruleAnnotations .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- end }}
           labels:
-            severity: critical
+            {{- $ruleLabels | toYaml | nindent 12 }}
           annotations:
             summary: >-
               Talos upgrade {{ "{{" }} $labels.name {{ "}}" }} is in Failed phase
             description: >-
               Talos upgrade {{ "{{" }} $labels.name {{ "}}" }} has entered the
               Failed phase. Check controller logs and node conditions for details.
+            {{- with $ruleAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
 
         # Fires when an upgrade stays in an active phase longer than expected.
         # Typical node upgrade (talosctl + reboot) takes 5–15 min; 1 h means
@@ -55,8 +77,16 @@ spec:
           expr: >-
             tuppr_talos_upgrade_phase{phase=~"Upgrading|Rebooting|Draining|HealthChecking"} == 1
           for: {{ .Values.monitoring.prometheusRule.stuckDuration | default "1h" }}
+          {{- $ruleLabels := dict "severity" "warning" }}
+          {{- $ruleAnnotations := dict }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- $ruleLabels = merge $ruleLabels .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- end }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- $ruleAnnotations = merge $ruleAnnotations .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- end }}
           labels:
-            severity: warning
+            {{- $ruleLabels | toYaml | nindent 12 }}
           annotations:
             summary: >-
               Talos upgrade {{ "{{" }} $labels.name {{ "}}" }} stuck in
@@ -66,6 +96,9 @@ spec:
               {{ "{{" }} $labels.phase {{ "}}" }} phase for more than
               {{ .Values.monitoring.prometheusRule.stuckDuration | default "1h" }}.
               Check the upgrade job and target node for errors.
+            {{- with $ruleAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
 
     - name: tuppr.kubernetesupgrade
       rules:
@@ -73,14 +106,25 @@ spec:
         - alert: KubernetesUpgradeFailed
           expr: tuppr_kubernetes_upgrade_phase{phase="Failed"} == 1
           for: 1m
+          {{- $ruleLabels := dict "severity" "critical" }}
+          {{- $ruleAnnotations := dict }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- $ruleLabels = merge $ruleLabels .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- end }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- $ruleAnnotations = merge $ruleAnnotations .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- end }}
           labels:
-            severity: critical
+            {{- $ruleLabels | toYaml | nindent 12 }}
           annotations:
             summary: >-
               Kubernetes upgrade {{ "{{" }} $labels.name {{ "}}" }} is in Failed phase
             description: >-
               Kubernetes upgrade {{ "{{" }} $labels.name {{ "}}" }} has entered the
               Failed phase. Check controller logs and the upgrade job for details.
+            {{- with $ruleAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
 
         # Fires when the Kubernetes upgrade stays in an active phase too long.
         # A full control-plane upgrade typically completes in under 30 min.
@@ -88,8 +132,16 @@ spec:
           expr: >-
             tuppr_kubernetes_upgrade_phase{phase=~"Upgrading|HealthChecking"} == 1
           for: 45m
+          {{- $ruleLabels := dict "severity" "warning" }}
+          {{- $ruleAnnotations := dict }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- $ruleLabels = merge $ruleLabels .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- end }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- $ruleAnnotations = merge $ruleAnnotations .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- end }}
           labels:
-            severity: warning
+            {{- $ruleLabels | toYaml | nindent 12 }}
           annotations:
             summary: >-
               Kubernetes upgrade {{ "{{" }} $labels.name {{ "}}" }} stuck in
@@ -98,6 +150,9 @@ spec:
               Kubernetes upgrade {{ "{{" }} $labels.name {{ "}}" }} has been in the
               {{ "{{" }} $labels.phase {{ "}}" }} phase for more than 45 minutes.
               Check the upgrade job and control-plane nodes for errors.
+            {{- with $ruleAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
 
     - name: tuppr.blocked
       rules:
@@ -107,8 +162,16 @@ spec:
         - alert: TupprUpgradeBlocked
           expr: tuppr_upgrade_progressing{reason=~"Waiting.*|Suspended"} == 0
           for: {{ .Values.monitoring.prometheusRule.blockedDuration | default "30m" }}
+          {{- $ruleLabels := dict "severity" "warning" }}
+          {{- $ruleAnnotations := dict }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- $ruleLabels = merge $ruleLabels .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- end }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- $ruleAnnotations = merge $ruleAnnotations .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- end }}
           labels:
-            severity: warning
+            {{- $ruleLabels | toYaml | nindent 12 }}
           annotations:
             summary: >-
               {{ "{{" }} $labels.upgrade_type | title {{ "}}" }} upgrade
@@ -120,6 +183,9 @@ spec:
               {{ "{{" }} $labels.reason {{ "}}" }} for more than
               {{ .Values.monitoring.prometheusRule.blockedDuration | default "30m" }}.
               Check the upgrade's status conditions and message.
+            {{- with $ruleAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
 
     - name: tuppr.jobs
       rules:
@@ -130,8 +196,16 @@ spec:
         - alert: UpgradeJobRunningTooLong
           expr: tuppr_upgrade_jobs_active > 0
           for: 1h
+          {{- $ruleLabels := dict "severity" "warning" }}
+          {{- $ruleAnnotations := dict }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- $ruleLabels = merge $ruleLabels .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- end }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- $ruleAnnotations = merge $ruleAnnotations .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- end }}
           labels:
-            severity: warning
+            {{- $ruleLabels | toYaml | nindent 12 }}
           annotations:
             summary: >-
               {{ "{{" }} $labels.upgrade_type | title {{ "}}" }} upgrade job running
@@ -140,31 +214,56 @@ spec:
               A {{ "{{" }} $labels.upgrade_type {{ "}}" }} upgrade job has been
               active for more than 1 hour, which exceeds the expected duration.
               The job may be stuck. Check the job logs in the controller namespace.
+            {{- with $ruleAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
 
     - name: tuppr.operator
       rules:
         - alert: TupprOperatorAbsent
           expr: absent(tuppr_build_info)
           for: 5m
+          {{- $ruleLabels := dict "severity" "critical" }}
+          {{- $ruleAnnotations := dict }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- $ruleLabels = merge $ruleLabels .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- end }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- $ruleAnnotations = merge $ruleAnnotations .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- end }}
           labels:
-            severity: critical
+            {{- $ruleLabels | toYaml | nindent 12 }}
           annotations:
             summary: tuppr operator is not reporting metrics
             description: >-
               No tuppr operator instance has reported metrics for 5 minutes.
               Upgrade alerts in this group will not fire while the operator is
               down. Check the controller deployment and ServiceMonitor.
+            {{- with $ruleAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
 
         - alert: TupprUpgradeFailureRate
           expr: >-
             sum(increase(tuppr_upgrades_completed_total{result="failure"}[1h])) > 2
           for: 10m
+          {{- $ruleLabels := dict "severity" "warning" }}
+          {{- $ruleAnnotations := dict }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- $ruleLabels = merge $ruleLabels .Values.monitoring.prometheusRule.additionalRuleLabels }}
+          {{- end }}
+          {{- if .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- $ruleAnnotations = merge $ruleAnnotations .Values.monitoring.prometheusRule.additionalRuleAnnotations }}
+          {{- end }}
           labels:
-            severity: warning
+            {{- $ruleLabels | toYaml | nindent 12 }}
           annotations:
             summary: tuppr has recorded multiple upgrade failures
             description: >-
               tuppr recorded more than 2 failed upgrade completions in the last
               hour. Inspect recent TalosUpgrade/KubernetesUpgrade objects and
               the controller logs.
+            {{- with $ruleAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
 {{- end }}
