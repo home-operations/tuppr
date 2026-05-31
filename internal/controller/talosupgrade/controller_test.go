@@ -52,6 +52,7 @@ const (
 	testNodeBeta            = "node-beta"
 	testNodeCharlie         = "node-charlie"
 	testJobName1            = "test-upgrade-node-1-abcd1234"
+	testJobNameNodeA        = "test-upgrade-node-a-12345"
 	testJobNodeA            = "job-node-a"
 	testUpgradeName         = "test-upgrade"
 	testNameStr             = "test"
@@ -1281,7 +1282,7 @@ func TestTalosReconcile_UncordonsNodeAfterDrain(t *testing.T) {
 	// Successful Job
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-upgrade-node-a-12345",
+			Name:      testJobNameNodeA,
 			Namespace: testNamespace,
 			Labels: map[string]string{
 				appLabelKey:         talosUpgradeAppName,
@@ -1336,7 +1337,7 @@ func TestTalosReconcile_DoesNotUncordonWithoutDrainSpec(t *testing.T) {
 	// Successful Job
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-upgrade-node-a-12345",
+			Name:      testJobNameNodeA,
 			Namespace: testNamespace,
 			Labels: map[string]string{
 				appLabelKey:         talosUpgradeAppName,
@@ -1366,6 +1367,180 @@ func TestTalosReconcile_DoesNotUncordonWithoutDrainSpec(t *testing.T) {
 
 	if !updatedNode.Spec.Unschedulable {
 		t.Error("expected node to remain cordoned because Drain spec was nil")
+	}
+}
+
+// Single-node: the reboot kills the upgrade pod, so the Job reports Failed even
+// though the node upgraded. The node's real state must win — finalize and uncordon.
+func TestTalosReconcile_FailedJobButNodeUpgraded_TreatedAsSuccess(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
+	)
+	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Force: ptr.To(true)}
+
+	node := newNode(fakeNodeA, testNodeIP1)
+	node.Spec.Unschedulable = true // cordoned during the upgrade
+
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      testJobNameNodeA,
+			Namespace: testNamespace,
+			Labels: map[string]string{
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeA,
+			},
+		},
+		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
+		Status: batchv1.JobStatus{Failed: 2}, // pod evicted by the reboot, backoff exhausted
+	}
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{testNodeIP1: fakeTalosVersion}, // node DID reach target
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/installer/abc:" + fakeTalosVersion},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	result := reconcileTalos(t, r, testUpgradeName)
+	if result.RequeueAfter != 5*time.Second {
+		t.Fatalf("expected 5s requeue (batch success), got: %v", result.RequeueAfter)
+	}
+
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	if updated.Status.Phase == tupprv1alpha1.JobPhaseFailed {
+		t.Fatal("expected upgrade to NOT be Failed: the node reached the target version")
+	}
+	if !slices.Contains(updated.Status.CompletedNodes, fakeNodeA) {
+		t.Fatalf("expected %s in CompletedNodes, got: %v", fakeNodeA, updated.Status.CompletedNodes)
+	}
+	if len(updated.Status.FailedNodes) != 0 {
+		t.Fatalf("expected no failed nodes, got: %v", updated.Status.FailedNodes)
+	}
+
+	updatedNode := &corev1.Node{}
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: fakeNodeA}, updatedNode); err != nil {
+		t.Fatalf("failed to get node: %v", err)
+	}
+	if updatedNode.Spec.Unschedulable {
+		t.Error("expected node to be uncordoned after the upgrade was verified successful")
+	}
+}
+
+// A failed Job whose node is still rebooting (Talos API unreachable) must wait, not fail.
+func TestTalosReconcile_FailedJobButNodeRebooting_TreatedAsRebooting(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
+	)
+	node := newNode(fakeNodeA, testNodeIP1)
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      testJobNameNodeA,
+			Namespace: testNamespace,
+			Labels: map[string]string{
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeA,
+			},
+		},
+		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
+		Status: batchv1.JobStatus{Failed: 2},
+	}
+	// Node is still rebooting: the Talos API is not reachable yet (transient error).
+	tc := &mockTalosClient{
+		checkReadyErr: fmt.Errorf("connection refused"),
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	result := reconcileTalos(t, r, testUpgradeName)
+	if result.RequeueAfter != 30*time.Second {
+		t.Fatalf("expected 30s requeue (rebooting), got: %v", result.RequeueAfter)
+	}
+
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseRebooting {
+		t.Fatalf("expected phase Rebooting while node is unreachable, got: %s", updated.Status.Phase)
+	}
+	if len(updated.Status.FailedNodes) != 0 {
+		t.Fatalf("expected no failed nodes while rebooting, got: %v", updated.Status.FailedNodes)
+	}
+}
+
+// Single-node: don't cordon (Talos handles it) and issue the upgrade with --wait=false.
+func TestTalosReconcile_SingleNode_SkipsDrainAndDisablesWait(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhasePending),
+	)
+	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Force: ptr.To(true)}
+
+	node := newNode(fakeNodeA, testNodeIP1)
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: testFactoryInstaller},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	reconcileTalos(t, r, testUpgradeName)
+
+	var jobList batchv1.JobList
+	if err := cl.List(context.Background(), &jobList, client.InNamespace(testNamespace)); err != nil {
+		t.Fatalf("failed to list jobs: %v", err)
+	}
+	if len(jobList.Items) != 1 {
+		t.Fatalf("expected 1 job, got: %d", len(jobList.Items))
+	}
+	container := jobList.Items[0].Spec.Template.Spec.Containers[0]
+	if !slices.Contains(container.Args, "--wait=false") {
+		t.Fatalf("expected --wait=false for single-node upgrade, got: %v", container.Args)
+	}
+
+	updatedNode := &corev1.Node{}
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: fakeNodeA}, updatedNode); err != nil {
+		t.Fatalf("failed to get node: %v", err)
+	}
+	if updatedNode.Spec.Unschedulable {
+		t.Error("expected single node NOT to be cordoned by the controller (Talos handles cordon/uncordon)")
+	}
+}
+
+// --wait stays true on multi-node clusters and flips to false on single-node.
+func TestTalosBuildJob_WaitFlagDependsOnClusterSize(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: testFactoryInstaller},
+	}
+	targetImage := "factory.talos.dev/installer:" + fakeTalosVersion
+
+	multiCl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, newNode(fakeNodeA, testNodeIP1), newNode(fakeNodeB, testNodeIP2)).
+		WithStatusSubresource(tu).Build()
+	rMulti := newTalosReconciler(multiCl, scheme, tc, &mockHealthChecker{})
+	multiJob := rMulti.buildJob(context.Background(), tu, fakeNodeA, testNodeIP1, testNodeIP1, targetImage)
+	if !slices.Contains(multiJob.Spec.Template.Spec.Containers[0].Args, "--wait=true") {
+		t.Fatalf("expected --wait=true on multi-node cluster, got: %v", multiJob.Spec.Template.Spec.Containers[0].Args)
+	}
+
+	singleCl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, newNode(fakeNodeA, testNodeIP1)).
+		WithStatusSubresource(tu).Build()
+	rSingle := newTalosReconciler(singleCl, scheme, tc, &mockHealthChecker{})
+	singleJob := rSingle.buildJob(context.Background(), tu, fakeNodeA, testNodeIP1, testNodeIP1, targetImage)
+	if !slices.Contains(singleJob.Spec.Template.Spec.Containers[0].Args, "--wait=false") {
+		t.Fatalf("expected --wait=false on single-node cluster, got: %v", singleJob.Spec.Template.Spec.Containers[0].Args)
 	}
 }
 

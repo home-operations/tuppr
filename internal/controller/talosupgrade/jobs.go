@@ -73,8 +73,8 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 	logger := log.FromContext(ctx)
 
 	var stillRunning []string
-	var succeededNodes []string
-	var failedNodes []string
+	var terminalNodes []string
+	var succeededCount, failedCount int
 
 	for i, job := range activeJobs {
 		nodeName := activeNodes[i]
@@ -87,11 +87,16 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 			"failed", job.Status.Failed,
 			"backoffLimit", *job.Spec.BackoffLimit)
 
-		if job.Status.Succeeded > 0 {
-			succeededNodes = append(succeededNodes, nodeName)
-		} else if job.Status.Failed >= *job.Spec.BackoffLimit {
-			failedNodes = append(failedNodes, nodeName)
-		} else {
+		// Succeeded and exhausted-backoff Jobs are both terminal; the node's real
+		// state (verified below) decides the outcome, not the Job's exit status.
+		switch {
+		case job.Status.Succeeded > 0:
+			succeededCount++
+			terminalNodes = append(terminalNodes, nodeName)
+		case job.Status.Failed >= *job.Spec.BackoffLimit:
+			failedCount++
+			terminalNodes = append(terminalNodes, nodeName)
+		default:
 			stillRunning = append(stillRunning, nodeName)
 		}
 	}
@@ -99,7 +104,7 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 	// If any jobs are still running, wait
 	if len(stillRunning) > 0 {
 		phase := tupprv1alpha1.JobPhaseUpgrading
-		message := fmt.Sprintf("Upgrading %d nodes (%d running, %d succeeded, %d failed)", len(activeJobs), len(stillRunning), len(succeededNodes), len(failedNodes))
+		message := fmt.Sprintf("Upgrading %d nodes (%d running, %d succeeded, %d failed)", len(activeJobs), len(stillRunning), succeededCount, failedCount)
 
 		// Check if any running node is NotReady (rebooting)
 		anyRebooting := false
@@ -115,7 +120,7 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 
 		if anyRebooting {
 			phase = tupprv1alpha1.JobPhaseRebooting
-			message = fmt.Sprintf("Nodes rebooting (%d running, %d succeeded, %d failed)", len(stillRunning), len(succeededNodes), len(failedNodes))
+			message = fmt.Sprintf("Nodes rebooting (%d running, %d succeeded, %d failed)", len(stillRunning), succeededCount, failedCount)
 		}
 
 		if err := r.setPhaseWithNodes(ctx, talosUpgrade, phase, activeNodes, message); err != nil {
@@ -127,11 +132,12 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 		return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 	}
 
-	// All jobs are done — process results
-
-	// Process succeeded jobs
+	// Verify each terminal node via the Talos API. A single-node upgrade pod runs on
+	// the node it's upgrading and is killed by the reboot, so the Job reports Failed
+	// even when the node upgraded fine — the node's actual state is authoritative.
 	var rebootingNodes []string
-	for _, nodeName := range succeededNodes {
+	var failedNodes []string
+	for _, nodeName := range terminalNodes {
 		result, err := r.processSingleJobSuccess(ctx, talosUpgrade, nodeName)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -140,7 +146,6 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 		case jobResultRebooting:
 			rebootingNodes = append(rebootingNodes, nodeName)
 		case jobResultFailed:
-			// Verification failed — treat as failure
 			failedNodes = append(failedNodes, nodeName)
 		}
 	}
@@ -448,6 +453,14 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 		timeout = talosUpgrade.Spec.Policy.Timeout.Duration
 	}
 
+	// On a single-node cluster the pod runs on the node it upgrades, so --wait would
+	// have it killed by the reboot and fail the Job. Issue the upgrade and exit; the
+	// controller tracks completion by polling node readiness.
+	waitArg := "--wait=true"
+	if r.isSelfHostedUpgrade(ctx) {
+		waitArg = "--wait=false"
+	}
+
 	args := []string{upgradeContainerName}
 	if endpointIP != "" {
 		args = append(args, "--endpoints="+endpointIP)
@@ -456,7 +469,7 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 		"--nodes="+nodeIP,
 		"--image="+targetImage,
 		"--timeout="+timeout.String(),
-		"--wait=true",
+		waitArg,
 	)
 
 	if talosUpgrade.Spec.Policy.Debug {

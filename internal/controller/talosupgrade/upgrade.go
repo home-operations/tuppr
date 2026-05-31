@@ -348,8 +348,12 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 
 	logger.Info("Starting batch upgrade", "nodes", nextNodes, "batchSize", len(batch))
 
-	// Drain all nodes in batch before creating any jobs
-	if talosUpgrade.Spec.Drain != nil {
+	// Drain all nodes in batch before creating any jobs. Skip on single-node
+	// clusters: there's nowhere to reschedule workloads, and a controller cordon
+	// would leave the sole node stuck unschedulable. Talos drains and uncordons it.
+	if talosUpgrade.Spec.Drain != nil && r.isSelfHostedUpgrade(ctx) {
+		logger.Info("Single-node cluster: skipping controller drain; Talos handles cordon/drain/uncordon")
+	} else if talosUpgrade.Spec.Drain != nil {
 		if err := r.setPhaseWithNodes(ctx, talosUpgrade, tupprv1alpha1.JobPhaseDraining, nextNodes, fmt.Sprintf("Draining %d nodes", len(nextNodes))); err != nil {
 			logger.Error(err, "Failed to update phase for draining")
 			return ctrl.Result{RequeueAfter: time.Second * 30}, err
@@ -553,6 +557,17 @@ func (r *Reconciler) nodeNeedsUpgrade(ctx context.Context, node *corev1.Node, cr
 	}
 
 	return false, nil
+}
+
+// isSelfHostedUpgrade reports whether the cluster has a single node, in which case
+// the upgrade pod can only run on the node being upgraded.
+func (r *Reconciler) isSelfHostedUpgrade(ctx context.Context) bool {
+	count, err := r.getTotalNodeCount(ctx)
+	if err != nil {
+		log.FromContext(ctx).V(1).Info("Failed to count nodes; assuming multi-node", "error", err)
+		return false
+	}
+	return count == 1
 }
 
 func (r *Reconciler) drainNode(ctx context.Context, nodeName string, drainSpec *tupprv1alpha1.DrainSpec) error {
