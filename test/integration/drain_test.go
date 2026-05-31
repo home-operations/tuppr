@@ -299,15 +299,15 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 				g.Expect(talosUpgrade.Finalizers).To(ContainElement("tuppr.home-operations.com/talos-finalizer"))
 			}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
 
-			By("simulating node version update to match target")
-			mockTalos.SetNodeVersion("10.0.0.20", testTalosV111)
-
 			By("waiting for job to be created")
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: testNoDrainTest}, talosUpgrade)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(talosUpgrade.Status.CurrentNode).To(Equal(testDrainTestNode))
 			}, 30*time.Second, 100*time.Millisecond).Should(Succeed())
+
+			By("simulating node version update to match target")
+			mockTalos.SetNodeVersion("10.0.0.20", testTalosV111)
 
 			By("verifying node is NOT cordoned (remains schedulable)")
 			var node corev1.Node
