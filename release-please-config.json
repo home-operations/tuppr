@@ -1,7 +1,14 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "simple",
-  "exclude-paths": [".mise.toml", "mise.lock", ".github", ".devcontainer", "release-please-config.json", ".release-please-manifest.json"],
+  "exclude-paths": [
+    ".mise.toml",
+    "mise.lock",
+    ".github",
+    ".devcontainer",
+    "release-please-config.json",
+    ".release-please-manifest.json"
+  ],
   "packages": {
     ".": {
       "changelog-path": "CHANGELOG.md",

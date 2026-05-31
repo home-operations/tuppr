@@ -6,8 +6,8 @@ kind = "0.31.0"
 kube-controller-tools = "0.21.0"
 kubectl = "1.36.1"
 lefthook = "2.1.8"
+oxfmt = "0.52.0"
 setup-envtest = "0.24.1"
-yamlfmt = "0.21.0"
 zizmor = "1.25.2"
 
 [tasks.manifests]

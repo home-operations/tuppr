@@ -84,9 +84,7 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "/^version$/",
           "values": false
         },
@@ -176,9 +174,7 @@
         "minVizWidth": 0,
         "orientation": "horizontal",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -245,9 +241,7 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -308,9 +302,7 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -389,9 +381,7 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -455,9 +445,7 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -569,9 +557,7 @@
         "footer": {
           "countRows": false,
           "show": false,
-          "reducer": [
-            "sum"
-          ]
+          "reducer": ["sum"]
         },
         "showHeader": true,
         "sortBy": [
@@ -699,9 +685,7 @@
         "footer": {
           "countRows": false,
           "show": false,
-          "reducer": [
-            "sum"
-          ]
+          "reducer": ["sum"]
         },
         "showHeader": true,
         "sortBy": [
@@ -963,9 +947,7 @@
         "footer": {
           "countRows": false,
           "fields": "",
-          "reducer": [
-            "sum"
-          ],
+          "reducer": ["sum"],
           "show": false
         },
         "showHeader": true
@@ -1179,10 +1161,7 @@
       "id": 13,
       "options": {
         "legend": {
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ],
+          "calcs": ["lastNotNull", "max"],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -1331,9 +1310,7 @@
         "footer": {
           "countRows": false,
           "fields": "",
-          "reducer": [
-            "sum"
-          ],
+          "reducer": ["sum"],
           "show": false
         },
         "showHeader": true
@@ -1465,10 +1442,7 @@
       "id": 22,
       "options": {
         "legend": {
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ],
+          "calcs": ["lastNotNull", "max"],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -1558,10 +1532,7 @@
       "id": 30,
       "options": {
         "legend": {
-          "calcs": [
-            "lastNotNull",
-            "sum"
-          ],
+          "calcs": ["lastNotNull", "sum"],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -1616,10 +1587,7 @@
       "id": 31,
       "options": {
         "legend": {
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ],
+          "calcs": ["lastNotNull", "max"],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -1718,9 +1686,7 @@
         "footer": {
           "countRows": false,
           "show": false,
-          "reducer": [
-            "sum"
-          ]
+          "reducer": ["sum"]
         },
         "showHeader": true,
         "sortBy": [
@@ -1817,10 +1783,7 @@
       "id": 40,
       "options": {
         "legend": {
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ],
+          "calcs": ["lastNotNull", "max"],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -1875,10 +1838,7 @@
       "id": 41,
       "options": {
         "legend": {
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ],
+          "calcs": ["lastNotNull", "max"],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -2008,9 +1968,7 @@
         "footer": {
           "countRows": false,
           "show": false,
-          "reducer": [
-            "sum"
-          ]
+          "reducer": ["sum"]
         },
         "showHeader": true,
         "sortBy": [
@@ -2139,9 +2097,7 @@
       "id": 50,
       "options": {
         "legend": {
-          "calcs": [
-            "sum"
-          ],
+          "calcs": ["sum"],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -2243,9 +2199,7 @@
         "footer": {
           "countRows": false,
           "show": false,
-          "reducer": [
-            "sum"
-          ]
+          "reducer": ["sum"]
         },
         "showHeader": true,
         "sortBy": [
@@ -2422,9 +2376,7 @@
         "footer": {
           "countRows": false,
           "show": false,
-          "reducer": [
-            "sum"
-          ]
+          "reducer": ["sum"]
         },
         "showHeader": true
       },
@@ -2527,9 +2479,7 @@
         "footer": {
           "countRows": false,
           "show": false,
-          "reducer": [
-            "sum"
-          ]
+          "reducer": ["sum"]
         },
         "showHeader": true,
         "sortBy": [
@@ -2644,9 +2594,7 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -2708,9 +2656,7 @@
         "footer": {
           "countRows": false,
           "show": false,
-          "reducer": [
-            "sum"
-          ]
+          "reducer": ["sum"]
         },
         "showHeader": true
       },
@@ -2840,9 +2786,7 @@
         "footer": {
           "countRows": false,
           "show": false,
-          "reducer": [
-            "sum"
-          ]
+          "reducer": ["sum"]
         },
         "showHeader": true,
         "sortBy": [
@@ -2989,9 +2933,7 @@
         "footer": {
           "countRows": false,
           "show": false,
-          "reducer": [
-            "sum"
-          ]
+          "reducer": ["sum"]
         },
         "showHeader": true,
         "sortBy": [
@@ -3075,12 +3017,7 @@
   "preload": false,
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": [
-    "tuppr",
-    "talos",
-    "kubernetes",
-    "upgrade"
-  ],
+  "tags": ["tuppr", "talos", "kubernetes", "upgrade"],
   "templating": {
     "list": [
       {

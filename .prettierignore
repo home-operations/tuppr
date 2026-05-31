@@ -1,0 +1,7 @@
+*.toml
+CHANGELOG.md
+.release-please-manifest.json
+charts/tuppr/crds/
+config/crd/bases/
+config/rbac/role.yaml
+config/webhook/manifests.yaml
