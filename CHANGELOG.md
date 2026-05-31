@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.38](https://github.com/home-operations/tuppr/compare/0.1.37...0.1.38) (2026-05-31)
+
+
+### Bug Fixes
+
+* **talos:** don't fail single-node upgrades when the reboot kills the upgrade pod ([2e57e79](https://github.com/home-operations/tuppr/commit/2e57e79d35fcfc392677a417841a9a8b3b6dc649))
+
 ## [0.1.37](https://github.com/home-operations/tuppr/compare/0.1.36...0.1.37) (2026-05-27)
 
 
