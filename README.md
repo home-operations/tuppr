@@ -125,10 +125,10 @@ spec:
 
 > [!NOTE]
 > **Single-node clusters.** With only one node, the upgrade pod has to run on the
-> node being upgraded. tuppr detects this: it issues the upgrade with `--wait=false`
-> so the reboot doesn't kill the pod mid-wait, and skips its own drain/cordon since
-> Talos already cordons, drains, and uncordons the node. Completion is tracked by
-> polling node readiness, so a reboot-killed Job isn't mistaken for a failure.
+> node being upgraded, so the reboot kills it. tuppr detects this and issues the
+> upgrade with `--wait=false` so the pod isn't killed mid-wait. Completion is tracked
+> by polling node readiness over the Talos API rather than the Job's exit status, so
+> a reboot-killed Job isn't mistaken for a failure.
 
 #### Kubernetes Upgrades
 

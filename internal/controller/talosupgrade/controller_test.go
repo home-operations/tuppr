@@ -1474,14 +1474,14 @@ func TestTalosReconcile_FailedJobButNodeRebooting_TreatedAsRebooting(t *testing.
 	}
 }
 
-// Single-node: don't cordon (Talos handles it) and issue the upgrade with --wait=false.
-func TestTalosReconcile_SingleNode_SkipsDrainAndDisablesWait(t *testing.T) {
+// Single-node: the upgrade must be issued with --wait=false so the reboot doesn't
+// kill the pod mid-wait.
+func TestTalosReconcile_SingleNode_DisablesWait(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 	)
-	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Force: ptr.To(true)}
 
 	node := newNode(fakeNodeA, testNodeIP1)
 	tc := &mockTalosClient{
@@ -1504,14 +1504,6 @@ func TestTalosReconcile_SingleNode_SkipsDrainAndDisablesWait(t *testing.T) {
 	container := jobList.Items[0].Spec.Template.Spec.Containers[0]
 	if !slices.Contains(container.Args, "--wait=false") {
 		t.Fatalf("expected --wait=false for single-node upgrade, got: %v", container.Args)
-	}
-
-	updatedNode := &corev1.Node{}
-	if err := cl.Get(context.Background(), types.NamespacedName{Name: fakeNodeA}, updatedNode); err != nil {
-		t.Fatalf("failed to get node: %v", err)
-	}
-	if updatedNode.Spec.Unschedulable {
-		t.Error("expected single node NOT to be cordoned by the controller (Talos handles cordon/uncordon)")
 	}
 }
 
