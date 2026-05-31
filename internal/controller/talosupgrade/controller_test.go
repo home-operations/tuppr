@@ -1323,6 +1323,8 @@ func TestTalosReconcile_UncordonsNodeAfterDrain(t *testing.T) {
 	}
 }
 
+// On a multi-node cluster without a tuppr drain spec, tuppr leaves cordon state
+// alone — Talos (or an operator) owns it.
 func TestTalosReconcile_DoesNotUncordonWithoutDrainSpec(t *testing.T) {
 	scheme := newTestScheme()
 
@@ -1333,6 +1335,8 @@ func TestTalosReconcile_DoesNotUncordonWithoutDrainSpec(t *testing.T) {
 
 	node := newNode(fakeNodeA, testNodeIP1)
 	node.Spec.Unschedulable = true
+	// Second node (already at target) makes the cluster multi-node.
+	nodeB := newNode(fakeNodeB, testNodeIP2)
 
 	// Successful Job
 	job := &batchv1.Job{
@@ -1351,11 +1355,11 @@ func TestTalosReconcile_DoesNotUncordonWithoutDrainSpec(t *testing.T) {
 	}
 
 	tc := &mockTalosClient{
-		nodeVersions: map[string]string{testNodeIP1: fakeTalosVersion},
+		nodeVersions: map[string]string{testNodeIP1: fakeTalosVersion, testNodeIP2: fakeTalosVersion},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
+		WithObjects(tu, node, nodeB, job).WithStatusSubresource(tu).Build()
 
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
@@ -1367,6 +1371,55 @@ func TestTalosReconcile_DoesNotUncordonWithoutDrainSpec(t *testing.T) {
 
 	if !updatedNode.Spec.Unschedulable {
 		t.Error("expected node to remain cordoned because Drain spec was nil")
+	}
+}
+
+// Single-node: Talos's own upgrade drain can leave the only node cordoned, so tuppr
+// must uncordon after a verified upgrade even without a tuppr drain spec.
+func TestTalosReconcile_SingleNode_UncordonsWithoutDrainSpec(t *testing.T) {
+	scheme := newTestScheme()
+
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
+	)
+
+	node := newNode(fakeNodeA, testNodeIP1)
+	node.Spec.Unschedulable = true // cordoned by Talos's own upgrade drain
+
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      testJobNameNodeA,
+			Namespace: testNamespace,
+			Labels: map[string]string{
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeA,
+			},
+		},
+		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
+		Status: batchv1.JobStatus{Succeeded: 1},
+	}
+
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{testNodeIP1: fakeTalosVersion},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/installer/abc:" + fakeTalosVersion},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
+
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	reconcileTalos(t, r, testUpgradeName)
+
+	updatedNode := &corev1.Node{}
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: fakeNodeA}, updatedNode); err != nil {
+		t.Fatalf("failed to get node: %v", err)
+	}
+	if updatedNode.Spec.Unschedulable {
+		t.Error("expected single node to be uncordoned after upgrade even without a drain spec")
 	}
 }
 

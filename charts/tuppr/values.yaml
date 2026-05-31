@@ -143,6 +143,11 @@ tolerations:
   - key: node-role.kubernetes.io/control-plane
     operator: Exists
     effect: NoSchedule
+  # Keep the controller schedulable on a cordoned node so it can uncordon a single
+  # node after the upgrade reboot.
+  - key: node.kubernetes.io/unschedulable
+    operator: Exists
+    effect: NoSchedule
 
 # Affinity for pod assignment
 affinity: {}

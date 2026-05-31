@@ -115,8 +115,9 @@ func main() {
 		controllerNamespace = "tuppr-system" // Default namespace
 	}
 
-	// Get controller node name from environment (injected via downward API)
+	// Get controller node name and pod name from environment (injected via downward API)
 	controllerNodeName := os.Getenv("CONTROLLER_NODE_NAME")
+	controllerPodName := os.Getenv("CONTROLLER_POD_NAME")
 
 	// Default the upgrade Job's --endpoint to the apiserver ClusterIP so it
 	// keeps working when CoreDNS is drained mid-upgrade.
@@ -270,6 +271,7 @@ func main() {
 		TalosConfigSecret:   talosConfigSecret,
 		ControllerNamespace: controllerNamespace,
 		ControllerNodeName:  controllerNodeName,
+		ControllerPodName:   controllerPodName,
 		Notifier:            notifier,
 		Recorder:            talosRecorder,
 		MetricsReporter:     reporter,

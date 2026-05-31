@@ -231,18 +231,7 @@ func (r *Reconciler) processSingleJobSuccess(ctx context.Context, talosUpgrade *
 		logger.Info("Synced machine config install image", "node", nodeName)
 	}
 
-	if talosUpgrade.Spec.Drain != nil {
-		logger.V(1).Info("Uncordoning node after successful upgrade", "node", nodeName)
-		node := &corev1.Node{}
-		if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
-			logger.Error(err, "Failed to get node for uncordon", "node", nodeName)
-		} else if node.Spec.Unschedulable {
-			patch := []byte(`{"spec":{"unschedulable":false}}`)
-			if err := r.Patch(ctx, node, client.RawPatch(types.MergePatchType, patch)); err != nil {
-				logger.Error(err, "Failed to uncordon node", "node", nodeName)
-			}
-		}
-	}
+	r.ensureNodeUncordoned(ctx, talosUpgrade, nodeName)
 
 	if err := r.cleanupJobForNode(ctx, nodeName); err != nil {
 		logger.Error(err, "Failed to cleanup job, but continuing", "node", nodeName)
@@ -260,6 +249,33 @@ func (r *Reconciler) processSingleJobSuccess(ctx context.Context, talosUpgrade *
 	r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, nodeName, "success")
 	logger.Info("Node upgrade completed", "node", nodeName)
 	return jobResultSuccess, nil
+}
+
+// ensureNodeUncordoned uncordons the node after a successful upgrade when tuppr
+// owns its cordon state: the user enabled tuppr drain, or it's a single node (where
+// Talos's own upgrade drain may leave the only node cordoned).
+func (r *Reconciler) ensureNodeUncordoned(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) {
+	logger := log.FromContext(ctx)
+
+	if talosUpgrade.Spec.Drain == nil && !r.isSelfHostedUpgrade(ctx) {
+		return
+	}
+
+	node := &corev1.Node{}
+	if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
+		logger.Error(err, "Failed to get node for uncordon", "node", nodeName)
+		return
+	}
+	if !node.Spec.Unschedulable {
+		return
+	}
+
+	patch := []byte(`{"spec":{"unschedulable":false}}`)
+	if err := r.Patch(ctx, node, client.RawPatch(types.MergePatchType, patch)); err != nil {
+		logger.Error(err, "Failed to uncordon node", "node", nodeName)
+		return
+	}
+	logger.Info("Uncordoned node after successful upgrade", "node", nodeName)
 }
 
 // processSingleJobFailure handles a single failed job: cleanup labels, record failure.

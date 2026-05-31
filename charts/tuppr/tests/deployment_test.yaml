@@ -105,6 +105,25 @@ tests:
             operator: Exists
             effect: NoSchedule
 
+  - it: should tolerate the cordon taint so it can run on a cordoned node
+    asserts:
+      - contains:
+          path: spec.template.spec.tolerations
+          content:
+            key: node.kubernetes.io/unschedulable
+            operator: Exists
+            effect: NoSchedule
+
+  - it: should inject the controller pod name via downward API
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CONTROLLER_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+
   - it: should use system-node-critical priority class by default
     asserts:
       - equal:

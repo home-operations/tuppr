@@ -425,6 +425,9 @@ func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpg
 		if needsUpgrade {
 			continue
 		}
+		// Job may have been GC'd before the controller reconciled post-reboot; the
+		// node is at target but may still be cordoned.
+		r.ensureNodeUncordoned(ctx, talosUpgrade, node.Name)
 		added = append(added, node.Name)
 	}
 
@@ -568,7 +571,9 @@ func (r *Reconciler) isSelfHostedUpgrade(ctx context.Context) bool {
 }
 
 func (r *Reconciler) drainNode(ctx context.Context, nodeName string, drainSpec *tupprv1alpha1.DrainSpec) error {
-	drainer := drain.NewDrainer(r.Client)
+	// Never evict the controller's own pod: on a single node it runs on the node
+	// being drained.
+	drainer := drain.NewDrainer(r.Client).SkipPod(r.ControllerNamespace, r.ControllerPodName)
 
 	// Cordon the node first
 	if err := drainer.CordonNode(ctx, nodeName); err != nil {

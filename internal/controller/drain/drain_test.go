@@ -307,6 +307,34 @@ func TestGetEvictablePods(t *testing.T) {
 	}
 }
 
+func TestGetEvictablePods_SkipsControllerPod(t *testing.T) {
+	scheme := newTestScheme()
+	node := newNode("test-node", false)
+
+	controllerPod := newPod("tuppr-controller", "tuppr-system", "test-node", corev1.PodRunning, nil, nil)
+	workloadPod := newPod("workload", "default", "test-node", corev1.PodRunning, nil, nil)
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithIndex(&corev1.Pod{}, "spec.nodeName", func(obj client.Object) []string {
+			return []string{obj.(*corev1.Pod).Spec.NodeName}
+		}).
+		WithObjects(node, controllerPod, workloadPod).Build()
+
+	drainer := NewDrainer(cl).SkipPod("tuppr-system", "tuppr-controller")
+
+	pods, err := drainer.getEvictablePods(context.Background(), "test-node")
+	if err != nil {
+		t.Fatalf("getEvictablePods() error = %v", err)
+	}
+
+	if len(pods) != 1 {
+		t.Fatalf("expected 1 evictable pod (controller skipped), got %d", len(pods))
+	}
+	if pods[0].Name != "workload" {
+		t.Fatalf("expected workload pod, got %s", pods[0].Name)
+	}
+}
+
 func TestIsDrained(t *testing.T) {
 	scheme := newTestScheme()
 

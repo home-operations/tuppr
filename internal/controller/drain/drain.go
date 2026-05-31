@@ -37,12 +37,22 @@ const daemonSetKind = "DaemonSet"
 
 // Drainer handles node drain operations
 type Drainer struct {
-	client client.Client
+	client  client.Client
+	skipPod *types.NamespacedName
 }
 
 // NewDrainer creates a new Drainer
 func NewDrainer(c client.Client) *Drainer {
 	return &Drainer{client: c}
+}
+
+// SkipPod excludes a specific pod from eviction, so a single-node drain doesn't
+// evict the controller's own pod off the node it's draining.
+func (d *Drainer) SkipPod(namespace, name string) *Drainer {
+	if name != "" {
+		d.skipPod = &types.NamespacedName{Namespace: namespace, Name: name}
+	}
+	return d
 }
 
 // CordonNode marks a node as unschedulable
@@ -127,6 +137,9 @@ func (d *Drainer) getEvictablePods(ctx context.Context, nodeName string) ([]core
 
 	var evictable []corev1.Pod
 	for _, pod := range podList.Items {
+		if d.skipPod != nil && pod.Namespace == d.skipPod.Namespace && pod.Name == d.skipPod.Name {
+			continue
+		}
 		if shouldEvictPod(&pod) {
 			evictable = append(evictable, pod)
 		}

@@ -99,6 +99,7 @@ type Reconciler struct {
 	TalosConfigSecret   string
 	ControllerNamespace string
 	ControllerNodeName  string
+	ControllerPodName   string
 	HealthChecker       HealthCheckRunner
 	TalosClient         TalosClient
 	MetricsReporter     *metrics.Reporter
