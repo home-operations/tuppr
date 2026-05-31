@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.39](https://github.com/home-operations/tuppr/compare/0.1.38...0.1.39) (2026-05-31)
+
+
+### Bug Fixes
+
+* **talos:** uncordon single-node clusters left cordoned by Talos's upgrade drain ([7d73d7d](https://github.com/home-operations/tuppr/commit/7d73d7dd10bcb6e03cfcb6e8585dab806cbdc13c))
+
+
+### Miscellaneous Chores
+
+* implement oxfmt ([20f917c](https://github.com/home-operations/tuppr/commit/20f917c50fb746dd9710d31ca53c30b903afc5a1))
+* remove default draft-pull-request from release-please config ([21f7d53](https://github.com/home-operations/tuppr/commit/21f7d53e50ba4c04095debcbedd0780547375511))
+
 ## [0.1.38](https://github.com/home-operations/tuppr/compare/0.1.37...0.1.38) (2026-05-31)
 
 
