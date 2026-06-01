@@ -1,12 +1,18 @@
 package nodeutil
 
 import (
+	"context"
+	"slices"
 	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+const controlPlaneLabel = "node-role.kubernetes.io/control-plane"
 
 const (
 	testExternalIP   = "1.2.3.4"
@@ -125,5 +131,40 @@ func TestGenerateSafeJobName_UniquePerCall(t *testing.T) {
 	name2 := GenerateSafeJobName("test", "node")
 	if name1 == name2 {
 		t.Fatalf("expected unique names, got: %s and %s", name1, name2)
+	}
+}
+
+func TestControlPlaneEndpointIPs(t *testing.T) {
+	node := func(name, ip, role string, ready bool) *corev1.Node {
+		status := corev1.ConditionFalse
+		if ready {
+			status = corev1.ConditionTrue
+		}
+		labels := map[string]string{}
+		if role == "cp" {
+			labels[controlPlaneLabel] = ""
+		}
+		return &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},
+			Status: corev1.NodeStatus{
+				Addresses:  []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: ip}},
+				Conditions: []corev1.NodeCondition{{Type: corev1.NodeReady, Status: status}},
+			},
+		}
+	}
+
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+		node("cp-b", "10.0.0.2", "cp", true),
+		node("cp-a", "10.0.0.1", "cp", true),
+		node("cp-down", "10.0.0.3", "cp", false),   // not Ready -> skipped
+		node("worker", "10.0.0.9", "worker", true), // not control-plane -> skipped
+	).Build()
+
+	got := ControlPlaneEndpointIPs(context.Background(), cl, controlPlaneLabel)
+	want := []string{"10.0.0.1", "10.0.0.2"} // sorted by node name (cp-a, cp-b)
+	if !slices.Equal(got, want) {
+		t.Fatalf("ControlPlaneEndpointIPs() = %v, want %v", got, want)
 	}
 }

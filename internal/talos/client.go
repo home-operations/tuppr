@@ -50,8 +50,9 @@ func (r *realTalosClient) COSIList(ctx context.Context, namespace, typ string) (
 }
 
 type Client struct {
-	talos         talosClient
-	newClientFunc func(ctx context.Context) (talosClient, error)
+	talos            talosClient
+	newClientFunc    func(ctx context.Context) (talosClient, error)
+	endpointResolver func(ctx context.Context) []string
 }
 
 type ClientOption func(*Client)
@@ -62,15 +63,25 @@ func WithNewClientFunc(fn func(ctx context.Context) (talosClient, error)) Client
 	}
 }
 
+// WithEndpointResolver overrides the talosconfig endpoints with the IPs fn returns,
+// so the client keeps reaching Talos when cluster DNS is drained mid-upgrade. An
+// empty result falls back to the talosconfig.
+func WithEndpointResolver(fn func(ctx context.Context) []string) ClientOption {
+	return func(c *Client) {
+		c.endpointResolver = fn
+	}
+}
+
 func NewClient(ctx context.Context, opts ...ClientOption) (*Client, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Creating new Talos client")
 
-	c := &Client{
-		newClientFunc: defaultNewClient,
-	}
+	c := &Client{}
 	for _, opt := range opts {
 		opt(c)
+	}
+	if c.newClientFunc == nil {
+		c.newClientFunc = c.defaultNewClient
 	}
 
 	talosClient, err := c.newClientFunc(ctx)
@@ -84,12 +95,19 @@ func NewClient(ctx context.Context, opts ...ClientOption) (*Client, error) {
 	return c, nil
 }
 
-func defaultNewClient(ctx context.Context) (talosClient, error) {
-	c, err := client.New(ctx, client.WithDefaultConfig())
+func (c *Client) defaultNewClient(ctx context.Context) (talosClient, error) {
+	opts := []client.OptionFunc{client.WithDefaultConfig()}
+	if c.endpointResolver != nil {
+		if endpoints := c.endpointResolver(ctx); len(endpoints) > 0 {
+			opts = append(opts, client.WithEndpoints(endpoints...))
+		}
+	}
+
+	cl, err := client.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
-	return &realTalosClient{Client: c}, nil
+	return &realTalosClient{Client: cl}, nil
 }
 
 func (s *Client) GetNodeVersion(ctx context.Context, nodeIP string) (string, error) {

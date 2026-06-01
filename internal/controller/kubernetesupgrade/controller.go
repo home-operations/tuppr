@@ -162,7 +162,13 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		r.VersionGetter = &DiscoveryVersionGetter{client: discoveryClient}
 	}
 	if r.TalosClient == nil {
-		talosClient, err := talos.NewClient(context.Background())
+		// Pin Talos endpoints to control-plane IPs so the client survives a CoreDNS
+		// drain mid-upgrade. Uncached reader: the manager cache isn't synced yet here.
+		apiReader := mgr.GetAPIReader()
+		talosClient, err := talos.NewClient(context.Background(),
+			talos.WithEndpointResolver(func(ctx context.Context) []string {
+				return nodeutil.ControlPlaneEndpointIPs(ctx, apiReader, "node-role.kubernetes.io/control-plane")
+			}))
 		if err != nil {
 			return fmt.Errorf("failed to create talos client: %w", err)
 		}

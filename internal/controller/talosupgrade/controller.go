@@ -161,7 +161,13 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		r.HealthChecker = healthcheck.NewChecker(mgr.GetClient(), r.MetricsReporter)
 	}
 	if r.TalosClient == nil {
-		talosClient, err := talos.NewClient(context.Background())
+		// Pin Talos endpoints to control-plane IPs so the client survives a CoreDNS
+		// drain mid-upgrade. Uncached reader: the manager cache isn't synced yet here.
+		apiReader := mgr.GetAPIReader()
+		talosClient, err := talos.NewClient(context.Background(),
+			talos.WithEndpointResolver(func(ctx context.Context) []string {
+				return nodeutil.ControlPlaneEndpointIPs(ctx, apiReader, controlPlaneLabel)
+			}))
 		if err != nil {
 			return fmt.Errorf("failed to create talos client: %w", err)
 		}
