@@ -246,7 +246,7 @@ url = "https://github.com/evilmartians/lefthook/releases/download/v2.1.9/lefthoo
 provenance = "github-attestations"
 
 [[tools.oxfmt]]
-version = "0.52.0"
+version = "0.53.0"
 backend = "npm:oxfmt"
 
 [[tools.setup-envtest]]
