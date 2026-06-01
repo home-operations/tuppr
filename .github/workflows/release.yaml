@@ -21,7 +21,7 @@ jobs:
     with:
       build-args: |
         VERSION=${{ github.ref_name }}
-        GIT_COMMIT=${{ github.sha }}
+        REVISION=${{ github.sha }}
       cache: true
       meta-images: ghcr.io/${{ github.repository }}
       meta-tags: |
