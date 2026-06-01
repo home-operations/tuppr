@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.40](https://github.com/home-operations/tuppr/compare/0.1.39...0.1.40) (2026-06-01)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/siderolabs/talos/pkg/machinery (v1.13.2 → v1.13.3) ([#297](https://github.com/home-operations/tuppr/issues/297)) ([b9c581e](https://github.com/home-operations/tuppr/commit/b9c581e1d25a71a058e12c51ab7ca6f052d472a2))
+* **mise:** update tool lefthook (2.1.8 → 2.1.9) ([7a8ef70](https://github.com/home-operations/tuppr/commit/7a8ef702783fcd381873fb45972654075c908c87))
+* **talos:** dial control-plane IPs from controller client instead of talosconfig endpoint ([56536d8](https://github.com/home-operations/tuppr/commit/56536d875b1a598bc1688f546c82378f1946a1df))
+
 ## [0.1.39](https://github.com/home-operations/tuppr/compare/0.1.38...0.1.39) (2026-05-31)
 
 
