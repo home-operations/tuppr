@@ -155,15 +155,16 @@ func TestControlPlaneEndpointIPs(t *testing.T) {
 
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
+	const cpIPA, cpIPB = "10.0.0.1", "10.0.0.2"
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
-		node("cp-b", "10.0.0.2", "cp", true),
-		node("cp-a", "10.0.0.1", "cp", true),
+		node("cp-b", cpIPB, "cp", true),
+		node("cp-a", cpIPA, "cp", true),
 		node("cp-down", "10.0.0.3", "cp", false),   // not Ready -> skipped
 		node("worker", "10.0.0.9", "worker", true), // not control-plane -> skipped
 	).Build()
 
 	got := ControlPlaneEndpointIPs(context.Background(), cl, controlPlaneLabel)
-	want := []string{"10.0.0.1", "10.0.0.2"} // sorted by node name (cp-a, cp-b)
+	want := []string{cpIPA, cpIPB} // sorted by node name (cp-a, cp-b)
 	if !slices.Equal(got, want) {
 		t.Fatalf("ControlPlaneEndpointIPs() = %v, want %v", got, want)
 	}
