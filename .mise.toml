@@ -2,7 +2,7 @@
 go = "1.26.4"
 golangci-lint = "2.12.2"
 helm = "4.2.0"
-kind = "0.31.0"
+kind = "0.32.0"
 kube-controller-tools = "0.21.0"
 kubectl = "1.36.1"
 lefthook = "2.1.9"
