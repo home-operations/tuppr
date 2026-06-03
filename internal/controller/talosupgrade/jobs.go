@@ -257,7 +257,7 @@ func (r *Reconciler) processSingleJobSuccess(ctx context.Context, talosUpgrade *
 func (r *Reconciler) ensureNodeUncordoned(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) {
 	logger := log.FromContext(ctx)
 
-	if talosUpgrade.Spec.Drain == nil && !r.isSelfHostedUpgrade(ctx) {
+	if !talosUpgrade.Spec.DrainEnabled() && !r.isSelfHostedUpgrade(ctx) {
 		return
 	}
 

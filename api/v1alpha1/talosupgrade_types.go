@@ -125,27 +125,16 @@ type HooksSpec struct {
 }
 
 type DrainSpec struct {
-	// DeleteLocalData causes the drain to continue even if there are pods using emptyDir
-	// (local data that will be deleted when the node is drained).
-	// +optional
-	DeleteLocalData *bool `json:"deleteLocalData,omitempty"`
-
-	// IgnoreDaemonSets ignores DaemonSet-managed pods.
-	// +optional
-	IgnoreDaemonSets *bool `json:"ignoreDaemonSets,omitempty"`
-
-	// Force continues even if there are pods that do not declare a controller.
-	// +optional
-	Force *bool `json:"force,omitempty"`
+	// Enabled drains the node before it is rebooted for upgrade.
+	Enabled bool `json:"enabled"`
 
 	// DisableEviction forces drain to use delete, even if eviction is supported.
 	// +optional
 	DisableEviction *bool `json:"disableEviction,omitempty"`
+}
 
-	// SkipWaitForDeleteTimeout specifies that if a pod DeletionTimestamp is older than N seconds,
-	// skip waiting for the pod. Seconds must be greater than 0 to skip.
-	// +optional
-	SkipWaitForDeleteTimeout *int `json:"skipWaitForDeleteTimeout,omitempty"`
+func (s *TalosUpgradeSpec) DrainEnabled() bool {
+	return s.Drain != nil && s.Drain.Enabled
 }
 
 // TalosUpgradeSpec defines the desired state of TalosUpgrade

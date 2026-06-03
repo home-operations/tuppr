@@ -1273,7 +1273,7 @@ func TestTalosReconcile_UncordonsNodeAfterDrain(t *testing.T) {
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
-	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Force: ptr.To(true)}
+	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Enabled: true}
 
 	// Node that is currently Cordoned
 	node := newNode(fakeNodeA, testNodeIP1)
@@ -1431,7 +1431,7 @@ func TestTalosReconcile_FailedJobButNodeUpgraded_TreatedAsSuccess(t *testing.T) 
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
-	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Force: ptr.To(true)}
+	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Enabled: true}
 
 	node := newNode(fakeNodeA, testNodeIP1)
 	node.Spec.Unschedulable = true // cordoned during the upgrade
@@ -1596,7 +1596,7 @@ func TestTalosReconcile_DrainRollbackOnBatchFailure(t *testing.T) {
 		withPhase(tupprv1alpha1.JobPhasePending),
 		withParallelism(2),
 	)
-	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Force: ptr.To(true)}
+	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Enabled: true}
 
 	nodeA := newNode(fakeNodeA, testNodeIP1)
 	nodeB := newNode(fakeNodeB, testNodeIP2)
@@ -3113,7 +3113,7 @@ func TestDrainNode_CordonsAndDrains(t *testing.T) {
 	}
 
 	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
-	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{}
+	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Enabled: true}
 
 	// Create client with field indexer for spec.nodeName
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -3146,6 +3146,7 @@ func TestDrainNode_WithDisableEviction(t *testing.T) {
 
 	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{
+		Enabled:         true,
 		DisableEviction: ptr.To(true),
 	}
 
@@ -3178,7 +3179,7 @@ func TestDrainNode_InvalidNode(t *testing.T) {
 	scheme := newTestScheme()
 
 	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
-	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{}
+	tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Enabled: true}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})

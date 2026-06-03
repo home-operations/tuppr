@@ -349,7 +349,7 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	logger.Info("Starting batch upgrade", "nodes", nextNodes, "batchSize", len(batch))
 
 	// Drain all nodes in batch before creating any jobs
-	if talosUpgrade.Spec.Drain != nil {
+	if talosUpgrade.Spec.DrainEnabled() {
 		if err := r.setPhaseWithNodes(ctx, talosUpgrade, tupprv1alpha1.JobPhaseDraining, nextNodes, fmt.Sprintf("Draining %d nodes", len(nextNodes))); err != nil {
 			logger.Error(err, "Failed to update phase for draining")
 			return ctrl.Result{RequeueAfter: time.Second * 30}, err

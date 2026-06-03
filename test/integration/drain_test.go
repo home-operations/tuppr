@@ -148,7 +148,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 						Version: testTalosV111,
 					},
 					Drain: &tupprv1alpha1.DrainSpec{
-						Force: ptr.To(true),
+						Enabled: true,
 					},
 				},
 			}
@@ -185,7 +185,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 						Version: testTalosV111,
 					},
 					Drain: &tupprv1alpha1.DrainSpec{
-						Force: ptr.To(true),
+						Enabled: true,
 					},
 				},
 			}
@@ -250,6 +250,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 						Version: testTalosV111,
 					},
 					Drain: &tupprv1alpha1.DrainSpec{
+						Enabled:         true,
 						DisableEviction: ptr.To(true),
 					},
 				},
@@ -358,7 +359,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 						Version: testTalosV111,
 					},
 					Drain: &tupprv1alpha1.DrainSpec{
-						Force: ptr.To(true),
+						Enabled: true,
 					},
 				},
 			}
