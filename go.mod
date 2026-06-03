@@ -9,7 +9,7 @@ require (
 	github.com/google/go-containerregistry v0.21.6
 	github.com/google/uuid v1.6.0
 	github.com/netresearch/go-cron v0.14.0
-	github.com/nicholas-fedor/shoutrrr v0.15.1
+	github.com/nicholas-fedor/shoutrrr v0.16.0
 	github.com/onsi/ginkgo/v2 v2.29.0
 	github.com/onsi/gomega v1.41.0
 	github.com/open-policy-agent/cert-controller v0.16.0
@@ -77,7 +77,7 @@ require (
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/mattn/go-colorable v0.1.14 // indirect
+	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/mdlayher/ethtool v0.5.1 // indirect
 	github.com/mdlayher/genetlink v1.3.2 // indirect
