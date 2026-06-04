@@ -170,7 +170,7 @@ main() {
     talosctl --nodes $NODE_IP health --wait-timeout=10m
 
     log "Generating CRDs..."
-    mise run helm-crds
+    mise run -C "$REPO_ROOT" helm-crds
 
     log "Creating tuppr-system namespace..."
     kubectl create namespace tuppr-system --dry-run=client -o yaml | kubectl apply -f -
