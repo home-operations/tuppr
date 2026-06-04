@@ -11,7 +11,7 @@ variable "run_id" {
 }
 
 variable "branch_name" {
-  description = "Git branch name for resource tracking and cleanup"
+  description = "Git branch name for resource tracking and pruning"
   type        = string
   default     = ""
 }

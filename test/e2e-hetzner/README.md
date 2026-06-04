@@ -56,7 +56,6 @@ This creates:
 ### 3. Run Tests
 
 ```bash
-cd ..
 ./test.sh
 ```
 
@@ -68,19 +67,19 @@ The test script:
 4. Tests TalosUpgrade
 5. Tests KubernetesUpgrade
 
-### 4. Cleanup
+### 4. Prune
 
 ```bash
 export HCLOUD_TOKEN="your-hetzner-token"
 CLUSTER_NAME=$(tofu -chdir=tofu output -raw cluster_name)
-./cleanup.sh "cluster=${CLUSTER_NAME}"
+./prune.sh "cluster=${CLUSTER_NAME}"
 ```
 
-Or clean up all resources from a specific branch:
+Or prune all resources from a specific branch:
 
 ```bash
 export HCLOUD_TOKEN="your-hetzner-token"
-./cleanup.sh "branch=main"
+./prune.sh "branch=main"
 ```
 
 ## Variables Reference
