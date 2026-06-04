@@ -89,6 +89,8 @@ jobs:
       # depends on imager_image.talos_x86.image_id (known only after apply),
       # so materialize the snapshot first.
       - name: Materialize Talos snapshot
+        env:
+          KUBERNETES_MASTER: https://127.0.0.1:6443
         run: tofu -chdir=tofu apply -auto-approve -target=imager_image.talos_x86
 
       - name: Apply infrastructure
