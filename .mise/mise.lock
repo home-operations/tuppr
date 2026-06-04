@@ -317,36 +317,36 @@ url = "https://github.com/evilmartians/lefthook/releases/download/v2.1.9/lefthoo
 provenance = "github-attestations"
 
 [[tools.opentofu]]
-version = "1.11.4"
+version = "1.12.1"
 backend = "aqua:opentofu/opentofu"
 
 [tools.opentofu."platforms.linux-arm64"]
-checksum = "sha256:6b81ff00501737fd3459fef6cee9c06ce2b08683f6b7af110b2616468d024228"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.11.4/tofu_1.11.4_linux_arm64.tar.gz"
+checksum = "sha256:fd3bb0dd81f8dcf38fc2e84c2381a1530a944a85e0fcfede900d56b4bd3a6a1c"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.1/tofu_1.12.1_linux_arm64.tar.gz"
 
 [tools.opentofu."platforms.linux-arm64-musl"]
-checksum = "sha256:6b81ff00501737fd3459fef6cee9c06ce2b08683f6b7af110b2616468d024228"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.11.4/tofu_1.11.4_linux_arm64.tar.gz"
+checksum = "sha256:fd3bb0dd81f8dcf38fc2e84c2381a1530a944a85e0fcfede900d56b4bd3a6a1c"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.1/tofu_1.12.1_linux_arm64.tar.gz"
 
 [tools.opentofu."platforms.linux-x64"]
-checksum = "sha256:0d744081951095c3e54fd4f0af5c48491ec03116ab02f1ad5ca4ed60d3b60efd"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.11.4/tofu_1.11.4_linux_amd64.tar.gz"
+checksum = "sha256:8e818ca2f14bb4ee594231c908ca77ec3415c9e194302ab0c92c8947bd908670"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.1/tofu_1.12.1_linux_amd64.tar.gz"
 
 [tools.opentofu."platforms.linux-x64-musl"]
-checksum = "sha256:0d744081951095c3e54fd4f0af5c48491ec03116ab02f1ad5ca4ed60d3b60efd"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.11.4/tofu_1.11.4_linux_amd64.tar.gz"
+checksum = "sha256:8e818ca2f14bb4ee594231c908ca77ec3415c9e194302ab0c92c8947bd908670"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.1/tofu_1.12.1_linux_amd64.tar.gz"
 
 [tools.opentofu."platforms.macos-arm64"]
-checksum = "sha256:2e52b9baccf925a1516ae850112b6eddce35d96e9b59fa954d191d6e8ef3af5f"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.11.4/tofu_1.11.4_darwin_arm64.tar.gz"
+checksum = "sha256:7d5c26b3fe583ae7bdaae8d07eb92eeab5fbd43fb84d3414de417ba558c43649"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.1/tofu_1.12.1_darwin_arm64.tar.gz"
 
 [tools.opentofu."platforms.macos-x64"]
-checksum = "sha256:46abdd10b826e864f6daf2013a6f0dbc079d8c6e0f79b529138b7da50bea502f"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.11.4/tofu_1.11.4_darwin_amd64.tar.gz"
+checksum = "sha256:cd99ab9686ae1af3e4b99e6aabbeb38332254f28fc4ae784b2a06d91a8741a13"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.1/tofu_1.12.1_darwin_amd64.tar.gz"
 
 [tools.opentofu."platforms.windows-x64"]
-checksum = "sha256:2cf504355d9c0d4bdf9fbb209b81c5fc4b441cc32af23b26f0220fe08c56529f"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.11.4/tofu_1.11.4_windows_amd64.tar.gz"
+checksum = "sha256:6b21b5bbd1def79f98364af42f89e4836a7acb4834dacc1929a34f2f4e7ab867"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.1/tofu_1.12.1_windows_amd64.tar.gz"
 
 [[tools.oxfmt]]
 version = "0.53.0"
