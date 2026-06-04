@@ -89,10 +89,10 @@ jobs:
           install_args: --locked
 
       - name: OpenTofu init image
-        run: tofu -chdir=tofu-image init
+        run: tofu -chdir=tofu-image init -lockfile=readonly
 
       - name: OpenTofu init cluster
-        run: tofu -chdir=tofu init
+        run: tofu -chdir=tofu init -lockfile=readonly
 
       # The cluster module needs a concrete Hetzner image ID at plan time.
       # Keep image creation in a separate root so the module's Kubernetes

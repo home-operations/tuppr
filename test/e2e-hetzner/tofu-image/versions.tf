@@ -4,7 +4,7 @@ terraform {
   required_providers {
     imager = {
       source  = "hcloud-talos/imager"
-      version = "~> 1.0"
+      version = "1.0.13"
     }
   }
 }
