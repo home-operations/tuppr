@@ -1,5 +1,5 @@
 [tools]
-go = "1.26.2"
+go = "1.26.4"
 golangci-lint = "2.12.2"
 hcloud = "1.61.0"
 helm = "4.1.1"
