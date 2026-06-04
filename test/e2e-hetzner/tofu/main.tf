@@ -1,14 +1,12 @@
-resource "imager_image" "talos_x86" {
-  image_url    = "https://factory.talos.dev/image/${var.talos_schematic_id}/${var.talos_bootstrap_version}/hcloud-amd64.raw.xz"
-  architecture = "x86"
-  location     = var.location
-
-  description = "Talos ${var.talos_bootstrap_version} (tuppr-e2e)"
-
-  labels = merge(local.common_labels, {
-    talos-version = var.talos_bootstrap_version
-    schematic     = substr(var.talos_schematic_id, 0, 12)
-  })
+data "hcloud_image" "talos_x86" {
+  with_selector = join(",", [
+    "cluster=${local.cluster_name}",
+    "managed-by=tuppr-e2e",
+    "talos-version=${var.talos_bootstrap_version}",
+    "schematic=${substr(var.talos_schematic_id, 0, 12)}",
+  ])
+  with_architecture = "x86"
+  most_recent       = true
 }
 
 module "talos_cluster" {
@@ -21,7 +19,7 @@ module "talos_cluster" {
   talos_version      = var.talos_bootstrap_version
   kubernetes_version = var.k8s_bootstrap_version
 
-  talos_image_id_x86 = imager_image.talos_x86.image_id
+  talos_image_id_x86 = data.hcloud_image.talos_x86.id
   disable_arm        = true
 
   # Disable kubelet serving-cert rotation. The module turns it on by default,

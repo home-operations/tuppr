@@ -14,17 +14,9 @@ terraform {
       source  = "hashicorp/local"
       version = "~> 2.6"
     }
-    imager = {
-      source  = "hcloud-talos/imager"
-      version = "~> 0.1"
-    }
   }
 }
 
 provider "hcloud" {
-  token = var.hcloud_token
-}
-
-provider "imager" {
   token = var.hcloud_token
 }
