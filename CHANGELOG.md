@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.2.0](https://github.com/home-operations/tuppr/compare/0.1.40...0.2.0) (2026-06-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* **talos:** replace drain kubectl-safety fields with explicit enabled toggle
+
+### Features
+
+* **deps:** update module github.com/netresearch/go-cron (v0.14.0 → v0.15.0) ([#305](https://github.com/home-operations/tuppr/issues/305)) ([e3cfcc4](https://github.com/home-operations/tuppr/commit/e3cfcc4efdc596f03862d5f26804b45e89752ddc))
+* **deps:** update module github.com/nicholas-fedor/shoutrrr (v0.14.3 → v0.15.1) ([#299](https://github.com/home-operations/tuppr/issues/299)) ([8ec342a](https://github.com/home-operations/tuppr/commit/8ec342a194c6b2aa6656d095d000ef9ceb22b63a))
+* **deps:** update module github.com/nicholas-fedor/shoutrrr (v0.15.1 → v0.16.0) ([#306](https://github.com/home-operations/tuppr/issues/306)) ([23a9499](https://github.com/home-operations/tuppr/commit/23a9499727b384e9a1195dd0209277b053eace86))
+* **mise:** update tool kind (0.31.0 → 0.32.0) ([7de70c0](https://github.com/home-operations/tuppr/commit/7de70c05f990f6cc9fdb64a805508ab940e0ffb2))
+* **mise:** update tool oxfmt (0.52.0 → 0.53.0) ([cddeee2](https://github.com/home-operations/tuppr/commit/cddeee24522e1a9eb5c015b14d04998fc82f82d7))
+* **talos:** replace drain kubectl-safety fields with explicit enabled toggle ([cfa6288](https://github.com/home-operations/tuppr/commit/cfa6288eb0ace91302a0993d6da72533b6f16388))
+
+
+### Bug Fixes
+
+* **mise:** update tool go (1.26.3 → 1.26.4) ([3e57408](https://github.com/home-operations/tuppr/commit/3e57408c85747f21114a2bccc4fb3770d754704e))
+
+
+### Miscellaneous Chores
+
+* move mise to mise folder ([85719a6](https://github.com/home-operations/tuppr/commit/85719a6590ac0e1e203d0d0bd06873f73ea6e59e))
+* update mise lockfile ([7077075](https://github.com/home-operations/tuppr/commit/7077075377e0a66bbe5cd5598d3ef3001280e9a7))
+
 ## [0.1.40](https://github.com/home-operations/tuppr/compare/0.1.39...0.1.40) (2026-06-01)
 
 
