@@ -101,6 +101,8 @@ jobs:
         run: tofu -chdir=tofu-image apply -auto-approve
 
       - name: Apply infrastructure
+        env:
+          KUBE_LAZY_LOAD: "true"
         run: tofu -chdir=tofu apply -auto-approve
 
       - name: Run e2e tests
