@@ -1,12 +1,18 @@
 ---
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
-name: E2E
+name: e2e
 
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - closed
     branches:
       - main
     paths:
+      - .mise/**
       - charts/**
       - test/**
       - Dockerfile
@@ -19,7 +25,7 @@ permissions:
   contents: read
 
 jobs:
-  cleanup-previous:
+  prune:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -32,14 +38,21 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Cleanup previous runs on this branch
+      - name: Setup Mise
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        with:
+          experimental: true
+          install_args: --locked
+
+      - name: Prune previous runs on this branch
         env:
           HCLOUD_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
           BRANCH: ${{ github.head_ref || github.ref_name }}
-        run: ./cleanup.sh "branch=${BRANCH}"
+        run: ./prune.sh "branch=${BRANCH}"
 
   e2e-test:
-    needs: cleanup-previous
+    if: github.event_name == 'workflow_dispatch' || github.event.action != 'closed'
+    needs: prune
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -73,33 +86,36 @@ jobs:
         uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
           experimental: true
-          working_directory: test/e2e-hetzner
           install_args: --locked
 
-      - name: OpenTofu init
-        run: tofu -chdir=tofu init
+      - name: OpenTofu init image
+        run: tofu -chdir=tofu-image init -lockfile=readonly
 
-      # The module's hcloud_image data source has a count expression that
-      # depends on imager_image.talos_x86.image_id (known only after apply),
-      # so materialize the snapshot first.
+      - name: OpenTofu init cluster
+        run: tofu -chdir=tofu init -lockfile=readonly
+
+      # The cluster module needs a concrete Hetzner image ID at plan time.
+      # Keep image creation in a separate root so the module's Kubernetes
+      # providers are not configured before the cluster exists.
       - name: Materialize Talos snapshot
-        run: tofu -chdir=tofu apply -auto-approve -target=imager_image.talos_x86
+        run: tofu -chdir=tofu-image apply -auto-approve
 
       - name: Apply infrastructure
+        env:
+          KUBE_LAZY_LOAD: "true"
         run: tofu -chdir=tofu apply -auto-approve
 
       - name: Run e2e tests
-        run: mise exec -- ./test.sh
-        working-directory: test/e2e-hetzner
+        run: mise exec --locked --no-deps -- ./test.sh
 
-      - name: Cleanup all resources
+      - name: Prune all resources
         if: always()
         env:
           HCLOUD_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
         run: |-
-          CLUSTER_NAME=$(echo "local.cluster_name" | tofu -chdir=tofu console -state=ignore.state | tr -d '"')
+          CLUSTER_NAME="tuppr-e2e-${TF_VAR_run_id}-${TF_VAR_control_plane_count}cp-${TF_VAR_worker_count}w"
           if [[ -z "$CLUSTER_NAME" ]]; then
             echo "ERROR: Could not determine cluster name - resources may be orphaned!"
             exit 1
           fi
-          ./cleanup.sh "cluster=${CLUSTER_NAME}"
+          ./prune.sh "cluster=${CLUSTER_NAME}"

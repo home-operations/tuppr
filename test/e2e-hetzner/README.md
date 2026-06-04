@@ -30,12 +30,14 @@ export CONTROLLER_IMAGE="custom-image:tag"    # Default: builds from source
 ### 2. Provision Infrastructure
 
 ```bash
-cd tofu
-tofu init
-# The module's hcloud_image data source can't resolve until the snapshot
-# exists, so create the snapshot first:
-tofu apply -target=imager_image.talos_x86
-tofu apply
+tofu -chdir=tofu-image init
+tofu -chdir=tofu init
+
+# The cluster root looks up the snapshot by label, so create it first in the
+# image-only root. This keeps the cluster module's Kubernetes providers from
+# being configured before the cluster exists.
+tofu -chdir=tofu-image apply
+tofu -chdir=tofu apply
 ```
 
 This creates:
@@ -54,7 +56,6 @@ This creates:
 ### 3. Run Tests
 
 ```bash
-cd ..
 ./test.sh
 ```
 
@@ -66,19 +67,19 @@ The test script:
 4. Tests TalosUpgrade
 5. Tests KubernetesUpgrade
 
-### 4. Cleanup
+### 4. Prune
 
 ```bash
 export HCLOUD_TOKEN="your-hetzner-token"
 CLUSTER_NAME=$(tofu -chdir=tofu output -raw cluster_name)
-./cleanup.sh "cluster=${CLUSTER_NAME}"
+./prune.sh "cluster=${CLUSTER_NAME}"
 ```
 
-Or clean up all resources from a specific branch:
+Or prune all resources from a specific branch:
 
 ```bash
 export HCLOUD_TOKEN="your-hetzner-token"
-./cleanup.sh "branch=main"
+./prune.sh "branch=main"
 ```
 
 ## Variables Reference

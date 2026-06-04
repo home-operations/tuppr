@@ -10,7 +10,7 @@ if [[ -z "$LABEL_SELECTOR" ]]; then
     echo "  $0 cluster=tuppr-e2e-local-3cp-0w"
     echo "  $0 branch=main"
     echo ""
-    echo "Deletes all Hetzner Cloud resources matching the label selector"
+    echo "Prunes all Hetzner Cloud resources matching the label selector"
     exit 1
 fi
 
@@ -23,7 +23,7 @@ log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"
 }
 
-log "Cleaning up all resources with label selector: ${LABEL_SELECTOR}"
+log "Pruning all resources with label selector: ${LABEL_SELECTOR}"
 
 # Order matters - delete dependent resources first.
 # Each entry is "<cmd>:<extra list flags>". The extra flags come after `list`.
@@ -44,7 +44,7 @@ RESOURCE_TYPES=(
 for entry in "${RESOURCE_TYPES[@]}"; do
     cmd=${entry%%:*}
     list_args=${entry#*:}
-    log "Cleaning up ${cmd}s..."
+    log "Pruning ${cmd}s..."
     # shellcheck disable=SC2086 # intentional word splitting for list_args
     ids=$(hcloud "$cmd" list $list_args -o noheader -o columns=id -l "${LABEL_SELECTOR}" 2>/dev/null || true)
 
@@ -60,4 +60,4 @@ for entry in "${RESOURCE_TYPES[@]}"; do
     fi
 done
 
-log "Cleanup complete for label selector: ${LABEL_SELECTOR}"
+log "Prune complete for label selector: ${LABEL_SELECTOR}"

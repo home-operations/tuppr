@@ -157,8 +157,9 @@ main() {
         log "Building controller image..."
         RUN_ID=$(date +%s)
         CONTROLLER_IMAGE="ttl.sh/tuppr-e2e-${RUN_ID}:2h"
+        GO_VERSION="${GO_VERSION:-$(mise config get tools.go)}"
 
-        docker build -t "$CONTROLLER_IMAGE" .
+        docker build --build-arg "GO_VERSION=${GO_VERSION}" -t "$CONTROLLER_IMAGE" .
         log "Pushing controller image..."
         docker push "$CONTROLLER_IMAGE"
         log "Controller image: $CONTROLLER_IMAGE"
@@ -169,7 +170,7 @@ main() {
     talosctl --nodes $NODE_IP health --wait-timeout=10m
 
     log "Generating CRDs..."
-    make helm-crds
+    mise run -C "$REPO_ROOT" helm-crds
 
     log "Creating tuppr-system namespace..."
     kubectl create namespace tuppr-system --dry-run=client -o yaml | kubectl apply -f -
@@ -199,7 +200,7 @@ main() {
     kubectl get kubernetesupgrade -w -o yaml 2>&1 | sed 's/^/[watch-k8s] /' &
     WATCH_K8S_PID=$!
 
-    trap "kill $STERN_PID $WATCH_TALOS_PID $WATCH_K8S_PID 2>/dev/null || true" EXIT
+    trap 'kill "$STERN_PID" "$WATCH_TALOS_PID" "$WATCH_K8S_PID" 2>/dev/null || true' EXIT
 
     log "============================================"
     log "Starting TalosUpgrade test"

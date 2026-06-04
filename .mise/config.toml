@@ -1,13 +1,18 @@
 [tools]
-go = "1.26.4"
+go = "1.26.2"
 golangci-lint = "2.12.2"
-helm = "4.2.0"
+hcloud = "1.61.0"
+helm = "4.1.1"
+jq = "1.8.1"
 kind = "0.32.0"
 kube-controller-tools = "0.21.0"
-kubectl = "1.36.1"
+kubectl = "1.35.1"
 lefthook = "2.1.9"
+opentofu = "1.11.4"
 oxfmt = "0.53.0"
 setup-envtest = "0.24.1"
+stern = "1.33.1"
+talosctl = "1.12.4"
 zizmor = "1.25.2"
 
 [tasks.manifests]
