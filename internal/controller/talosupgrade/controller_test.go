@@ -1575,8 +1575,13 @@ func TestTalosBuildJob_WaitFlagDependsOnClusterSize(t *testing.T) {
 		WithStatusSubresource(tu).Build()
 	rMulti := newTalosReconciler(multiCl, scheme, tc, &mockHealthChecker{})
 	multiJob := rMulti.buildJob(context.Background(), tu, fakeNodeA, testNodeIP1, testNodeIP1, targetImage)
-	if !slices.Contains(multiJob.Spec.Template.Spec.Containers[0].Args, "--wait=true") {
-		t.Fatalf("expected --wait=true on multi-node cluster, got: %v", multiJob.Spec.Template.Spec.Containers[0].Args)
+	multiArgs := multiJob.Spec.Template.Spec.Containers[0].Args
+	if !slices.Contains(multiArgs, "--wait=true") {
+		t.Fatalf("expected --wait=true on multi-node cluster, got: %v", multiArgs)
+	}
+	// Multi-node keeps talosctl's default drain: workloads move to other nodes.
+	if slices.Contains(multiArgs, "--drain=false") {
+		t.Fatalf("did not expect --drain=false on multi-node cluster, got: %v", multiArgs)
 	}
 
 	singleCl := fake.NewClientBuilder().WithScheme(scheme).
@@ -1584,8 +1589,14 @@ func TestTalosBuildJob_WaitFlagDependsOnClusterSize(t *testing.T) {
 		WithStatusSubresource(tu).Build()
 	rSingle := newTalosReconciler(singleCl, scheme, tc, &mockHealthChecker{})
 	singleJob := rSingle.buildJob(context.Background(), tu, fakeNodeA, testNodeIP1, testNodeIP1, targetImage)
-	if !slices.Contains(singleJob.Spec.Template.Spec.Containers[0].Args, "--wait=false") {
-		t.Fatalf("expected --wait=false on single-node cluster, got: %v", singleJob.Spec.Template.Spec.Containers[0].Args)
+	singleArgs := singleJob.Spec.Template.Spec.Containers[0].Args
+	if !slices.Contains(singleArgs, "--wait=false") {
+		t.Fatalf("expected --wait=false on single-node cluster, got: %v", singleArgs)
+	}
+	// Single-node must disable the drain: it would evict this very pod before the
+	// reboot, stranding the only node cordoned on the old version.
+	if !slices.Contains(singleArgs, "--drain=false") {
+		t.Fatalf("expected --drain=false on single-node cluster, got: %v", singleArgs)
 	}
 }
 
