@@ -469,11 +469,13 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 		timeout = talosUpgrade.Spec.Policy.Timeout.Duration
 	}
 
+	selfHosted := r.isSelfHostedUpgrade(ctx)
+
 	// On a single-node cluster the pod runs on the node it upgrades, so --wait would
 	// have it killed by the reboot and fail the Job. Issue the upgrade and exit; the
 	// controller tracks completion by polling node readiness.
 	waitArg := "--wait=true"
-	if r.isSelfHostedUpgrade(ctx) {
+	if selfHosted {
 		waitArg = "--wait=false"
 	}
 
@@ -487,6 +489,10 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 		"--timeout="+timeout.String(),
 		waitArg,
 	)
+
+	if selfHosted {
+		args = append(args, "--drain=false")
+	}
 
 	if talosUpgrade.Spec.Policy.Debug {
 		args = append(args, "--debug=true")

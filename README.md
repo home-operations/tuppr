@@ -116,11 +116,13 @@ spec:
 > [!NOTE]
 > **Single-node clusters.** With only one node, the upgrade pod runs on the node
 > being upgraded and is killed by the reboot. tuppr handles this: it issues the
-> upgrade with `--wait=false`, tracks completion by polling node readiness over the
-> Talos API (so a reboot-killed Job isn't a failure), and uncordons the node after a
-> verified upgrade even without a `drain` spec, since Talos's own upgrade drain can
-> leave the only node cordoned. The controller tolerates the cordon taint so it can
-> run there to do this.
+> upgrade with `--wait=false` and `--drain=false`, and tracks completion by polling
+> node readiness over the Talos API (so a reboot-killed Job isn't a failure). The
+> drain is disabled because talosctl's default cordon+evict runs from inside this
+> pod and would evict it before the reboot is issued — stranding the only node
+> cordoned on the old version — and there is nowhere to drain to anyway. tuppr still
+> uncordons the node after a verified upgrade even without a `drain` spec, and the
+> controller tolerates the cordon taint so it can run there to do this.
 
 #### Kubernetes Upgrades
 
