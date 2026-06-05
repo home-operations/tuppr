@@ -490,12 +490,6 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 		waitArg,
 	)
 
-	// On a single-node cluster talosctl's own node drain (cordon + evict pods, on by
-	// default) runs from inside this very pod and evicts it before the reboot is ever
-	// issued — talosctl takes the eviction SIGTERM, aborts the drain, and the node is
-	// left cordoned on the old version while the Job retries the same doomed sequence.
-	// There is nowhere to drain to on a single node anyway, so disable the drain and
-	// let the reboot take the node down; completion is tracked by polling readiness.
 	if selfHosted {
 		args = append(args, "--drain=false")
 	}
