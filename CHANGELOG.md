@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.1](https://github.com/home-operations/tuppr/compare/0.2.0...0.2.1) (2026-06-05)
+
+
+### Features
+
+* **mise:** update tool hcloud (1.61.0 → 1.65.0) ([aabeb88](https://github.com/home-operations/tuppr/commit/aabeb8882253d88749c5abea83d44c8a5d0f9970))
+* **mise:** update tool helm (4.1.1 → 4.2.0) ([3b12189](https://github.com/home-operations/tuppr/commit/3b12189df5b49e6fc3548bf2e48a8e93c82c4529))
+* **mise:** update tool kubectl (1.35.1 → 1.36.1) ([0785dd4](https://github.com/home-operations/tuppr/commit/0785dd49d14d5ada05055db89176a9c4c96890a7))
+* **mise:** update tool opentofu (1.11.4 → 1.12.1) ([0558ecb](https://github.com/home-operations/tuppr/commit/0558ecb7cdb294251c5dc921f2417bf76c1b2f26))
+* **mise:** update tool stern (1.33.1 → 1.34.0) ([b0a9584](https://github.com/home-operations/tuppr/commit/b0a95842f8bab16d88527974bea2f2604b69c69f))
+* **mise:** update tool talosctl (1.12.4 → 1.13.3) ([23d5fd8](https://github.com/home-operations/tuppr/commit/23d5fd80c528c34d516bfe0135fd96f434f2a525))
+
+
+### Bug Fixes
+
+* **talos:** disable talosctl drain on single-node upgrades ([#310](https://github.com/home-operations/tuppr/issues/310)) ([a82650e](https://github.com/home-operations/tuppr/commit/a82650e352af8565701b95eb29baa6b1dde57cfb))
+* use mise as the single source of truth for go versions ([#307](https://github.com/home-operations/tuppr/issues/307)) ([f0ee83d](https://github.com/home-operations/tuppr/commit/f0ee83d7b4455281995689228d853f32bd47d10e))
+
 ## [0.2.0](https://github.com/home-operations/tuppr/compare/0.1.40...0.2.0) (2026-06-03)
 
 
