@@ -21,7 +21,7 @@ permissions:
 jobs:
   test:
     name: Run on Ubuntu
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
@@ -49,7 +49,7 @@ jobs:
 
   helm-test:
     name: Helm Unit Tests
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
