@@ -10,7 +10,6 @@
       matchFileNames: [".mise/config.toml", "go.mod"],
       groupName: "Go toolchain",
       groupSlug: "go-toolchain",
-      automerge: false,
     },
   ],
 }
