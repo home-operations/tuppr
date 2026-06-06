@@ -67,6 +67,7 @@ jobs:
 
   helm:
     name: Helm
+    needs: release
     if: ${{ github.event_name == 'release' }}
     runs-on: ubuntu-24.04
     permissions:
