@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.2](https://github.com/home-operations/tuppr/compare/0.2.1...0.2.2) (2026-06-07)
+
+
+### Features
+
+* make controller upgrade first ([3b43bcf](https://github.com/home-operations/tuppr/commit/3b43bcfd0fb0e51c4b87cb6e1da4864ce219da7f))
+
+
+### Miscellaneous Chores
+
+* disable automerge for Go toolchain dependencies ([76555e7](https://github.com/home-operations/tuppr/commit/76555e7ce9a65986108d5e5da9f682e63e8c041e))
+* update release-please-config.json to simplify paths ([6256955](https://github.com/home-operations/tuppr/commit/6256955f675c54a2f412079460fc987c47456121))
+
 ## [0.2.1](https://github.com/home-operations/tuppr/compare/0.2.0...0.2.1) (2026-06-05)
 
 
