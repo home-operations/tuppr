@@ -3646,7 +3646,7 @@ func TestFindNextNodes_SkipsCompletedAndFailed(t *testing.T) {
 	}
 }
 
-func TestFindNextNodes_ControllerNodeLast(t *testing.T) {
+func TestFindNextNodes_ControllerNodeFirst(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
@@ -3668,7 +3668,7 @@ func TestFindNextNodes_ControllerNodeLast(t *testing.T) {
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 	r.ControllerNodeName = fakeNodeA
 
-	// Request 2 — controller node (node-a) should be excluded from this batch
+	// Request 2 — controller node (node-a) should come first
 	nodes, err := r.findNextNodes(context.Background(), tu, 2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -3676,11 +3676,11 @@ func TestFindNextNodes_ControllerNodeLast(t *testing.T) {
 	if len(nodes) != 2 {
 		t.Fatalf("expected 2 nodes, got %d: %v", len(nodes), nodes)
 	}
-	if nodes[0] != fakeNodeB || nodes[1] != fakeNodeC {
-		t.Fatalf("expected [node-b, node-c], got: %v", nodes)
+	if nodes[0] != fakeNodeA || nodes[1] != fakeNodeB {
+		t.Fatalf("expected [node-a, node-b], got: %v", nodes)
 	}
 
-	// Request all 3 — controller node should come last
+	// Request all 3 — controller node should come first
 	nodes, err = r.findNextNodes(context.Background(), tu, 3)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -3688,8 +3688,8 @@ func TestFindNextNodes_ControllerNodeLast(t *testing.T) {
 	if len(nodes) != 3 {
 		t.Fatalf("expected 3 nodes, got %d: %v", len(nodes), nodes)
 	}
-	if nodes[2] != fakeNodeA {
-		t.Fatalf("expected controller node %s last, got: %v", fakeNodeA, nodes)
+	if nodes[0] != fakeNodeA {
+		t.Fatalf("expected controller node %s first, got: %v", fakeNodeA, nodes)
 	}
 }
 

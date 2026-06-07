@@ -517,13 +517,13 @@ func (r *Reconciler) getSortedNodes(ctx context.Context, nodeSelector *metav1.La
 	nodes := nodeList.Items
 	controllerNode := r.ControllerNodeName
 	slices.SortFunc(nodes, func(a, b corev1.Node) int {
-		// if present, always keep controller node as last item
+		// if present, always upgrade controller node first
 		if controllerNode != "" {
 			if a.Name == controllerNode {
-				return 1
+				return -1
 			}
 			if b.Name == controllerNode {
-				return -1
+				return 1
 			}
 		}
 		return strings.Compare(a.Name, b.Name)
