@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.3](https://github.com/home-operations/tuppr/compare/0.2.2...0.2.3) (2026-06-07)
+
+
+### Features
+
+* **chart:** digest pinning, generated README + values schema, CI caching ([#312](https://github.com/home-operations/tuppr/issues/312)) ([65545b9](https://github.com/home-operations/tuppr/commit/65545b924b63b38b64abf89ccd730a1c70aa39cb))
+
+
+### Bug Fixes
+
+* **mise:** update go toolchain (1.26.2 → 1.26.4) ([#309](https://github.com/home-operations/tuppr/issues/309)) ([2491500](https://github.com/home-operations/tuppr/commit/249150072078bf3121c27ea57112902e07d7dd94))
+
 ## [0.2.2](https://github.com/home-operations/tuppr/compare/0.2.1...0.2.2) (2026-06-07)
 
 
