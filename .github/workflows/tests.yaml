@@ -18,6 +18,10 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # renovate: datasource=github-releases depName=helm-unittest/helm-unittest
+  HELM_UNITTEST_VERSION: "v1.0.3"
+
 jobs:
   test:
     name: Go Tests
@@ -75,7 +79,7 @@ jobs:
 
       - name: Run helm unit tests
         run: |-
-          helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.0.3 --verify=false
+          helm plugin install https://github.com/helm-unittest/helm-unittest --version "${HELM_UNITTEST_VERSION}" --verify=false
           mise run helm-test
 
       - name: Check chart docs are current
