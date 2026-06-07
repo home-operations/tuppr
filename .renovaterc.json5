@@ -2,6 +2,18 @@
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
   extends: ["local>home-operations/renovate-config"],
   postUpdateOptions: ["gomodTidy", "gomodUpdateImportPaths"],
+  // Regenerate the chart's committed docs after an upgrade so a value bump
+  // doesn't leave README.md / values.schema.json stale and fail helm-docs-check.
+  // Runs the helm-docs + helm-schema binaries shipped in the Renovate container
+  // (mirrors `mise run helm-docs`).
+  postUpgradeTasks: {
+    commands: [
+      "helm-docs --chart-search-root=charts --log-level=warn",
+      "helm-schema --chart-search-root charts/tuppr --skip-auto-generation required,additionalProperties --append-newline",
+    ],
+    fileFilters: ["charts/tuppr/README.md", "charts/tuppr/values.schema.json"],
+    executionMode: "branch",
+  },
   packageRules: [
     {
       description: "Go Toolchain Group",
