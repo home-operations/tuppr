@@ -1,74 +1,66 @@
 ---
-# Default values for tuppr - Talos Linux Upgrade Controller
-# This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
+# Default values for tuppr — the Talos Linux upgrade controller.
 
-# Number of controller replicas to run
-# Note: Only one replica will be active due to leader election
+# -- Number of controller replicas (only one is active at a time via leader election).
 replicaCount: 1
 
-# Container image configuration
 image:
-  # Container image repository
+  # -- Image repository.
   repository: ghcr.io/home-operations/tuppr
-  # Image pull policy
-  # Options: Always, Never, IfNotPresent
+  # -- Image pull policy.
   pullPolicy: IfNotPresent
-  # Overrides the image tag whose default is the chart appVersion
+  # -- Overrides the image tag; defaults to the chart appVersion.
   tag: ""
+  # Pins the image by digest (sha256:…). When set it takes precedence over tag;
+  # the release pipeline fills it with the published image's digest.
 
-# Image pull secrets for private registries
+  # -- Pin the image by digest (sha256:…); when set, overrides the tag.
+  digest: ""
+
+# -- Image pull secrets for private registries.
 imagePullSecrets: []
-# Example:
-# imagePullSecrets:
-#   - name: my-registry-secret
+# - name: my-registry-secret
 
-# Override chart naming
+# -- Override the chart name used in resource names.
 nameOverride: ""
+# -- Override the full release name.
 fullnameOverride: ""
 
-# Kubernetes ServiceAccount configuration
-# This is different from the Talos ServiceAccount above
 serviceAccount:
-  # Specifies whether a Kubernetes service account should be created
+  # -- Create a ServiceAccount.
   create: true
-  # Automatically mount a ServiceAccount's API credentials?
+  # -- Automount the API token (on by default: the controller talks to the cluster API).
   automount: true
-  # Annotations to add to the service account
+  # -- Annotations for the ServiceAccount (e.g. workload-identity bindings).
   annotations: {}
-  # Example annotations for workload identity:
-  # annotations:
-  #   iam.gke.io/gcp-service-account: tuppr@project.iam.gserviceaccount.com
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
+  # -- ServiceAccount name; generated from the release name if empty.
   name: ""
 
-# Pod annotations and labels
+# -- Annotations added to the pod.
 podAnnotations: {}
-# Example:
-# podAnnotations:
-#   prometheus.io/scrape: "true"
-
+# -- Labels added to the pod.
 podLabels: {}
 
-# Pod security context
+# -- Pod-level securityContext (runs as non-root uid/gid 65532).
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 65532
   fsGroup: 65532
 
-# Additional environment variables passed to container
+# -- Extra environment variables passed to the container.
 env: []
 # - name: FOO
 #   value: bar
 
-# Notification configuration
 notification:
+  # -- Enable upgrade notifications.
   enabled: false
+  # -- Name of the Secret holding the notification (shoutrrr) URL.
   secretName: ""
+  # -- Key within the Secret holding the notification URL.
   secretKey: url
 
-# Container security context
+# -- Container securityContext (no privilege escalation, read-only root filesystem, drops ALL capabilities).
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
@@ -78,27 +70,24 @@ securityContext:
   runAsNonRoot: true
   runAsUser: 65532
 
-# Service configuration
 service:
-  # Service type
+  # -- Service type.
   type: ClusterIP
-  # Service port for general access
+  # -- Service port for general access.
   port: 8080
-  # Metrics port (deprecated - use controller.metrics.port)
+  # -- Metrics port (deprecated — use controller.metrics.port).
   metricsPort: 8080
 
-# Resource limits and requests
+# -- Pod resource requests/limits.
 resources: {}
-# Example:
-# resources:
-#   limits:
-#     cpu: 500m
-#     memory: 128Mi
-#   requests:
-#     cpu: 10m
-#     memory: 64Mi
+# limits:
+#   cpu: 500m
+#   memory: 128Mi
+# requests:
+#   cpu: 10m
+#   memory: 64Mi
 
-# Liveness probe configuration
+# -- Liveness probe.
 livenessProbe:
   httpGet:
     path: /healthz
@@ -106,7 +95,7 @@ livenessProbe:
   initialDelaySeconds: 15
   periodSeconds: 20
 
-# Readiness probe configuration
+# -- Readiness probe.
 readinessProbe:
   httpGet:
     path: /readyz
@@ -114,165 +103,121 @@ readinessProbe:
   initialDelaySeconds: 5
   periodSeconds: 10
 
-# Additional volumes on the output Deployment definition.
+# -- Additional volumes on the Deployment.
 volumes: []
 # - name: foo
 #   secret:
 #     secretName: mysecret
-#     optional: false
 
-# Additional volumeMounts on the output Deployment definition.
+# -- Additional volume mounts on the container.
 volumeMounts: []
 # - name: foo
-#   mountPath: "/etc/foo"
+#   mountPath: /etc/foo
 #   readOnly: true
 
-# Priority class name for pod scheduling
+# -- Priority class name for pod scheduling.
 priorityClassName: system-node-critical
 
-# Node selector for pod assignment
+# -- Node selector for pod scheduling.
 nodeSelector: {}
-# Example:
-# nodeSelector:
-#   kubernetes.io/os: linux
 
-# Tolerations for pod assignment
+# -- Tolerations for pod scheduling (defaults keep the controller schedulable on control-plane and cordoned nodes so it can uncordon after an upgrade reboot).
 tolerations:
   - key: CriticalAddonsOnly
     operator: Exists
   - key: node-role.kubernetes.io/control-plane
     operator: Exists
     effect: NoSchedule
-  # Keep the controller schedulable on a cordoned node so it can uncordon a single
-  # node after the upgrade reboot.
   - key: node.kubernetes.io/unschedulable
     operator: Exists
     effect: NoSchedule
 
-# Affinity for pod assignment
+# -- Affinity rules for pod scheduling.
 affinity: {}
-# Example:
-# affinity:
-#   nodeAffinity:
-#     requiredDuringSchedulingIgnoredDuringExecution:
-#       matchNodes:
-#       - matchExpressions:
-#         - key: kubernetes.io/arch
-#           operator: In
-#           values:
-#           - amd64
 
-# Controller-specific configuration
+# Controller runtime configuration.
 controller:
-  # Log level for the controller
-  # Options: info, debug
-  logLevel: debug # TODO: Once there is a stable release, change this to info by default
+  # -- Controller log level: info or debug.
+  logLevel: debug # TODO: switch to info once there is a stable release
 
-  # Leader election configuration
-  # Only one controller instance will be active at a time
   leaderElection:
-    # Enable leader election (recommended for production)
+    # -- Enable leader election (recommended; only one controller is active at a time).
     enabled: true
 
-  # Metrics configuration
   metrics:
-    # Enable Prometheus metrics endpoint
+    # -- Expose the Prometheus metrics endpoint.
     enabled: true
-    # Port for metrics endpoint
+    # -- Metrics endpoint port.
     port: 8080
-    # Enable secure metrics (HTTPS with authentication)
-    # When false, metrics are served over HTTP without authentication
+    # -- Serve metrics over HTTPS with authentication; false serves plain HTTP.
     secure: false
-    # Annotations for the metrics service
+    # -- Annotations for the metrics Service.
     annotations: {}
-    # Example:
-    # annotations:
-    #   prometheus.io/scrape: "true"
-    #   prometheus.io/port: "8080"
 
-  # Health probe configuration
   health:
-    # Port for health probes (/healthz, /readyz)
+    # -- Health-probe port (/healthz, /readyz).
     port: 8081
 
-# Webhook configuration
 webhook:
-  # Enable admission webhooks for validation
+  # -- Enable the admission webhooks for validation.
   enabled: true
-  # Webhook server port
+  # -- Webhook server port.
   port: 9443
-  # Annotations for webhook service
+  # -- Annotations for the webhook Service.
   annotations: {}
 
-# RBAC configuration
 rbac:
-  # Create ClusterRole and ClusterRoleBinding
-  # Required for the controller to manage nodes and create jobs
+  # -- Create the ClusterRole + ClusterRoleBinding the controller needs to manage nodes and jobs.
   create: true
-  # Annotations for RBAC resources
+  # -- Annotations for the RBAC resources.
   annotations: {}
 
-# Monitoring configuration
 monitoring:
-  # Prometheus ServiceMonitor for metrics scraping
   serviceMonitor:
-    # Create ServiceMonitor resource
-    # Requires Prometheus Operator to be installed
+    # -- Create a Prometheus Operator ServiceMonitor (requires its CRDs).
     enabled: false
-    # Scrape interval
+    # -- Scrape interval.
     interval: 30s
-    # Scrape timeout
+    # -- Scrape timeout.
     scrapeTimeout: 10s
-    # Metrics path
+    # -- Metrics path.
     path: /metrics
-    # Additional labels for ServiceMonitor
+    # -- ServiceMonitor labels.
     labels: {}
-    # Example:
-    # labels:
-    #   prometheus: kube-prometheus
-    # Annotations for ServiceMonitor
+    # -- ServiceMonitor annotations.
     annotations: {}
-
-    # Advanced configuration (optional)
-    # Metric relabelings to apply to scraped metrics
+    # -- Prometheus metric relabelings.
     metricRelabelings: []
-    # Example:
-    # metricRelabelings:
-    #   - sourceLabels: [__name__]
-    #     regex: 'tuppr_(.*)'
-    #     targetLabel: __name__
-    #     replacement: 'controller_${1}'
-
-    # Relabelings to apply before scraping
+    # -- Prometheus relabelings (applied before scraping).
     relabelings: []
-    # Target labels to copy from the service
+    # -- Target labels to copy from the Service.
     targetLabels: []
-    # Pod target labels to copy from pods
+    # -- Pod target labels to copy from pods.
     podTargetLabels: []
 
   prometheusRule:
-    # Create PrometheusRule resource for alerting rules
+    # -- Create a PrometheusRule with alerting rules.
     enabled: false
-    # Annotations for PrometheusRule
+    # -- PrometheusRule annotations.
     annotations: {}
-    # Additional labels for PrometheusRule
+    # -- PrometheusRule labels.
     labels: {}
-    # Additional labels to add to every alert rule
+    # -- Extra labels added to every alert rule.
     additionalRuleLabels: {}
-    # Additional annotations to add to every alert rule
+    # -- Extra annotations added to every alert rule.
     additionalRuleAnnotations: {}
 
-  # Grafana dashboard shipped with the chart
   dashboards:
-    # Render the dashboard ConfigMap. Required for either grafana-operator or
-    # the kube-prometheus-stack grafana sidecar to pick the dashboard up.
+    # -- Render the Grafana dashboard ConfigMap (for grafana-operator or the kube-prometheus-stack sidecar).
     enabled: false
-    # Namespace to render the dashboard objects into. Defaults to the release namespace.
+    # -- Namespace for the dashboard objects; defaults to the release namespace.
     namespace: ""
-    # Extra annotations/labels added to the dashboard ConfigMap.
+    # -- Annotations added to the dashboard ConfigMap.
     annotations: {}
+    # -- Labels added to the dashboard ConfigMap.
     labels: {}
     grafanaOperator:
+      # -- Render a GrafanaDashboard CR (grafana-operator) instead of a sidecar ConfigMap.
       enabled: false
       # -- If true allows for a Grafana in any namespace to access this GrafanaDashboard.
       allowCrossNamespaceImport: true
@@ -282,4 +227,3 @@ monitoring:
       resyncPeriod: "10m"
       # -- Selected labels for Grafana instance.
       matchLabels: {}
-      # dashboards: grafana

@@ -21,6 +21,15 @@ tests:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/home-operations/tuppr:1.2.3
 
+  - it: should pin the image by digest when set, overriding the tag
+    set:
+      image.tag: "1.2.3"
+      image.digest: "sha256:abc123"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/home-operations/tuppr@sha256:abc123
+
   - it: should set replicas from values
     set:
       replicaCount: 3

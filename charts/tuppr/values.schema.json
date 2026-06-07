@@ -1,0 +1,721 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "affinity": {
+      "description": "Affinity rules for pod scheduling.",
+      "required": [],
+      "title": "affinity",
+      "type": "object"
+    },
+    "controller": {
+      "description": "Controller runtime configuration.",
+      "properties": {
+        "health": {
+          "properties": {
+            "port": {
+              "default": 8081,
+              "description": "Health-probe port (/healthz, /readyz).",
+              "title": "port",
+              "type": "integer"
+            }
+          },
+          "required": [],
+          "title": "health",
+          "type": "object"
+        },
+        "leaderElection": {
+          "properties": {
+            "enabled": {
+              "default": true,
+              "description": "Enable leader election (recommended; only one controller is active at a time).",
+              "title": "enabled",
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "title": "leaderElection",
+          "type": "object"
+        },
+        "logLevel": {
+          "default": "debug",
+          "description": "Controller log level: info or debug.",
+          "title": "logLevel",
+          "type": "string"
+        },
+        "metrics": {
+          "properties": {
+            "annotations": {
+              "description": "Annotations for the metrics Service.",
+              "required": [],
+              "title": "annotations",
+              "type": "object"
+            },
+            "enabled": {
+              "default": true,
+              "description": "Expose the Prometheus metrics endpoint.",
+              "title": "enabled",
+              "type": "boolean"
+            },
+            "port": {
+              "default": 8080,
+              "description": "Metrics endpoint port.",
+              "title": "port",
+              "type": "integer"
+            },
+            "secure": {
+              "default": false,
+              "description": "Serve metrics over HTTPS with authentication; false serves plain HTTP.",
+              "title": "secure",
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "title": "metrics",
+          "type": "object"
+        }
+      },
+      "required": [],
+      "title": "controller",
+      "type": "object"
+    },
+    "env": {
+      "description": "Extra environment variables passed to the container.",
+      "items": {
+        "required": []
+      },
+      "title": "env",
+      "type": "array"
+    },
+    "fullnameOverride": {
+      "default": "",
+      "description": "Override the full release name.",
+      "title": "fullnameOverride",
+      "type": "string"
+    },
+    "global": {
+      "description": "Global values are values that can be accessed from any chart or subchart by exactly the same name.",
+      "required": [],
+      "title": "global",
+      "type": "object"
+    },
+    "image": {
+      "properties": {
+        "digest": {
+          "default": "",
+          "description": "Pin the image by digest (sha256:…); when set, overrides the tag.",
+          "title": "digest",
+          "type": "string"
+        },
+        "pullPolicy": {
+          "default": "IfNotPresent",
+          "description": "Image pull policy.",
+          "title": "pullPolicy",
+          "type": "string"
+        },
+        "repository": {
+          "default": "ghcr.io/home-operations/tuppr",
+          "description": "Image repository.",
+          "title": "repository",
+          "type": "string"
+        },
+        "tag": {
+          "default": "",
+          "description": "Overrides the image tag; defaults to the chart appVersion.",
+          "title": "tag",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "title": "image",
+      "type": "object"
+    },
+    "imagePullSecrets": {
+      "description": "Image pull secrets for private registries.",
+      "items": {
+        "required": []
+      },
+      "title": "imagePullSecrets",
+      "type": "array"
+    },
+    "livenessProbe": {
+      "description": "Liveness probe.",
+      "properties": {
+        "httpGet": {
+          "properties": {
+            "path": {
+              "default": "/healthz",
+              "title": "path",
+              "type": "string"
+            },
+            "port": {
+              "default": 8081,
+              "title": "port",
+              "type": "integer"
+            }
+          },
+          "required": [],
+          "title": "httpGet",
+          "type": "object"
+        },
+        "initialDelaySeconds": {
+          "default": 15,
+          "title": "initialDelaySeconds",
+          "type": "integer"
+        },
+        "periodSeconds": {
+          "default": 20,
+          "title": "periodSeconds",
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "title": "livenessProbe",
+      "type": "object"
+    },
+    "monitoring": {
+      "properties": {
+        "dashboards": {
+          "properties": {
+            "annotations": {
+              "description": "Annotations added to the dashboard ConfigMap.",
+              "required": [],
+              "title": "annotations",
+              "type": "object"
+            },
+            "enabled": {
+              "default": false,
+              "description": "Render the Grafana dashboard ConfigMap (for grafana-operator or the kube-prometheus-stack sidecar).",
+              "title": "enabled",
+              "type": "boolean"
+            },
+            "grafanaOperator": {
+              "properties": {
+                "allowCrossNamespaceImport": {
+                  "default": true,
+                  "description": "If true allows for a Grafana in any namespace to access this GrafanaDashboard.",
+                  "title": "allowCrossNamespaceImport",
+                  "type": "boolean"
+                },
+                "enabled": {
+                  "default": false,
+                  "description": "Render a GrafanaDashboard CR (grafana-operator) instead of a sidecar ConfigMap.",
+                  "title": "enabled",
+                  "type": "boolean"
+                },
+                "folder": {
+                  "default": "",
+                  "description": "Folder to create the dashboard in.",
+                  "title": "folder",
+                  "type": "string"
+                },
+                "matchLabels": {
+                  "description": "Selected labels for Grafana instance.",
+                  "required": [],
+                  "title": "matchLabels",
+                  "type": "object"
+                },
+                "resyncPeriod": {
+                  "default": "10m",
+                  "description": "Resync period for the Grafana operator to check for updates to the dashboard.",
+                  "title": "resyncPeriod",
+                  "type": "string"
+                }
+              },
+              "required": [],
+              "title": "grafanaOperator",
+              "type": "object"
+            },
+            "labels": {
+              "description": "Labels added to the dashboard ConfigMap.",
+              "required": [],
+              "title": "labels",
+              "type": "object"
+            },
+            "namespace": {
+              "default": "",
+              "description": "Namespace for the dashboard objects; defaults to the release namespace.",
+              "title": "namespace",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "title": "dashboards",
+          "type": "object"
+        },
+        "prometheusRule": {
+          "properties": {
+            "additionalRuleAnnotations": {
+              "description": "Extra annotations added to every alert rule.",
+              "required": [],
+              "title": "additionalRuleAnnotations",
+              "type": "object"
+            },
+            "additionalRuleLabels": {
+              "description": "Extra labels added to every alert rule.",
+              "required": [],
+              "title": "additionalRuleLabels",
+              "type": "object"
+            },
+            "annotations": {
+              "description": "PrometheusRule annotations.",
+              "required": [],
+              "title": "annotations",
+              "type": "object"
+            },
+            "enabled": {
+              "default": false,
+              "description": "Create a PrometheusRule with alerting rules.",
+              "title": "enabled",
+              "type": "boolean"
+            },
+            "labels": {
+              "description": "PrometheusRule labels.",
+              "required": [],
+              "title": "labels",
+              "type": "object"
+            }
+          },
+          "required": [],
+          "title": "prometheusRule",
+          "type": "object"
+        },
+        "serviceMonitor": {
+          "properties": {
+            "annotations": {
+              "description": "ServiceMonitor annotations.",
+              "required": [],
+              "title": "annotations",
+              "type": "object"
+            },
+            "enabled": {
+              "default": false,
+              "description": "Create a Prometheus Operator ServiceMonitor (requires its CRDs).",
+              "title": "enabled",
+              "type": "boolean"
+            },
+            "interval": {
+              "default": "30s",
+              "description": "Scrape interval.",
+              "title": "interval",
+              "type": "string"
+            },
+            "labels": {
+              "description": "ServiceMonitor labels.",
+              "required": [],
+              "title": "labels",
+              "type": "object"
+            },
+            "metricRelabelings": {
+              "description": "Prometheus metric relabelings.",
+              "items": {
+                "required": []
+              },
+              "title": "metricRelabelings",
+              "type": "array"
+            },
+            "path": {
+              "default": "/metrics",
+              "description": "Metrics path.",
+              "title": "path",
+              "type": "string"
+            },
+            "podTargetLabels": {
+              "description": "Pod target labels to copy from pods.",
+              "items": {
+                "required": []
+              },
+              "title": "podTargetLabels",
+              "type": "array"
+            },
+            "relabelings": {
+              "description": "Prometheus relabelings (applied before scraping).",
+              "items": {
+                "required": []
+              },
+              "title": "relabelings",
+              "type": "array"
+            },
+            "scrapeTimeout": {
+              "default": "10s",
+              "description": "Scrape timeout.",
+              "title": "scrapeTimeout",
+              "type": "string"
+            },
+            "targetLabels": {
+              "description": "Target labels to copy from the Service.",
+              "items": {
+                "required": []
+              },
+              "title": "targetLabels",
+              "type": "array"
+            }
+          },
+          "required": [],
+          "title": "serviceMonitor",
+          "type": "object"
+        }
+      },
+      "required": [],
+      "title": "monitoring",
+      "type": "object"
+    },
+    "nameOverride": {
+      "default": "",
+      "description": "Override the chart name used in resource names.",
+      "title": "nameOverride",
+      "type": "string"
+    },
+    "nodeSelector": {
+      "description": "Node selector for pod scheduling.",
+      "required": [],
+      "title": "nodeSelector",
+      "type": "object"
+    },
+    "notification": {
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Enable upgrade notifications.",
+          "title": "enabled",
+          "type": "boolean"
+        },
+        "secretKey": {
+          "default": "url",
+          "description": "Key within the Secret holding the notification URL.",
+          "title": "secretKey",
+          "type": "string"
+        },
+        "secretName": {
+          "default": "",
+          "description": "Name of the Secret holding the notification (shoutrrr) URL.",
+          "title": "secretName",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "title": "notification",
+      "type": "object"
+    },
+    "podAnnotations": {
+      "description": "Annotations added to the pod.",
+      "required": [],
+      "title": "podAnnotations",
+      "type": "object"
+    },
+    "podLabels": {
+      "description": "Labels added to the pod.",
+      "required": [],
+      "title": "podLabels",
+      "type": "object"
+    },
+    "podSecurityContext": {
+      "description": "Pod-level securityContext (runs as non-root uid/gid 65532).",
+      "properties": {
+        "fsGroup": {
+          "default": 65532,
+          "title": "fsGroup",
+          "type": "integer"
+        },
+        "runAsNonRoot": {
+          "default": true,
+          "title": "runAsNonRoot",
+          "type": "boolean"
+        },
+        "runAsUser": {
+          "default": 65532,
+          "title": "runAsUser",
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "title": "podSecurityContext",
+      "type": "object"
+    },
+    "priorityClassName": {
+      "default": "system-node-critical",
+      "description": "Priority class name for pod scheduling.",
+      "title": "priorityClassName",
+      "type": "string"
+    },
+    "rbac": {
+      "properties": {
+        "annotations": {
+          "description": "Annotations for the RBAC resources.",
+          "required": [],
+          "title": "annotations",
+          "type": "object"
+        },
+        "create": {
+          "default": true,
+          "description": "Create the ClusterRole + ClusterRoleBinding the controller needs to manage nodes and jobs.",
+          "title": "create",
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "title": "rbac",
+      "type": "object"
+    },
+    "readinessProbe": {
+      "description": "Readiness probe.",
+      "properties": {
+        "httpGet": {
+          "properties": {
+            "path": {
+              "default": "/readyz",
+              "title": "path",
+              "type": "string"
+            },
+            "port": {
+              "default": 8081,
+              "title": "port",
+              "type": "integer"
+            }
+          },
+          "required": [],
+          "title": "httpGet",
+          "type": "object"
+        },
+        "initialDelaySeconds": {
+          "default": 5,
+          "title": "initialDelaySeconds",
+          "type": "integer"
+        },
+        "periodSeconds": {
+          "default": 10,
+          "title": "periodSeconds",
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "title": "readinessProbe",
+      "type": "object"
+    },
+    "replicaCount": {
+      "default": 1,
+      "description": "Number of controller replicas (only one is active at a time via leader election).",
+      "title": "replicaCount",
+      "type": "integer"
+    },
+    "resources": {
+      "description": "Pod resource requests/limits.",
+      "required": [],
+      "title": "resources",
+      "type": "object"
+    },
+    "securityContext": {
+      "description": "Container securityContext (no privilege escalation, read-only root filesystem, drops ALL capabilities).",
+      "properties": {
+        "allowPrivilegeEscalation": {
+          "default": false,
+          "title": "allowPrivilegeEscalation",
+          "type": "boolean"
+        },
+        "capabilities": {
+          "properties": {
+            "drop": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  }
+                ],
+                "required": []
+              },
+              "title": "drop",
+              "type": "array"
+            }
+          },
+          "required": [],
+          "title": "capabilities",
+          "type": "object"
+        },
+        "readOnlyRootFilesystem": {
+          "default": true,
+          "title": "readOnlyRootFilesystem",
+          "type": "boolean"
+        },
+        "runAsNonRoot": {
+          "default": true,
+          "title": "runAsNonRoot",
+          "type": "boolean"
+        },
+        "runAsUser": {
+          "default": 65532,
+          "title": "runAsUser",
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "title": "securityContext",
+      "type": "object"
+    },
+    "service": {
+      "properties": {
+        "metricsPort": {
+          "default": 8080,
+          "description": "Metrics port (deprecated — use controller.metrics.port).",
+          "title": "metricsPort",
+          "type": "integer"
+        },
+        "port": {
+          "default": 8080,
+          "description": "Service port for general access.",
+          "title": "port",
+          "type": "integer"
+        },
+        "type": {
+          "default": "ClusterIP",
+          "description": "Service type.",
+          "title": "type",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "title": "service",
+      "type": "object"
+    },
+    "serviceAccount": {
+      "properties": {
+        "annotations": {
+          "description": "Annotations for the ServiceAccount (e.g. workload-identity bindings).",
+          "required": [],
+          "title": "annotations",
+          "type": "object"
+        },
+        "automount": {
+          "default": true,
+          "description": "Automount the API token (on by default: the controller talks to the cluster API).",
+          "title": "automount",
+          "type": "boolean"
+        },
+        "create": {
+          "default": true,
+          "description": "Create a ServiceAccount.",
+          "title": "create",
+          "type": "boolean"
+        },
+        "name": {
+          "default": "",
+          "description": "ServiceAccount name; generated from the release name if empty.",
+          "title": "name",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "title": "serviceAccount",
+      "type": "object"
+    },
+    "tolerations": {
+      "description": "Tolerations for pod scheduling (defaults keep the controller schedulable on control-plane and cordoned nodes so it can uncordon after an upgrade reboot).",
+      "items": {
+        "anyOf": [
+          {
+            "properties": {
+              "key": {
+                "default": "CriticalAddonsOnly",
+                "title": "key",
+                "type": "string"
+              },
+              "operator": {
+                "default": "Exists",
+                "title": "operator",
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "effect": {
+                "default": "NoSchedule",
+                "title": "effect",
+                "type": "string"
+              },
+              "key": {
+                "default": "node-role.kubernetes.io/control-plane",
+                "title": "key",
+                "type": "string"
+              },
+              "operator": {
+                "default": "Exists",
+                "title": "operator",
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "effect": {
+                "default": "NoSchedule",
+                "title": "effect",
+                "type": "string"
+              },
+              "key": {
+                "default": "node.kubernetes.io/unschedulable",
+                "title": "key",
+                "type": "string"
+              },
+              "operator": {
+                "default": "Exists",
+                "title": "operator",
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          }
+        ],
+        "required": []
+      },
+      "title": "tolerations",
+      "type": "array"
+    },
+    "volumeMounts": {
+      "description": "Additional volume mounts on the container.",
+      "items": {
+        "required": []
+      },
+      "title": "volumeMounts",
+      "type": "array"
+    },
+    "volumes": {
+      "description": "Additional volumes on the Deployment.",
+      "items": {
+        "required": []
+      },
+      "title": "volumes",
+      "type": "array"
+    },
+    "webhook": {
+      "properties": {
+        "annotations": {
+          "description": "Annotations for the webhook Service.",
+          "required": [],
+          "title": "annotations",
+          "type": "object"
+        },
+        "enabled": {
+          "default": true,
+          "description": "Enable the admission webhooks for validation.",
+          "title": "enabled",
+          "type": "boolean"
+        },
+        "port": {
+          "default": 9443,
+          "description": "Webhook server port.",
+          "title": "port",
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "title": "webhook",
+      "type": "object"
+    }
+  },
+  "required": [],
+  "type": "object"
+}

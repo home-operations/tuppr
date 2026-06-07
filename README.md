@@ -49,6 +49,13 @@ helm install tuppr oci://ghcr.io/home-operations/charts/tuppr \
   --namespace system-upgrade
 ```
 
+Every chart value (controller, webhook, RBAC, and monitoring options) is
+documented in the chart's generated README,
+[`charts/tuppr/README.md`](charts/tuppr/README.md), built from
+[`values.yaml`](charts/tuppr/values.yaml) — which also ships a
+[`values.schema.json`](charts/tuppr/values.schema.json) for editor
+autocompletion and `helm install`-time validation.
+
 ### Basic Usage
 
 #### Talos Node Upgrades

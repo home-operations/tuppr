@@ -3,6 +3,9 @@ apiVersion: v2
 name: tuppr
 description: A Helm chart for tuppr - Talos Linux Upgrade Controller
 type: application
+# Floor matching the chart's surface: restricted Pod Security (seccompProfile),
+# the admission webhook (admissionregistration.k8s.io/v1), and CRDs.
+kubeVersion: ">=1.25.0-0"
 version: 0.0.0
 appVersion: "0.0.0"
 home: https://github.com/home-operations/tuppr

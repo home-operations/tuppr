@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   test:
-    name: Run on Ubuntu
+    name: Go Tests
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -35,6 +35,15 @@ jobs:
         with:
           experimental: true
           install_args: --locked
+
+      - name: Cache Go modules and build
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
+          restore-keys: ${{ runner.os }}-go-
 
       - name: Check go.mod tidiness
         run: |
@@ -68,3 +77,6 @@ jobs:
         run: |-
           helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.0.3 --verify=false
           mise run helm-test
+
+      - name: Check chart docs are current
+        run: mise run helm-docs-check
