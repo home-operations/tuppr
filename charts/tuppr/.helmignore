@@ -1,0 +1,12 @@
+.DS_Store
+.git/
+.gitignore
+*.tmp
+*.bak
+*.orig
+.vscode/
+.idea/
+# helm-docs input template; the generated README.md ships, this doesn't.
+README.md.gotmpl
+# helm-unittest specs (chart-root tests/, not templates/tests/) — run in CI, not shipped.
+/tests/
