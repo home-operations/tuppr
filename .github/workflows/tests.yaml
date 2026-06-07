@@ -20,7 +20,7 @@ permissions:
 
 env:
   # renovate: datasource=github-releases depName=helm-unittest/helm-unittest
-  HELM_UNITTEST_VERSION: "v1.0.3"
+  HELM_UNITTEST_VERSION: "v1.1.1"
 
 jobs:
   test:
