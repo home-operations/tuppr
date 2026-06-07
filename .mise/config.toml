@@ -3,6 +3,7 @@ go = "1.26.2"
 golangci-lint = "2.12.2"
 hcloud = "1.65.0"
 helm = "4.2.0"
+helm-docs = "1.14.2"
 jq = "1.8.1"
 kind = "0.32.0"
 kube-controller-tools = "0.21.0"
@@ -14,6 +15,8 @@ setup-envtest = "0.24.1"
 stern = "1.34.0"
 talosctl = "1.13.3"
 zizmor = "1.25.2"
+"aqua:dadav/helm-schema" = "0.23.4"
+yq = "4.53.3"
 
 [tasks.manifests]
 description = "Generate CRD, RBAC, and webhook manifests"
@@ -46,6 +49,23 @@ run = "helm lint charts/tuppr"
 [tasks.helm-test]
 description = "Run helm unit tests"
 run = "helm unittest charts/tuppr"
+
+[tasks.helm-docs]
+description = "Generate the chart README + values.schema.json from Chart.yaml + values.yaml"
+run = """
+helm-docs --chart-search-root=charts --log-level=warn
+# required/additionalProperties are skipped so the schema stays permissive: values.yaml
+# supplies every default and the free-form maps stay open. --append-newline gives a
+# clean EOF; the file is .prettierignore'd (a generated artifact), so oxfmt skips it.
+helm-schema --chart-search-root charts/tuppr --skip-auto-generation required,additionalProperties --append-newline
+"""
+
+[tasks.helm-docs-check]
+description = "Fail if the generated chart README/schema are stale (CI gate)"
+run = """
+mise run helm-docs
+git diff --exit-code charts/tuppr/README.md charts/tuppr/values.schema.json
+"""
 
 [tasks.helm-crds]
 description = "Generate CRDs and copy them into the Helm chart"

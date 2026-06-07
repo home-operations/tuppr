@@ -2,3 +2,21 @@
 git_url = "https://github.com/home-operations/.github"
 ref = "main"
 configs = ["lefthook.common.toml"]
+
+# Regenerate the chart's committed README + values.schema.json whenever their inputs
+# change, and stage them. CI's helm-docs-check is the backstop.
+[pre-commit.commands.helm-docs]
+glob = [
+  "charts/tuppr/Chart.yaml",
+  "charts/tuppr/values.yaml",
+  "charts/tuppr/README.md.gotmpl",
+]
+run = "mise run helm-docs && git add charts/tuppr/README.md charts/tuppr/values.schema.json"
+
+# The generated chart README/schema are .prettierignore'd; exclude them from the
+# shared formatters too (oxfmt exits non-zero when every input is ignored).
+[pre-commit.commands.format-markdown]
+exclude = ["charts/tuppr/README.md"]
+
+[pre-commit.commands.format-json]
+exclude = ["charts/tuppr/values.schema.json"]
