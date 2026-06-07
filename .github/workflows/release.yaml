@@ -91,6 +91,17 @@ jobs:
       - name: Generate manifests and CRDs
         run: mise run helm-crds
 
+      # Pin the chart's image to the exact digest the build just published, so the
+      # released chart references an immutable image (not a floating tag). The digest
+      # is the manifest-list (index) digest from docker/github-builder; fail closed
+      # rather than ship a chart that silently falls back to the tag.
+      - name: Pin the released image digest into the chart
+        env:
+          DIGEST: ${{ needs.release.outputs.digest }}
+        run: |
+          [ -n "${DIGEST}" ] || { echo "build produced no digest"; exit 1; }
+          yq -i '.image.digest = strenv(DIGEST)' charts/tuppr/values.yaml
+
       - name: Package Helm chart
         run: |
           helm package charts/tuppr \
