@@ -413,7 +413,7 @@ checksum = "sha256:6b21b5bbd1def79f98364af42f89e4836a7acb4834dacc1929a34f2f4e7ab
 url = "https://github.com/opentofu/opentofu/releases/download/v1.12.1/tofu_1.12.1_windows_amd64.tar.gz"
 
 [[tools.oxfmt]]
-version = "0.53.0"
+version = "0.54.0"
 backend = "npm:oxfmt"
 
 [[tools.setup-envtest]]
