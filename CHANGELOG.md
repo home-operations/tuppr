@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.4](https://github.com/home-operations/tuppr/compare/0.2.3...0.2.4) (2026-06-09)
+
+
+### Features
+
+* **github-release:** update release helm-unittest/helm-unittest (v1.0.3 → v1.1.1) ([#316](https://github.com/home-operations/tuppr/issues/316)) ([f98ea83](https://github.com/home-operations/tuppr/commit/f98ea8367ab799916e6a573dd833b2d6422ca616))
+* **mise:** update tool cosign (3.0.6 → 3.1.1) ([#324](https://github.com/home-operations/tuppr/issues/324)) ([0d653c8](https://github.com/home-operations/tuppr/commit/0d653c822b636322d402704a5dbd7a4c7929e3d7))
+* **mise:** update tool oxfmt (0.53.0 → 0.54.0) ([#319](https://github.com/home-operations/tuppr/issues/319)) ([10f63b5](https://github.com/home-operations/tuppr/commit/10f63b5f17fd0bdb764b4200be7df93d7f42c336))
+* **talos:** Add NoDrain to talos policy ([#325](https://github.com/home-operations/tuppr/issues/325)) ([f4cb065](https://github.com/home-operations/tuppr/commit/f4cb0652158d11df0e7f0ff2b1c240112b087cbc))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/nicholas-fedor/shoutrrr (v0.16.0 → v0.16.1) ([#321](https://github.com/home-operations/tuppr/issues/321)) ([be87ceb](https://github.com/home-operations/tuppr/commit/be87cebb04fb4e5867adc643a358831555948802))
+
 ## [0.2.3](https://github.com/home-operations/tuppr/compare/0.2.2...0.2.3) (2026-06-07)
 
 
