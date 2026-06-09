@@ -25,6 +25,11 @@ type PolicySpec struct {
 	// +optional
 	Force bool `json:"force,omitempty"`
 
+	// NoDrain disables drain for the upgrade.
+	// +kubebuilder:default=false
+	// +optional
+	NoDrain bool `json:"nodrain,omitempty"`
+
 	// Placement controls how strictly upgrade jobs avoid the target node
 	// hard: required avoidance (job will fail if can't avoid target node)
 	// soft: preferred avoidance (job prefers to avoid but can run on target node)
@@ -163,7 +168,8 @@ type TalosUpgradeSpec struct {
 	// +optional
 	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 
-	// Drain configuration for the node prior to upgrade
+	// Drain configuration for the node prior to upgrade.
+	// Deprecated: Use Talos policy drain configuration instead.
 	// +optional
 	Drain *DrainSpec `json:"drain,omitempty"`
 

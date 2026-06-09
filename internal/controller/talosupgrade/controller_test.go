@@ -1787,6 +1787,7 @@ func TestTalosBuildJob_Properties(t *testing.T) {
 	tu.Spec.Talos.Version = fakeTalosVersion
 	tu.Spec.Policy.Placement = "hard"
 	tu.Spec.Policy.Debug = true
+	tu.Spec.Policy.NoDrain = true
 	tu.Spec.Policy.Force = true
 	tu.Spec.Policy.RebootMode = "powercycle"
 	tu.Spec.Policy.Stage = true
@@ -1831,6 +1832,7 @@ func TestTalosBuildJob_Properties(t *testing.T) {
 
 	wantArgs := map[string]bool{
 		"--debug=true":               false,
+		"--drain=false":              false,
 		"--force=true":               false,
 		"--reboot-mode=powercycle":   false,
 		"--stage":                    false,

@@ -490,13 +490,14 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 		waitArg,
 	)
 
-	if selfHosted {
-		args = append(args, "--drain=false")
-	}
-
 	if talosUpgrade.Spec.Policy.Debug {
 		args = append(args, "--debug=true")
 		logger.V(1).Info("Debug upgrade enabled", "node", nodeName)
+	}
+
+	if selfHosted || talosUpgrade.Spec.Policy.NoDrain {
+		args = append(args, "--drain=false")
+		logger.V(1).Info("Upgrade drain disabled", "node", nodeName)
 	}
 
 	if talosUpgrade.Spec.Policy.Force {
