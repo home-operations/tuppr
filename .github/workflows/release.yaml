@@ -6,9 +6,15 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - "**.md"
   release:
     types:
       - published
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
 
 jobs:
   versions:
