@@ -6,9 +6,13 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - "**.md"
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - "**.md"
   workflow_dispatch:
 
 concurrency:
@@ -44,6 +48,13 @@ jobs:
             ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
           restore-keys: ${{ runner.os }}-go-
+
+      - name: Cache golangci-lint
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/golangci-lint
+          key: ${{ runner.os }}-golangci-lint-${{ hashFiles('go.sum', '.golangci.yml') }}
+          restore-keys: ${{ runner.os }}-golangci-lint-
 
       - name: Run linter
         run: mise run lint
