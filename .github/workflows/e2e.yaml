@@ -1,6 +1,6 @@
 ---
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
-name: e2e
+name: E2E
 
 on:
   pull_request:
@@ -26,6 +26,7 @@ permissions:
 
 jobs:
   prune:
+    name: Prune previous runs
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -51,6 +52,7 @@ jobs:
         run: ./prune.sh "branch=${BRANCH}"
 
   e2e-test:
+    name: E2E (${{ matrix.controllers }}cp/${{ matrix.workers }}w)
     if: github.event_name == 'workflow_dispatch' || github.event.action != 'closed'
     needs: prune
     runs-on: ubuntu-24.04
