@@ -14,7 +14,6 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Cancel superseded main builds (rolling tag); never interrupt a published release.
   cancel-in-progress: ${{ github.event_name != 'release' }}
 
 jobs:
