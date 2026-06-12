@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.5](https://github.com/home-operations/tuppr/compare/0.2.4...0.2.5) (2026-06-12)
+
+
+### Features
+
+* **deps:** update module github.com/onsi/ginkgo/v2 (v2.29.0 → v2.30.0) ([#328](https://github.com/home-operations/tuppr/issues/328)) ([827a597](https://github.com/home-operations/tuppr/commit/827a597c4d12b8d7184d9062a97d1773f4f871c9))
+* taint outdated nodes with PreferNoSchedule to reduce upgrade churn ([578a6a2](https://github.com/home-operations/tuppr/commit/578a6a2ce89287cc1a5a112ef048e4d314c32635))
+
+
+### Miscellaneous Chores
+
+* **mise:** update tool kubectl (1.36.1 → 1.36.2) ([#330](https://github.com/home-operations/tuppr/issues/330)) ([565c1e5](https://github.com/home-operations/tuppr/commit/565c1e52c78b26271881d058f43c8fef798d7b65))
+
 ## [0.2.4](https://github.com/home-operations/tuppr/compare/0.2.3...0.2.4) (2026-06-09)
 
 
