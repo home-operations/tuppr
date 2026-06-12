@@ -17,6 +17,7 @@ A Kubernetes controller for managing automated upgrades of Talos Linux and Kuber
 - 📈 **Prometheus metrics** - detailed monitoring of upgrade progress and health
 - 🎯 **Per-node overrides** - use annotations to pin unique versions or switch installer flavors per node
 - 🏷️ **Node labeling** - automatic labels during upgrades for integration with remediation systems
+- 🚦 **Scheduling hints** - outdated nodes get a `PreferNoSchedule` taint to reduce workload churn during a rolling upgrade
 
 ## 🚀 Quick Start
 

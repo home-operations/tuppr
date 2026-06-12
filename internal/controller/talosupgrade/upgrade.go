@@ -461,14 +461,14 @@ func (r *Reconciler) findNextNodes(ctx context.Context, talosUpgrade *tupprv1alp
 	crdTargetVersion := talosUpgrade.Spec.Talos.Version
 	var result []string
 
+	// Reconcile the outdated taint across the whole selected set; no early break.
 	for i := range nodes {
-		if len(result) >= count {
-			break
-		}
-
 		node := &nodes[i]
 
 		if slices.Contains(talosUpgrade.Status.CompletedNodes, node.Name) {
+			if err := r.removeNodeOutdatedTaint(ctx, node.Name); err != nil {
+				logger.Error(err, "Failed to remove outdated taint from completed node", "node", node.Name)
+			}
 			continue
 		}
 
@@ -486,7 +486,14 @@ func (r *Reconciler) findNextNodes(ctx context.Context, talosUpgrade *tupprv1alp
 
 		if needsUpgrade {
 			logger.V(1).Info("Node needs upgrade", "node", node.Name)
-			result = append(result, node.Name)
+			if err := r.addNodeOutdatedTaint(ctx, node.Name); err != nil {
+				logger.Error(err, "Failed to add outdated taint", "node", node.Name)
+			}
+			if len(result) < count {
+				result = append(result, node.Name)
+			}
+		} else if err := r.removeNodeOutdatedTaint(ctx, node.Name); err != nil {
+			logger.Error(err, "Failed to remove outdated taint", "node", node.Name)
 		}
 	}
 

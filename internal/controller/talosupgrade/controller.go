@@ -137,6 +137,8 @@ func (r *Reconciler) cleanup(ctx context.Context, talosUpgrade *tupprv1alpha1.Ta
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Cleaning up TalosUpgrade", "name", talosUpgrade.Name)
 
+	r.clearOutdatedTaints(ctx, talosUpgrade)
+
 	logger.V(1).Info("Removing finalizer", "name", talosUpgrade.Name, "finalizer", TalosUpgradeFinalizer)
 	controllerutil.RemoveFinalizer(talosUpgrade, TalosUpgradeFinalizer)
 

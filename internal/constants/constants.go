@@ -24,6 +24,11 @@ const (
 	NodeUpgradingLabel = "tuppr.home-operations.com/upgrading"
 )
 
+// Node taint constants
+const (
+	NodeOutdatedTaint = "tuppr.home-operations.com/outdated"
+)
+
 // Talos config secret constants
 const (
 	TalosSecretName = "talosconfig"
