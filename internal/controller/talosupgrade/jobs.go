@@ -409,8 +409,12 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 
 	placement := talosUpgrade.Spec.Policy.Placement
 	if placement == "" {
-		placement = PlacementSoft
+		placement = PlacementHard
 	}
+
+	// A single node can only run the pod on the node it upgrades, so a required
+	// avoidance would be unsatisfiable; degrade hard to preferred there.
+	selfHosted := r.isSelfHostedUpgrade(ctx)
 
 	nodeSelector := corev1.NodeSelectorRequirement{
 		Key:      "kubernetes.io/hostname",
@@ -419,7 +423,7 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 	}
 
 	var nodeAffinity *corev1.NodeAffinity
-	if placement == "hard" {
+	if placement == PlacementHard && !selfHosted {
 		nodeAffinity = &corev1.NodeAffinity{
 			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
 				NodeSelectorTerms: []corev1.NodeSelectorTerm{{
@@ -437,10 +441,13 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 				},
 			}},
 		}
-		if placement != PlacementSoft {
-			logger.V(1).Info("Unknown placement preset, using soft placement as fallback", "preset", placement, "node", nodeName)
-		} else {
+		switch {
+		case placement == PlacementHard && selfHosted:
+			logger.V(1).Info("Single-node cluster - downgrading hard placement to preferred node avoidance", "node", nodeName)
+		case placement == PlacementSoft:
 			logger.V(1).Info("Using soft placement preset - preferred node avoidance", "node", nodeName)
+		default:
+			logger.V(1).Info("Unknown placement preset, using soft placement as fallback", "preset", placement, "node", nodeName)
 		}
 	}
 
@@ -468,8 +475,6 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 	if talosUpgrade.Spec.Policy.Timeout != nil {
 		timeout = talosUpgrade.Spec.Policy.Timeout.Duration
 	}
-
-	selfHosted := r.isSelfHostedUpgrade(ctx)
 
 	// On a single-node cluster the pod runs on the node it upgrades, so --wait would
 	// have it killed by the reboot and fail the Job. Issue the upgrade and exit; the

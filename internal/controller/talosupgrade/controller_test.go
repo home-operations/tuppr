@@ -1797,7 +1797,8 @@ func TestTalosBuildJob_Properties(t *testing.T) {
 		installImages: map[string]string{testNodeIP1: testFactoryInstaller},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(tu, newNode(fakeNodeA, testNodeIP1)).WithStatusSubresource(tu).Build()
+		WithObjects(tu, newNode(fakeNodeA, testNodeIP1), newNode(fakeNodeB, testNodeIP2)).
+		WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 	targetImage := "factory.talos.dev/installer:" + fakeTalosVersion
 
@@ -2133,6 +2134,29 @@ func TestTalosBuildJob_SoftPlacement(t *testing.T) {
 	}
 	if podSpec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution != nil {
 		t.Fatal("soft placement should not have required affinity")
+	}
+}
+
+func TestTalosBuildJob_HardPlacementSingleNodeDegrades(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
+	tu.Spec.Policy.Placement = PlacementHard
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: testFactoryInstaller},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, newNode(fakeNodeA, testNodeIP1)).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+	targetImage := "factory.talos.dev/installer:" + fakeTalosVersion
+	job := r.buildJob(context.Background(), tu, fakeNodeA, testNodeIP1, testNodeIP1, targetImage)
+	podSpec := job.Spec.Template.Spec
+	// Required avoidance is unsatisfiable on a single node, so it must degrade to preferred.
+	if podSpec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution != nil {
+		t.Fatal("hard placement on a single-node cluster must not produce required affinity")
+	}
+	if podSpec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution == nil {
+		t.Fatal("expected preferred node affinity when hard placement degrades on a single node")
 	}
 }
 

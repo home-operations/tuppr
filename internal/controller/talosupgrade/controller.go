@@ -43,6 +43,7 @@ const (
 	TalosJobActiveDeadlineBuffer = 600
 	TalosJobDefaultTimeout       = 30 * time.Minute
 	PlacementSoft                = "soft"
+	PlacementHard                = "hard"
 )
 
 const (
