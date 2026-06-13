@@ -77,7 +77,8 @@ spec:
         debug: true # Optional, verbose logging
         force: false # Optional, skip etcd health checks
         rebootMode: default # Optional, default|powercycle
-        placement: soft # Optional, hard|soft
+        placement: hard # Optional, hard|soft (default hard)
+        priorityClassName: system-node-critical # Optional, job pod priority class
         stage: false # Optional, stage upgrade
         timeout: 30m # Optional, per-node upgrade timeout
 

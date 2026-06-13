@@ -31,10 +31,10 @@ type PolicySpec struct {
 	NoDrain bool `json:"nodrain,omitempty"`
 
 	// Placement controls how strictly upgrade jobs avoid the target node
-	// hard: required avoidance (job will fail if can't avoid target node)
+	// hard: required avoidance, degrades to preferred on single-node clusters
 	// soft: preferred avoidance (job prefers to avoid but can run on target node)
 	// +kubebuilder:validation:Enum=hard;soft
-	// +kubebuilder:default="soft"
+	// +kubebuilder:default="hard"
 	// +optional
 	Placement string `json:"placement,omitempty"`
 
@@ -48,6 +48,11 @@ type PolicySpec struct {
 	// +kubebuilder:default=false
 	// +optional
 	Stage bool `json:"stage,omitempty"`
+
+	// PriorityClassName for the upgrade job pod; set a preempting class to displace lower-priority pods under resource pressure.
+	// +kubebuilder:default="system-node-critical"
+	// +optional
+	PriorityClassName string `json:"priorityClassName,omitempty"`
 
 	// Timeout for the per-node talosctl upgrade command
 	// +kubebuilder:validation:Type=string

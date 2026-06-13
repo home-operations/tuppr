@@ -1797,7 +1797,8 @@ func TestTalosBuildJob_Properties(t *testing.T) {
 		installImages: map[string]string{testNodeIP1: testFactoryInstaller},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(tu, newNode(fakeNodeA, testNodeIP1)).WithStatusSubresource(tu).Build()
+		WithObjects(tu, newNode(fakeNodeA, testNodeIP1), newNode(fakeNodeB, testNodeIP2)).
+		WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 	targetImage := "factory.talos.dev/installer:" + fakeTalosVersion
 
@@ -2133,6 +2134,59 @@ func TestTalosBuildJob_SoftPlacement(t *testing.T) {
 	}
 	if podSpec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution != nil {
 		t.Fatal("soft placement should not have required affinity")
+	}
+}
+
+func TestTalosBuildJob_PriorityClassName(t *testing.T) {
+	scheme := newTestScheme()
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: testFactoryInstaller},
+	}
+	targetImage := "factory.talos.dev/installer:" + fakeTalosVersion
+
+	// Custom class is passed through.
+	custom := newTalosUpgrade(testUpgradeName, withFinalizer)
+	custom.Spec.Policy.PriorityClassName = "my-preempting-class"
+	clCustom := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(custom, newNode(fakeNodeA, testNodeIP1)).WithStatusSubresource(custom).Build()
+	rCustom := newTalosReconciler(clCustom, scheme, tc, &mockHealthChecker{})
+	jobCustom := rCustom.buildJob(context.Background(), custom, fakeNodeA, testNodeIP1, testNodeIP1, targetImage)
+	if got := jobCustom.Spec.Template.Spec.PriorityClassName; got != "my-preempting-class" {
+		t.Fatalf("expected custom priority class, got: %s", got)
+	}
+
+	// Unset falls back to system-node-critical.
+	def := newTalosUpgrade(testUpgradeName, withFinalizer)
+	clDef := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(def, newNode(fakeNodeA, testNodeIP1)).WithStatusSubresource(def).Build()
+	rDef := newTalosReconciler(clDef, scheme, tc, &mockHealthChecker{})
+	jobDef := rDef.buildJob(context.Background(), def, fakeNodeA, testNodeIP1, testNodeIP1, targetImage)
+	if got := jobDef.Spec.Template.Spec.PriorityClassName; got != "system-node-critical" {
+		t.Fatalf("expected system-node-critical fallback, got: %s", got)
+	}
+}
+
+func TestTalosBuildJob_HardPlacementSingleNodeDegrades(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
+	tu.Spec.Policy.Placement = PlacementHard
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: testFactoryInstaller},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, newNode(fakeNodeA, testNodeIP1)).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+	targetImage := "factory.talos.dev/installer:" + fakeTalosVersion
+	job := r.buildJob(context.Background(), tu, fakeNodeA, testNodeIP1, testNodeIP1, targetImage)
+	podSpec := job.Spec.Template.Spec
+	// Required avoidance is unsatisfiable on a single node, so it must degrade to preferred.
+	if podSpec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution != nil {
+		t.Fatal("hard placement on a single-node cluster must not produce required affinity")
+	}
+	if podSpec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution == nil {
+		t.Fatal("expected preferred node affinity when hard placement degrades on a single node")
 	}
 }
 

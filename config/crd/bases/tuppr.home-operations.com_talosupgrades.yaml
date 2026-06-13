@@ -4796,14 +4796,20 @@ spec:
                     description: NoDrain disables drain for the upgrade.
                     type: boolean
                   placement:
-                    default: soft
+                    default: hard
                     description: |-
                       Placement controls how strictly upgrade jobs avoid the target node
-                      hard: required avoidance (job will fail if can't avoid target node)
+                      hard: required avoidance, degrades to preferred on single-node clusters
                       soft: preferred avoidance (job prefers to avoid but can run on target node)
                     enum:
                     - hard
                     - soft
+                    type: string
+                  priorityClassName:
+                    default: system-node-critical
+                    description: PriorityClassName for the upgrade job pod; set a
+                      preempting class to displace lower-priority pods under resource
+                      pressure.
                     type: string
                   rebootMode:
                     default: default
