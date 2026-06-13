@@ -4805,6 +4805,12 @@ spec:
                     - hard
                     - soft
                     type: string
+                  priorityClassName:
+                    default: system-node-critical
+                    description: PriorityClassName for the upgrade job pod; set a
+                      preempting class to displace lower-priority pods under resource
+                      pressure.
+                    type: string
                   rebootMode:
                     default: default
                     description: RebootMode select the reboot mode during upgrade

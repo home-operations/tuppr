@@ -30,14 +30,20 @@ type PodSpecOptions struct {
 	GracePeriod       int64
 	Affinity          *corev1.Affinity
 	HostAliases       []corev1.HostAlias
+	PriorityClassName string
 }
 
 // BuildTalosctlPodSpec returns the shared pod spec used by both upgrade controllers.
 func BuildTalosctlPodSpec(opts PodSpecOptions) corev1.PodSpec {
+	priorityClassName := opts.PriorityClassName
+	if priorityClassName == "" {
+		priorityClassName = "system-node-critical"
+	}
+
 	spec := corev1.PodSpec{
 		RestartPolicy:                 corev1.RestartPolicyNever,
 		TerminationGracePeriodSeconds: ptr.To(opts.GracePeriod),
-		PriorityClassName:             "system-node-critical",
+		PriorityClassName:             priorityClassName,
 		SecurityContext: &corev1.PodSecurityContext{
 			RunAsNonRoot: ptr.To(true),
 			RunAsUser:    ptr.To(int64(65532)),

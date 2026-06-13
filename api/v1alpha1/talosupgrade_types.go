@@ -49,6 +49,11 @@ type PolicySpec struct {
 	// +optional
 	Stage bool `json:"stage,omitempty"`
 
+	// PriorityClassName for the upgrade job pod; set a preempting class to displace lower-priority pods under resource pressure.
+	// +kubebuilder:default="system-node-critical"
+	// +optional
+	PriorityClassName string `json:"priorityClassName,omitempty"`
+
 	// Timeout for the per-node talosctl upgrade command
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:Pattern=`^([0-9]+[smh])+$`

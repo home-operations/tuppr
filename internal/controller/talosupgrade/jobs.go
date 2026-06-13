@@ -557,6 +557,7 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 					TalosConfigSecret: r.TalosConfigSecret,
 					GracePeriod:       TalosJobGracePeriod,
 					Affinity:          &corev1.Affinity{NodeAffinity: nodeAffinity},
+					PriorityClassName: talosUpgrade.Spec.Policy.PriorityClassName,
 				}),
 			},
 		},
