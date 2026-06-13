@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.6](https://github.com/home-operations/tuppr/compare/0.2.5...0.2.6) (2026-06-13)
+
+
+### Bug Fixes
+
+* **talos:** default placement to hard, degrade to preferred on single-node ([#335](https://github.com/home-operations/tuppr/issues/335)) ([5ab17c6](https://github.com/home-operations/tuppr/commit/5ab17c67e4af6feff7d5226ca7d6d4fe30204c37))
+
 ## [0.2.5](https://github.com/home-operations/tuppr/compare/0.2.4...0.2.5) (2026-06-12)
 
 
