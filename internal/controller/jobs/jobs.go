@@ -30,10 +30,17 @@ type PodSpecOptions struct {
 	GracePeriod       int64
 	Affinity          *corev1.Affinity
 	HostAliases       []corev1.HostAlias
+	// Tolerations overrides the default catch-all toleration (nil tolerates every taint).
+	Tolerations []corev1.Toleration
 }
 
 // BuildTalosctlPodSpec returns the shared pod spec used by both upgrade controllers.
 func BuildTalosctlPodSpec(opts PodSpecOptions) corev1.PodSpec {
+	tolerations := opts.Tolerations
+	if tolerations == nil {
+		tolerations = []corev1.Toleration{{Operator: corev1.TolerationOpExists}}
+	}
+
 	spec := corev1.PodSpec{
 		RestartPolicy:                 corev1.RestartPolicyNever,
 		TerminationGracePeriodSeconds: ptr.To(opts.GracePeriod),
@@ -47,11 +54,7 @@ func BuildTalosctlPodSpec(opts PodSpecOptions) corev1.PodSpec {
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 		},
-		Tolerations: []corev1.Toleration{
-			{
-				Operator: corev1.TolerationOpExists,
-			},
-		},
+		Tolerations: tolerations,
 		Containers: []corev1.Container{{
 			Name:            opts.ContainerName,
 			Image:           opts.Image,

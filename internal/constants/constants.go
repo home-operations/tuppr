@@ -27,6 +27,8 @@ const (
 // Node taint constants
 const (
 	NodeOutdatedTaint = "tuppr.home-operations.com/outdated"
+	// NodeUpgradingTaint steers the upgrade pod off the node it's about to reboot.
+	NodeUpgradingTaint = "tuppr.home-operations.com/upgrading-now"
 )
 
 // Talos config secret constants

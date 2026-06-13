@@ -241,6 +241,10 @@ func (r *Reconciler) processSingleJobSuccess(ctx context.Context, talosUpgrade *
 		logger.Error(err, "Failed to remove upgrading label from node", "node", nodeName)
 	}
 
+	if err := r.removeNodeUpgradingTaint(ctx, nodeName); err != nil {
+		logger.Error(err, "Failed to remove upgrading taint from node", "node", nodeName)
+	}
+
 	if err := r.addCompletedNode(ctx, talosUpgrade, nodeName); err != nil {
 		logger.Error(err, "Failed to add completed node", "node", nodeName)
 		return jobResultSuccess, err
@@ -285,6 +289,10 @@ func (r *Reconciler) processSingleJobFailure(ctx context.Context, talosUpgrade *
 
 	if err := r.removeNodeUpgradingLabel(ctx, nodeName); err != nil {
 		logger.Error(err, "Failed to remove upgrading label from node", "node", nodeName)
+	}
+
+	if err := r.removeNodeUpgradingTaint(ctx, nodeName); err != nil {
+		logger.Error(err, "Failed to remove upgrading taint from node", "node", nodeName)
 	}
 
 	nodeStatus := tupprv1alpha1.NodeUpgradeStatus{
@@ -348,6 +356,11 @@ func (r *Reconciler) createJob(ctx context.Context, talosUpgrade *tupprv1alpha1.
 
 	endpointIP := r.pickEndpointIP(ctx, targetNode, nodeIP)
 
+	// Taint before the pod exists so the scheduler steers it off this node. Best-effort.
+	if err := r.addNodeUpgradingTaint(ctx, nodeName); err != nil {
+		logger.Error(err, "Failed to add upgrading taint to node", "node", nodeName)
+	}
+
 	job := r.buildJob(ctx, talosUpgrade, nodeName, nodeIP, endpointIP, targetImage)
 	if err := controllerutil.SetControllerReference(talosUpgrade, job, r.Scheme); err != nil {
 		logger.Error(err, "Failed to set controller reference", "job", job.Name)
@@ -407,41 +420,11 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 		targetNodeLabelKey:  nodeName,
 	}
 
-	placement := talosUpgrade.Spec.Policy.Placement
-	if placement == "" {
-		placement = PlacementSoft
-	}
-
-	nodeSelector := corev1.NodeSelectorRequirement{
-		Key:      "kubernetes.io/hostname",
-		Operator: corev1.NodeSelectorOpNotIn,
-		Values:   []string{nodeName},
-	}
-
-	var nodeAffinity *corev1.NodeAffinity
-	if placement == "hard" {
-		nodeAffinity = &corev1.NodeAffinity{
-			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-				NodeSelectorTerms: []corev1.NodeSelectorTerm{{
-					MatchExpressions: []corev1.NodeSelectorRequirement{nodeSelector},
-				}},
-			},
-		}
-		logger.V(1).Info("Using hard placement preset - required node avoidance", "node", nodeName)
-	} else {
-		nodeAffinity = &corev1.NodeAffinity{
-			PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{{
-				Weight: 100,
-				Preference: corev1.NodeSelectorTerm{
-					MatchExpressions: []corev1.NodeSelectorRequirement{nodeSelector},
-				},
-			}},
-		}
-		if placement != PlacementSoft {
-			logger.V(1).Info("Unknown placement preset, using soft placement as fallback", "preset", placement, "node", nodeName)
-		} else {
-			logger.V(1).Info("Using soft placement preset - preferred node avoidance", "node", nodeName)
-		}
+	// Tolerate hard taints so the pod can land on any node, but not PreferNoSchedule,
+	// so the target's upgrading taint steers it off (without blocking a single node).
+	tolerations := []corev1.Toleration{
+		{Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
+		{Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoExecute},
 	}
 
 	talosctlRepo := constants.DefaultTalosctlImage
@@ -551,7 +534,7 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 					Args:              args,
 					TalosConfigSecret: r.TalosConfigSecret,
 					GracePeriod:       TalosJobGracePeriod,
-					Affinity:          &corev1.Affinity{NodeAffinity: nodeAffinity},
+					Tolerations:       tolerations,
 				}),
 			},
 		},

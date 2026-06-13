@@ -169,6 +169,56 @@ func TestAddNodeOutdatedTaint(t *testing.T) {
 	}
 }
 
+func TestAddAndRemoveNodeUpgradingTaint(t *testing.T) {
+	scheme := newTestScheme()
+	other := corev1.Taint{Key: labelFooKey, Effect: corev1.TaintEffectNoSchedule}
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: fakeNodeA},
+		Spec:       corev1.NodeSpec{Taints: []corev1.Taint{other}},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(node).Build()
+	r := &Reconciler{Client: cl}
+
+	if err := r.addNodeUpgradingTaint(context.Background(), fakeNodeA); err != nil {
+		t.Fatalf("addNodeUpgradingTaint failed: %v", err)
+	}
+
+	var tainted corev1.Node
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: fakeNodeA}, &tainted); err != nil {
+		t.Fatalf("failed to get node: %v", err)
+	}
+	found := false
+	for _, tt := range tainted.Spec.Taints {
+		if tt.Key == constants.NodeUpgradingTaint {
+			if tt.Effect != corev1.TaintEffectPreferNoSchedule {
+				t.Fatalf("expected PreferNoSchedule, got %s", tt.Effect)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected upgrading taint to be present")
+	}
+
+	if err := r.removeNodeUpgradingTaint(context.Background(), fakeNodeA); err != nil {
+		t.Fatalf("removeNodeUpgradingTaint failed: %v", err)
+	}
+
+	var cleared corev1.Node
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: fakeNodeA}, &cleared); err != nil {
+		t.Fatalf("failed to get node: %v", err)
+	}
+	for _, tt := range cleared.Spec.Taints {
+		if tt.Key == constants.NodeUpgradingTaint {
+			t.Fatal("expected upgrading taint to be removed")
+		}
+	}
+	if len(cleared.Spec.Taints) != 1 {
+		t.Fatalf("expected the unrelated taint to be preserved, got %d", len(cleared.Spec.Taints))
+	}
+}
+
 func TestAddNodeOutdatedTaint_Idempotent(t *testing.T) {
 	scheme := newTestScheme()
 	node := &corev1.Node{

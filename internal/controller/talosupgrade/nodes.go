@@ -124,7 +124,66 @@ func (r *Reconciler) removeNodeOutdatedTaint(ctx context.Context, nodeName strin
 	return nil
 }
 
-// clearOutdatedTaints removes the outdated taint from every selected node.
+// addNodeUpgradingTaint adds the PreferNoSchedule upgrading taint to a node.
+func (r *Reconciler) addNodeUpgradingTaint(ctx context.Context, nodeName string) error {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		node := &corev1.Node{}
+		if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
+			return err
+		}
+
+		for i := range node.Spec.Taints {
+			if node.Spec.Taints[i].Key == constants.NodeUpgradingTaint {
+				return nil
+			}
+		}
+
+		node.Spec.Taints = append(node.Spec.Taints, corev1.Taint{
+			Key:    constants.NodeUpgradingTaint,
+			Effect: corev1.TaintEffectPreferNoSchedule,
+		})
+		return r.Update(ctx, node)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to add upgrading taint to node %s: %w", nodeName, err)
+	}
+	return nil
+}
+
+// removeNodeUpgradingTaint removes the upgrading taint from a node.
+func (r *Reconciler) removeNodeUpgradingTaint(ctx context.Context, nodeName string) error {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		node := &corev1.Node{}
+		if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+
+		filtered := make([]corev1.Taint, 0, len(node.Spec.Taints))
+		removed := false
+		for _, t := range node.Spec.Taints {
+			if t.Key == constants.NodeUpgradingTaint {
+				removed = true
+				continue
+			}
+			filtered = append(filtered, t)
+		}
+		if !removed {
+			return nil
+		}
+
+		node.Spec.Taints = filtered
+		return r.Update(ctx, node)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to remove upgrading taint from node %s: %w", nodeName, err)
+	}
+	return nil
+}
+
+// clearOutdatedTaints removes the outdated and upgrading taints from every selected node.
 func (r *Reconciler) clearOutdatedTaints(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) {
 	logger := log.FromContext(ctx)
 
@@ -136,6 +195,9 @@ func (r *Reconciler) clearOutdatedTaints(ctx context.Context, talosUpgrade *tupp
 	for i := range nodes {
 		if err := r.removeNodeOutdatedTaint(ctx, nodes[i].Name); err != nil {
 			logger.Error(err, "Failed to remove outdated taint during cleanup", "node", nodes[i].Name)
+		}
+		if err := r.removeNodeUpgradingTaint(ctx, nodes[i].Name); err != nil {
+			logger.Error(err, "Failed to remove upgrading taint during cleanup", "node", nodes[i].Name)
 		}
 	}
 }

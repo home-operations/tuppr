@@ -1826,8 +1826,8 @@ func TestTalosBuildJob_Properties(t *testing.T) {
 		t.Fatal("expected ReadOnlyRootFilesystem=true")
 	}
 
-	if podSpec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
-		t.Fatal("expected required node affinity for hard placement")
+	if podSpec.Affinity != nil {
+		t.Fatal("expected no node affinity with taint-driven placement")
 	}
 
 	wantArgs := map[string]bool{
@@ -1850,9 +1850,6 @@ func TestTalosBuildJob_Properties(t *testing.T) {
 		}
 	}
 
-	if len(podSpec.Tolerations) != 1 || podSpec.Tolerations[0].Operator != corev1.TolerationOpExists {
-		t.Fatal("expected universal toleration")
-	}
 	if podSpec.PriorityClassName != "system-node-critical" {
 		t.Fatalf("expected system-node-critical priority, got: %s", podSpec.PriorityClassName)
 	}
@@ -2114,10 +2111,9 @@ func TestNodeNeedsUpgrade(t *testing.T) {
 	}
 }
 
-func TestTalosBuildJob_SoftPlacement(t *testing.T) {
+func TestTalosBuildJob_TaintTolerations(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
-	tu.Spec.Policy.Placement = PlacementSoft
 	tc := &mockTalosClient{
 		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
 		installImages: map[string]string{testNodeIP1: testFactoryInstaller},
@@ -2128,11 +2124,19 @@ func TestTalosBuildJob_SoftPlacement(t *testing.T) {
 	targetImage := "factory.talos.dev/installer:" + fakeTalosVersion
 	job := r.buildJob(context.Background(), tu, fakeNodeA, testNodeIP1, testNodeIP1, targetImage)
 	podSpec := job.Spec.Template.Spec
-	if podSpec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution == nil {
-		t.Fatal("expected preferred node affinity for soft placement")
+
+	if podSpec.Affinity != nil {
+		t.Fatal("expected no node affinity with taint-driven placement")
 	}
-	if podSpec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution != nil {
-		t.Fatal("soft placement should not have required affinity")
+	effects := map[corev1.TaintEffect]bool{}
+	for _, tol := range podSpec.Tolerations {
+		effects[tol.Effect] = true
+	}
+	if !effects[corev1.TaintEffectNoSchedule] || !effects[corev1.TaintEffectNoExecute] {
+		t.Fatalf("expected NoSchedule and NoExecute tolerations, got: %+v", podSpec.Tolerations)
+	}
+	if effects[corev1.TaintEffectPreferNoSchedule] {
+		t.Fatal("upgrade pod must not tolerate PreferNoSchedule")
 	}
 }
 
