@@ -86,7 +86,7 @@ Kubernetes: `>=1.25.0-0`
 | notification.secretName | string | `""` | Name of the Secret holding the notification (shoutrrr) URL. |
 | podAnnotations | object | `{}` | Annotations added to the pod. |
 | podLabels | object | `{}` | Labels added to the pod. |
-| podSecurityContext | object | `{"fsGroup":65532,"runAsNonRoot":true,"runAsUser":65532}` | Pod-level securityContext (runs as non-root uid/gid 65532). |
+| podSecurityContext | object | `{"fsGroup":65532,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532}` | Pod-level securityContext (runs as non-root uid/gid 65532). |
 | priorityClassName | string | `"system-node-critical"` | Priority class name for pod scheduling. |
 | rbac.annotations | object | `{}` | Annotations for the RBAC resources. |
 | rbac.create | bool | `true` | Create the ClusterRole + ClusterRoleBinding the controller needs to manage nodes and jobs. |
