@@ -45,6 +45,7 @@ podLabels: {}
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 65532
+  runAsGroup: 65532
   fsGroup: 65532
 
 # -- Extra environment variables passed to the container.

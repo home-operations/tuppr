@@ -1,10 +1,13 @@
 # Build the manager binary
 ARG GO_VERSION
-FROM golang:${GO_VERSION} AS builder
+FROM golang:${GO_VERSION}-alpine AS builder
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=dev
 ARG REVISION=dev
+
+# upx (build stage only) compresses the final binary to shrink the image.
+RUN apk add --no-cache upx
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
@@ -28,11 +31,12 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     go build -a -ldflags "-X main.version=${VERSION} -X main.commit=${REVISION}" \
     -o manager cmd/main.go
 
+RUN upx --best --lzma manager
+
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
 COPY --from=builder /workspace/manager .
-USER 65532:65532
 
 ENTRYPOINT ["/manager"]

@@ -416,6 +416,11 @@
           "title": "fsGroup",
           "type": "integer"
         },
+        "runAsGroup": {
+          "default": 65532,
+          "title": "runAsGroup",
+          "type": "integer"
+        },
         "runAsNonRoot": {
           "default": true,
           "title": "runAsNonRoot",
