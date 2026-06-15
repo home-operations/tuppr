@@ -64,6 +64,8 @@ jobs:
       platforms: linux/amd64,linux/arm64
       push: true
       sbom: true
+      set-meta-annotations: true
+      set-meta-labels: true
       sign: true
     secrets:
       registry-auths: |
