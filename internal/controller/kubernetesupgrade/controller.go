@@ -219,9 +219,21 @@ func (r *Reconciler) setPhase(ctx context.Context, kubernetesUpgrade *tupprv1alp
 	return r.setPhaseWithUpdates(ctx, kubernetesUpgrade, phase, "", controllerNode, message, nil)
 }
 
-// setPhaseWithReason is like setPhase but pins the Progressing condition's Reason.
-func (r *Reconciler) setPhaseWithReason(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, phase tupprv1alpha1.JobPhase, reason, controllerNode, message string) error {
-	return r.setPhaseWithUpdates(ctx, kubernetesUpgrade, phase, reason, controllerNode, message, nil)
+// setPendingWithReason pins the Progressing condition's Reason and message.
+func (r *Reconciler) setPendingWithReason(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, reason, message string) error {
+	return r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, reason, "", message, nil)
+}
+
+// reportReconcileError logs the failure, writes a Pending status with the
+// given reason, and returns the requeue. The caller should `return result, nil`.
+// op is the failed operation (e.g. "find next nodes") for the log and message.
+func (r *Reconciler) reportReconcileError(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, reason, op string, requeue time.Duration, err error) ctrl.Result {
+	logger := log.FromContext(ctx)
+	logger.Error(err, "Failed to "+op, "reason", reason)
+	if setErr := r.setPendingWithReason(ctx, kubernetesUpgrade, reason, fmt.Sprintf("Cannot %s: %s", op, err.Error())); setErr != nil {
+		logger.Error(setErr, "Failed to update status", "op", op)
+	}
+	return ctrl.Result{RequeueAfter: requeue}
 }
 
 // setPhaseWithUpdates writes phase plus any additional status fields atomically

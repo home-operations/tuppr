@@ -16,6 +16,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -810,8 +811,9 @@ func TestK8sReconcile_InProgressBypassesCoordination(t *testing.T) {
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading),
 	)
+	node := newControllerNodeWithVersion(fakeCrtl, testNodeIP, testK8sVersion)
 	cl := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(ku, tu).WithStatusSubresource(ku, tu).Build()
+		WithObjects(ku, tu, node).WithStatusSubresource(ku, tu).Build()
 	r := newK8sReconciler(cl, &mockVersionGetter{}, &mockTalosClient{}, &mockHealthChecker{})
 
 	result := reconcileK8s(t, r, "test-upgrade")
@@ -1274,5 +1276,55 @@ func TestNodeToKubernetesUpgrades_EmptyWhenNoneCompleted(t *testing.T) {
 	requests := r.nodeToKubernetesUpgrades(context.Background(), &corev1.Node{})
 	if len(requests) != 0 {
 		t.Fatalf("expected 0 requests when no Completed upgrades, got: %d", len(requests))
+	}
+}
+
+func TestK8sReconcile_ReportsReconcileErrorInStatus(t *testing.T) {
+	tests := []struct {
+		name       string
+		failList   client.ObjectList
+		errMsg     string
+		wantReason string
+	}{
+		{name: "FindActiveJob", failList: &batchv1.JobList{}, errMsg: "simulated job list failure", wantReason: upgradeaudit.ReasonFindActiveJobs},
+		{name: "CheckNodeVersions", failList: &corev1.NodeList{}, errMsg: "simulated node list failure", wantReason: upgradeaudit.ReasonCheckNodeVersions},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := newTestScheme()
+			ku := newKubernetesUpgrade("test-upgrade", withK8sFinalizer, withK8sPhase(tupprv1alpha1.JobPhasePending))
+			target := fmt.Sprintf("%T", tt.failList)
+			cl := fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(ku).WithStatusSubresource(ku).
+				WithInterceptorFuncs(interceptor.Funcs{
+					List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+						if fmt.Sprintf("%T", list) == target {
+							return fmt.Errorf("%s", tt.errMsg)
+						}
+						return c.List(ctx, list, opts...)
+					},
+				}).Build()
+			r := newK8sReconciler(cl, &mockVersionGetter{}, &mockTalosClient{}, &mockHealthChecker{})
+
+			result := reconcileK8s(t, r, "test-upgrade")
+			if result.RequeueAfter != 1*time.Minute {
+				t.Fatalf("expected 1m requeue, got: %v", result.RequeueAfter)
+			}
+
+			updated := getK8sUpgrade(t, cl, "test-upgrade")
+			if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
+				t.Fatalf("expected phase Pending, got: %s", updated.Status.Phase)
+			}
+			cond := findK8sCondition(updated.Status.Conditions, tupprv1alpha1.ConditionTypeProgressing)
+			if cond == nil {
+				t.Fatal("missing Progressing condition")
+			}
+			if cond.Reason != tt.wantReason {
+				t.Fatalf("expected Reason=%s, got %s", tt.wantReason, cond.Reason)
+			}
+			if !strings.Contains(updated.Status.Message, tt.errMsg) {
+				t.Fatalf("expected message to include the underlying error, got: %s", updated.Status.Message)
+			}
+		})
 	}
 }

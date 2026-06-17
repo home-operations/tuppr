@@ -49,8 +49,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 		targetVersion := kubernetesUpgrade.Spec.Kubernetes.Version
 		allUpgraded, err := r.areAllNodesUpgraded(ctx, targetVersion)
 		if err != nil {
-			logger.Error(err, "Failed to re-check nodes after completion")
-			return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
+			return r.reportReconcileError(ctx, kubernetesUpgrade, upgradeaudit.ReasonCheckNodeVersions, "re-check node versions", time.Minute*5, err), nil
 		}
 		if allUpgraded {
 			return ctrl.Result{RequeueAfter: time.Hour}, nil
@@ -86,8 +85,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 	}
 
 	if activeJob, err := r.findActiveJob(ctx); err != nil {
-		logger.Error(err, "Failed to find active jobs")
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
+		return r.reportReconcileError(ctx, kubernetesUpgrade, upgradeaudit.ReasonFindActiveJobs, "list active upgrade jobs", time.Minute, err), nil
 	} else if activeJob != nil {
 		logger.V(1).Info("Found active job, handling its status", "job", activeJob.Name)
 		return r.handleJobStatus(ctx, kubernetesUpgrade, activeJob)
@@ -106,8 +104,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 
 	allUpgraded, err := r.areAllNodesUpgraded(ctx, targetVersion)
 	if err != nil {
-		logger.Error(err, "Failed to verify node versions")
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
+		return r.reportReconcileError(ctx, kubernetesUpgrade, upgradeaudit.ReasonCheckNodeVersions, "check node versions", time.Minute, err), nil
 	}
 
 	if allUpgraded {
@@ -180,12 +177,11 @@ func (r *Reconciler) checkCoordination(ctx context.Context, kubernetesUpgrade *t
 
 	blocked, message, err := coordination.IsAnotherUpgradeActive(ctx, r.Client, kubernetesUpgrade.Name, coordination.UpgradeTypeKubernetes)
 	if err != nil {
-		logger.Error(err, "Failed to check for other active upgrades")
-		return ctrl.Result{RequeueAfter: time.Minute}, true
+		return r.reportReconcileError(ctx, kubernetesUpgrade, upgradeaudit.ReasonCheckCoordination, "check for other active upgrades", time.Minute, err), true
 	}
 	if blocked {
 		logger.Info("Waiting for another upgrade to complete", "reason", message)
-		if err := r.setPhaseWithReason(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, upgradeaudit.ReasonWaitingForOtherUpgrade, "", message); err != nil {
+		if err := r.setPendingWithReason(ctx, kubernetesUpgrade, upgradeaudit.ReasonWaitingForOtherUpgrade, message); err != nil {
 			logger.Error(err, "Failed to update phase for coordination wait")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute * 2}, true
