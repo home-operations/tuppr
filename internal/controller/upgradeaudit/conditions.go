@@ -42,6 +42,13 @@ const (
 
 	ReasonWaitingForImage        = "WaitingForImage"
 	ReasonWaitingForOtherUpgrade = "WaitingForOtherUpgrade"
+	ReasonBuildTargetImage       = "BuildTargetImage"
+	ReasonFindActiveJobs         = "FindActiveJobs"
+	ReasonCheckCoordination      = "CheckCoordination"
+	ReasonCheckMaintenanceWindow = "CheckMaintenanceWindow"
+	ReasonFindNextNodes          = "FindNextNodes"
+	ReasonCreateJob              = "CreateJob"
+	ReasonCheckNodeVersions      = "CheckNodeVersions"
 	ReasonSuspended              = "Suspended"
 )
 

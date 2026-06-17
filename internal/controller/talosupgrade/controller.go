@@ -228,13 +228,21 @@ func (r *Reconciler) setPhaseWithNodes(ctx context.Context, talosUpgrade *tupprv
 	return r.setPhaseWithUpdates(ctx, talosUpgrade, phase, "", currentNodes, message, nil)
 }
 
-// setPhaseWithReason is like setPhase but pins the Progressing condition's Reason.
-func (r *Reconciler) setPhaseWithReason(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, reason, currentNode, message string) error {
-	var currentNodes []string
-	if currentNode != "" {
-		currentNodes = []string{currentNode}
+// setPendingWithReason pins the Progressing condition's Reason and message.
+func (r *Reconciler) setPendingWithReason(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, reason, message string) error {
+	return r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, reason, nil, message, nil)
+}
+
+// reportReconcileError logs the failure, writes a Pending status with the
+// given reason, and returns the requeue. The caller should `return result, nil`.
+// op is the failed operation (e.g. "find next nodes") for the log and message.
+func (r *Reconciler) reportReconcileError(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, reason, op string, requeue time.Duration, err error) ctrl.Result {
+	logger := log.FromContext(ctx)
+	logger.Error(err, "Failed to "+op, "reason", reason)
+	if setErr := r.setPendingWithReason(ctx, talosUpgrade, reason, fmt.Sprintf("Cannot %s: %s", op, err.Error())); setErr != nil {
+		logger.Error(setErr, "Failed to update status", "op", op)
 	}
-	return r.setPhaseWithUpdates(ctx, talosUpgrade, phase, reason, currentNodes, message, nil)
+	return ctrl.Result{RequeueAfter: requeue}
 }
 
 // setPhaseWithUpdates writes phase plus any additional status fields atomically

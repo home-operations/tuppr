@@ -2510,6 +2510,150 @@ func TestTalosReconcile_WaitsForImageAvailability(t *testing.T) {
 	}
 }
 
+func TestTalosReconcile_ReportsSchematicMismatchInStatus(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhasePending),
+	)
+	node := newNode(fakeNodeA, testNodeIP1)
+
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: "factory.talos.dev/metal-installer/old-schematic:v1.11.0"},
+		extensions:    map[string]talos.ExtensionInfo{testNodeIP1: {Schematic: "new-schematic"}},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	result := reconcileTalos(t, r, testUpgradeName)
+
+	if result.RequeueAfter != 1*time.Minute {
+		t.Fatalf("expected 1m requeue when target image cannot be built, got: %v", result.RequeueAfter)
+	}
+
+	var jobList batchv1.JobList
+	if err := cl.List(context.Background(), &jobList); err != nil {
+		t.Fatalf("error not expected %s", err)
+	}
+	if len(jobList.Items) > 0 {
+		t.Fatal("expected no job to be created when target image cannot be built")
+	}
+
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
+		t.Fatalf("expected phase Pending, got: %s", updated.Status.Phase)
+	}
+	cond := findProgressing(updated.Status.Conditions)
+	if cond == nil {
+		t.Fatal("missing Progressing condition")
+	}
+	if cond.Reason != upgradeaudit.ReasonBuildTargetImage {
+		t.Fatalf("expected Reason=%s, got %s", upgradeaudit.ReasonBuildTargetImage, cond.Reason)
+	}
+	if !strings.Contains(updated.Status.Message, "new-schematic") {
+		t.Fatalf("expected message to name runtime schematic, got: %s", updated.Status.Message)
+	}
+}
+
+func TestTalosReconcile_ReportsReconcileErrorInStatus(t *testing.T) {
+	tests := []struct {
+		name       string
+		failList   client.ObjectList
+		errMsg     string
+		wantReason string
+	}{
+		{name: "FindActiveJobs", failList: &batchv1.JobList{}, errMsg: "simulated job list failure", wantReason: upgradeaudit.ReasonFindActiveJobs},
+		{name: "FindNextNodes", failList: &corev1.NodeList{}, errMsg: "simulated node list failure", wantReason: upgradeaudit.ReasonFindNextNodes},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := newTestScheme()
+			tu := newTalosUpgrade(testUpgradeName, withFinalizer, withPhase(tupprv1alpha1.JobPhasePending))
+			target := fmt.Sprintf("%T", tt.failList)
+			cl := fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(tu).WithStatusSubresource(tu).
+				WithInterceptorFuncs(interceptor.Funcs{
+					List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+						if fmt.Sprintf("%T", list) == target {
+							return fmt.Errorf("%s", tt.errMsg)
+						}
+						return c.List(ctx, list, opts...)
+					},
+				}).Build()
+			r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+
+			result := reconcileTalos(t, r, testUpgradeName)
+			if result.RequeueAfter != 1*time.Minute {
+				t.Fatalf("expected 1m requeue, got: %v", result.RequeueAfter)
+			}
+
+			updated := getTalosUpgrade(t, cl, testUpgradeName)
+			if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
+				t.Fatalf("expected phase Pending, got: %s", updated.Status.Phase)
+			}
+			cond := findProgressing(updated.Status.Conditions)
+			if cond == nil {
+				t.Fatal("missing Progressing condition")
+			}
+			if cond.Reason != tt.wantReason {
+				t.Fatalf("expected Reason=%s, got %s", tt.wantReason, cond.Reason)
+			}
+			if !strings.Contains(updated.Status.Message, tt.errMsg) {
+				t.Fatalf("expected message to include the underlying error, got: %s", updated.Status.Message)
+			}
+		})
+	}
+}
+
+func TestTalosReconcile_ReportsCreateJobInStatus(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhasePending),
+	)
+	node := newNode(fakeNodeA, testNodeIP1)
+
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: testInstallerABC},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+				if _, ok := obj.(*batchv1.Job); ok {
+					return fmt.Errorf("simulated job create failure")
+				}
+				return c.Create(ctx, obj, opts...)
+			},
+		}).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	result := reconcileTalos(t, r, testUpgradeName)
+	if result.RequeueAfter != 1*time.Minute {
+		t.Fatalf("expected 1m requeue, got: %v", result.RequeueAfter)
+	}
+
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
+		t.Fatalf("expected phase Pending, got: %s", updated.Status.Message)
+	}
+	cond := findProgressing(updated.Status.Conditions)
+	if cond == nil {
+		t.Fatal("missing Progressing condition")
+	}
+	if cond.Reason != upgradeaudit.ReasonCreateJob {
+		t.Fatalf("expected Reason=%s, got %s", upgradeaudit.ReasonCreateJob, cond.Reason)
+	}
+	if !strings.Contains(updated.Status.Message, "simulated job create failure") {
+		t.Fatalf("expected message to include the underlying error, got: %s", updated.Status.Message)
+	}
+}
+
 func TestTalosReconcile_DoesNotFlickerWhileWaitingForImage(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade(testUpgradeName,
@@ -2536,7 +2680,7 @@ func TestTalosReconcile_DoesNotFlickerWhileWaitingForImage(t *testing.T) {
 		if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 			t.Fatalf("reconcile %d: expected Pending throughout, got: %s", i, updated.Status.Phase)
 		}
-		cond := findCondition(updated.Status.Conditions, tupprv1alpha1.ConditionTypeProgressing)
+		cond := findProgressing(updated.Status.Conditions)
 		if cond == nil {
 			t.Fatalf("reconcile %d: missing Progressing condition", i)
 			return
@@ -2550,9 +2694,9 @@ func TestTalosReconcile_DoesNotFlickerWhileWaitingForImage(t *testing.T) {
 	}
 }
 
-func findCondition(conditions []metav1.Condition, condType string) *metav1.Condition {
+func findProgressing(conditions []metav1.Condition) *metav1.Condition {
 	for i := range conditions {
-		if conditions[i].Type == condType {
+		if conditions[i].Type == tupprv1alpha1.ConditionTypeProgressing {
 			return &conditions[i]
 		}
 	}

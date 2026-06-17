@@ -28,7 +28,7 @@ func (r *Reconciler) handleSuspendAnnotation(ctx context.Context, talosUpgrade *
 		"talosupgrade", talosUpgrade.Name)
 
 	message := fmt.Sprintf("Controller suspended via annotation (value: %s) - remove annotation to resume", suspendValue)
-	if err := r.setPhaseWithReason(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, upgradeaudit.ReasonSuspended, "", message); err != nil {
+	if err := r.setPendingWithReason(ctx, talosUpgrade, upgradeaudit.ReasonSuspended, message); err != nil {
 		logger.Error(err, "Failed to update phase for suspension")
 		return true, err
 	}
