@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7](https://github.com/home-operations/tuppr/compare/0.2.6...0.2.7) (2026-06-17)
+
+
+### Bug Fixes
+
+* **controllers:** surface reconcile errors in TalosUpgrade/Kubernetes Upgrade status ([#342](https://github.com/home-operations/tuppr/issues/342)) ([02af953](https://github.com/home-operations/tuppr/commit/02af953616d3adde637fb91bb772be92a7e90a17))
+
 ## [0.2.6](https://github.com/home-operations/tuppr/compare/0.2.5...0.2.6) (2026-06-13)
 
 
