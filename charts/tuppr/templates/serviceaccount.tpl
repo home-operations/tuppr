@@ -10,7 +10,7 @@ metadata:
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-automountServiceAccountToken: {{ .Values.serviceAccount.automount | default true }}
+automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
 {{- end }}
 ---
 apiVersion: talos.dev/v1alpha1
