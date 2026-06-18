@@ -447,8 +447,8 @@ kubectl annotate node <node-name> tuppr.home-operations.com/version="v1.10.7"
 kubectl get nodes -o custom-columns=NAME:.metadata.name,VERSION-OVERRIDE:.metadata.annotations."tuppr\.home-operations\.com/version"
 
 # Check metrics endpoint
-kubectl port-forward -n system-upgrade deployment/tuppr 8080:8080
-curl http://localhost:8080/metrics | grep tuppr_
+kubectl port-forward -n system-upgrade deployment/tuppr 8081:8081
+curl http://localhost:8081/metrics | grep tuppr_
 ```
 
 ### Suspending Upgrades
@@ -497,8 +497,8 @@ kubectl logs job/tuppr-xyz -n system-upgrade
 kubectl get pods -n system-upgrade -l app.kubernetes.io/name=tuppr
 
 # View metrics for debugging
-kubectl port-forward -n system-upgrade deployment/tuppr 8080:8080
-curl http://localhost:8080/metrics | grep -E "(tuppr_.*_phase|tuppr_.*_duration)"
+kubectl port-forward -n system-upgrade deployment/tuppr 8081:8081
+curl http://localhost:8081/metrics | grep -E "(tuppr_.*_phase|tuppr_.*_duration)"
 ```
 
 ### Emergency Procedures
