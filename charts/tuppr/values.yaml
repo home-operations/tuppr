@@ -77,7 +77,7 @@ service:
   # -- Service port for general access.
   port: 8080
   # -- Metrics port (deprecated — use controller.metrics.port).
-  metricsPort: 8080
+  metricsPort: 8081
 
 # -- Pod resource requests/limits.
 resources: {}
@@ -148,15 +148,18 @@ controller:
   metrics:
     # -- Expose the Prometheus metrics endpoint.
     enabled: true
-    # -- Metrics endpoint port.
-    port: 8080
+    # -- Metrics endpoint port. When metrics are served over plain HTTP (secure: false),
+    # the /healthz and /readyz probes are co-hosted on this same port.
+    port: 8081
     # -- Serve metrics over HTTPS with authentication; false serves plain HTTP.
+    # Keep false so the health/readiness probes can share the metrics port.
     secure: false
     # -- Annotations for the metrics Service.
     annotations: {}
 
   health:
-    # -- Health-probe port (/healthz, /readyz).
+    # -- Health-probe port (/healthz, /readyz). When metrics use plain HTTP they are
+    # co-hosted on the metrics port; set this to a different port to serve them separately.
     port: 8081
 
 webhook:

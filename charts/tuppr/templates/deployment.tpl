@@ -89,9 +89,18 @@ spec:
               containerPort: {{ .Values.controller.metrics.port }}
               protocol: TCP
             {{- end }}
+            {{/* The controller co-hosts the /healthz and /readyz probes on the metrics
+                 listener whenever metrics are enabled and served over plain HTTP, exposing a
+                 single port. In that case the metrics port above already covers the probes, so
+                 don't declare a duplicate containerPort. A dedicated health port is only needed
+                 when the probes run on their own listener: metrics disabled, or metrics secure
+                 (HTTPS + authn/authz can't host plain-HTTP probes). Keep this in sync with the
+                 co-host decision in cmd/main.go. */}}
+            {{- if or (not .Values.controller.metrics.enabled) .Values.controller.metrics.secure }}
             - name: health
               containerPort: {{ .Values.controller.health.port }}
               protocol: TCP
+            {{- end }}
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:

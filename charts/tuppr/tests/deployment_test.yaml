@@ -84,10 +84,21 @@ tests:
           path: spec.template.spec.containers[0].ports
           content:
             name: metrics
-            containerPort: 8080
+            containerPort: 8081
             protocol: TCP
 
-  - it: should include health port
+  - it: should co-host probes on the metrics port by default (no separate health port)
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].ports
+          content:
+            name: health
+            containerPort: 8081
+            protocol: TCP
+
+  - it: should expose a dedicated health port when metrics are served securely
+    set:
+      controller.metrics.secure: true
     asserts:
       - contains:
           path: spec.template.spec.containers[0].ports
@@ -96,14 +107,49 @@ tests:
             containerPort: 8081
             protocol: TCP
 
-  - it: should set liveness and readiness probes
+  - it: should expose a dedicated health port when metrics are disabled
+    set:
+      controller.metrics.enabled: false
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content:
+            name: health
+            containerPort: 8081
+            protocol: TCP
+      - notContains:
+          path: spec.template.spec.containers[0].ports
+          content:
+            name: metrics
+            containerPort: 8081
+            protocol: TCP
+
+  - it: should pass plain-HTTP metrics and probe bind flags
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --metrics-bind-address=:8081
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --health-probe-bind-address=:8081
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --metrics-secure=false
+
+  - it: should set liveness and readiness probes on the shared port
     asserts:
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.httpGet.path
           value: /healthz
       - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.port
+          value: 8081
+      - equal:
           path: spec.template.spec.containers[0].readinessProbe.httpGet.path
           value: /readyz
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.port
+          value: 8081
 
   - it: should set tolerations
     asserts:

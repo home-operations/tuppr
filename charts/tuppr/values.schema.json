@@ -14,7 +14,7 @@
           "properties": {
             "port": {
               "default": 8081,
-              "description": "Health-probe port (/healthz, /readyz).",
+              "description": "Health-probe port (/healthz, /readyz). When metrics use plain HTTP they are\nco-hosted on the metrics port; set this to a different port to serve them separately.",
               "title": "port",
               "type": "integer"
             }
@@ -57,14 +57,14 @@
               "type": "boolean"
             },
             "port": {
-              "default": 8080,
-              "description": "Metrics endpoint port.",
+              "default": 8081,
+              "description": "Metrics endpoint port. When metrics are served over plain HTTP (secure: false),\nthe /healthz and /readyz probes are co-hosted on this same port.",
               "title": "port",
               "type": "integer"
             },
             "secure": {
               "default": false,
-              "description": "Serve metrics over HTTPS with authentication; false serves plain HTTP.",
+              "description": "Serve metrics over HTTPS with authentication; false serves plain HTTP.\nKeep false so the health/readiness probes can share the metrics port.",
               "title": "secure",
               "type": "boolean"
             }
@@ -558,7 +558,7 @@
     "service": {
       "properties": {
         "metricsPort": {
-          "default": 8080,
+          "default": 8081,
           "description": "Metrics port (deprecated — use controller.metrics.port).",
           "title": "metricsPort",
           "type": "integer"

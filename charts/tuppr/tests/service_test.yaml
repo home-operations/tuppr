@@ -10,6 +10,15 @@ tests:
           path: spec.type
           value: ClusterIP
 
+  - it: should default the metrics port to 8081
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 8081
+      - equal:
+          path: spec.ports[0].targetPort
+          value: metrics
+
   - it: should use correct metrics port
     set:
       controller.metrics.port: 9090
