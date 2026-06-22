@@ -145,7 +145,7 @@ metadata:
 spec:
     kubernetes:
         # renovate: datasource=docker depName=ghcr.io/siderolabs/kubelet
-        version: v1.34.0 # Required - target Kubernetes version
+        version: v1.36.2 # Required - target Kubernetes version
 
         # Optional - private registry for component images
         # (kube-apiserver, kube-controller-manager, kube-scheduler, kube-proxy, kubelet)
