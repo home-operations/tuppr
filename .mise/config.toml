@@ -1,7 +1,7 @@
 [tools]
 go = "1.26.4"
 golangci-lint = "2.12.2"
-hcloud = "1.65.0"
+hcloud = "1.66.0"
 helm = "4.2.2"
 cosign = "3.1.1"
 helm-docs = "1.14.2"
