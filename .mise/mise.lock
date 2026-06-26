@@ -143,36 +143,36 @@ url = "https://github.com/golangci/golangci-lint/releases/download/v2.12.2/golan
 provenance = "github-attestations"
 
 [[tools.hcloud]]
-version = "1.65.0"
+version = "1.66.0"
 backend = "aqua:hetznercloud/cli"
 
 [tools.hcloud."platforms.linux-arm64"]
-checksum = "sha256:07de215486050692fe206368905dd677a1f2dd00f9b00af3a389ed301c2cca9b"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.65.0/hcloud-linux-arm64.tar.gz"
+checksum = "sha256:f9d67b4a1e2a7d88e6360b3e9a5efe9ab6c4e1cf6d0fa45d2740adfa8528d55b"
+url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-linux-arm64.tar.gz"
 
 [tools.hcloud."platforms.linux-arm64-musl"]
-checksum = "sha256:07de215486050692fe206368905dd677a1f2dd00f9b00af3a389ed301c2cca9b"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.65.0/hcloud-linux-arm64.tar.gz"
+checksum = "sha256:f9d67b4a1e2a7d88e6360b3e9a5efe9ab6c4e1cf6d0fa45d2740adfa8528d55b"
+url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-linux-arm64.tar.gz"
 
 [tools.hcloud."platforms.linux-x64"]
-checksum = "sha256:f78d2db65b7ab58603d343739cb4397e13acef23182e41692a06e147a8d4c011"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.65.0/hcloud-linux-amd64.tar.gz"
+checksum = "sha256:8b1a8598858232c491f58cbf65ce1bd0ec6f725114bb62ec967a20ab03e29a86"
+url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-linux-amd64.tar.gz"
 
 [tools.hcloud."platforms.linux-x64-musl"]
-checksum = "sha256:f78d2db65b7ab58603d343739cb4397e13acef23182e41692a06e147a8d4c011"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.65.0/hcloud-linux-amd64.tar.gz"
+checksum = "sha256:8b1a8598858232c491f58cbf65ce1bd0ec6f725114bb62ec967a20ab03e29a86"
+url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-linux-amd64.tar.gz"
 
 [tools.hcloud."platforms.macos-arm64"]
-checksum = "sha256:d48c5cc9aecd6779658e859c136774ee6e5054baeaf91f087577feb05edef990"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.65.0/hcloud-darwin-arm64.tar.gz"
+checksum = "sha256:b602f1e0d9d0ea6cb721e297688f61adb5508247ff8867c87778a2449fa2fcce"
+url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-darwin-arm64.tar.gz"
 
 [tools.hcloud."platforms.macos-x64"]
-checksum = "sha256:939c5621146a48c369f850a00c461beb0abc059277a655cf4c27c021249b94ab"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.65.0/hcloud-darwin-amd64.tar.gz"
+checksum = "sha256:3927d536d4c930dcd2a4e0826ec07f5feb341540a08254a7676bc60882bdfec2"
+url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-darwin-amd64.tar.gz"
 
 [tools.hcloud."platforms.windows-x64"]
-checksum = "sha256:7fc3783f70ecb57a4fdf81560871adefc8a6696c33f5b6fefc0efe1b0578e2a2"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.65.0/hcloud-windows-amd64.zip"
+checksum = "sha256:15b4ecf8d57c993f6987530ad1910f1167edf71f702696710d5420bdf0de7639"
+url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-windows-amd64.zip"
 
 [[tools.helm]]
 version = "4.2.2"
