@@ -243,6 +243,12 @@ policy:
 
     # Stage upgrade then reboot to apply (2 total reboots)
     stage: false
+
+    # Drain the node in tuppr and wait for its CSI volumes to detach before the
+    # Talos reboot (then upgrade with Talos drain disabled). Prevents a fast reboot
+    # from orphaning a mount and pinning the volume to the node, which surfaces as a
+    # Multi-Attach error when the pod reschedules. No effect on single-node clusters.
+    waitForVolumeDetach: false
 ```
 
 ### Parallel Upgrades (TalosUpgrade only)

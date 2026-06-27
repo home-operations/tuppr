@@ -26,6 +26,14 @@ import (
 	"github.com/home-operations/tuppr/internal/talos"
 )
 
+const (
+	// volumeDetachTimeout bounds how long drain waits for a node's CSI volumes to
+	// detach before rebooting. Best-effort: on timeout the upgrade proceeds anyway.
+	volumeDetachTimeout = 2 * time.Minute
+	// volumeDetachPollInterval is how often the detach wait polls VolumeAttachments.
+	volumeDetachPollInterval = 5 * time.Second
+)
+
 func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues(
 		"talosupgrade", talosUpgrade.Name,
@@ -343,7 +351,7 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	logger.Info("Starting batch upgrade", "nodes", nextNodes, "batchSize", len(batch))
 
 	// Drain all nodes in batch before creating any jobs
-	if talosUpgrade.Spec.DrainEnabled() {
+	if r.tupprOwnsDrain(ctx, talosUpgrade) {
 		if err := r.setPhaseWithNodes(ctx, talosUpgrade, tupprv1alpha1.JobPhaseDraining, nextNodes, fmt.Sprintf("Draining %d nodes", len(nextNodes))); err != nil {
 			logger.Error(err, "Failed to update phase for draining")
 			return ctrl.Result{RequeueAfter: time.Second * 30}, err
@@ -570,7 +578,20 @@ func (r *Reconciler) isSelfHostedUpgrade(ctx context.Context) bool {
 	return count == 1
 }
 
+// tupprOwnsDrain reports whether tuppr should drain the node itself before the
+// upgrade job (rather than delegating to Talos). True when the deprecated Drain
+// spec is enabled, or when Policy.WaitForVolumeDetach is set on a multi-node
+// cluster. Single-node clusters never drain (pods have nowhere to go).
+func (r *Reconciler) tupprOwnsDrain(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) bool {
+	if talosUpgrade.Spec.DrainEnabled() {
+		return true
+	}
+	return talosUpgrade.Spec.Policy.WaitForVolumeDetach && !r.isSelfHostedUpgrade(ctx)
+}
+
 func (r *Reconciler) drainNode(ctx context.Context, nodeName string, drainSpec *tupprv1alpha1.DrainSpec) error {
+	logger := log.FromContext(ctx)
+
 	// Never evict the controller's own pod: on a single node it runs on the node
 	// being drained.
 	drainer := drain.NewDrainer(r.Client).SkipPod(r.ControllerNamespace, r.ControllerPodName)
@@ -580,8 +601,21 @@ func (r *Reconciler) drainNode(ctx context.Context, nodeName string, drainSpec *
 		return fmt.Errorf("failed to cordon node %s: %w", nodeName, err)
 	}
 
+	// Capture volumes before eviction so we can wait for them to detach post-drain.
+	volumePVs, err := drainer.EvictableVolumePVs(ctx, nodeName)
+	if err != nil {
+		logger.Error(err, "Failed to resolve volumes for node, skipping detach wait", "node", nodeName)
+	}
+
+	// drainSpec is nil when draining is driven by Policy.WaitForVolumeDetach rather
+	// than the deprecated Drain spec; respect PDBs by default in that case.
+	respectPDBs := true
+	if drainSpec != nil && drainSpec.DisableEviction != nil {
+		respectPDBs = !*drainSpec.DisableEviction
+	}
+
 	opts := drain.DrainOptions{
-		RespectPDBs: drainSpec.DisableEviction == nil || !*drainSpec.DisableEviction,
+		RespectPDBs: respectPDBs,
 		Timeout:     10 * time.Minute,
 		GracePeriod: nil,
 	}
@@ -589,6 +623,15 @@ func (r *Reconciler) drainNode(ctx context.Context, nodeName string, drainSpec *
 	// Drain the node
 	if err := drainer.DrainNode(ctx, nodeName, opts); err != nil {
 		return fmt.Errorf("failed to drain node %s: %w", nodeName, err)
+	}
+
+	// Drain only waits for pods to terminate, not for CSI teardown; wait for that too.
+	if len(volumePVs) > 0 {
+		logger.Info("Waiting for volumes to detach before reboot", "node", nodeName, "count", len(volumePVs))
+		if err := drainer.WaitForVolumeDetach(ctx, nodeName, volumePVs, volumeDetachTimeout, volumeDetachPollInterval); err != nil {
+			// Best-effort: a slow detach shouldn't block the upgrade indefinitely.
+			logger.Error(err, "Volumes did not detach before timeout, proceeding with upgrade", "node", nodeName)
+		}
 	}
 
 	return nil

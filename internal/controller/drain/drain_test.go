@@ -7,6 +7,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
@@ -20,7 +21,43 @@ func newTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
 	_ = corev1.AddToScheme(s)
 	_ = policyv1.AddToScheme(s)
+	_ = storagev1.AddToScheme(s)
 	return s
+}
+
+// nodeNameIndex registers the spec.nodeName field index getEvictablePods relies on.
+func nodeNameIndex(b *fake.ClientBuilder) *fake.ClientBuilder {
+	return b.WithIndex(&corev1.Pod{}, "spec.nodeName", func(obj client.Object) []string {
+		return []string{obj.(*corev1.Pod).Spec.NodeName}
+	})
+}
+
+func podWithPVC(name, nodeName, claimName string) *corev1.Pod { //nolint:unparam
+	p := newPod(name, "default", nodeName, corev1.PodRunning, nil, nil)
+	p.Spec.Volumes = []corev1.Volume{{
+		Name: "data",
+		VolumeSource: corev1.VolumeSource{
+			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: claimName},
+		},
+	}}
+	return p
+}
+
+func pvc(name, pvName string) *corev1.PersistentVolumeClaim {
+	return &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Spec:       corev1.PersistentVolumeClaimSpec{VolumeName: pvName},
+	}
+}
+
+func volumeAttachment(name, nodeName, pvName string) *storagev1.VolumeAttachment {
+	return &storagev1.VolumeAttachment{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: storagev1.VolumeAttachmentSpec{
+			NodeName: nodeName,
+			Source:   storagev1.VolumeAttachmentSource{PersistentVolumeName: ptr.To(pvName)},
+		},
+	}
 }
 
 func newNode(name string, unschedulable bool) *corev1.Node { //nolint:unparam
@@ -391,6 +428,93 @@ func TestIsDrained(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEvictableVolumePVs(t *testing.T) {
+	scheme := newTestScheme()
+	node := newNode("test-node", false)
+
+	// Two evictable pods sharing pv-shared, plus a bound pv-1 and an unbound claim.
+	podA := podWithPVC("pod-a", "test-node", "claim-1")
+	podB := podWithPVC("pod-b", "test-node", "claim-shared")
+	podC := podWithPVC("pod-c", "test-node", "claim-shared") // dedup with podB
+	podUnbound := podWithPVC("pod-unbound", "test-node", "claim-unbound")
+
+	// DaemonSet pod is not evictable; its volume must not be waited on.
+	dsPod := podWithPVC("ds-pod", "test-node", "claim-ds")
+	dsPod.OwnerReferences = []metav1.OwnerReference{{Kind: daemonSetKind, Name: testDsName}}
+
+	cl := nodeNameIndex(fake.NewClientBuilder().WithScheme(scheme)).
+		WithObjects(node, podA, podB, podC, podUnbound, dsPod,
+			pvc("claim-1", "pv-1"),
+			pvc("claim-shared", "pv-shared"),
+			pvc("claim-unbound", ""), // unbound: no VolumeName
+			pvc("claim-ds", "pv-ds"),
+		).Build()
+	drainer := NewDrainer(cl)
+
+	pvs, err := drainer.EvictableVolumePVs(context.Background(), "test-node")
+	if err != nil {
+		t.Fatalf("EvictableVolumePVs() error = %v", err)
+	}
+
+	got := map[string]bool{}
+	for _, pv := range pvs {
+		got[pv] = true
+	}
+	if len(pvs) != 2 || !got["pv-1"] || !got["pv-shared"] {
+		t.Fatalf("expected [pv-1 pv-shared], got %v", pvs)
+	}
+}
+
+func TestWaitForVolumeDetach(t *testing.T) {
+	scheme := newTestScheme()
+	const (
+		node = "test-node"
+		pv   = "pv-1"
+	)
+
+	t.Run("no target PVs returns immediately", func(t *testing.T) {
+		cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+		if err := NewDrainer(cl).WaitForVolumeDetach(context.Background(), node, nil, time.Second, 10*time.Millisecond); err != nil {
+			t.Fatalf("expected nil, got %v", err)
+		}
+	})
+
+	t.Run("no matching attachment returns immediately", func(t *testing.T) {
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			volumeAttachment("va-other-node", "another-node", pv),
+			volumeAttachment("va-other-pv", node, "pv-2"),
+		).Build()
+		if err := NewDrainer(cl).WaitForVolumeDetach(context.Background(), node, []string{pv}, time.Second, 10*time.Millisecond); err != nil {
+			t.Fatalf("expected nil, got %v", err)
+		}
+	})
+
+	t.Run("lingering attachment times out", func(t *testing.T) {
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			volumeAttachment("va-1", node, pv),
+		).Build()
+		err := NewDrainer(cl).WaitForVolumeDetach(context.Background(), node, []string{pv}, 100*time.Millisecond, 10*time.Millisecond)
+		if err == nil {
+			t.Fatal("expected timeout error, got nil")
+		}
+	})
+
+	t.Run("returns once attachment is deleted", func(t *testing.T) {
+		va := volumeAttachment("va-1", node, pv)
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(va).Build()
+		drainer := NewDrainer(cl)
+
+		go func() {
+			time.Sleep(30 * time.Millisecond)
+			_ = cl.Delete(context.Background(), va)
+		}()
+
+		if err := drainer.WaitForVolumeDetach(context.Background(), node, []string{pv}, 2*time.Second, 10*time.Millisecond); err != nil {
+			t.Fatalf("expected nil once detached, got %v", err)
+		}
+	})
 }
 
 func TestDrainOptions(t *testing.T) {
