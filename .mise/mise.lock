@@ -143,36 +143,36 @@ url = "https://github.com/golangci/golangci-lint/releases/download/v2.12.2/golan
 provenance = "github-attestations"
 
 [[tools.hcloud]]
-version = "1.65.0"
+version = "1.66.0"
 backend = "aqua:hetznercloud/cli"
 
 [tools.hcloud."platforms.linux-arm64"]
-checksum = "sha256:07de215486050692fe206368905dd677a1f2dd00f9b00af3a389ed301c2cca9b"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.65.0/hcloud-linux-arm64.tar.gz"
+checksum = "sha256:f9d67b4a1e2a7d88e6360b3e9a5efe9ab6c4e1cf6d0fa45d2740adfa8528d55b"
+url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-linux-arm64.tar.gz"
 
 [tools.hcloud."platforms.linux-arm64-musl"]
-checksum = "sha256:07de215486050692fe206368905dd677a1f2dd00f9b00af3a389ed301c2cca9b"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.65.0/hcloud-linux-arm64.tar.gz"
+checksum = "sha256:f9d67b4a1e2a7d88e6360b3e9a5efe9ab6c4e1cf6d0fa45d2740adfa8528d55b"
+url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-linux-arm64.tar.gz"
 
 [tools.hcloud."platforms.linux-x64"]
-checksum = "sha256:f78d2db65b7ab58603d343739cb4397e13acef23182e41692a06e147a8d4c011"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.65.0/hcloud-linux-amd64.tar.gz"
+checksum = "sha256:8b1a8598858232c491f58cbf65ce1bd0ec6f725114bb62ec967a20ab03e29a86"
+url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-linux-amd64.tar.gz"
 
 [tools.hcloud."platforms.linux-x64-musl"]
-checksum = "sha256:f78d2db65b7ab58603d343739cb4397e13acef23182e41692a06e147a8d4c011"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.65.0/hcloud-linux-amd64.tar.gz"
+checksum = "sha256:8b1a8598858232c491f58cbf65ce1bd0ec6f725114bb62ec967a20ab03e29a86"
+url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-linux-amd64.tar.gz"
 
 [tools.hcloud."platforms.macos-arm64"]
-checksum = "sha256:d48c5cc9aecd6779658e859c136774ee6e5054baeaf91f087577feb05edef990"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.65.0/hcloud-darwin-arm64.tar.gz"
+checksum = "sha256:b602f1e0d9d0ea6cb721e297688f61adb5508247ff8867c87778a2449fa2fcce"
+url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-darwin-arm64.tar.gz"
 
 [tools.hcloud."platforms.macos-x64"]
-checksum = "sha256:939c5621146a48c369f850a00c461beb0abc059277a655cf4c27c021249b94ab"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.65.0/hcloud-darwin-amd64.tar.gz"
+checksum = "sha256:3927d536d4c930dcd2a4e0826ec07f5feb341540a08254a7676bc60882bdfec2"
+url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-darwin-amd64.tar.gz"
 
 [tools.hcloud."platforms.windows-x64"]
-checksum = "sha256:7fc3783f70ecb57a4fdf81560871adefc8a6696c33f5b6fefc0efe1b0578e2a2"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.65.0/hcloud-windows-amd64.zip"
+checksum = "sha256:15b4ecf8d57c993f6987530ad1910f1167edf71f702696710d5420bdf0de7639"
+url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-windows-amd64.zip"
 
 [[tools.helm]]
 version = "4.2.2"
@@ -239,42 +239,42 @@ checksum = "sha256:3c54fd78d99e2769cf83a0faf12cf6cd4de1cac6ed7bee8d908a2c8fc23f5
 url = "https://github.com/norwoodj/helm-docs/releases/download/v1.14.2/helm-docs_1.14.2_Windows_x86_64.tar.gz"
 
 [[tools.jq]]
-version = "1.8.1"
+version = "1.8.2"
 backend = "aqua:jqlang/jq"
 
 [tools.jq."platforms.linux-arm64"]
-checksum = "sha256:6bc62f25981328edd3cfcfe6fe51b073f2d7e7710d7ef7fcdac28d4e384fc3d4"
-url = "https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-arm64"
+checksum = "sha256:8b85c817833814ddca00a144c33705546355afccf0cf39b188f3cdb48b852309"
+url = "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-arm64"
 provenance = "github-attestations"
 
 [tools.jq."platforms.linux-arm64-musl"]
-checksum = "sha256:6bc62f25981328edd3cfcfe6fe51b073f2d7e7710d7ef7fcdac28d4e384fc3d4"
-url = "https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-arm64"
+checksum = "sha256:8b85c817833814ddca00a144c33705546355afccf0cf39b188f3cdb48b852309"
+url = "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-arm64"
 provenance = "github-attestations"
 
 [tools.jq."platforms.linux-x64"]
-checksum = "sha256:020468de7539ce70ef1bceaf7cde2e8c4f2ca6c3afb84642aabc5c97d9fc2a0d"
-url = "https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-amd64"
+checksum = "sha256:b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f"
+url = "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-amd64"
 provenance = "github-attestations"
 
 [tools.jq."platforms.linux-x64-musl"]
-checksum = "sha256:020468de7539ce70ef1bceaf7cde2e8c4f2ca6c3afb84642aabc5c97d9fc2a0d"
-url = "https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-amd64"
+checksum = "sha256:b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f"
+url = "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-amd64"
 provenance = "github-attestations"
 
 [tools.jq."platforms.macos-arm64"]
-checksum = "sha256:a9fe3ea2f86dfc72f6728417521ec9067b343277152b114f4e98d8cb0e263603"
-url = "https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-macos-arm64"
+checksum = "sha256:2d75340ba57a4b4b4c8708a21c2dc8e958a48aaa8bba13b27f77f6e4c0eca07e"
+url = "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-macos-arm64"
 provenance = "github-attestations"
 
 [tools.jq."platforms.macos-x64"]
-checksum = "sha256:e80dbe0d2a2597e3c11c404f03337b981d74b4a8504b70586c354b7697a7c27f"
-url = "https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-macos-amd64"
+checksum = "sha256:e94b266e3c26690550006abe63152b782280f4e14374accdf04cbde844f00bc0"
+url = "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-macos-amd64"
 provenance = "github-attestations"
 
 [tools.jq."platforms.windows-x64"]
-checksum = "sha256:23cb60a1354eed6bcc8d9b9735e8c7b388cd1fdcb75726b93bc299ef22dd9334"
-url = "https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-windows-amd64.exe"
+checksum = "sha256:a6fc67fedaf9128a3309a1e2ebb8b986aeccf70122ee46d2cb4849e423f0c627"
+url = "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-windows-amd64.exe"
 provenance = "github-attestations"
 
 [[tools.kind]]
@@ -420,39 +420,39 @@ url = "https://github.com/evilmartians/lefthook/releases/download/v2.1.9/lefthoo
 provenance = "github-attestations"
 
 [[tools.opentofu]]
-version = "1.12.2"
+version = "1.12.3"
 backend = "aqua:opentofu/opentofu"
 
 [tools.opentofu."platforms.linux-arm64"]
-checksum = "sha256:13d0e7a83f0fcffc2a61fa879aa63c5cf7f294f6c1c5a32abf5865bc2033d1c2"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.12.2/tofu_1.12.2_linux_arm64.tar.gz"
+checksum = "sha256:98861dad4ac08882dcf255fe5d48bed7deddc34e8d6544f8690c65212320ad64"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.3/tofu_1.12.3_linux_arm64.tar.gz"
 
 [tools.opentofu."platforms.linux-arm64-musl"]
-checksum = "sha256:13d0e7a83f0fcffc2a61fa879aa63c5cf7f294f6c1c5a32abf5865bc2033d1c2"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.12.2/tofu_1.12.2_linux_arm64.tar.gz"
+checksum = "sha256:98861dad4ac08882dcf255fe5d48bed7deddc34e8d6544f8690c65212320ad64"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.3/tofu_1.12.3_linux_arm64.tar.gz"
 
 [tools.opentofu."platforms.linux-x64"]
-checksum = "sha256:2ba8d1aeca94f68aab131628744cd417154462fa5a5b1633b5e04d7618c6ee52"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.12.2/tofu_1.12.2_linux_amd64.tar.gz"
+checksum = "sha256:f87d45408dcbb963ddbe10b2f75e55b3495310556e05c35765dfd5913551f182"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.3/tofu_1.12.3_linux_amd64.tar.gz"
 
 [tools.opentofu."platforms.linux-x64-musl"]
-checksum = "sha256:2ba8d1aeca94f68aab131628744cd417154462fa5a5b1633b5e04d7618c6ee52"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.12.2/tofu_1.12.2_linux_amd64.tar.gz"
+checksum = "sha256:f87d45408dcbb963ddbe10b2f75e55b3495310556e05c35765dfd5913551f182"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.3/tofu_1.12.3_linux_amd64.tar.gz"
 
 [tools.opentofu."platforms.macos-arm64"]
-checksum = "sha256:10def6ebcc58ea438970a1c896e4b7fb32cd2d8d9d9ef260c8037a71671137e5"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.12.2/tofu_1.12.2_darwin_arm64.tar.gz"
+checksum = "sha256:0c8ddee4294f7cea34d82b122fa805febce41d21905a54dc9ce9f79ee8145284"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.3/tofu_1.12.3_darwin_arm64.tar.gz"
 
 [tools.opentofu."platforms.macos-x64"]
-checksum = "sha256:0d455eec551d58190ad622768f3ac262e7449283380cefe3e7d867323e5c058a"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.12.2/tofu_1.12.2_darwin_amd64.tar.gz"
+checksum = "sha256:e4d5fa86cfbe7eb8b56ec19e4c7e0bc7885845ca4e4a955c49d184ae82c62ab2"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.3/tofu_1.12.3_darwin_amd64.tar.gz"
 
 [tools.opentofu."platforms.windows-x64"]
-checksum = "sha256:3498d3a5180e50e4a9d364520295a33c862fae96258abbe5f38fc536ce55bcc5"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.12.2/tofu_1.12.2_windows_amd64.tar.gz"
+checksum = "sha256:34ddbab9eb07a72ea5cf36d98d97ce1931242cb89693cbf5dce06d65ba37d8cc"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.3/tofu_1.12.3_windows_amd64.tar.gz"
 
 [[tools.oxfmt]]
-version = "0.55.0"
+version = "0.56.0"
 backend = "npm:oxfmt"
 
 [[tools.setup-envtest]]
