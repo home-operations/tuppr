@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.2.8](https://github.com/home-operations/tuppr/compare/0.2.7...0.2.8) (2026-06-28)
+
+
+### Features
+
+* add waitForVolumeDetach policy to wait for CSI detach before reboot ([#360](https://github.com/home-operations/tuppr/issues/360)) ([9b2e3cf](https://github.com/home-operations/tuppr/commit/9b2e3cf0a5ebe3bd939578364ba9fea216fd71ad))
+* **container:** update image ghcr.io/siderolabs/installer (v1.11.0 → v1.13.4) ([#354](https://github.com/home-operations/tuppr/issues/354)) ([0fc9cb8](https://github.com/home-operations/tuppr/commit/0fc9cb80e59e5a7d5178072f14207c13564717a5))
+* **container:** update image ghcr.io/siderolabs/kubelet (v1.34.0 → v1.36.2) ([#355](https://github.com/home-operations/tuppr/issues/355)) ([9118404](https://github.com/home-operations/tuppr/commit/91184049b72c15df3be2ce187221bff3aa176efa))
+* **deps:** update module github.com/onsi/ginkgo/v2 (v2.30.0 → v2.32.0) ([#337](https://github.com/home-operations/tuppr/issues/337)) ([8269165](https://github.com/home-operations/tuppr/commit/8269165339d0e179f3d220303516fba77532c5fe))
+* **deps:** update module github.com/onsi/gomega (v1.41.0 → v1.42.1) ([#338](https://github.com/home-operations/tuppr/issues/338)) ([8fa0fc1](https://github.com/home-operations/tuppr/commit/8fa0fc13203fe0e635cdd294d01f1af1ae10b867))
+* serve metrics and health on a single 8081 port ([#349](https://github.com/home-operations/tuppr/issues/349)) ([29a2318](https://github.com/home-operations/tuppr/commit/29a231851551051dd5a423412ad3368d31e5f428))
+
+
+### Bug Fixes
+
+* **chart:** honor serviceAccount.automount=false ([#348](https://github.com/home-operations/tuppr/issues/348)) ([b81036f](https://github.com/home-operations/tuppr/commit/b81036f116d13c2290082521d3018adae5ed1ffa))
+* **container:** update image ghcr.io/siderolabs/installer (v1.13.4 → v1.13.5) ([#357](https://github.com/home-operations/tuppr/issues/357)) ([b3aa84b](https://github.com/home-operations/tuppr/commit/b3aa84ba6f8f7956fc97d1bb82f0242f1526b6f4))
+* **deps:** update k8s.io/utils digest (ff6756f → be93311) ([#344](https://github.com/home-operations/tuppr/issues/344)) ([fd927e5](https://github.com/home-operations/tuppr/commit/fd927e554e652ff4b99a700e434b81439653772e))
+* **deps:** update kubernetes monorepo (v0.36.1 → v0.36.2) ([#333](https://github.com/home-operations/tuppr/issues/333)) ([85a94b2](https://github.com/home-operations/tuppr/commit/85a94b2d7e30af9e09e2bdfa96f80adcc49e834a))
+* **deps:** update module github.com/google/go-containerregistry (v0.21.6 → v0.21.7) ([#346](https://github.com/home-operations/tuppr/issues/346)) ([bfffdfd](https://github.com/home-operations/tuppr/commit/bfffdfdf53f9c3fceed83a6b597c3503a4f978e0))
+* **deps:** update module github.com/siderolabs/talos/pkg/machinery (v1.13.3 → v1.13.5) ([#322](https://github.com/home-operations/tuppr/issues/322)) ([a0d97ff](https://github.com/home-operations/tuppr/commit/a0d97ff0c31ce01329519f65361227f9a38627f9))
+
+
+### Miscellaneous Chores
+
+* add minimumGroupSize to Go toolchain configuration ([528c432](https://github.com/home-operations/tuppr/commit/528c4325f2ad1ee3bb34bf75879f443130a82ef3))
+* **mise:** Update tool hcloud (1.65.0 → 1.66.0) ([#359](https://github.com/home-operations/tuppr/issues/359)) ([bf64e9e](https://github.com/home-operations/tuppr/commit/bf64e9e96719c59c5847d201f778926d578a9a7b))
+* **mise:** update tool helm (4.2.0 → 4.2.2) ([#331](https://github.com/home-operations/tuppr/issues/331)) ([bb0f62f](https://github.com/home-operations/tuppr/commit/bb0f62f970826cbd7aff721f5e11e42dc79b0173))
+* **mise:** Update tool jq (1.8.1 → 1.8.2) ([#351](https://github.com/home-operations/tuppr/issues/351)) ([47e4780](https://github.com/home-operations/tuppr/commit/47e4780fcab9b4bfa8e2e044a3977e1c47b636e2))
+* **mise:** update tool opentofu (1.12.1 → 1.12.2) ([#332](https://github.com/home-operations/tuppr/issues/332)) ([bf1e1ef](https://github.com/home-operations/tuppr/commit/bf1e1efdbe764bca40ed772b9c474e3a51971500))
+* **mise:** Update tool opentofu (1.12.2 → 1.12.3) ([#350](https://github.com/home-operations/tuppr/issues/350)) ([777c933](https://github.com/home-operations/tuppr/commit/777c9335b596641a53980b2dddcc53050b51011e))
+* **mise:** update tool oxfmt (0.54.0 → 0.55.0) ([#341](https://github.com/home-operations/tuppr/issues/341)) ([b300587](https://github.com/home-operations/tuppr/commit/b3005876829abd733e456a85e94d9e6c864d822d))
+* **mise:** Update tool oxfmt (0.55.0 → 0.56.0) ([#353](https://github.com/home-operations/tuppr/issues/353)) ([b110e5a](https://github.com/home-operations/tuppr/commit/b110e5acd9d5ead9958975284d4df1fcde5bc04b))
+* **mise:** Update tool talosctl (1.13.4 → 1.13.5) ([#356](https://github.com/home-operations/tuppr/issues/356)) ([2ec0f5d](https://github.com/home-operations/tuppr/commit/2ec0f5da4784101e787b27c315891f6f1d557283))
+* **mise:** Update tool zizmor (1.25.2 → 1.26.1) ([#352](https://github.com/home-operations/tuppr/issues/352)) ([26a5190](https://github.com/home-operations/tuppr/commit/26a5190d7e86bdbc87c4ea16f4de7f20c6f48a40))
+* remove devcontainer ([a8a9465](https://github.com/home-operations/tuppr/commit/a8a9465e8bf621ee5e2d7ab296b0706468cb65c1))
+
 ## [0.2.7](https://github.com/home-operations/tuppr/compare/0.2.6...0.2.7) (2026-06-17)
 
 
