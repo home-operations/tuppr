@@ -4827,6 +4827,16 @@ spec:
                     description: Timeout for the per-node talosctl upgrade command
                     pattern: ^([0-9]+[smh])+$
                     type: string
+                  waitForVolumeDetach:
+                    default: false
+                    description: |-
+                      WaitForVolumeDetach makes tuppr drain the node itself and wait for its CSI
+                      volumes to detach before the Talos reboot, then issues the upgrade with
+                      Talos drain disabled. This closes the race where Talos reboots faster than
+                      CSI finishes unmounting, orphaning a mount and pinning the volume to the node
+                      (surfacing as a Multi-Attach error when the pod reschedules). No effect on
+                      single-node clusters, where draining is a no-op.
+                    type: boolean
                 type: object
               talos:
                 description: Talos specifies the talos configuration for upgrade operations

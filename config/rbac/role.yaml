@@ -24,6 +24,7 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - persistentvolumeclaims
   - pods
   - secrets
   verbs:
@@ -41,6 +42,14 @@ rules:
   - list
   - patch
   - update
+  - watch
+- apiGroups:
+  - storage.k8s.io
+  resources:
+  - volumeattachments
+  verbs:
+  - get
+  - list
   - watch
 - apiGroups:
   - tuppr.home-operations.com

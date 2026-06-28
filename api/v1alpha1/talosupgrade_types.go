@@ -30,6 +30,13 @@ type PolicySpec struct {
 	// +optional
 	NoDrain bool `json:"nodrain,omitempty"`
 
+	// WaitForVolumeDetach makes tuppr drain the node and wait for its CSI volumes to
+	// detach before the Talos reboot (upgrading with Talos drain disabled), avoiding a
+	// Multi-Attach error when a fast reboot orphans a mount. No-op on single-node.
+	// +kubebuilder:default=false
+	// +optional
+	WaitForVolumeDetach bool `json:"waitForVolumeDetach,omitempty"`
+
 	// Placement controls how strictly upgrade jobs avoid the target node
 	// hard: required avoidance, degrades to preferred on single-node clusters
 	// soft: preferred avoidance (job prefers to avoid but can run on target node)

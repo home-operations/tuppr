@@ -252,12 +252,13 @@ func (r *Reconciler) processSingleJobSuccess(ctx context.Context, talosUpgrade *
 }
 
 // ensureNodeUncordoned uncordons the node after a successful upgrade when tuppr
-// owns its cordon state: the user enabled tuppr drain, or it's a single node (where
-// Talos's own upgrade drain may leave the only node cordoned).
+// owns its cordon state: the user enabled tuppr drain (Drain spec or
+// Policy.WaitForVolumeDetach), or it's a single node (where Talos's own upgrade
+// drain may leave the only node cordoned).
 func (r *Reconciler) ensureNodeUncordoned(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) {
 	logger := log.FromContext(ctx)
 
-	if !talosUpgrade.Spec.DrainEnabled() && !r.isSelfHostedUpgrade(ctx) {
+	if !talosUpgrade.Spec.DrainEnabled() && !talosUpgrade.Spec.Policy.WaitForVolumeDetach && !r.isSelfHostedUpgrade(ctx) {
 		return
 	}
 
@@ -500,7 +501,9 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 		logger.V(1).Info("Debug upgrade enabled", "node", nodeName)
 	}
 
-	if selfHosted || talosUpgrade.Spec.Policy.NoDrain {
+	// Disable Talos's own drain when tuppr owns it (WaitForVolumeDetach), so the
+	// node isn't drained twice and tuppr's volume-detach wait gates the reboot.
+	if selfHosted || talosUpgrade.Spec.Policy.NoDrain || talosUpgrade.Spec.Policy.WaitForVolumeDetach {
 		args = append(args, "--drain=false")
 		logger.V(1).Info("Upgrade drain disabled", "node", nodeName)
 	}

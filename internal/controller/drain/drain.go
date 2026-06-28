@@ -26,10 +26,12 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -235,4 +237,74 @@ func (d *Drainer) IsDrained(ctx context.Context, nodeName string) (bool, error) 
 		return false, err
 	}
 	return len(pods) == 0, nil
+}
+
+// EvictableVolumePVs returns the names of PersistentVolumes backing the PVCs of the
+// node's evictable pods. Resolve these before draining, then pass to WaitForVolumeDetach.
+func (d *Drainer) EvictableVolumePVs(ctx context.Context, nodeName string) ([]string, error) {
+	pods, err := d.getEvictablePods(ctx, nodeName)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]struct{})
+	var pvs []string
+	for _, pod := range pods {
+		for _, vol := range pod.Spec.Volumes {
+			if vol.PersistentVolumeClaim == nil {
+				continue
+			}
+			var pvc corev1.PersistentVolumeClaim
+			if err := d.client.Get(ctx, types.NamespacedName{Namespace: pod.Namespace, Name: vol.PersistentVolumeClaim.ClaimName}, &pvc); err != nil {
+				if apierrors.IsNotFound(err) {
+					continue
+				}
+				return nil, fmt.Errorf("failed to get pvc %s/%s: %w", pod.Namespace, vol.PersistentVolumeClaim.ClaimName, err)
+			}
+			pvName := pvc.Spec.VolumeName
+			if pvName == "" {
+				continue
+			}
+			if _, ok := seen[pvName]; ok {
+				continue
+			}
+			seen[pvName] = struct{}{}
+			pvs = append(pvs, pvName)
+		}
+	}
+
+	return pvs, nil
+}
+
+// WaitForVolumeDetach blocks until no VolumeAttachment on the node references any of
+// the given PVs, or the timeout elapses — letting CSI teardown finish before the
+// reboot so a stale attachment can't cause a Multi-Attach error elsewhere.
+func (d *Drainer) WaitForVolumeDetach(ctx context.Context, nodeName string, pvNames []string, timeout, pollInterval time.Duration) error {
+	if len(pvNames) == 0 {
+		return nil
+	}
+
+	targets := make(map[string]struct{}, len(pvNames))
+	for _, pv := range pvNames {
+		targets[pv] = struct{}{}
+	}
+
+	return wait.PollUntilContextTimeout(ctx, pollInterval, timeout, true, func(ctx context.Context) (bool, error) {
+		var vaList storagev1.VolumeAttachmentList
+		if err := d.client.List(ctx, &vaList); err != nil {
+			return false, fmt.Errorf("failed to list volumeattachments: %w", err)
+		}
+		for _, va := range vaList.Items {
+			if va.Spec.NodeName != nodeName {
+				continue
+			}
+			if va.Spec.Source.PersistentVolumeName == nil {
+				continue
+			}
+			if _, ok := targets[*va.Spec.Source.PersistentVolumeName]; ok {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
 }
