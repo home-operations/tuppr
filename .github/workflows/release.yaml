@@ -80,7 +80,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      id-token: write # keyless Cosign signing of the published chart
+      id-token: write
       packages: write
     env:
       VERSION: ${{ github.event.release.tag_name }}
@@ -100,10 +100,6 @@ jobs:
       - name: Generate manifests and CRDs
         run: mise run helm-crds
 
-      # Pin the chart's image to the exact digest the build just published, so the
-      # released chart references an immutable image (not a floating tag). The digest
-      # is the manifest-list (index) digest from docker/github-builder; fail closed
-      # rather than ship a chart that silently falls back to the tag.
       - name: Pin the released image digest into the chart
         env:
           DIGEST: ${{ needs.release.outputs.digest }}
@@ -112,10 +108,7 @@ jobs:
           yq -i '.image.digest = strenv(DIGEST)' charts/tuppr/values.yaml
 
       - name: Package Helm chart
-        run: |
-          helm package charts/tuppr \
-            --version "${VERSION}" \
-            --app-version "${VERSION}"
+        run: helm package charts/tuppr --version "${VERSION}" --app-version "${VERSION}"
 
       - name: Log in to Container Registry
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
@@ -125,9 +118,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish Helm chart to GHCR
-        run: |-
-          helm push "tuppr-${VERSION}.tgz" "oci://ghcr.io/${{ github.repository_owner }}/charts"
+        run: helm push "tuppr-${VERSION}.tgz" "oci://ghcr.io/${{ github.repository_owner }}/charts"
 
       - name: Sign the published chart with Cosign
-        run: |-
-          cosign sign --yes "ghcr.io/${{ github.repository_owner }}/charts/tuppr:${VERSION}"
+        run: cosign sign --yes "ghcr.io/${{ github.repository_owner }}/charts/tuppr:${VERSION}"
