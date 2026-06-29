@@ -82,7 +82,7 @@ jobs:
           install_args: --locked
 
       - name: Run helm unit tests
-        run: |-
+        run: |
           helm plugin install https://github.com/helm-unittest/helm-unittest --version "${HELM_UNITTEST_VERSION}" --verify=false
           mise run helm-test
 

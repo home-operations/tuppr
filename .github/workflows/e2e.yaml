@@ -96,9 +96,6 @@ jobs:
       - name: OpenTofu init cluster
         run: tofu -chdir=tofu init -lockfile=readonly
 
-      # The cluster module needs a concrete Hetzner image ID at plan time.
-      # Keep image creation in a separate root so the module's Kubernetes
-      # providers are not configured before the cluster exists.
       - name: Materialize Talos snapshot
         run: tofu -chdir=tofu-image apply -auto-approve
 

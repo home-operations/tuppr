@@ -44,17 +44,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           RUN_ID: ${{ steps.dispatch.outputs.run_id }}
-        run: |
-          gh run watch \
-            --repo "${{ github.repository_owner }}/.github" \
-            "${RUN_ID}" \
-            --exit-status
+        run: gh run watch --repo "${{ github.repository_owner }}/.github" "${RUN_ID}" --exit-status
 
       - name: Renovate Output
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           RUN_ID: ${{ steps.dispatch.outputs.run_id }}
-        run: |-
-          gh run view \
-            --repo "${{ github.repository_owner }}/.github" \
-            --log "${RUN_ID}"
+        run: gh run view --repo "${{ github.repository_owner }}/.github" --log "${RUN_ID}"
