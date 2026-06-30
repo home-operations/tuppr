@@ -20,6 +20,7 @@ const (
 	testTimeoutErr = "timeout"
 	testV110Talos  = "v1.10.0"
 	testV121       = "v1.12.1"
+	testV130Talos  = "v1.13.0"
 )
 
 func TestIsTransientError(t *testing.T) {
@@ -326,5 +327,33 @@ func TestCreateJob_SendsFallbackMessage_WhenCurrentVersionLookupFails(t *testing
 	expected := "Starting upgrade for node " + fakeNodeA
 	if notifier.lastMessage != expected {
 		t.Fatalf("expected fallback notification message %q, got %q", expected, notifier.lastMessage)
+	}
+}
+
+func TestParseTalosctlVersion(t *testing.T) {
+	tests := []struct {
+		tag         string
+		wantMajor   int
+		wantMinor   int
+		atLeast113  bool
+	}{
+		{"v1.10.0", 1, 10, false},
+		{"v1.12.9", 1, 12, false},
+		{"v1.13.0", 1, 13, true},
+		{"v1.13.1", 1, 13, true},
+		{"v1.14.0", 1, 14, true},
+		{"v2.0.0", 2, 0, true},
+		{"1.13.0", 1, 13, true},
+		{"invalid", 0, 0, false},
+		{"", 0, 0, false},
+	}
+	for _, tt := range tests {
+		v := parseTalosctlVersion(tt.tag)
+		if v.major != tt.wantMajor || v.minor != tt.wantMinor {
+			t.Errorf("parseTalosctlVersion(%q) = {%d, %d}, want {%d, %d}", tt.tag, v.major, v.minor, tt.wantMajor, tt.wantMinor)
+		}
+		if got := v.AtLeast(1, 13); got != tt.atLeast113 {
+			t.Errorf("parseTalosctlVersion(%q).AtLeast(1, 13) = %v, want %v", tt.tag, got, tt.atLeast113)
+		}
 	}
 }

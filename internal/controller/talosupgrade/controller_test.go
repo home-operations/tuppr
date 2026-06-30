@@ -1565,7 +1565,7 @@ func TestTalosBuildJob_WaitFlagDependsOnClusterSize(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		nodeVersions:  map[string]string{testNodeIP1: testV130Talos},
 		installImages: map[string]string{testNodeIP1: testFactoryInstaller},
 	}
 	targetImage := "factory.talos.dev/installer:" + fakeTalosVersion
@@ -1593,10 +1593,24 @@ func TestTalosBuildJob_WaitFlagDependsOnClusterSize(t *testing.T) {
 	if !slices.Contains(singleArgs, "--wait=false") {
 		t.Fatalf("expected --wait=false on single-node cluster, got: %v", singleArgs)
 	}
-	// Single-node must disable the drain: it would evict this very pod before the
-	// reboot, stranding the only node cordoned on the old version.
+	// Single-node with talosctl >=1.13 must disable the drain.
 	if !slices.Contains(singleArgs, "--drain=false") {
-		t.Fatalf("expected --drain=false on single-node cluster, got: %v", singleArgs)
+		t.Fatalf("expected --drain=false on single-node cluster with talosctl >=1.13, got: %v", singleArgs)
+	}
+
+	// Pre-1.13 talosctl has no --drain flag; verify it is omitted.
+	tcOld := &mockTalosClient{
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: testFactoryInstaller},
+	}
+	singleOldCl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, newNode(fakeNodeA, testNodeIP1)).
+		WithStatusSubresource(tu).Build()
+	rOld := newTalosReconciler(singleOldCl, scheme, tcOld, &mockHealthChecker{})
+	oldJob := rOld.buildJob(context.Background(), tu, fakeNodeA, testNodeIP1, testNodeIP1, targetImage)
+	oldArgs := oldJob.Spec.Template.Spec.Containers[0].Args
+	if slices.Contains(oldArgs, "--drain=false") {
+		t.Fatalf("did not expect --drain=false with pre-1.13 talosctl, got: %v", oldArgs)
 	}
 }
 
@@ -1793,7 +1807,7 @@ func TestTalosBuildJob_Properties(t *testing.T) {
 	tu.Spec.Policy.Stage = true
 
 	tc := &mockTalosClient{
-		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		nodeVersions:  map[string]string{testNodeIP1: testV130Talos},
 		installImages: map[string]string{testNodeIP1: testFactoryInstaller},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).

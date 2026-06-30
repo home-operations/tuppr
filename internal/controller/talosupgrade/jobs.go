@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -503,7 +504,9 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 
 	// Disable Talos's own drain when tuppr owns it (WaitForVolumeDetach), so the
 	// node isn't drained twice and tuppr's volume-detach wait gates the reboot.
-	if selfHosted || talosUpgrade.Spec.Policy.NoDrain || talosUpgrade.Spec.Policy.WaitForVolumeDetach {
+	// --drain was added in talosctl v1.13; older versions have no built-in drain.
+	ver := parseTalosctlVersion(talosctlTag)
+	if (selfHosted || talosUpgrade.Spec.Policy.NoDrain || talosUpgrade.Spec.Policy.WaitForVolumeDetach) && ver.AtLeast(1, 13) {
 		args = append(args, "--drain=false")
 		logger.V(1).Info("Upgrade drain disabled", "node", nodeName)
 	}
@@ -623,4 +626,27 @@ func (r *Reconciler) pickEndpointIP(ctx context.Context, targetNode *corev1.Node
 	}
 	logger.V(1).Info("No Ready control-plane node available; omitting --endpoints")
 	return ""
+}
+
+type talosctlVersion struct{ major, minor int }
+
+func parseTalosctlVersion(tag string) talosctlVersion {
+	tag = strings.TrimPrefix(tag, "v")
+	parts := strings.SplitN(tag, ".", 3)
+	if len(parts) < 2 {
+		return talosctlVersion{}
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return talosctlVersion{}
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return talosctlVersion{}
+	}
+	return talosctlVersion{major: major, minor: minor}
+}
+
+func (v talosctlVersion) AtLeast(major, minor int) bool {
+	return v.major > major || (v.major == major && v.minor >= minor)
 }
