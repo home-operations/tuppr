@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.9](https://github.com/home-operations/tuppr/compare/0.2.8...0.2.9) (2026-06-30)
+
+
+### Bug Fixes
+
+* **talos:** gate --drain flag behind talosctl &gt;= 1.13 ([4d69b9f](https://github.com/home-operations/tuppr/commit/4d69b9ff6399135df77da92d187e046489f0fa42))
+
+
+### Miscellaneous Chores
+
+* **renovate:** inherit shared toolchain + chart-docs presets ([#361](https://github.com/home-operations/tuppr/issues/361)) ([35cb0dd](https://github.com/home-operations/tuppr/commit/35cb0dd19a4783506facc185d33d2c70a8c282be))
+
 ## [0.2.8](https://github.com/home-operations/tuppr/compare/0.2.7...0.2.8) (2026-06-28)
 
 
