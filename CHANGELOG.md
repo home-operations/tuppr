@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0](https://github.com/home-operations/tuppr/compare/0.2.9...0.3.0) (2026-07-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* single always-on operational port; drop metrics disable/secure options ([#369](https://github.com/home-operations/tuppr/issues/369))
+
+### Features
+
+* **deps:** update module github.com/google/cel-go (v0.28.1 → v0.29.1) ([#367](https://github.com/home-operations/tuppr/issues/367)) ([c7ae4bf](https://github.com/home-operations/tuppr/commit/c7ae4bf1ab73e9315ae2deac7978d19e048c47af))
+* **deps:** update module google.golang.org/grpc (v1.81.1 → v1.82.0) ([#365](https://github.com/home-operations/tuppr/issues/365)) ([565bfd1](https://github.com/home-operations/tuppr/commit/565bfd118886d16b24277761a99d7176e724d780))
+* single always-on operational port; drop metrics disable/secure options ([#369](https://github.com/home-operations/tuppr/issues/369)) ([6b13df8](https://github.com/home-operations/tuppr/commit/6b13df8f49ccbcfdb8cdff9b1965faefbbae99d1))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/cosi-project/runtime (v1.16.1 → v1.16.2) ([#366](https://github.com/home-operations/tuppr/issues/366)) ([b642c57](https://github.com/home-operations/tuppr/commit/b642c579de6fd77fb040e1e63149db194e65c156))
+
 ## [0.2.9](https://github.com/home-operations/tuppr/compare/0.2.8...0.2.9) (2026-06-30)
 
 
