@@ -76,8 +76,6 @@ service:
   type: ClusterIP
   # -- Service port for general access.
   port: 8080
-  # -- Metrics port (deprecated — use controller.metrics.port).
-  metricsPort: 8081
 
 # -- Pod resource requests/limits.
 resources: {}
@@ -92,7 +90,7 @@ resources: {}
 livenessProbe:
   httpGet:
     path: /healthz
-    port: 8081
+    port: metrics
   initialDelaySeconds: 15
   periodSeconds: 20
 
@@ -100,7 +98,7 @@ livenessProbe:
 readinessProbe:
   httpGet:
     path: /readyz
-    port: 8081
+    port: metrics
   initialDelaySeconds: 5
   periodSeconds: 10
 
@@ -146,21 +144,11 @@ controller:
     enabled: true
 
   metrics:
-    # -- Expose the Prometheus metrics endpoint.
-    enabled: true
-    # -- Metrics endpoint port. When metrics are served over plain HTTP (secure: false),
-    # the /healthz and /readyz probes are co-hosted on this same port.
+    # -- Operational port: /metrics plus the /healthz and /readyz probes (plain HTTP;
+    # always on — restrict with a NetworkPolicy rather than disabling).
     port: 8081
-    # -- Serve metrics over HTTPS with authentication; false serves plain HTTP.
-    # Keep false so the health/readiness probes can share the metrics port.
-    secure: false
     # -- Annotations for the metrics Service.
     annotations: {}
-
-  health:
-    # -- Health-probe port (/healthz, /readyz). When metrics use plain HTTP they are
-    # co-hosted on the metrics port; set this to a different port to serve them separately.
-    port: 8081
 
 webhook:
   # -- Enable the admission webhooks for validation.

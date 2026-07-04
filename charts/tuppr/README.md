@@ -40,13 +40,10 @@ Kubernetes: `>=1.25.0-0`
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | affinity | object | `{}` | Affinity rules for pod scheduling. |
-| controller.health.port | int | `8081` | Health-probe port (/healthz, /readyz). When metrics use plain HTTP they are co-hosted on the metrics port; set this to a different port to serve them separately. |
 | controller.leaderElection.enabled | bool | `true` | Enable leader election (recommended; only one controller is active at a time). |
 | controller.logLevel | string | `"debug"` | Controller log level: info or debug. |
 | controller.metrics.annotations | object | `{}` | Annotations for the metrics Service. |
-| controller.metrics.enabled | bool | `true` | Expose the Prometheus metrics endpoint. |
-| controller.metrics.port | int | `8081` | Metrics endpoint port. When metrics are served over plain HTTP (secure: false), the /healthz and /readyz probes are co-hosted on this same port. |
-| controller.metrics.secure | bool | `false` | Serve metrics over HTTPS with authentication; false serves plain HTTP. Keep false so the health/readiness probes can share the metrics port. |
+| controller.metrics.port | int | `8081` | Operational port: /metrics plus the /healthz and /readyz probes (plain HTTP; always on — restrict with a NetworkPolicy rather than disabling). |
 | env | list | `[]` | Extra environment variables passed to the container. |
 | fullnameOverride | string | `""` | Override the full release name. |
 | image.digest | string | `""` | Pin the image by digest (sha256:…); when set, overrides the tag. |
@@ -54,7 +51,7 @@ Kubernetes: `>=1.25.0-0`
 | image.repository | string | `"ghcr.io/home-operations/tuppr"` | Image repository. |
 | image.tag | string | `""` | Overrides the image tag; defaults to the chart appVersion. |
 | imagePullSecrets | list | `[]` | Image pull secrets for private registries. |
-| livenessProbe | object | `{"httpGet":{"path":"/healthz","port":8081},"initialDelaySeconds":15,"periodSeconds":20}` | Liveness probe. |
+| livenessProbe | object | `{"httpGet":{"path":"/healthz","port":"metrics"},"initialDelaySeconds":15,"periodSeconds":20}` | Liveness probe. |
 | monitoring.dashboards.annotations | object | `{}` | Annotations added to the dashboard ConfigMap. |
 | monitoring.dashboards.enabled | bool | `false` | Render the Grafana dashboard ConfigMap (for grafana-operator or the kube-prometheus-stack sidecar). |
 | monitoring.dashboards.grafanaOperator.allowCrossNamespaceImport | bool | `true` | If true allows for a Grafana in any namespace to access this GrafanaDashboard. |
@@ -90,11 +87,10 @@ Kubernetes: `>=1.25.0-0`
 | priorityClassName | string | `"system-node-critical"` | Priority class name for pod scheduling. |
 | rbac.annotations | object | `{}` | Annotations for the RBAC resources. |
 | rbac.create | bool | `true` | Create the ClusterRole + ClusterRoleBinding the controller needs to manage nodes and jobs. |
-| readinessProbe | object | `{"httpGet":{"path":"/readyz","port":8081},"initialDelaySeconds":5,"periodSeconds":10}` | Readiness probe. |
+| readinessProbe | object | `{"httpGet":{"path":"/readyz","port":"metrics"},"initialDelaySeconds":5,"periodSeconds":10}` | Readiness probe. |
 | replicaCount | int | `1` | Number of controller replicas (only one is active at a time via leader election). |
 | resources | object | `{}` | Pod resource requests/limits. |
 | securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsNonRoot":true,"runAsUser":65532}` | Container securityContext (no privilege escalation, read-only root filesystem, drops ALL capabilities). |
-| service.metricsPort | int | `8081` | Metrics port (deprecated — use controller.metrics.port). |
 | service.port | int | `8080` | Service port for general access. |
 | service.type | string | `"ClusterIP"` | Service type. |
 | serviceAccount.annotations | object | `{}` | Annotations for the ServiceAccount (e.g. workload-identity bindings). |

@@ -10,19 +10,6 @@
     "controller": {
       "description": "Controller runtime configuration.",
       "properties": {
-        "health": {
-          "properties": {
-            "port": {
-              "default": 8081,
-              "description": "Health-probe port (/healthz, /readyz). When metrics use plain HTTP they are\nco-hosted on the metrics port; set this to a different port to serve them separately.",
-              "title": "port",
-              "type": "integer"
-            }
-          },
-          "required": [],
-          "title": "health",
-          "type": "object"
-        },
         "leaderElection": {
           "properties": {
             "enabled": {
@@ -50,23 +37,11 @@
               "title": "annotations",
               "type": "object"
             },
-            "enabled": {
-              "default": true,
-              "description": "Expose the Prometheus metrics endpoint.",
-              "title": "enabled",
-              "type": "boolean"
-            },
             "port": {
               "default": 8081,
-              "description": "Metrics endpoint port. When metrics are served over plain HTTP (secure: false),\nthe /healthz and /readyz probes are co-hosted on this same port.",
+              "description": "Operational port: /metrics plus the /healthz and /readyz probes (plain HTTP;\nalways on — restrict with a NetworkPolicy rather than disabling).",
               "title": "port",
               "type": "integer"
-            },
-            "secure": {
-              "default": false,
-              "description": "Serve metrics over HTTPS with authentication; false serves plain HTTP.\nKeep false so the health/readiness probes can share the metrics port.",
-              "title": "secure",
-              "type": "boolean"
             }
           },
           "required": [],
@@ -148,9 +123,9 @@
               "type": "string"
             },
             "port": {
-              "default": 8081,
+              "default": "metrics",
               "title": "port",
-              "type": "integer"
+              "type": "string"
             }
           },
           "required": [],
@@ -472,9 +447,9 @@
               "type": "string"
             },
             "port": {
-              "default": 8081,
+              "default": "metrics",
               "title": "port",
-              "type": "integer"
+              "type": "string"
             }
           },
           "required": [],
@@ -557,12 +532,6 @@
     },
     "service": {
       "properties": {
-        "metricsPort": {
-          "default": 8081,
-          "description": "Metrics port (deprecated — use controller.metrics.port).",
-          "title": "metricsPort",
-          "type": "integer"
-        },
         "port": {
           "default": 8080,
           "description": "Service port for general access.",
