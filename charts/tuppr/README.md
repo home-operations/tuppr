@@ -83,7 +83,7 @@ Kubernetes: `>=1.25.0-0`
 | notification.secretName | string | `""` | Name of the Secret holding the notification (shoutrrr) URL. |
 | podAnnotations | object | `{}` | Annotations added to the pod. |
 | podLabels | object | `{}` | Labels added to the pod. |
-| podSecurityContext | object | `{"fsGroup":65532,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532}` | Pod-level securityContext (runs as non-root uid/gid 65532). |
+| podSecurityContext | object | `{"fsGroup":65532,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}}` | Pod-level securityContext (runs as non-root uid/gid 65532). |
 | priorityClassName | string | `"system-node-critical"` | Priority class name for pod scheduling. |
 | rbac.annotations | object | `{}` | Annotations for the RBAC resources. |
 | rbac.create | bool | `true` | Create the ClusterRole + ClusterRoleBinding the controller needs to manage nodes and jobs. |
@@ -97,6 +97,7 @@ Kubernetes: `>=1.25.0-0`
 | serviceAccount.automount | bool | `true` | Automount the API token (on by default: the controller talks to the cluster API). |
 | serviceAccount.create | bool | `true` | Create a ServiceAccount. |
 | serviceAccount.name | string | `""` | ServiceAccount name; generated from the release name if empty. |
+| talosServiceAccount.create | bool | `true` | Create the talos.dev/v1alpha1 ServiceAccount that makes Talos generate the `<name>-talosconfig` Secret the controller mounts. Requires the Talos API-access CRD (a real Talos cluster). Set false on non-Talos clusters (e.g. e2e/kind) and provide that Secret yourself. |
 | tolerations | list | `[{"key":"CriticalAddonsOnly","operator":"Exists"},{"effect":"NoSchedule","key":"node-role.kubernetes.io/control-plane","operator":"Exists"},{"effect":"NoSchedule","key":"node.kubernetes.io/unschedulable","operator":"Exists"}]` | Tolerations for pod scheduling (defaults keep the controller schedulable on control-plane and cordoned nodes so it can uncordon after an upgrade reboot). |
 | volumeMounts | list | `[]` | Additional volume mounts on the container. |
 | volumes | list | `[]` | Additional volumes on the Deployment. |

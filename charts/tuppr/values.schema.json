@@ -405,6 +405,19 @@
           "default": 65532,
           "title": "runAsUser",
           "type": "integer"
+        },
+        "seccompProfile": {
+          "description": "Required by the PodSecurity \"restricted\" profile (org chart standard).",
+          "properties": {
+            "type": {
+              "default": "RuntimeDefault",
+              "title": "type",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "title": "seccompProfile",
+          "type": "object"
         }
       },
       "required": [],
@@ -578,6 +591,19 @@
       },
       "required": [],
       "title": "serviceAccount",
+      "type": "object"
+    },
+    "talosServiceAccount": {
+      "properties": {
+        "create": {
+          "default": true,
+          "description": "Create the talos.dev/v1alpha1 ServiceAccount that makes Talos generate the\n`\u003cname\u003e-talosconfig` Secret the controller mounts. Requires the Talos\nAPI-access CRD (a real Talos cluster). Set false on non-Talos clusters (e.g.\ne2e/kind) and provide that Secret yourself.",
+          "title": "create",
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "title": "talosServiceAccount",
       "type": "object"
     },
     "tolerations": {

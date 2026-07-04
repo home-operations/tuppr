@@ -36,6 +36,13 @@ serviceAccount:
   # -- ServiceAccount name; generated from the release name if empty.
   name: ""
 
+talosServiceAccount:
+  # -- Create the talos.dev/v1alpha1 ServiceAccount that makes Talos generate the
+  # `<name>-talosconfig` Secret the controller mounts. Requires the Talos
+  # API-access CRD (a real Talos cluster). Set false on non-Talos clusters (e.g.
+  # e2e/kind) and provide that Secret yourself.
+  create: true
+
 # -- Annotations added to the pod.
 podAnnotations: {}
 # -- Labels added to the pod.
@@ -47,6 +54,9 @@ podSecurityContext:
   runAsUser: 65532
   runAsGroup: 65532
   fsGroup: 65532
+  # Required by the PodSecurity "restricted" profile (org chart standard).
+  seccompProfile:
+    type: RuntimeDefault
 
 # -- Extra environment variables passed to the container.
 env: []

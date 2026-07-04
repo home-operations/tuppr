@@ -11,19 +11,17 @@ import (
 )
 
 var _ = Describe("Webhook Validation", Ordered, func() {
-	SetDefaultEventuallyTimeout(30 * time.Second)
-	SetDefaultEventuallyPollingInterval(time.Second)
 
 	BeforeAll(func() {
 		By("waiting for webhook to be ready")
 		Eventually(func(g Gomega) {
 			cmd := exec.Command("kubectl", "get", "validatingwebhookconfiguration",
-				"tuppr-validating-webhook-configuration",
+				"tuppr-validating-webhook",
 				"-o", "jsonpath={.webhooks[0].clientConfig.caBundle}")
 			output, err := utils.Run(cmd)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(output).NotTo(BeEmpty(), "Webhook caBundle should be populated")
-		}, 2*time.Minute).Should(Succeed())
+		}).Should(Succeed())
 	})
 
 	Context("TalosUpgrade Validation", func() {
@@ -71,7 +69,10 @@ spec:
 			))
 		})
 
-		It("should enforce singleton constraint", func() {
+		It("should allow multiple TalosUpgrades (node overlap warns, not rejects)", func() {
+			// Unlike KubernetesUpgrade (a hard singleton, tested below), multiple
+			// Talos plans may coexist — overlapping node selectors only produce an
+			// admission warning, so node-scoped plans can run side by side.
 			By("creating first TalosUpgrade")
 			yaml1 := `
 apiVersion: tuppr.home-operations.com/v1alpha1
@@ -90,7 +91,7 @@ spec:
 				return utils.ResourceExists("talosupgrade", "first-upgrade")
 			}).Should(BeTrue())
 
-			By("attempting to create second TalosUpgrade")
+			By("creating a second, overlapping TalosUpgrade")
 			yaml2 := `
 apiVersion: tuppr.home-operations.com/v1alpha1
 kind: TalosUpgrade
@@ -100,9 +101,8 @@ spec:
   talos:
     version: v1.12.0
 `
-			err = utils.ApplyFromStdinExpectError(yaml2)
-			Expect(err).To(HaveOccurred(), "Second TalosUpgrade should be rejected")
-			Expect(err.Error()).To(ContainSubstring("only one TalosUpgrade"))
+			err = utils.ApplyFromStdin(yaml2)
+			Expect(err).NotTo(HaveOccurred(), "overlapping TalosUpgrade should be accepted (warning only)")
 		})
 
 		It("should allow updating the same TalosUpgrade", func() {

@@ -11,8 +11,6 @@ import (
 )
 
 var _ = Describe("CRD Lifecycle", Ordered, func() {
-	SetDefaultEventuallyTimeout(30 * time.Second)
-	SetDefaultEventuallyPollingInterval(time.Second)
 
 	Context("CRD Registration", func() {
 		It("should have TalosUpgrade CRD registered", func() {
@@ -44,7 +42,7 @@ var _ = Describe("CRD Lifecycle", Ordered, func() {
 			By("verifying controller pod remains running")
 			Eventually(func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "pods",
-					"-l", "control-plane=controller-manager",
+					"-l", "app.kubernetes.io/name=tuppr",
 					"-n", namespace,
 					"-o", "jsonpath={.items[0].status.phase}")
 				output, err := utils.Run(cmd)
@@ -56,7 +54,7 @@ var _ = Describe("CRD Lifecycle", Ordered, func() {
 			time.Sleep(5 * time.Second)
 
 			cmd := exec.Command("kubectl", "get", "pods",
-				"-l", "control-plane=controller-manager",
+				"-l", "app.kubernetes.io/name=tuppr",
 				"-n", namespace,
 				"-o", "jsonpath={.items[0].status.phase}")
 			output, err := utils.Run(cmd)

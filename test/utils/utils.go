@@ -127,7 +127,7 @@ func CreateTalosConfigSecret(namespace string) error {
 apiVersion: v1
 kind: Secret
 metadata:
-  name: tuppr
+  name: tuppr-talosconfig
   namespace: %s
 type: Opaque
 stringData:
