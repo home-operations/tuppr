@@ -27,7 +27,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -66,24 +65,17 @@ func main() {
 	var metricsServiceName string
 	var webhookConfigName, webhookServiceName, webhookSecretName string
 	var enableLeaderElection bool
-	var probeAddr string
-	var secureMetrics bool
 	var enableHTTP2 bool
 	var talosConfigSecret string
 	var logLevel string
 	var tlsOpts []func(*tls.Config)
 
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8081", "The address the metrics endpoint binds to. "+
-		"Use :8443 for HTTPS or :8081 for HTTP, or leave as 0 to disable the metrics service. "+
-		"When metrics are served over plain HTTP (--metrics-secure=false), the health/readiness "+
-		"probes are co-hosted on this same listener and --health-probe-bind-address is ignored.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to. "+
-		"Ignored when metrics are served over plain HTTP, since the probes are then co-hosted on the metrics listener.")
+	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8081", "The address the metrics endpoint binds to "+
+		"(plain HTTP; the org port standard). The /healthz and /readyz probes are co-hosted on this "+
+		"same listener, so the controller exposes a single operational port.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.BoolVar(&secureMetrics, "metrics-secure", true,
-		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&talosConfigSecret, "talosconfig-secret", "tuppr",
@@ -171,46 +163,23 @@ func main() {
 		TLSOpts: tlsOpts,
 	})
 
-	// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
-	// More info:
-	// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/metrics/server
-	// - https://book.kubebuilder.io/reference/metrics.html
+	// The org port standard for controllers: one plain-HTTP operational listener
+	// (:8081) serving /metrics plus the /healthz and /readyz probes (registered as
+	// ExtraHandlers after the manager is built). Plain HTTP is required for the
+	// co-host: the metrics server wraps every ExtraHandler in its TLS/authn
+	// FilterProvider, which a kubelet's unauthenticated probe can't pass — so
+	// there is no secure-metrics option; restrict the port with a NetworkPolicy.
 	metricsServerOptions := metricsserver.Options{
-		BindAddress:   metricsAddr,
-		SecureServing: secureMetrics,
-		TLSOpts:       tlsOpts,
-	}
-
-	if secureMetrics {
-		// FilterProvider is used to protect the metrics endpoint with authn/authz.
-		// These configurations ensure that only authorized users and service accounts
-		// can access the metrics endpoint. The RBAC are configured in 'config/rbac/kustomization.yaml'. More info:
-		// https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/metrics/filters#WithAuthenticationAndAuthorization
-		metricsServerOptions.FilterProvider = filters.WithAuthenticationAndAuthorization
-	}
-
-	// When metrics are served over plain HTTP, co-host the health/readiness probes on
-	// the metrics listener so the controller exposes a single port (e.g. :8081). The
-	// probes are registered as ExtraHandlers on the metrics server below, after the
-	// manager is built. We must NOT do this when metrics are served securely: the
-	// metrics server wraps every ExtraHandler in the same TLS listener and authn/authz
-	// FilterProvider as /metrics, which would make the kubelet's plain-HTTP, unauthenticated
-	// probes fail. In that case (and when metrics are disabled) we keep controller-runtime's
-	// dedicated health-probe server on its own port.
-	metricsEnabled := metricsAddr != "0"
-	coHostHealthOnMetrics := metricsEnabled && !secureMetrics
-
-	healthProbeBindAddress := probeAddr
-	if coHostHealthOnMetrics {
-		// Disable the separate health-probe server; probes are served on the metrics listener.
-		healthProbeBindAddress = "0"
+		BindAddress: metricsAddr,
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
-		Metrics:                metricsServerOptions,
-		WebhookServer:          webhookServer,
-		HealthProbeBindAddress: healthProbeBindAddress,
+		Scheme:        scheme,
+		Metrics:       metricsServerOptions,
+		WebhookServer: webhookServer,
+		// The dedicated health-probe server is disabled; probes are co-hosted on
+		// the metrics listener above.
+		HealthProbeBindAddress: "0",
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "bea89bcd.home-operations.com",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
@@ -355,33 +324,20 @@ func main() {
 		return mgr.GetWebhookServer().StartedChecker()(req)
 	}
 
-	if coHostHealthOnMetrics {
-		// Serve the probes on the (plain HTTP) metrics listener so the controller exposes
-		// a single port. mgr.AddHealthzCheck/AddReadyzCheck only feed controller-runtime's
-		// dedicated health-probe server, which we disabled above, so register the checks as
-		// ExtraHandlers on the metrics server instead. healthz.CheckHandler returns 200 when
-		// the checker passes and 500 otherwise — the contract a kubelet HTTP probe expects.
-		if err := mgr.AddMetricsServerExtraHandler("/healthz", healthz.CheckHandler{Checker: healthz.Ping}); err != nil {
-			setupLog.Error(err, "unable to set up health check")
-			os.Exit(1)
-		}
-		if err := mgr.AddMetricsServerExtraHandler("/readyz", healthz.CheckHandler{Checker: readyzCheck}); err != nil {
-			setupLog.Error(err, "unable to set up ready check")
-			os.Exit(1)
-		}
-		setupLog.Info("serving health and readiness probes on the metrics listener", "bind-address", metricsAddr)
-	} else {
-		// Metrics are disabled or served securely; keep the probes on controller-runtime's
-		// dedicated health-probe server so they stay plain HTTP and unauthenticated.
-		if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-			setupLog.Error(err, "unable to set up health check")
-			os.Exit(1)
-		}
-		if err := mgr.AddReadyzCheck("readyz", readyzCheck); err != nil {
-			setupLog.Error(err, "unable to set up ready check")
-			os.Exit(1)
-		}
+	// Serve the probes on the (plain HTTP) metrics listener so the controller exposes
+	// a single port. mgr.AddHealthzCheck/AddReadyzCheck only feed controller-runtime's
+	// dedicated health-probe server, which is disabled, so register the checks as
+	// ExtraHandlers on the metrics server instead. healthz.CheckHandler returns 200 when
+	// the checker passes and 500 otherwise — the contract a kubelet HTTP probe expects.
+	if err := mgr.AddMetricsServerExtraHandler("/healthz", healthz.CheckHandler{Checker: healthz.Ping}); err != nil {
+		setupLog.Error(err, "unable to set up health check")
+		os.Exit(1)
 	}
+	if err := mgr.AddMetricsServerExtraHandler("/readyz", healthz.CheckHandler{Checker: readyzCheck}); err != nil {
+		setupLog.Error(err, "unable to set up ready check")
+		os.Exit(1)
+	}
+	setupLog.Info("serving health and readiness probes on the metrics listener", "bind-address", metricsAddr)
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

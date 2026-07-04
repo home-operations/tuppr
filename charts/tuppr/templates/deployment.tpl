@@ -46,9 +46,7 @@ spec:
             - --log-level={{ .Values.controller.logLevel }}
             - --leader-elect={{ .Values.controller.leaderElection.enabled }}
             - --metrics-bind-address=:{{ .Values.controller.metrics.port }}
-            - --health-probe-bind-address=:{{ .Values.controller.health.port }}
             - --talosconfig-secret={{ include "tuppr.serviceAccountName" . }}-talosconfig
-            - --metrics-secure={{ .Values.controller.metrics.secure }}
             - --metrics-service-name={{ include "tuppr.metricsServiceName" . }}
             {{- if .Values.webhook.enabled }}
             - --webhook-config-name={{ include "tuppr.webhookConfigName" . }}
@@ -84,23 +82,11 @@ spec:
               containerPort: {{ .Values.webhook.port }}
               protocol: TCP
             {{- end }}
-            {{- if .Values.controller.metrics.enabled }}
+            # Serves /metrics plus the /healthz and /readyz probes (single
+            # operational port; see cmd/main.go).
             - name: metrics
               containerPort: {{ .Values.controller.metrics.port }}
               protocol: TCP
-            {{- end }}
-            {{/* The controller co-hosts the /healthz and /readyz probes on the metrics
-                 listener whenever metrics are enabled and served over plain HTTP, exposing a
-                 single port. In that case the metrics port above already covers the probes, so
-                 don't declare a duplicate containerPort. A dedicated health port is only needed
-                 when the probes run on their own listener: metrics disabled, or metrics secure
-                 (HTTPS + authn/authz can't host plain-HTTP probes). Keep this in sync with the
-                 co-host decision in cmd/main.go. */}}
-            {{- if or (not .Values.controller.metrics.enabled) .Values.controller.metrics.secure }}
-            - name: health
-              containerPort: {{ .Values.controller.health.port }}
-              protocol: TCP
-            {{- end }}
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:

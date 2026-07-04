@@ -4830,12 +4830,9 @@ spec:
                   waitForVolumeDetach:
                     default: false
                     description: |-
-                      WaitForVolumeDetach makes tuppr drain the node itself and wait for its CSI
-                      volumes to detach before the Talos reboot, then issues the upgrade with
-                      Talos drain disabled. This closes the race where Talos reboots faster than
-                      CSI finishes unmounting, orphaning a mount and pinning the volume to the node
-                      (surfacing as a Multi-Attach error when the pod reschedules). No effect on
-                      single-node clusters, where draining is a no-op.
+                      WaitForVolumeDetach makes tuppr drain the node and wait for its CSI volumes to
+                      detach before the Talos reboot (upgrading with Talos drain disabled), avoiding a
+                      Multi-Attach error when a fast reboot orphans a mount. No-op on single-node.
                     type: boolean
                 type: object
               talos:

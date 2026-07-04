@@ -2,7 +2,7 @@ suite: service
 templates:
   - service.tpl
 tests:
-  - it: should create metrics service when enabled
+  - it: should always create the metrics service (single operational port)
     asserts:
       - isKind:
           of: Service
@@ -26,10 +26,3 @@ tests:
       - equal:
           path: spec.ports[0].port
           value: 9090
-
-  - it: should not create service when metrics disabled
-    set:
-      controller.metrics.enabled: false
-    asserts:
-      - hasDocuments:
-          count: 0

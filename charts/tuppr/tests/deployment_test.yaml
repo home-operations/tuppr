@@ -78,7 +78,9 @@ tests:
             containerPort: 9443
             protocol: TCP
 
-  - it: should include metrics port when enabled
+  # The org port standard for controllers: one always-on operational port (8081)
+  # serving /metrics plus the co-hosted /healthz and /readyz probes.
+  - it: should expose the single operational metrics port (always on, no health port)
     asserts:
       - contains:
           path: spec.template.spec.containers[0].ports
@@ -86,9 +88,6 @@ tests:
             name: metrics
             containerPort: 8081
             protocol: TCP
-
-  - it: should co-host probes on the metrics port by default (no separate health port)
-    asserts:
       - notContains:
           path: spec.template.spec.containers[0].ports
           content:
@@ -96,60 +95,32 @@ tests:
             containerPort: 8081
             protocol: TCP
 
-  - it: should expose a dedicated health port when metrics are served securely
-    set:
-      controller.metrics.secure: true
-    asserts:
-      - contains:
-          path: spec.template.spec.containers[0].ports
-          content:
-            name: health
-            containerPort: 8081
-            protocol: TCP
-
-  - it: should expose a dedicated health port when metrics are disabled
-    set:
-      controller.metrics.enabled: false
-    asserts:
-      - contains:
-          path: spec.template.spec.containers[0].ports
-          content:
-            name: health
-            containerPort: 8081
-            protocol: TCP
-      - notContains:
-          path: spec.template.spec.containers[0].ports
-          content:
-            name: metrics
-            containerPort: 8081
-            protocol: TCP
-
-  - it: should pass plain-HTTP metrics and probe bind flags
+  - it: should pass only the metrics bind flag (no probe/secure flags)
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
           content: --metrics-bind-address=:8081
-      - contains:
+      - notContains:
           path: spec.template.spec.containers[0].args
           content: --health-probe-bind-address=:8081
-      - contains:
+      - notContains:
           path: spec.template.spec.containers[0].args
           content: --metrics-secure=false
 
-  - it: should set liveness and readiness probes on the shared port
+  - it: should set liveness and readiness probes on the named metrics port
     asserts:
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.httpGet.path
           value: /healthz
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.httpGet.port
-          value: 8081
+          value: metrics
       - equal:
           path: spec.template.spec.containers[0].readinessProbe.httpGet.path
           value: /readyz
       - equal:
           path: spec.template.spec.containers[0].readinessProbe.httpGet.port
-          value: 8081
+          value: metrics
 
   - it: should set tolerations
     asserts:

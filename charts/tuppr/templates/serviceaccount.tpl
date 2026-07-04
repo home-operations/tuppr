@@ -13,6 +13,7 @@ metadata:
 automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
 {{- end }}
 ---
+{{- if .Values.talosServiceAccount.create }}
 apiVersion: talos.dev/v1alpha1
 kind: ServiceAccount
 metadata:
@@ -27,3 +28,4 @@ metadata:
 spec:
   roles:
     - os:admin
+{{- end }}
