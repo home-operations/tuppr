@@ -1,6 +1,6 @@
 module github.com/home-operations/tuppr
 
-go 1.26.2
+go 1.26.5
 
 require (
 	github.com/cosi-project/runtime v1.16.2
@@ -15,7 +15,7 @@ require (
 	github.com/open-policy-agent/cert-controller v0.16.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/siderolabs/go-retry v0.3.3
-	github.com/siderolabs/talos/pkg/machinery v1.13.5
+	github.com/siderolabs/talos/pkg/machinery v1.13.6
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/grpc v1.82.0
 	k8s.io/api v0.36.2
@@ -96,7 +96,7 @@ require (
 	github.com/ryanuber/go-glob v1.0.0 // indirect
 	github.com/sasha-s/go-deadlock v0.3.5 // indirect
 	github.com/siderolabs/crypto v0.6.5 // indirect
-	github.com/siderolabs/gen v0.8.6 // indirect
+	github.com/siderolabs/gen v0.8.7 // indirect
 	github.com/siderolabs/go-api-signature v0.3.12 // indirect
 	github.com/siderolabs/go-pointer v1.0.1 // indirect
 	github.com/siderolabs/net v0.4.0 // indirect
