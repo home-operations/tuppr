@@ -71,7 +71,7 @@ metadata:
 spec:
     talos:
         # renovate: datasource=docker depName=ghcr.io/siderolabs/installer
-        version: v1.13.5 # Required - target Talos version
+        version: v1.13.6 # Required - target Talos version
 
     policy:
         debug: true # Optional, verbose logging
@@ -415,7 +415,7 @@ This way, Renovate will propose incremental version bumps that you can merge one
 spec:
     talos:
         # renovate: datasource=docker depName=ghcr.io/siderolabs/installer
-        version: v1.13.5
+        version: v1.13.6
 ```
 
 ## 📊 Monitoring & Metrics
