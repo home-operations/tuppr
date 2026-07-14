@@ -466,7 +466,7 @@ url = "https://github.com/opentofu/opentofu/releases/download/v1.12.4/tofu_1.12.
 url_api = "https://api.github.com/repos/opentofu/opentofu/releases/assets/475646543"
 
 [[tools.oxfmt]]
-version = "0.58.0"
+version = "0.59.0"
 backend = "npm:oxfmt"
 
 [[tools.setup-envtest]]
