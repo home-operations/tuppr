@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.1](https://github.com/home-operations/tuppr/compare/0.3.0...0.3.1) (2026-07-14)
+
+
+### Bug Fixes
+
+* **container:** update image ghcr.io/siderolabs/installer (v1.13.5 → v1.13.6) ([#377](https://github.com/home-operations/tuppr/issues/377)) ([48bd359](https://github.com/home-operations/tuppr/commit/48bd3592192f7308fe5df4d5133f467ee567eb12))
+* **deps:** update k8s.io/utils digest (be93311 → cf1189d) ([#371](https://github.com/home-operations/tuppr/issues/371)) ([15667e7](https://github.com/home-operations/tuppr/commit/15667e7ceb47d3f6fde54903efc5fcb9ffe38291))
+* **deps:** update module github.com/google/cel-go (v0.29.1 → v0.29.2) ([#373](https://github.com/home-operations/tuppr/issues/373)) ([953a456](https://github.com/home-operations/tuppr/commit/953a456700d8556f731ea765294ea411d9bc1fde))
+* **deps:** update module github.com/siderolabs/talos/pkg/machinery (v1.13.5 → v1.13.6) ([#378](https://github.com/home-operations/tuppr/issues/378)) ([9b7f738](https://github.com/home-operations/tuppr/commit/9b7f7380e510ffa495b079f718ba24b207ddf65b))
+
+
+### Miscellaneous Chores
+
+* **mise:** Update tool go (1.26.4 → 1.26.5) ([#375](https://github.com/home-operations/tuppr/issues/375)) ([a3f45ce](https://github.com/home-operations/tuppr/commit/a3f45ce214939a9c013cbd29a646cad9695fdbcb))
+* **mise:** Update tool helm (4.2.2 → 4.2.3) ([#380](https://github.com/home-operations/tuppr/issues/380)) ([bcd1f05](https://github.com/home-operations/tuppr/commit/bcd1f0519e8c5bf8c2dbe4daa3496834a33453fd))
+* **mise:** Update tool lefthook (2.1.9 → 2.1.10) ([#374](https://github.com/home-operations/tuppr/issues/374)) ([c5ac0fa](https://github.com/home-operations/tuppr/commit/c5ac0fadef510ca52b7b6650ffb37f63423ba3e8))
+* **mise:** Update tool opentofu (1.12.3 → 1.12.4) ([#381](https://github.com/home-operations/tuppr/issues/381)) ([b6ef532](https://github.com/home-operations/tuppr/commit/b6ef532dd38cb5974b727f97bd5061cb188a6907))
+* **mise:** Update tool oxfmt (0.57.0 → 0.58.0) ([#370](https://github.com/home-operations/tuppr/issues/370)) ([dec826d](https://github.com/home-operations/tuppr/commit/dec826d22cc2d35bb3341c3a76518070fdc2bf32))
+* **mise:** Update tool oxfmt (0.58.0 → 0.59.0) ([#382](https://github.com/home-operations/tuppr/issues/382)) ([94d3c0c](https://github.com/home-operations/tuppr/commit/94d3c0c814f6f6e979d159ce5d3a2d807bf272ef))
+* **mise:** Update tool talosctl (1.13.5 → 1.13.6) ([#376](https://github.com/home-operations/tuppr/issues/376)) ([bceeead](https://github.com/home-operations/tuppr/commit/bceeead94032914236b58404678076b22fce315a))
+* **mise:** Update tool zizmor (1.26.1 → 1.27.0) ([#383](https://github.com/home-operations/tuppr/issues/383)) ([fad0ccf](https://github.com/home-operations/tuppr/commit/fad0ccf7488bc422820917d1a22407a49bcec062))
+
 ## [0.3.0](https://github.com/home-operations/tuppr/compare/0.2.9...0.3.0) (2026-07-04)
 
 
