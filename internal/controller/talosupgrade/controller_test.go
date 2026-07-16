@@ -3115,6 +3115,36 @@ func TestTalosBuildTalosUpgradeImage_FactoryURLOverrideUsesSchematicAnnotation(t
 	}
 }
 
+func TestTalosBuildTalosUpgradeImage_SchematicAnnotationOverridesRuntime(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
+	tu.Spec.Talos.Version = fakeTalosVersion
+
+	node := newNode(fakeNodeA, testNodeIP1)
+	node.Annotations = map[string]string{
+		constants.FactoryURLAnnotation: "factory.talos.dev/aws-installer",
+		constants.SchematicAnnotation:  testCustomSchematic,
+	}
+
+	tc := &mockTalosClient{
+		installImages: map[string]string{testNodeIP1: testFactoryHcloudAbcV11},
+		extensions:    map[string]talos.ExtensionInfo{testNodeIP1: {Schematic: testabc}},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := "factory.talos.dev/aws-installer/" + testCustomSchematic + ":" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("schematic annotation should override runtime schematic; expected %s, got %s", expected, image)
+	}
+}
+
 func TestTalosBuildTalosUpgradeImage_FactoryURLOverrideRequiresAnySchematic(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade(testUpgradeName, withFinalizer)

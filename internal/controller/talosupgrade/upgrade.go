@@ -667,9 +667,10 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 		if err != nil {
 			return "", fmt.Errorf("failed to read extensions for node %s: %w", nodeName, err)
 		}
-		schematic := ext.Schematic
+		// An explicit schematic annotation overrides the runtime-reported one.
+		schematic := node.Annotations[constants.SchematicAnnotation]
 		if schematic == "" {
-			schematic = node.Annotations[constants.SchematicAnnotation]
+			schematic = ext.Schematic
 		}
 		if schematic == "" {
 			return "", fmt.Errorf(

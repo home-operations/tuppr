@@ -351,7 +351,7 @@ Tuppr supports overriding the global TalosUpgrade configuration on a per-node ba
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------- |
 | tuppr.home-operations.com/version     | Overrides the target Talos version for this node.                                                                                                                                                            | v1.12.1                         |
 | tuppr.home-operations.com/factory-url | Switch the node's installer flavor on the next upgrade (e.g. migrate from generic to factory, or from one flavor to another). Paired with the schematic that Talos reports at runtime via `ExtensionStatus`. | factory.talos.dev/aws-installer |
-| tuppr.home-operations.com/schematic   | Companion to `factory-url`, only needed when migrating a node that has no runtime schematic yet (e.g. a freshly-joined node still on `ghcr.io/siderolabs/installer`). Ignored otherwise.                     | b55fbf...                       |
+| tuppr.home-operations.com/schematic   | Companion to `factory-url`. Overrides the schematic used for the upgrade image, letting you switch flavors (e.g. add/remove extensions). When unset, tuppr uses the schematic Talos reports at runtime.      | b55fbf...                       |
 
 Example: Applying an override
 
@@ -371,7 +371,7 @@ Tuppr derives the upgrade image directly from each node's runtime state and `.ma
 
 Resolution per node:
 
-1. **`tuppr.home-operations.com/factory-url` override** — when set, tuppr builds `<factory-url>/<schematic>:<target-version>`. The schematic comes from the runtime `ExtensionStatus` (the virtual `schematic` extension that Image Factory appends to every model), falling back to `tuppr.home-operations.com/schematic` if the runtime doesn't have one yet (first-time migration off the generic installer).
+1. **`tuppr.home-operations.com/factory-url` override** — when set, tuppr builds `<factory-url>/<schematic>:<target-version>`. The schematic comes from `tuppr.home-operations.com/schematic` when set (so you can switch flavors), otherwise from the runtime `ExtensionStatus` (the virtual `schematic` extension that Image Factory appends to every model).
 2. **Default** — version-swap the node's current `.machine.install.image`. A factory install stays on its factory base + schematic; a private registry path is preserved; a vanilla generic install stays vanilla.
 3. **Safety net** — refused with a clear error when:
     - the runtime schematic doesn't appear in the install-image path (install-image and the running system disagree about which extensions are installed), or
