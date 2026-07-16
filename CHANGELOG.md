@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.2](https://github.com/home-operations/tuppr/compare/0.3.1...0.3.2) (2026-07-16)
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/grpc (v1.82.0 → v1.82.1) ([#384](https://github.com/home-operations/tuppr/issues/384)) ([8830b15](https://github.com/home-operations/tuppr/commit/8830b159fa8412e86fdefd015704d88b2f3626fb))
+* **talosupgrade:** let schematic annotation override runtime schematic ([#386](https://github.com/home-operations/tuppr/issues/386)) ([943234f](https://github.com/home-operations/tuppr/commit/943234fce8d7337736521ed08bf06ab51122272b))
+
 ## [0.3.1](https://github.com/home-operations/tuppr/compare/0.3.0...0.3.1) (2026-07-14)
 
 
