@@ -43,6 +43,7 @@ const (
 	testCustomSchematic     = "custom-schematic-id"
 	testFactoryInstaller    = "factory.talos.dev/installer:v1.10.0"
 	testFactoryHcloudAbcV11 = "factory.talos.dev/hcloud-installer/abc:v1.11.0"
+	testFactoryAwsURL       = "factory.talos.dev/aws-installer"
 	testInstallerV111       = "ghcr.io/siderolabs/installer:v1.11.0"
 	testCronEvery2          = "0 2 * * *"
 	testTimezoneUTC         = "UTC"
@@ -3092,7 +3093,7 @@ func TestTalosBuildTalosUpgradeImage_FactoryURLOverrideUsesSchematicAnnotation(t
 
 	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.FactoryURLAnnotation: "factory.talos.dev/aws-installer",
+		constants.FactoryURLAnnotation: testFactoryAwsURL,
 		constants.SchematicAnnotation:  testCustomSchematic,
 	}
 
@@ -3122,7 +3123,7 @@ func TestTalosBuildTalosUpgradeImage_SchematicAnnotationOverridesRuntime(t *test
 
 	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.FactoryURLAnnotation: "factory.talos.dev/aws-installer",
+		constants.FactoryURLAnnotation: testFactoryAwsURL,
 		constants.SchematicAnnotation:  testCustomSchematic,
 	}
 
@@ -3152,7 +3153,7 @@ func TestTalosBuildTalosUpgradeImage_FactoryURLOverrideRequiresAnySchematic(t *t
 
 	node := newNode(fakeNodeA, testNodeIP1)
 	node.Annotations = map[string]string{
-		constants.FactoryURLAnnotation: "factory.talos.dev/aws-installer",
+		constants.FactoryURLAnnotation: testFactoryAwsURL,
 	}
 
 	tc := &mockTalosClient{
