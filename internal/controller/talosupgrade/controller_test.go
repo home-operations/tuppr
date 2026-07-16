@@ -2564,6 +2564,7 @@ func TestTalosReconcile_ReportsSchematicMismatchInStatus(t *testing.T) {
 	cond := findProgressing(updated.Status.Conditions)
 	if cond == nil {
 		t.Fatal("missing Progressing condition")
+		return
 	}
 	if cond.Reason != upgradeaudit.ReasonBuildTargetImage {
 		t.Fatalf("expected Reason=%s, got %s", upgradeaudit.ReasonBuildTargetImage, cond.Reason)
@@ -2660,6 +2661,7 @@ func TestTalosReconcile_ReportsCreateJobInStatus(t *testing.T) {
 	cond := findProgressing(updated.Status.Conditions)
 	if cond == nil {
 		t.Fatal("missing Progressing condition")
+		return
 	}
 	if cond.Reason != upgradeaudit.ReasonCreateJob {
 		t.Fatalf("expected Reason=%s, got %s", upgradeaudit.ReasonCreateJob, cond.Reason)
