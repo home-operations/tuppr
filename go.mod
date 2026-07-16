@@ -17,7 +17,7 @@ require (
 	github.com/siderolabs/go-retry v0.3.3
 	github.com/siderolabs/talos/pkg/machinery v1.13.6
 	github.com/stretchr/testify v1.11.1
-	google.golang.org/grpc v1.82.0
+	google.golang.org/grpc v1.82.1
 	k8s.io/api v0.36.2
 	k8s.io/apimachinery v0.36.2
 	k8s.io/client-go v0.36.2
