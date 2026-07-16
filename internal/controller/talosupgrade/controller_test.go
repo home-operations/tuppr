@@ -2613,6 +2613,7 @@ func TestTalosReconcile_ReportsReconcileErrorInStatus(t *testing.T) {
 			cond := findProgressing(updated.Status.Conditions)
 			if cond == nil {
 				t.Fatal("missing Progressing condition")
+				return
 			}
 			if cond.Reason != tt.wantReason {
 				t.Fatalf("expected Reason=%s, got %s", tt.wantReason, cond.Reason)
