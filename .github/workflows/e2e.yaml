@@ -66,6 +66,11 @@ jobs:
       # to get the Helm repo and tag, so a host:port form would parse wrong.
       CONTROLLER_IMAGE: registry.e2e/tuppr:e2e
       PUSH_IMAGE: localhost:5000/tuppr:e2e
+      # test.sh packages the chart, pushes it here, and installs it back over
+      # OCI, so the run exercises the distributed artifact rather than the
+      # working tree. Same runner-local registry as the image, over loopback, so
+      # helm talks to it as plain HTTP.
+      CHART_REGISTRY: oci://localhost:5000/charts
     defaults:
       run:
         working-directory: test/e2e-qemu

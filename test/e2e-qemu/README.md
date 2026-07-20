@@ -95,6 +95,27 @@ crosses the internet. The nodes reach it as `registry.e2e`, which the mirror in
 `patches/registry.yaml` points at port 5000 on the QEMU bridge gateway. That mirror
 entry is inert for a local run, where nothing references `registry.e2e`.
 
+## How the chart is installed
+
+`test.sh` always packages `charts/tuppr` with `helm package`, so the run installs a
+real chart artifact rather than the working tree. Where it installs it from depends
+on `CHART_REGISTRY`:
+
+- **CI** sets it to the runner-local registry (`oci://localhost:5000/charts`). The
+  chart is pushed there and installed straight back over OCI, exercising the same
+  push/pull path a release uses. It is the same registry the image goes to; helm
+  talks to it as plain HTTP because it is on loopback.
+- **A local run** leaves it unset and installs the packaged `.tgz` directly, which
+  still tests the artifact without needing a registry of your own.
+
+The image overrides (`image.repository`, `image.tag`, `replicaCount`) are passed as
+`--set` either way, so they win over the chart's defaults.
+
+tuppr's validating webhook is `failurePolicy: Fail`, and its Service picks up ready
+endpoints a moment after `helm --wait` returns on pod-Ready. Applying a CR in that
+window is rejected with `connection refused`, so `test.sh` retries the apply until
+the webhook answers rather than treating the race as a failure.
+
 ## Configuration
 
 The versions a leg **boots** on are in its document, as `spec.qemu.talos-version`

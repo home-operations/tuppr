@@ -243,9 +243,39 @@ main() {
         pod-security.kubernetes.io/warn=privileged \
         --overwrite
 
-    log "Installing tuppr via Helm..."
+    log "Packaging Helm chart..."
     IFS=':' read -r REPO TAG <<< "$CONTROLLER_IMAGE"
-    helm upgrade --install tuppr "${REPO_ROOT}/charts/tuppr" \
+
+    # A throwaway semver just for the OCI tag; the real version is stamped at
+    # release time. The e2e only cares that the packaged artifact installs.
+    local chart_version="0.0.0-e2e"
+    local chart_dir chart_tgz chart_ref
+    chart_dir=$(mktemp -d)
+    helm package "${REPO_ROOT}/charts/tuppr" \
+        --version "$chart_version" --app-version "$chart_version" --destination "$chart_dir"
+    chart_tgz="${chart_dir}/tuppr-${chart_version}.tgz"
+
+    # Install the chart the way it is actually distributed: pushed to an OCI
+    # registry and pulled back, rather than from the working tree. CI points
+    # CHART_REGISTRY at the runner-local registry; a local run has none, so it
+    # installs the packaged tgz directly, which still exercises the artifact.
+    local helm_oci_args=()
+    if [[ -n "${CHART_REGISTRY:-}" ]]; then
+        # --plain-http only for the loopback CI registry, which serves HTTP.
+        case "$CHART_REGISTRY" in
+            *localhost* | *127.0.0.1*) helm_oci_args=(--plain-http) ;;
+        esac
+        log "Pushing chart to ${CHART_REGISTRY} and installing from there..."
+        helm push "$chart_tgz" "$CHART_REGISTRY" "${helm_oci_args[@]}"
+        chart_ref="${CHART_REGISTRY}/tuppr"
+        helm_oci_args+=(--version "$chart_version")
+    else
+        log "No CHART_REGISTRY set; installing the packaged chart directly."
+        chart_ref="$chart_tgz"
+    fi
+
+    log "Installing tuppr via Helm..."
+    helm upgrade --install tuppr "$chart_ref" "${helm_oci_args[@]}" \
         --namespace tuppr-system \
         --set image.repository="$REPO" \
         --set image.tag="$TAG" \
