@@ -5,18 +5,27 @@ End-to-end tests for the tuppr controller against a local Talos cluster, booted 
 
 ## Overview
 
-Each CI leg is a `TalosCluster` document in this directory. The action boots the
-shape it describes, exports a kubeconfig and talosconfig, and destroys the cluster
-in its post step; `test.sh` then deploys the controller and drives a real
-TalosUpgrade and KubernetesUpgrade against it. The control plane sits behind the
-provisioner's built-in load balancer, so the Kubernetes API stays reachable while
-tuppr reboots control plane nodes one at a time.
+Each CI leg boots a `TalosCluster` document from this directory and drives one
+controller against it. The action boots the shape the document describes, exports
+a kubeconfig and talosconfig, and destroys the cluster in its post step; `test.sh`
+then deploys the controller and drives a real upgrade. The control plane sits
+behind the provisioner's built-in load balancer, so the Kubernetes API stays
+reachable while tuppr reboots control plane nodes one at a time.
 
-| Leg      | Shape                     | What only this leg covers                                  |
-| -------- | ------------------------- | ---------------------------------------------------------- |
-| `1cp-0w` | 1 control plane           | tuppr upgrading the node it runs on: no drain, no `--wait` |
-| `1cp-1w` | 1 control plane, 1 worker | a drained workload having somewhere to land                |
-| `3cp-0w` | 3 control planes          | etcd quorum surviving a rolling reboot                     |
+| Leg      | Upgrade      | Shape                     | What only this leg covers                                  |
+| -------- | ------------ | ------------------------- | ---------------------------------------------------------- |
+| `1cp-0w` | `talos`      | 1 control plane           | tuppr upgrading the node it runs on: no drain, no `--wait` |
+| `1cp-1w` | `talos`      | 1 control plane, 1 worker | a drained workload having somewhere to land                |
+| `3cp-0w` | `talos`      | 3 control planes          | etcd quorum surviving a rolling reboot                     |
+| `1cp-1w` | `kubernetes` | 1 control plane, 1 worker | both kinds of kubelet converging on the new version        |
+
+One upgrade per leg, chosen by `UPGRADE_KIND`. Shape is what makes the Talos legs
+differ: that controller drains, reboots, and upgrades node by node, so each shape
+reaches code the others do not. `KubernetesUpgrade` picks a single control plane
+node and runs one job there, with no drain and no reboot, so it earns one leg
+rather than a shape sweep of its own. Nothing runs both, which means no leg covers
+a Kubernetes upgrade layered on a Talos one, and a failure names the controller
+that broke.
 
 ```text
 1cp-0w.yaml, 1cp-1w.yaml, 3cp-0w.yaml   one leg per cluster shape
@@ -53,6 +62,7 @@ talosctl kubeconfig /tmp/tuppr-e2e/kubeconfig --nodes 10.5.0.2 --force
 set -gx CLUSTER_NAME tuppr-e2e-1cp-0w
 set -gx KUBECONFIG /tmp/tuppr-e2e/kubeconfig
 set -gx TALOSCONFIG /tmp/tuppr-e2e/talosconfig
+set -gx UPGRADE_KIND talos # or kubernetes
 ./test.sh
 
 talosctl cluster destroy --name tuppr-e2e-1cp-0w --force

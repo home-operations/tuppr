@@ -100,7 +100,51 @@ verify_k8s_version() {
     return 0
 }
 
+run_talos_upgrade() {
+    log "============================================"
+    log "Starting TalosUpgrade test"
+    log "============================================"
+
+    log "Creating TalosUpgrade CR..."
+    export TALOS_UPGRADE_VERSION
+    envsubst < "${CR_TEMPLATES_DIR}/talos-upgrade.yaml" | kubectl apply -f -
+
+    wait_for_cr_completed talosupgrade e2e-talos-upgrade 1200
+    verify_talos_version "$TALOS_UPGRADE_VERSION"
+
+    log "============================================"
+    log "TalosUpgrade test PASSED"
+    log "============================================"
+}
+
+run_kubernetes_upgrade() {
+    log "============================================"
+    log "Starting KubernetesUpgrade test"
+    log "============================================"
+
+    log "Creating KubernetesUpgrade CR..."
+    export K8S_UPGRADE_VERSION
+    envsubst < "${CR_TEMPLATES_DIR}/k8s-upgrade.yaml" | kubectl apply -f -
+
+    wait_for_cr_completed kubernetesupgrade e2e-k8s-upgrade 900
+    verify_k8s_version "$K8S_UPGRADE_VERSION"
+
+    log "============================================"
+    log "KubernetesUpgrade test PASSED"
+    log "============================================"
+}
+
 main() {
+    # Which upgrade this leg drives. One kind per leg: nothing tests a Kubernetes
+    # upgrade on top of a Talos one, so a failure names the controller that broke.
+    case "${UPGRADE_KIND:-}" in
+        talos | kubernetes) ;;
+        *)
+            log "ERROR: UPGRADE_KIND must be 'talos' or 'kubernetes', got '${UPGRADE_KIND:-}'"
+            exit 1
+            ;;
+    esac
+
     # talosctl-cluster-action exports the two configs and reports the cluster name;
     # a local run points them at whatever cluster it built itself.
     : "${KUBECONFIG:?must point at the e2e cluster kubeconfig}"
@@ -195,42 +239,17 @@ main() {
 
     trap 'kill "$STERN_PID" "$WATCH_TALOS_PID" "$WATCH_K8S_PID" 2>/dev/null || true' EXIT
 
-    log "============================================"
-    log "Starting TalosUpgrade test"
-    log "============================================"
-
-    log "Creating TalosUpgrade CR..."
-    export TALOS_UPGRADE_VERSION
-    envsubst < "${CR_TEMPLATES_DIR}/talos-upgrade.yaml" | kubectl apply -f -
-
-    wait_for_cr_completed talosupgrade e2e-talos-upgrade 1200
-    verify_talos_version "$TALOS_UPGRADE_VERSION"
-
-    log "============================================"
-    log "TalosUpgrade test PASSED"
-    log "============================================"
-
-    log "============================================"
-    log "Starting KubernetesUpgrade test"
-    log "============================================"
-
-    log "Creating KubernetesUpgrade CR..."
-    export K8S_UPGRADE_VERSION
-    envsubst < "${CR_TEMPLATES_DIR}/k8s-upgrade.yaml" | kubectl apply -f -
-
-    wait_for_cr_completed kubernetesupgrade e2e-k8s-upgrade 900
-    verify_k8s_version "$K8S_UPGRADE_VERSION"
-
-    log "============================================"
-    log "KubernetesUpgrade test PASSED"
-    log "============================================"
+    case "$UPGRADE_KIND" in
+        talos) run_talos_upgrade ;;
+        kubernetes) run_kubernetes_upgrade ;;
+    esac
 
     log "Stopping background monitoring..."
     kill $STERN_PID $WATCH_TALOS_PID $WATCH_K8S_PID 2>/dev/null || true
 
     log ""
     log "=========================================="
-    log "ALL E2E TESTS PASSED"
+    log "E2E TESTS PASSED ($UPGRADE_KIND)"
     log "=========================================="
 }
 

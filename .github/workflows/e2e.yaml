@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   e2e-test:
-    name: E2E (${{ matrix.leg }})
+    name: E2E (${{ matrix.upgrade }} ${{ matrix.leg }})
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -37,15 +37,27 @@ jobs:
       matrix:
         # Each entry runs on its own runner, so legs are cheap to add. What is
         # bounded is the VM count within one leg, at 2GiB per VM on a 16GB
-        # runner. Each name is a document in test/e2e-qemu that describes the
-        # shape it boots.
-        leg:
-          # 1cp-0w covers the self-hosted path: with one node tuppr upgrades the
-          # node it is running on, so it skips the drain and issues the upgrade
+        # runner. `leg` is a document in test/e2e-qemu describing the shape to
+        # boot; `upgrade` is which controller that leg drives.
+        #
+        # Shape is what makes the Talos legs differ from each other: that
+        # controller drains, reboots and upgrades node by node. The Kubernetes
+        # one picks a single control plane node and runs one job there, so it
+        # gets one leg rather than a shape sweep of its own.
+        include:
+          # Covers the self-hosted path: with one node tuppr upgrades the node
+          # it is running on, so it skips the drain and issues the upgrade
           # without --wait. No other leg reaches that code.
-          - 1cp-0w
-          - 1cp-1w
-          - 3cp-0w
+          - leg: 1cp-0w
+            upgrade: talos
+          - leg: 1cp-1w
+            upgrade: talos
+          - leg: 3cp-0w
+            upgrade: talos
+          # A control plane and a worker, so both kinds of kubelet have to
+          # converge on the new version before the CR reports Completed.
+          - leg: 1cp-1w
+            upgrade: kubernetes
     env:
       # Two names for one image in the runner-local registry. The nodes pull
       # registry.e2e, which the Talos mirror in patches/registry.yaml points at
@@ -114,9 +126,9 @@ jobs:
         with:
           driver-opts: network=host
 
-      # All three legs build byte-identical images, so they share one cache
-      # scope. Only one leg writes it back: concurrent cache-to writes to the
-      # same scope evict each other.
+      # Every leg builds a byte-identical image, so they share one cache scope.
+      # Only one writes it back: concurrent cache-to writes to the same scope
+      # evict each other. 3cp-0w is unique across the matrix, so it names one leg.
       - name: Build controller image
         id: image
         background: true
@@ -136,6 +148,7 @@ jobs:
       # refuses to run against one it cannot identify.
       - name: Run e2e tests
         env:
+          UPGRADE_KIND: ${{ matrix.upgrade }}
           CLUSTER_NAME: ${{ steps.cluster.outputs.cluster-name }}
           ENDPOINT: ${{ steps.cluster.outputs.endpoint }}
           KUBECONFIG: ${{ steps.cluster.outputs.kubeconfig }}
