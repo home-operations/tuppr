@@ -100,27 +100,111 @@ verify_k8s_version() {
     return 0
 }
 
+# Apply a rendered CR template, tolerating the brief window right after the Helm
+# install where the webhook's Service has no ready endpoints yet. The webhook is
+# failurePolicy: Fail, and /readyz gates on the webhook server starting, so
+# `helm --wait` returns once the pod is Ready. Programming that pod into the
+# Service's endpoints lags Ready by a moment, and until kube-proxy has the route
+# the API server rejects the create with "connection refused". A GitOps tool
+# would just retry, so the test does too rather than reading the race as failure.
+apply_cr() {
+    local template=$1
+    local rendered deadline err
+    rendered=$(envsubst < "$template")
+    deadline=$((SECONDS + 120))
+
+    while true; do
+        if err=$(kubectl apply -f - <<<"$rendered" 2>&1); then
+            echo "$err"
+            return 0
+        fi
+        if [[ "$err" != *webhook* ]] || [[ $SECONDS -ge $deadline ]]; then
+            echo "$err" >&2
+            return 1
+        fi
+        log "Webhook not reachable yet, retrying CR apply..."
+        sleep 5
+    done
+}
+
+run_talos_upgrade() {
+    log "============================================"
+    log "Starting TalosUpgrade test"
+    log "============================================"
+
+    log "Creating TalosUpgrade CR..."
+    export TALOS_UPGRADE_VERSION
+    apply_cr "${CR_TEMPLATES_DIR}/talos-upgrade.yaml"
+
+    wait_for_cr_completed talosupgrade e2e-talos-upgrade 1200
+    verify_talos_version "$TALOS_UPGRADE_VERSION"
+
+    log "============================================"
+    log "TalosUpgrade test PASSED"
+    log "============================================"
+}
+
+run_kubernetes_upgrade() {
+    log "============================================"
+    log "Starting KubernetesUpgrade test"
+    log "============================================"
+
+    log "Creating KubernetesUpgrade CR..."
+    export K8S_UPGRADE_VERSION
+    apply_cr "${CR_TEMPLATES_DIR}/k8s-upgrade.yaml"
+
+    wait_for_cr_completed kubernetesupgrade e2e-k8s-upgrade 900
+    verify_k8s_version "$K8S_UPGRADE_VERSION"
+
+    log "============================================"
+    log "KubernetesUpgrade test PASSED"
+    log "============================================"
+}
+
 main() {
+    # Which upgrade this leg drives. One kind per leg: nothing tests a Kubernetes
+    # upgrade on top of a Talos one, so a failure names the controller that broke.
+    case "${UPGRADE_KIND:-}" in
+        talos | kubernetes) ;;
+        *)
+            log "ERROR: UPGRADE_KIND must be 'talos' or 'kubernetes', got '${UPGRADE_KIND:-}'"
+            exit 1
+            ;;
+    esac
+
+    # talosctl-cluster-action exports the two configs and reports the cluster name;
+    # a local run points them at whatever cluster it built itself.
+    : "${KUBECONFIG:?must point at the e2e cluster kubeconfig}"
+    : "${TALOSCONFIG:?must point at the e2e cluster talosconfig}"
+    : "${CLUSTER_NAME:?must be metadata.name from the leg document}"
+
+    # Where the Talos API calls go. CI passes the action's endpoint output; the
+    # talosconfig names the same address.
+    if [[ -z "${ENDPOINT:-}" ]]; then
+        ENDPOINT=$(talosctl config info -o json | jq -r '.endpoints[0] // empty')
+    fi
+    : "${ENDPOINT:?no control plane address in $TALOSCONFIG}"
+
     log "Kubeconfig: $KUBECONFIG"
     log "Talosconfig: $TALOSCONFIG"
 
-    # Safety checks before proceeding
-    if [[ "$KUBECONFIG" != /tmp/tuppr-e2e-* ]]; then
-        log "ERROR: Kubeconfig path '$KUBECONFIG' doesn't match expected pattern '/tmp/tuppr-e2e-*'"
+    # Refuse to touch anything that is not one of our throwaway clusters. Talos
+    # derives the kubectl context and every node name from the cluster name, so
+    # both have to agree with it.
+    if [[ "$CLUSTER_NAME" != tuppr-e2e-* ]]; then
+        log "ERROR: Cluster name '$CLUSTER_NAME' doesn't match expected pattern 'tuppr-e2e-*'"
         log "       Refusing to proceed to avoid touching non-e2e clusters"
         exit 1
     fi
 
-    # Verify we're connected to the right cluster
     local current_context
     current_context=$(kubectl config current-context)
-    if [[ "$current_context" != admin@tuppr-e2e-* ]]; then
-        log "ERROR: Current context '$current_context' doesn't match expected pattern 'admin@tuppr-e2e-*'"
+    if [[ "$current_context" != "admin@${CLUSTER_NAME}" ]]; then
+        log "ERROR: Current context '$current_context' is not 'admin@${CLUSTER_NAME}'"
         log "       Refusing to proceed to avoid touching non-e2e clusters"
         exit 1
     fi
 
-    # Verify node names match our cluster
     local node_names
     node_names=$(kubectl get nodes -o json | jq -r '.items[].metadata.name' | head -1)
     if [[ "$node_names" != "$CLUSTER_NAME"* ]]; then
@@ -147,7 +231,7 @@ main() {
     fi
 
     log "Waiting for cluster health checks..."
-    talosctl --nodes "$FIRST_CONTROLPLANE_IP" health --wait-timeout=10m
+    talosctl --nodes "$ENDPOINT" health --wait-timeout=10m
 
     log "Generating CRDs..."
     mise run -C "$REPO_ROOT" helm-crds
@@ -159,9 +243,39 @@ main() {
         pod-security.kubernetes.io/warn=privileged \
         --overwrite
 
-    log "Installing tuppr via Helm..."
+    log "Packaging Helm chart..."
     IFS=':' read -r REPO TAG <<< "$CONTROLLER_IMAGE"
-    helm upgrade --install tuppr "${REPO_ROOT}/charts/tuppr" \
+
+    # A throwaway semver just for the OCI tag; the real version is stamped at
+    # release time. The e2e only cares that the packaged artifact installs.
+    local chart_version="0.0.0-e2e"
+    local chart_dir chart_tgz chart_ref
+    chart_dir=$(mktemp -d)
+    helm package "${REPO_ROOT}/charts/tuppr" \
+        --version "$chart_version" --app-version "$chart_version" --destination "$chart_dir"
+    chart_tgz="${chart_dir}/tuppr-${chart_version}.tgz"
+
+    # Install the chart the way it is actually distributed: pushed to an OCI
+    # registry and pulled back, rather than from the working tree. CI points
+    # CHART_REGISTRY at the runner-local registry; a local run has none, so it
+    # installs the packaged tgz directly, which still exercises the artifact.
+    local helm_oci_args=()
+    if [[ -n "${CHART_REGISTRY:-}" ]]; then
+        # --plain-http only for the loopback CI registry, which serves HTTP.
+        case "$CHART_REGISTRY" in
+            *localhost* | *127.0.0.1*) helm_oci_args=(--plain-http) ;;
+        esac
+        log "Pushing chart to ${CHART_REGISTRY} and installing from there..."
+        helm push "$chart_tgz" "$CHART_REGISTRY" "${helm_oci_args[@]}"
+        chart_ref="${CHART_REGISTRY}/tuppr"
+        helm_oci_args+=(--version "$chart_version")
+    else
+        log "No CHART_REGISTRY set; installing the packaged chart directly."
+        chart_ref="$chart_tgz"
+    fi
+
+    log "Installing tuppr via Helm..."
+    helm upgrade --install tuppr "$chart_ref" "${helm_oci_args[@]}" \
         --namespace tuppr-system \
         --set image.repository="$REPO" \
         --set image.tag="$TAG" \
@@ -182,42 +296,17 @@ main() {
 
     trap 'kill "$STERN_PID" "$WATCH_TALOS_PID" "$WATCH_K8S_PID" 2>/dev/null || true' EXIT
 
-    log "============================================"
-    log "Starting TalosUpgrade test"
-    log "============================================"
-
-    log "Creating TalosUpgrade CR..."
-    export TALOS_UPGRADE_VERSION
-    envsubst < "${CR_TEMPLATES_DIR}/talos-upgrade.yaml" | kubectl apply -f -
-
-    wait_for_cr_completed talosupgrade e2e-talos-upgrade 1200
-    verify_talos_version "$TALOS_UPGRADE_VERSION"
-
-    log "============================================"
-    log "TalosUpgrade test PASSED"
-    log "============================================"
-
-    log "============================================"
-    log "Starting KubernetesUpgrade test"
-    log "============================================"
-
-    log "Creating KubernetesUpgrade CR..."
-    export K8S_UPGRADE_VERSION
-    envsubst < "${CR_TEMPLATES_DIR}/k8s-upgrade.yaml" | kubectl apply -f -
-
-    wait_for_cr_completed kubernetesupgrade e2e-k8s-upgrade 900
-    verify_k8s_version "$K8S_UPGRADE_VERSION"
-
-    log "============================================"
-    log "KubernetesUpgrade test PASSED"
-    log "============================================"
+    case "$UPGRADE_KIND" in
+        talos) run_talos_upgrade ;;
+        kubernetes) run_kubernetes_upgrade ;;
+    esac
 
     log "Stopping background monitoring..."
     kill $STERN_PID $WATCH_TALOS_PID $WATCH_K8S_PID 2>/dev/null || true
 
     log ""
     log "=========================================="
-    log "ALL E2E TESTS PASSED"
+    log "E2E TESTS PASSED ($UPGRADE_KIND)"
     log "=========================================="
 }
 

@@ -32,13 +32,13 @@ Allow Talos API access to the desired namespace by applying this config to all o
 
 ```yaml
 machine:
-    features:
-        kubernetesTalosAPIAccess:
-            allowedKubernetesNamespaces:
-                - system-upgrade # or the namespace the controller will be installed to
-            allowedRoles:
-                - os:admin
-            enabled: true
+  features:
+    kubernetesTalosAPIAccess:
+      allowedKubernetesNamespaces:
+        - system-upgrade # or the namespace the controller will be installed to
+      allowedRoles:
+        - os:admin
+      enabled: true
 ```
 
 Install the Helm chart:
@@ -67,59 +67,59 @@ Create a `TalosUpgrade` resource:
 apiVersion: tuppr.home-operations.com/v1alpha1
 kind: TalosUpgrade
 metadata:
-    name: cluster
+  name: cluster
 spec:
-    talos:
-        # renovate: datasource=docker depName=ghcr.io/siderolabs/installer
-        version: v1.13.6 # Required - target Talos version
+  talos:
+    # renovate: datasource=docker depName=ghcr.io/siderolabs/installer
+    version: v1.13.6 # Required - target Talos version
 
-    policy:
-        debug: true # Optional, verbose logging
-        force: false # Optional, skip etcd health checks
-        rebootMode: default # Optional, default|powercycle
-        placement: hard # Optional, hard|soft (default hard)
-        priorityClassName: system-node-critical # Optional, job pod priority class
-        stage: false # Optional, stage upgrade
-        timeout: 30m # Optional, per-node upgrade timeout
+  policy:
+    debug: true # Optional, verbose logging
+    force: false # Optional, skip etcd health checks
+    rebootMode: default # Optional, default|powercycle
+    placement: hard # Optional, hard|soft (default hard)
+    priorityClassName: system-node-critical # Optional, job pod priority class
+    stage: false # Optional, stage upgrade
+    timeout: 30m # Optional, per-node upgrade timeout
 
-    # Custom health checks (optional)
-    healthChecks:
-        - apiVersion: v1
-          kind: Node
-          expr: status.conditions.exists(c, c.type == "Ready" && c.status == "True")
+  # Custom health checks (optional)
+  healthChecks:
+    - apiVersion: v1
+      kind: Node
+      expr: status.conditions.exists(c, c.type == "Ready" && c.status == "True")
 
-    # Talosctl configuration (optional)
-    talosctl:
-        image:
-            repository: ghcr.io/siderolabs/talosctl # Optional, default
-            tag: v1.11.0 # Optional, auto-detected
-            pullPolicy: IfNotPresent # Optional, default
+  # Talosctl configuration (optional)
+  talosctl:
+    image:
+      repository: ghcr.io/siderolabs/talosctl # Optional, default
+      tag: v1.11.0 # Optional, auto-detected
+      pullPolicy: IfNotPresent # Optional, default
 
-    # Maintenance windows (optional)
-    maintenance:
-        windows:
-            - start: "0 2 * * 0" # Cron expression (Sunday 02:00)
-              duration: "4h" # How long window stays open
-              timezone: "UTC" # IANA timezone, default UTC
+  # Maintenance windows (optional)
+  maintenance:
+    windows:
+      - start: "0 2 * * 0" # Cron expression (Sunday 02:00)
+        duration: "4h" # How long window stays open
+        timezone: "UTC" # IANA timezone, default UTC
 
-    # Node selector (optional)
-    nodeSelector:
-        matchExpressions:
-            # Only upgrade nodes that have opted-in via this label
-            - { key: tuppr.home-operations.com/upgrade, operator: In, values: ["enabled"] }
-            # Exclude control plane nodes from this specific plan
-            - { key: node-role.kubernetes.io/control-plane, operator: DoesNotExist }
+  # Node selector (optional)
+  nodeSelector:
+    matchExpressions:
+      # Only upgrade nodes that have opted-in via this label
+      - { key: tuppr.home-operations.com/upgrade, operator: In, values: ["enabled"] }
+      # Exclude control plane nodes from this specific plan
+      - { key: node-role.kubernetes.io/control-plane, operator: DoesNotExist }
 
-    # Parallelism controls how many nodes are upgraded concurrently (optional)
-    # Defaults to 1 (sequential). Must be >= 1 and <= number of matching nodes.
-    parallelism: 1
+  # Parallelism controls how many nodes are upgraded concurrently (optional)
+  # Defaults to 1 (sequential). Must be >= 1 and <= number of matching nodes.
+  parallelism: 1
 
-    # Drain each node before it reboots for the upgrade (optional)
-    drain:
-        enabled: true
+  # Drain each node before it reboots for the upgrade (optional)
+  drain:
+    enabled: true
 
-        # Optional: force delete instead of eviction
-        # disableEviction: false
+    # Optional: force delete instead of eviction
+    # disableEviction: false
 ```
 
 > [!NOTE]
@@ -141,36 +141,36 @@ Create a `KubernetesUpgrade` resource:
 apiVersion: tuppr.home-operations.com/v1alpha1
 kind: KubernetesUpgrade
 metadata:
-    name: kubernetes
+  name: kubernetes
 spec:
-    kubernetes:
-        # renovate: datasource=docker depName=ghcr.io/siderolabs/kubelet
-        version: v1.36.2 # Required - target Kubernetes version
+  kubernetes:
+    # renovate: datasource=docker depName=ghcr.io/siderolabs/kubelet
+    version: v1.36.2 # Required - target Kubernetes version
 
-        # Optional - private registry for component images
-        # (kube-apiserver, kube-controller-manager, kube-scheduler, kube-proxy, kubelet)
-        # imageRepository: registry.example.com/k8s
+    # Optional - private registry for component images
+    # (kube-apiserver, kube-controller-manager, kube-scheduler, kube-proxy, kubelet)
+    # imageRepository: registry.example.com/k8s
 
-    # Custom health checks (optional)
-    healthChecks:
-        - apiVersion: v1
-          kind: Node
-          expr: status.conditions.exists(c, c.type == "Ready" && c.status == "True")
-          timeout: 10m
+  # Custom health checks (optional)
+  healthChecks:
+    - apiVersion: v1
+      kind: Node
+      expr: status.conditions.exists(c, c.type == "Ready" && c.status == "True")
+      timeout: 10m
 
-    # Talosctl configuration (optional)
-    talosctl:
-        image:
-            repository: ghcr.io/siderolabs/talosctl # Optional, default
-            tag: v1.11.0 # Optional, auto-detected
-            pullPolicy: IfNotPresent # Optional, default
+  # Talosctl configuration (optional)
+  talosctl:
+    image:
+      repository: ghcr.io/siderolabs/talosctl # Optional, default
+      tag: v1.11.0 # Optional, auto-detected
+      pullPolicy: IfNotPresent # Optional, default
 
-    # Maintenance windows (optional)
-    maintenance:
-        windows:
-            - start: "0 2 * * 0" # Cron expression (Sunday 02:00)
-              duration: "4h" # How long window stays open
-              timezone: "UTC" # IANA timezone, default UTC
+  # Maintenance windows (optional)
+  maintenance:
+    windows:
+      - start: "0 2 * * 0" # Cron expression (Sunday 02:00)
+        duration: "4h" # How long window stays open
+        timezone: "UTC" # IANA timezone, default UTC
 ```
 
 > Only one `KubernetesUpgrade` is allowed per cluster (admission webhook enforced).
@@ -188,39 +188,39 @@ Define custom health checks using [CEL expressions](https://cel.dev/). These hea
 
 ```yaml
 healthChecks:
-    # Check all nodes are ready
-    - apiVersion: v1
-      kind: Node
-      expr: |
-          status.conditions.filter(c, c.type == "Ready").all(c, c.status == "True")
-      timeout: 10m
+  # Check all nodes are ready
+  - apiVersion: v1
+    kind: Node
+    expr: |
+      status.conditions.filter(c, c.type == "Ready").all(c, c.status == "True")
+    timeout: 10m
 
-    # Check specific deployment replicas
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: critical-app
-      namespace: production
-      expr: status.readyReplicas == status.replicas
+  # Check specific deployment replicas
+  - apiVersion: apps/v1
+    kind: Deployment
+    name: critical-app
+    namespace: production
+    expr: status.readyReplicas == status.replicas
 
-    # Check deployments selected by labels
-    - apiVersion: apps/v1
-      kind: Deployment
-      namespace: production
-      labelSelector:
-          matchLabels:
-              app.kubernetes.io/part-of: critical-platform
-          matchExpressions:
-              - key: app.kubernetes.io/component
-                operator: In
-                values: ["api", "worker"]
-      expr: status.readyReplicas == status.replicas
+  # Check deployments selected by labels
+  - apiVersion: apps/v1
+    kind: Deployment
+    namespace: production
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/part-of: critical-platform
+      matchExpressions:
+        - key: app.kubernetes.io/component
+          operator: In
+          values: ["api", "worker"]
+    expr: status.readyReplicas == status.replicas
 
-    # Check custom resources
-    - apiVersion: ceph.rook.io/v1
-      kind: CephCluster
-      name: rook-ceph
-      namespace: rook-ceph
-      expr: status.ceph.health in ["HEALTH_OK"]
+  # Check custom resources
+  - apiVersion: ceph.rook.io/v1
+    kind: CephCluster
+    name: rook-ceph
+    namespace: rook-ceph
+    expr: status.ceph.health in ["HEALTH_OK"]
 ```
 
 ### Upgrade Policies (TalosUpgrade only)
@@ -229,26 +229,26 @@ Fine-tune upgrade behavior:
 
 ```yaml
 policy:
-    # Enable debug logging for troubleshooting
-    debug: true
+  # Enable debug logging for troubleshooting
+  debug: true
 
-    # Force upgrade even if etcd is unhealthy (dangerous!)
-    force: true
+  # Force upgrade even if etcd is unhealthy (dangerous!)
+  force: true
 
-    # Controls how strictly upgrade jobs avoid the target node
-    placement: hard # or "soft"
+  # Controls how strictly upgrade jobs avoid the target node
+  placement: hard # or "soft"
 
-    # Use powercycle reboot for problematic nodes
-    rebootMode: powercycle # or "default"
+  # Use powercycle reboot for problematic nodes
+  rebootMode: powercycle # or "default"
 
-    # Stage upgrade then reboot to apply (2 total reboots)
-    stage: false
+  # Stage upgrade then reboot to apply (2 total reboots)
+  stage: false
 
-    # Drain the node in tuppr and wait for its CSI volumes to detach before the
-    # Talos reboot (then upgrade with Talos drain disabled). Prevents a fast reboot
-    # from orphaning a mount and pinning the volume to the node, which surfaces as a
-    # Multi-Attach error when the pod reschedules. No effect on single-node clusters.
-    waitForVolumeDetach: false
+  # Drain the node in tuppr and wait for its CSI volumes to detach before the
+  # Talos reboot (then upgrade with Talos drain disabled). Prevents a fast reboot
+  # from orphaning a mount and pinning the volume to the node, which surfaces as a
+  # Multi-Attach error when the pod reschedules. No effect on single-node clusters.
+  waitForVolumeDetach: false
 ```
 
 ### Parallel Upgrades (TalosUpgrade only)
@@ -257,9 +257,9 @@ By default, tuppr upgrades nodes one at a time (sequential). Setting `spec.paral
 
 ```yaml
 spec:
-    talos:
-        version: v1.11.0
-    parallelism: 3 # upgrade up to 3 nodes at once
+  talos:
+    version: v1.11.0
+  parallelism: 3 # upgrade up to 3 nodes at once
 ```
 
 Constraints enforced by the admission webhook:
@@ -281,39 +281,39 @@ Run side-effecting Jobs around an upgrade run — e.g. set/unset Ceph `noout` so
 
 ```yaml
 spec:
-    talos:
-        version: v1.12.7
-    hooks:
-        pre:
-            - name: ceph-set-noout
-              image: ghcr.io/rook/rook:v1.18.7
-              command: ["sh", "-c"]
-              args: ["ceph osd set noout"]
-              envFrom:
-                  - secretRef:
-                        name: rook-ceph-mon
-              volumeMounts:
-                  - name: ceph-config
-                    mountPath: /etc/ceph
-              volumes:
-                  - name: ceph-config
-                    secret:
-                        secretName: rook-ceph-config
-        post:
-            - name: ceph-unset-noout
-              image: ghcr.io/rook/rook:v1.18.7
-              command: ["sh", "-c"]
-              args: ["ceph osd unset noout"]
-              envFrom:
-                  - secretRef:
-                        name: rook-ceph-mon
-              volumeMounts:
-                  - name: ceph-config
-                    mountPath: /etc/ceph
-              volumes:
-                  - name: ceph-config
-                    secret:
-                        secretName: rook-ceph-config
+  talos:
+    version: v1.12.7
+  hooks:
+    pre:
+      - name: ceph-set-noout
+        image: ghcr.io/rook/rook:v1.18.7
+        command: ["sh", "-c"]
+        args: ["ceph osd set noout"]
+        envFrom:
+          - secretRef:
+              name: rook-ceph-mon
+        volumeMounts:
+          - name: ceph-config
+            mountPath: /etc/ceph
+        volumes:
+          - name: ceph-config
+            secret:
+              secretName: rook-ceph-config
+    post:
+      - name: ceph-unset-noout
+        image: ghcr.io/rook/rook:v1.18.7
+        command: ["sh", "-c"]
+        args: ["ceph osd unset noout"]
+        envFrom:
+          - secretRef:
+              name: rook-ceph-mon
+        volumeMounts:
+          - name: ceph-config
+            mountPath: /etc/ceph
+        volumes:
+          - name: ceph-config
+            secret:
+              secretName: rook-ceph-config
 ```
 
 Behavior:
@@ -331,10 +331,10 @@ Control when upgrades start using cron-based maintenance windows. Running upgrad
 
 ```yaml
 maintenance:
-    windows:
-        - start: "0 2 * * 0" # Sunday 02:00
-          duration: "4h" # Max 168h, warn if <1h
-          timezone: "Europe/Paris" # IANA timezone, default UTC
+  windows:
+    - start: "0 2 * * 0" # Sunday 02:00
+      duration: "4h" # Max 168h, warn if <1h
+      timezone: "Europe/Paris" # IANA timezone, default UTC
 ```
 
 - Upgrades only start during open windows (stays `Pending` otherwise)
@@ -374,10 +374,10 @@ Resolution per node:
 1. **`tuppr.home-operations.com/factory-url` override** — when set, tuppr builds `<factory-url>/<schematic>:<target-version>`. The schematic comes from `tuppr.home-operations.com/schematic` when set (so you can switch flavors), otherwise from the runtime `ExtensionStatus` (the virtual `schematic` extension that Image Factory appends to every model).
 2. **Default** — version-swap the node's current `.machine.install.image`. A factory install stays on its factory base + schematic; a private registry path is preserved; a vanilla generic install stays vanilla.
 3. **Safety net** — refused with a clear error when:
-    - the runtime schematic doesn't appear in the install-image path (install-image and the running system disagree about which extensions are installed), or
-    - the install image is the canonical generic Sidero installer (or a `/siderolabs/installer` mirror of it) AND the node has system extensions installed (reinstalling would silently wipe them).
+   - the runtime schematic doesn't appear in the install-image path (install-image and the running system disagree about which extensions are installed), or
+   - the install image is the canonical generic Sidero installer (or a `/siderolabs/installer` mirror of it) AND the node has system extensions installed (reinstalling would silently wipe them).
 
-    Both error messages point at the `factory-url` annotation as the fix.
+   Both error messages point at the `factory-url` annotation as the fix.
 
 ## ⚠️ Safe Talos Upgrade Paths
 
@@ -395,14 +395,14 @@ Tuppr does **not** automatically enforce safe upgrade paths — it will upgrade 
 
 ```json
 {
-    "packageRules": [
-        {
-            "matchDatasources": ["docker"],
-            "matchPackageNames": ["ghcr.io/siderolabs/installer"],
-            "separateMajorMinor": true,
-            "separateMinorPatch": true
-        }
-    ]
+  "packageRules": [
+    {
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["ghcr.io/siderolabs/installer"],
+      "separateMajorMinor": true,
+      "separateMinorPatch": true
+    }
+  ]
 }
 ```
 
@@ -413,9 +413,9 @@ This way, Renovate will propose incremental version bumps that you can merge one
 
 ```yaml
 spec:
-    talos:
-        # renovate: datasource=docker depName=ghcr.io/siderolabs/installer
-        version: v1.13.6
+  talos:
+    # renovate: datasource=docker depName=ghcr.io/siderolabs/installer
+    version: v1.13.6
 ```
 
 ## 📊 Monitoring & Metrics
@@ -552,43 +552,43 @@ kubectl scale deployment tuppr --replicas=1 -n system-upgrade
 apiVersion: tuppr.home-operations.com/v1alpha1
 kind: TalosUpgrade
 metadata:
-    name: workers-west
+  name: workers-west
 spec:
-    talos:
-        version: v1.12.4
-    nodeSelector:
-        matchLabels:
-            topology.kubernetes.io/zone: west
+  talos:
+    version: v1.12.4
+  nodeSelector:
+    matchLabels:
+      topology.kubernetes.io/zone: west
 ---
 # Plan 2: Upgrade worker nodes in east zone
 apiVersion: tuppr.home-operations.com/v1alpha1
 kind: TalosUpgrade
 metadata:
-    name: workers-east
+  name: workers-east
 spec:
-    talos:
-        version: v1.12.4
-    nodeSelector:
-        matchLabels:
-            topology.kubernetes.io/zone: east
+  talos:
+    version: v1.12.4
+  nodeSelector:
+    matchLabels:
+      topology.kubernetes.io/zone: east
 ---
 # ✅ Valid: Single KubernetesUpgrade resource
 apiVersion: tuppr.home-operations.com/v1alpha1
 kind: KubernetesUpgrade
 metadata:
-    name: kubernetes
+  name: kubernetes
 spec:
-    kubernetes:
-        version: v1.34.0
+  kubernetes:
+    version: v1.34.0
 ---
 # ❌ Invalid: Second KubernetesUpgrade will be rejected by webhook
 apiVersion: tuppr.home-operations.com/v1alpha1
 kind: KubernetesUpgrade
 metadata:
-    name: another-kubernetes # This will fail validation
+  name: another-kubernetes # This will fail validation
 spec:
-    kubernetes:
-        version: v1.35.0
+  kubernetes:
+    version: v1.35.0
 ```
 
 #### ⚠️ Warning: Node Overlap
