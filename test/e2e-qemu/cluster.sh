@@ -23,6 +23,7 @@ main() {
     log "Factory schematic: $schematic_id"
 
     SCHEMATIC_ID="$schematic_id" TALOS_BOOTSTRAP_VERSION="$TALOS_BOOTSTRAP_VERSION" \
+        CLUSTER_GATEWAY="$CLUSTER_GATEWAY" \
         envsubst < "${SCRIPT_DIR}/patches/all.yaml" > "${CONFIG_DIR}/patch-all.yaml"
 
     # The provisioner drops generated machine configs, which embed cluster PKI,

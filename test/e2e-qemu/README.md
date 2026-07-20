@@ -34,11 +34,18 @@ set -gx CONTROLLER_IMAGE ghcr.io/you/tuppr:dev
 ```
 
 When `CONTROLLER_IMAGE` is unset, `test.sh` builds and pushes one itself via
-`image.sh`. CI instead fixes the tag up front and builds it concurrently with
-`cluster.sh`, since the build and the VMs share no inputs; `test.sh` then finds
-the image already built and skips straight to installing it. CI builds through
+`image.sh`, which uses ttl.sh so a local run needs no registry of its own. CI
+instead fixes the tag up front and builds it concurrently with `cluster.sh`,
+since the build and the VMs share no inputs; `test.sh` then finds the image
+already built and skips straight to installing it. CI builds through
 `docker/build-push-action` rather than `image.sh` so the layers land in the
 GitHub Actions cache, which `image.sh` has no way to reach.
+
+CI also runs its own registry on the runner and pushes there, so the image
+never crosses the internet. The nodes reach it as `registry.e2e`, which the
+mirror in `patches/all.yaml` points at port 5000 on the QEMU bridge gateway.
+That mirror entry is inert for a local run, where nothing references
+`registry.e2e`.
 
 ## Configuration
 

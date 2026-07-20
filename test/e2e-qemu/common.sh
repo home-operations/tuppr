@@ -32,6 +32,7 @@ export TALOSCONFIG="${CONFIG_DIR}/talosconfig"
 # The provisioner puts the host end of the bridge on the first address of the
 # CIDR and numbers nodes upward from the second.
 _cidr_addr="${CLUSTER_CIDR%%/*}"
+CLUSTER_GATEWAY="${_cidr_addr%.*}.1"
 FIRST_CONTROLPLANE_IP="${_cidr_addr%.*}.2"
 
 log() {

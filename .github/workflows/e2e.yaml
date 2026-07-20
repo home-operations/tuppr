@@ -51,9 +51,13 @@ jobs:
     env:
       CONTROL_PLANE_COUNT: ${{ matrix.controllers }}
       WORKER_COUNT: ${{ matrix.workers }}
-      # Fixed up front so the image build and the test run agree on the tag
-      # without having to pass a value between steps.
-      CONTROLLER_IMAGE: ttl.sh/tuppr-e2e-${{ github.run_id }}-${{ matrix.controllers }}cp${{ matrix.workers }}w:2h
+      # Two names for one image in the runner-local registry. The nodes pull
+      # registry.e2e, which the Talos mirror in patches/all.yaml points at the
+      # bridge gateway; buildx pushes to the same registry over loopback. The
+      # alias matters beyond taste: test.sh splits CONTROLLER_IMAGE on ':' to
+      # get the Helm repo and tag, so a host:port form would parse wrong.
+      CONTROLLER_IMAGE: registry.e2e/tuppr:e2e
+      PUSH_IMAGE: localhost:5000/tuppr:e2e
     defaults:
       run:
         working-directory: test/e2e-qemu
@@ -89,6 +93,9 @@ jobs:
         working-directory: .
         run: echo "go=$(mise config get tools.go)" >> "$GITHUB_OUTPUT"
 
+      - name: Start image registry
+        run: docker run -d --name e2e-registry -p 5000:5000 registry:3
+
       # Booting the VMs and building the controller share no inputs, so they
       # overlap. They do contend for the runner's 4 vCPUs, so the saving is
       # less than the build time, but the build leaves the critical path.
@@ -97,8 +104,12 @@ jobs:
         background: true
         run: mise exec --locked --no-deps -- ./cluster.sh
 
+      # network=host so the builder container can reach the registry published
+      # on the runner's loopback.
       - name: Set up Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          driver-opts: network=host
 
       # All three legs build byte-identical images, so they share one cache
       # scope. Only one leg writes it back: concurrent cache-to writes to the
@@ -110,7 +121,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ env.CONTROLLER_IMAGE }}
+          tags: ${{ env.PUSH_IMAGE }}
           build-args: GO_VERSION=${{ steps.tools.outputs.go }}
           cache-from: type=gha,scope=e2e-controller
           cache-to: ${{ matrix.controllers == 3 && 'type=gha,mode=max,scope=e2e-controller' || '' }}

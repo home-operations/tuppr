@@ -18,3 +18,12 @@ machine:
         nodefs.available: "0%"
         nodefs.inodesFree: "0%"
         imagefs.available: "0%"
+  registries:
+    mirrors:
+      # CI runs a plain-HTTP registry on the QEMU bridge gateway and pushes the
+      # controller image there, so the nodes pull it over the bridge instead of
+      # from the internet. Inert for a local run: nothing resolves to
+      # registry.e2e unless CONTROLLER_IMAGE names it.
+      registry.e2e:
+        endpoints:
+          - http://${CLUSTER_GATEWAY}:5000
