@@ -1,0 +1,27 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/home-operations/talosctl-cluster-action/main/schema/talos-cluster.json
+# Single node: the leg where tuppr upgrades the node it is running on, so it skips
+# the drain and issues the upgrade without --wait. No other leg reaches that code.
+apiVersion: v1alpha1
+kind: TalosCluster
+metadata:
+  name: tuppr-e2e-1cp-0w
+spec:
+  kubernetes-version: v1.34.0
+  controlplanes:
+    count: 1
+    memory: 2GiB
+  # Spelled out because talosctl defaults --workers to 1, not 0.
+  workers:
+    count: 0
+  qemu:
+    talos-version: v1.13.5
+    disks:
+      - virtio:10GiB
+  network:
+    # Explicit because patches/registry.yaml hardcodes the gateway, the first
+    # address of this range. It is also talosctl's default.
+    cidr: 10.5.0.0/24
+  config-patches:
+    cluster: ["@patches/registry.yaml"]
+    controlplanes: ["@patches/talos-api-access.yaml"]
