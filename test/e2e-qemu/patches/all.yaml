@@ -1,0 +1,8 @@
+# `talosctl cluster create qemu` never sets .machine.install.image, so nodes
+# would come up on the generic ghcr.io/siderolabs/installer. The nodes boot
+# from a Factory image and therefore report a schematic at runtime, and tuppr
+# refuses to upgrade when the install image does not embed that schematic
+# (it would silently wipe extensions). Pin it to the matching Factory image.
+machine:
+  install:
+    image: factory.talos.dev/installer/${SCHEMATIC_ID}:${TALOS_BOOTSTRAP_VERSION}

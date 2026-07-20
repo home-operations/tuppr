@@ -1,0 +1,9 @@
+# Image Factory schematic for the QEMU e2e cluster. The kernel arg is not
+# functionally required (it only quiets the console dashboard in the VMs); it
+# exists so the schematic is non-empty, which gives the nodes a schematic ID
+# in their runtime ExtensionStatus. That is what makes the run exercise
+# tuppr's schematic-matching guard in buildTalosUpgradeImage rather than the
+# no-schematic fall-through.
+customization:
+  extraKernelArgs:
+    - talos.dashboard.disabled=1

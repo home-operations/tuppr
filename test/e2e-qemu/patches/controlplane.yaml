@@ -1,0 +1,11 @@
+# How the controller reaches the Talos API from inside the cluster. Talos
+# rejects this feature on worker machines, so it cannot live in the all-nodes
+# patch.
+machine:
+  features:
+    kubernetesTalosAPIAccess:
+      enabled: true
+      allowedRoles:
+        - os:admin
+      allowedKubernetesNamespaces:
+        - tuppr-system

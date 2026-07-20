@@ -149,38 +149,6 @@ checksum = "sha256:bd42e3ebc8cb4ececb86941983baaf1dc221bbb04d838e94ce63b49cc91e0
 url = "https://github.com/golangci/golangci-lint/releases/download/v2.12.2/golangci-lint-2.12.2-windows-amd64.zip"
 provenance = "github-attestations"
 
-[[tools.hcloud]]
-version = "1.66.0"
-backend = "aqua:hetznercloud/cli"
-
-[tools.hcloud."platforms.linux-arm64"]
-checksum = "sha256:f9d67b4a1e2a7d88e6360b3e9a5efe9ab6c4e1cf6d0fa45d2740adfa8528d55b"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-linux-arm64.tar.gz"
-
-[tools.hcloud."platforms.linux-arm64-musl"]
-checksum = "sha256:f9d67b4a1e2a7d88e6360b3e9a5efe9ab6c4e1cf6d0fa45d2740adfa8528d55b"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-linux-arm64.tar.gz"
-
-[tools.hcloud."platforms.linux-x64"]
-checksum = "sha256:8b1a8598858232c491f58cbf65ce1bd0ec6f725114bb62ec967a20ab03e29a86"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-linux-amd64.tar.gz"
-
-[tools.hcloud."platforms.linux-x64-musl"]
-checksum = "sha256:8b1a8598858232c491f58cbf65ce1bd0ec6f725114bb62ec967a20ab03e29a86"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-linux-amd64.tar.gz"
-
-[tools.hcloud."platforms.macos-arm64"]
-checksum = "sha256:b602f1e0d9d0ea6cb721e297688f61adb5508247ff8867c87778a2449fa2fcce"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-darwin-arm64.tar.gz"
-
-[tools.hcloud."platforms.macos-x64"]
-checksum = "sha256:3927d536d4c930dcd2a4e0826ec07f5feb341540a08254a7676bc60882bdfec2"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-darwin-amd64.tar.gz"
-
-[tools.hcloud."platforms.windows-x64"]
-checksum = "sha256:15b4ecf8d57c993f6987530ad1910f1167edf71f702696710d5420bdf0de7639"
-url = "https://github.com/hetznercloud/cli/releases/download/v1.66.0/hcloud-windows-amd64.zip"
-
 [[tools.helm]]
 version = "4.2.3"
 backend = "aqua:helm/helm"
@@ -433,45 +401,6 @@ url = "https://github.com/evilmartians/lefthook/releases/download/v2.1.10/leftho
 url_api = "https://api.github.com/repos/evilmartians/lefthook/releases/assets/470227505"
 provenance = "github-attestations"
 
-[[tools.opentofu]]
-version = "1.12.4"
-backend = "aqua:opentofu/opentofu"
-
-[tools.opentofu."platforms.linux-arm64"]
-checksum = "sha256:dc7bfcd93ce9795a86c58fbf71efd013c39dcd1febb13c9cd3555c43b9c2403a"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.12.4/tofu_1.12.4_linux_arm64.tar.gz"
-url_api = "https://api.github.com/repos/opentofu/opentofu/releases/assets/475646678"
-
-[tools.opentofu."platforms.linux-arm64-musl"]
-checksum = "sha256:dc7bfcd93ce9795a86c58fbf71efd013c39dcd1febb13c9cd3555c43b9c2403a"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.12.4/tofu_1.12.4_linux_arm64.tar.gz"
-url_api = "https://api.github.com/repos/opentofu/opentofu/releases/assets/475646678"
-
-[tools.opentofu."platforms.linux-x64"]
-checksum = "sha256:81836d0f12b4fe9013b85586349f993def9429b6383bb77cdd6c2f3a9d9aac24"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.12.4/tofu_1.12.4_linux_amd64.tar.gz"
-url_api = "https://api.github.com/repos/opentofu/opentofu/releases/assets/475646677"
-
-[tools.opentofu."platforms.linux-x64-musl"]
-checksum = "sha256:81836d0f12b4fe9013b85586349f993def9429b6383bb77cdd6c2f3a9d9aac24"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.12.4/tofu_1.12.4_linux_amd64.tar.gz"
-url_api = "https://api.github.com/repos/opentofu/opentofu/releases/assets/475646677"
-
-[tools.opentofu."platforms.macos-arm64"]
-checksum = "sha256:7c06e4390d9ccd467773e37ff1c3d833c7ca0c24742cd9e9ad47284bea472247"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.12.4/tofu_1.12.4_darwin_arm64.tar.gz"
-url_api = "https://api.github.com/repos/opentofu/opentofu/releases/assets/475646544"
-
-[tools.opentofu."platforms.macos-x64"]
-checksum = "sha256:ead1d2ce643addb4ffeb93240b9377ae1c2fd793a6bd22d65922ac37adfdf546"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.12.4/tofu_1.12.4_darwin_amd64.tar.gz"
-url_api = "https://api.github.com/repos/opentofu/opentofu/releases/assets/475646688"
-
-[tools.opentofu."platforms.windows-x64"]
-checksum = "sha256:a4d86a07755c8d151f20f945e6cfb5b40deeed942af36a9bd385c5c2e965d5dd"
-url = "https://github.com/opentofu/opentofu/releases/download/v1.12.4/tofu_1.12.4_windows_amd64.tar.gz"
-url_api = "https://api.github.com/repos/opentofu/opentofu/releases/assets/475646543"
-
 [[tools.oxfmt]]
 version = "0.59.0"
 backend = "npm:oxfmt"
@@ -507,6 +436,38 @@ url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v
 [tools.setup-envtest."platforms.windows-x64"]
 checksum = "sha256:e50f6272ff3c649a57c41eb6cae1957083185a150d1a0cca4061c71430298260"
 url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.24.1/setup-envtest-windows-amd64.exe"
+
+[[tools.shellcheck]]
+version = "0.11.0"
+backend = "aqua:koalaman/shellcheck"
+
+[tools.shellcheck."platforms.linux-arm64"]
+checksum = "sha256:12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588"
+url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.aarch64.tar.xz"
+
+[tools.shellcheck."platforms.linux-arm64-musl"]
+checksum = "sha256:12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588"
+url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.aarch64.tar.xz"
+
+[tools.shellcheck."platforms.linux-x64"]
+checksum = "sha256:8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198"
+url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz"
+
+[tools.shellcheck."platforms.linux-x64-musl"]
+checksum = "sha256:8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198"
+url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz"
+
+[tools.shellcheck."platforms.macos-arm64"]
+checksum = "sha256:56affdd8de5527894dca6dc3d7e0a99a873b0f004d7aabc30ae407d3f48b0a79"
+url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.aarch64.tar.xz"
+
+[tools.shellcheck."platforms.macos-x64"]
+checksum = "sha256:3c89db4edcab7cf1c27bff178882e0f6f27f7afdf54e859fa041fca10febe4c6"
+url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.x86_64.tar.xz"
+
+[tools.shellcheck."platforms.windows-x64"]
+checksum = "sha256:8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e"
+url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.zip"
 
 [[tools.stern]]
 version = "1.34.0"
