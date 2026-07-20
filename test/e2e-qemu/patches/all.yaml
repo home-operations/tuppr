@@ -6,3 +6,15 @@
 machine:
   install:
     image: factory.talos.dev/installer/${SCHEMATIC_ID}:${TALOS_BOOTSTRAP_VERSION}
+  kubelet:
+    # Borrowed from kind. A node's single 10GiB disk ends up holding two full
+    # sets of Kubernetes images plus the Talos installer, and if kubelet's
+    # default thresholds trip partway through a run it garbage-collects images
+    # and evicts pods, which surfaces as a flaky failure rather than a disk
+    # problem. Nothing here is reclaimed at the end anyway; the VM is deleted.
+    extraConfig:
+      imageGCHighThresholdPercent: 100
+      evictionHard:
+        nodefs.available: "0%"
+        nodefs.inodesFree: "0%"
+        imagefs.available: "0%"
