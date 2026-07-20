@@ -63,13 +63,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # zizmor flags mise's cache feeding a step that publishes an image. Not
-      # applicable here on two counts: the Dockerfile builds FROM the official
-      # golang image, so no mise-managed tool reaches the binary (mise supplies
-      # only the version string), and the image is a 2h ttl.sh tag consumed by
-      # this run's own tests and nothing else.
       - name: Setup Mise
-        uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1 # zizmor: ignore[cache-poisoning]
+        uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
         with:
           experimental: true
           install_args: --locked
