@@ -101,26 +101,39 @@ verify_k8s_version() {
 }
 
 main() {
+    # talosctl-cluster-action exports the two configs and reports the cluster name;
+    # a local run points them at whatever cluster it built itself.
+    : "${KUBECONFIG:?must point at the e2e cluster kubeconfig}"
+    : "${TALOSCONFIG:?must point at the e2e cluster talosconfig}"
+    : "${CLUSTER_NAME:?must be metadata.name from the leg document}"
+
+    # Where the Talos API calls go. CI passes the action's endpoint output; the
+    # talosconfig names the same address.
+    if [[ -z "${ENDPOINT:-}" ]]; then
+        ENDPOINT=$(talosctl config info -o json | jq -r '.endpoints[0] // empty')
+    fi
+    : "${ENDPOINT:?no control plane address in $TALOSCONFIG}"
+
     log "Kubeconfig: $KUBECONFIG"
     log "Talosconfig: $TALOSCONFIG"
 
-    # Safety checks before proceeding
-    if [[ "$KUBECONFIG" != /tmp/tuppr-e2e-* ]]; then
-        log "ERROR: Kubeconfig path '$KUBECONFIG' doesn't match expected pattern '/tmp/tuppr-e2e-*'"
+    # Refuse to touch anything that is not one of our throwaway clusters. Talos
+    # derives the kubectl context and every node name from the cluster name, so
+    # both have to agree with it.
+    if [[ "$CLUSTER_NAME" != tuppr-e2e-* ]]; then
+        log "ERROR: Cluster name '$CLUSTER_NAME' doesn't match expected pattern 'tuppr-e2e-*'"
         log "       Refusing to proceed to avoid touching non-e2e clusters"
         exit 1
     fi
 
-    # Verify we're connected to the right cluster
     local current_context
     current_context=$(kubectl config current-context)
-    if [[ "$current_context" != admin@tuppr-e2e-* ]]; then
-        log "ERROR: Current context '$current_context' doesn't match expected pattern 'admin@tuppr-e2e-*'"
+    if [[ "$current_context" != "admin@${CLUSTER_NAME}" ]]; then
+        log "ERROR: Current context '$current_context' is not 'admin@${CLUSTER_NAME}'"
         log "       Refusing to proceed to avoid touching non-e2e clusters"
         exit 1
     fi
 
-    # Verify node names match our cluster
     local node_names
     node_names=$(kubectl get nodes -o json | jq -r '.items[].metadata.name' | head -1)
     if [[ "$node_names" != "$CLUSTER_NAME"* ]]; then
@@ -147,7 +160,7 @@ main() {
     fi
 
     log "Waiting for cluster health checks..."
-    talosctl --nodes "$FIRST_CONTROLPLANE_IP" health --wait-timeout=10m
+    talosctl --nodes "$ENDPOINT" health --wait-timeout=10m
 
     log "Generating CRDs..."
     mise run -C "$REPO_ROOT" helm-crds
