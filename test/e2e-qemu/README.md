@@ -46,7 +46,7 @@ must see the same values.
 | `TALOS_UPGRADE_VERSION`   | `v1.12.6`            | Talos version tuppr upgrades to         |
 | `K8S_BOOTSTRAP_VERSION`   | `v1.34.0`            | Kubernetes version the cluster boots on |
 | `K8S_UPGRADE_VERSION`     | `v1.35.0`            | Kubernetes version tuppr upgrades to    |
-| `CONTROLPLANE_MEMORY`     | `3GiB`               | Memory per control plane VM             |
+| `CONTROLPLANE_MEMORY`     | `2GiB`               | Memory per control plane VM             |
 | `CLUSTER_CIDR`            | `10.5.0.0/24`        | Cluster network                         |
 | `CONFIG_DIR`              | `/tmp/$CLUSTER_NAME` | Where kubeconfig and talosconfig land   |
 

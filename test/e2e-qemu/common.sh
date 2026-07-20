@@ -10,10 +10,10 @@ TALOS_UPGRADE_VERSION="${TALOS_UPGRADE_VERSION:-v1.12.6}"
 K8S_BOOTSTRAP_VERSION="${K8S_BOOTSTRAP_VERSION:-v1.34.0}"
 K8S_UPGRADE_VERSION="${K8S_UPGRADE_VERSION:-v1.35.0}"
 
-# 2GiB is the documented Talos control plane minimum; an upgrading node runs
-# etcd and the API server while it unpacks the installer, which is where that
-# minimum bites.
-CONTROLPLANE_MEMORY="${CONTROLPLANE_MEMORY:-3GiB}"
+# Measured on an idle control plane: 694MB in use, peaking at 795MB during an
+# upgrade (the installer streams to disk rather than buffering in RAM). 2GiB
+# leaves room for the test workload without over-reserving on a 16GB runner.
+CONTROLPLANE_MEMORY="${CONTROLPLANE_MEMORY:-2GiB}"
 
 CLUSTER_CIDR="${CLUSTER_CIDR:-10.5.0.0/24}"
 

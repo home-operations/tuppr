@@ -9,3 +9,18 @@ machine:
         - os:admin
       allowedKubernetesNamespaces:
         - tuppr-system
+cluster:
+  etcd:
+    extraArgs:
+      # Trades durability for I/O, which is the right trade for a cluster that
+      # is destroyed at the end of the run. Talos only denies the etcd args it
+      # manages for cluster membership, so this one passes through.
+      unsafe-no-fsync: "true"
+  apiServer:
+    # Talos defaults to logging every request at Metadata level to
+    # /var/log/audit/kube. Nothing reads it here.
+    auditPolicy:
+      apiVersion: audit.k8s.io/v1
+      kind: Policy
+      rules:
+        - level: None

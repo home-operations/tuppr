@@ -35,14 +35,19 @@ jobs:
       # cost us the signal from the other.
       fail-fast: false
       matrix:
-        # A wider matrix is bounded by runner RAM rather than by quota: every
-        # control plane VM takes CONTROLPLANE_MEMORY (3GiB) and every worker
-        # 2GiB, on a 16GB runner.
+        # Each entry runs on its own runner, so legs are cheap to add. What is
+        # bounded is the VM count within one leg, at 2GiB per VM on a 16GB
+        # runner.
         include:
-          - controllers: 3
+          # Covers the self-hosted path: with one node tuppr upgrades the node
+          # it is running on, so it skips the drain and issues the upgrade
+          # without --wait. No other leg reaches that code.
+          - controllers: 1
             workers: 0
           - controllers: 1
             workers: 1
+          - controllers: 3
+            workers: 0
     env:
       CONTROL_PLANE_COUNT: ${{ matrix.controllers }}
       WORKER_COUNT: ${{ matrix.workers }}
