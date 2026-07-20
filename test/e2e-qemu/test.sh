@@ -136,18 +136,14 @@ main() {
 
     cd "$REPO_ROOT"
 
+    # CI sets CONTROLLER_IMAGE and builds it concurrently with the cluster, so
+    # by the time we get here there is nothing to do.
     if [[ -n "${CONTROLLER_IMAGE:-}" ]]; then
         log "Using pre-built controller image: $CONTROLLER_IMAGE"
     else
-        log "Building controller image..."
-        IMAGE_TAG=$(date +%s)
-        CONTROLLER_IMAGE="ttl.sh/tuppr-e2e-${IMAGE_TAG}:2h"
-        GO_VERSION="${GO_VERSION:-$(mise config get tools.go)}"
-
-        docker build --build-arg "GO_VERSION=${GO_VERSION}" -t "$CONTROLLER_IMAGE" .
-        log "Pushing controller image..."
-        docker push "$CONTROLLER_IMAGE"
-        log "Controller image: $CONTROLLER_IMAGE"
+        CONTROLLER_IMAGE="ttl.sh/tuppr-e2e-$(date +%s):2h"
+        export CONTROLLER_IMAGE
+        "${SCRIPT_DIR}/image.sh"
     fi
 
     log "Waiting for cluster health checks..."

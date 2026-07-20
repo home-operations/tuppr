@@ -51,6 +51,9 @@ jobs:
     env:
       CONTROL_PLANE_COUNT: ${{ matrix.controllers }}
       WORKER_COUNT: ${{ matrix.workers }}
+      # Fixed up front so the image build and the test run agree on the tag
+      # without having to pass a value between steps.
+      CONTROLLER_IMAGE: ttl.sh/tuppr-e2e-${{ github.run_id }}-${{ matrix.controllers }}cp${{ matrix.workers }}w:2h
     defaults:
       run:
         working-directory: test/e2e-qemu
@@ -81,8 +84,20 @@ jobs:
           sudo mkswap /mnt/e2e-swapfile
           sudo swapon /mnt/e2e-swapfile
 
+      # Booting the VMs and building the controller share no inputs, so they
+      # overlap. They do contend for the runner's 4 vCPUs, so the saving is
+      # less than the build time, but the build leaves the critical path.
       - name: Create cluster
+        id: cluster
+        background: true
         run: mise exec --locked --no-deps -- ./cluster.sh
+
+      - name: Build controller image
+        id: image
+        background: true
+        run: mise exec --locked --no-deps -- ./image.sh
+
+      - wait: [cluster, image]
 
       - name: Run e2e tests
         run: mise exec --locked --no-deps -- ./test.sh

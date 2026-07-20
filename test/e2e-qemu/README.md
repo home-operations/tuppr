@@ -33,6 +33,11 @@ the only thing worth exporting is a prebuilt image if you have one:
 set -gx CONTROLLER_IMAGE ghcr.io/you/tuppr:dev
 ```
 
+When `CONTROLLER_IMAGE` is unset, `test.sh` builds and pushes one itself via
+`image.sh`. CI instead sets the tag up front and runs `image.sh` concurrently
+with `cluster.sh`, since the build and the VMs share no inputs; `test.sh` then
+finds the image already built and skips straight to installing it.
+
 ## Configuration
 
 Every knob is an environment variable read by `common.sh`, and both scripts
