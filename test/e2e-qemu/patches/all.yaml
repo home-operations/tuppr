@@ -1,0 +1,29 @@
+# `talosctl cluster create qemu` never sets .machine.install.image, so nodes
+# would come up on the generic ghcr.io/siderolabs/installer. The nodes boot
+# from a Factory image and therefore report a schematic at runtime, and tuppr
+# refuses to upgrade when the install image does not embed that schematic
+# (it would silently wipe extensions). Pin it to the matching Factory image.
+machine:
+  install:
+    image: factory.talos.dev/installer/${SCHEMATIC_ID}:${TALOS_BOOTSTRAP_VERSION}
+  kubelet:
+    # Borrowed from kind. A node's single 10GiB disk ends up holding two full
+    # sets of Kubernetes images plus the Talos installer, and if kubelet's
+    # default thresholds trip partway through a run it garbage-collects images
+    # and evicts pods, which surfaces as a flaky failure rather than a disk
+    # problem. Nothing here is reclaimed at the end anyway; the VM is deleted.
+    extraConfig:
+      imageGCHighThresholdPercent: 100
+      evictionHard:
+        nodefs.available: "0%"
+        nodefs.inodesFree: "0%"
+        imagefs.available: "0%"
+  registries:
+    mirrors:
+      # CI runs a plain-HTTP registry on the QEMU bridge gateway and pushes the
+      # controller image there, so the nodes pull it over the bridge instead of
+      # from the internet. Inert for a local run: nothing resolves to
+      # registry.e2e unless CONTROLLER_IMAGE names it.
+      registry.e2e:
+        endpoints:
+          - http://${CLUSTER_GATEWAY}:5000

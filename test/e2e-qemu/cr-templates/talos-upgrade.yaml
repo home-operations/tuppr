@@ -4,4 +4,4 @@ metadata:
   name: e2e-talos-upgrade
 spec:
   talos:
-    version: ${TALOS_TO_VERSION}
+    version: ${TALOS_UPGRADE_VERSION}

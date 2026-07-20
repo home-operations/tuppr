@@ -2,13 +2,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TERRAFORM_DIR="${SCRIPT_DIR}/tofu"
 CR_TEMPLATES_DIR="${SCRIPT_DIR}/cr-templates"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-
-log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"
-}
+# shellcheck source=common.sh
+source "${SCRIPT_DIR}/common.sh"
 
 wait_for_cr_completed() {
     local kind=$1
@@ -42,16 +39,17 @@ wait_for_cr_completed() {
     return 1
 }
 
+node_ips() {
+    kubectl get nodes -o json |
+        jq -r '[.items[].status.addresses[] | select(.type=="InternalIP") | .address] | join(",")'
+}
+
 verify_talos_version() {
     local expected_version=$1
     log "Verifying all nodes are at Talos version $expected_version..."
 
-    # Get node IPs (talosconfig doesn't have nodes field set by module)
-    local node_ips
-    node_ips=$(kubectl get nodes -o json | jq -r '[.items[].status.addresses[] | select(.type=="ExternalIP") | .address] | join(",")')
-
     local output
-    output=$(talosctl version --short --nodes "$node_ips" 2>&1)
+    output=$(talosctl version --short --nodes "$(node_ips)" 2>&1)
 
     local server_versions
     server_versions=$(echo "$output" | grep "Tag:" | awk '{print $2}' | sort -u)
@@ -103,15 +101,6 @@ verify_k8s_version() {
 }
 
 main() {
-    cd "$TERRAFORM_DIR"
-
-    log "Reading Terraform outputs..."
-    KUBECONFIG=$(tofu output -raw kubeconfig_path)
-    TALOSCONFIG=$(tofu output -raw talosconfig_path)
-    TALOS_TO_VERSION=$(tofu output -raw talos_upgrade_version)
-    K8S_TO_VERSION=$(tofu output -raw k8s_upgrade_version)
-    EXPECTED_CLUSTER=$(tofu output -raw cluster_name)
-
     log "Kubeconfig: $KUBECONFIG"
     log "Talosconfig: $TALOSCONFIG"
 
@@ -121,10 +110,6 @@ main() {
         log "       Refusing to proceed to avoid touching non-e2e clusters"
         exit 1
     fi
-
-    # Export after validation
-    export KUBECONFIG
-    export TALOSCONFIG
 
     # Verify we're connected to the right cluster
     local current_context
@@ -138,36 +123,31 @@ main() {
     # Verify node names match our cluster
     local node_names
     node_names=$(kubectl get nodes -o json | jq -r '.items[].metadata.name' | head -1)
-    if [[ "$node_names" != "$EXPECTED_CLUSTER"* ]]; then
-        log "ERROR: Node names don't start with '$EXPECTED_CLUSTER'"
+    if [[ "$node_names" != "$CLUSTER_NAME"* ]]; then
+        log "ERROR: Node names don't start with '$CLUSTER_NAME'"
         log "       Found: $node_names"
         log "       Refusing to proceed to avoid touching non-e2e clusters"
         exit 1
     fi
 
-    log "Connected to cluster: $EXPECTED_CLUSTER"
-    log "Target Talos version: $TALOS_TO_VERSION"
-    log "Target Kubernetes version: $K8S_TO_VERSION"
+    log "Connected to cluster: $CLUSTER_NAME"
+    log "Target Talos version: $TALOS_UPGRADE_VERSION"
+    log "Target Kubernetes version: $K8S_UPGRADE_VERSION"
 
     cd "$REPO_ROOT"
 
+    # CI sets CONTROLLER_IMAGE and builds it concurrently with the cluster, so
+    # by the time we get here there is nothing to do.
     if [[ -n "${CONTROLLER_IMAGE:-}" ]]; then
         log "Using pre-built controller image: $CONTROLLER_IMAGE"
     else
-        log "Building controller image..."
-        RUN_ID=$(date +%s)
-        CONTROLLER_IMAGE="ttl.sh/tuppr-e2e-${RUN_ID}:2h"
-        GO_VERSION="${GO_VERSION:-$(mise config get tools.go)}"
-
-        docker build --build-arg "GO_VERSION=${GO_VERSION}" -t "$CONTROLLER_IMAGE" .
-        log "Pushing controller image..."
-        docker push "$CONTROLLER_IMAGE"
-        log "Controller image: $CONTROLLER_IMAGE"
+        CONTROLLER_IMAGE="ttl.sh/tuppr-e2e-$(date +%s):2h"
+        export CONTROLLER_IMAGE
+        "${SCRIPT_DIR}/image.sh"
     fi
 
     log "Waiting for cluster health checks..."
-    NODE_IP=$(kubectl get nodes -o json | jq -r '.items[0].status.addresses[] | select(.type=="ExternalIP") | .address')
-    talosctl --nodes $NODE_IP health --wait-timeout=10m
+    talosctl --nodes "$FIRST_CONTROLPLANE_IP" health --wait-timeout=10m
 
     log "Generating CRDs..."
     mise run -C "$REPO_ROOT" helm-crds
@@ -207,11 +187,11 @@ main() {
     log "============================================"
 
     log "Creating TalosUpgrade CR..."
-    export TALOS_TO_VERSION
+    export TALOS_UPGRADE_VERSION
     envsubst < "${CR_TEMPLATES_DIR}/talos-upgrade.yaml" | kubectl apply -f -
 
     wait_for_cr_completed talosupgrade e2e-talos-upgrade 1200
-    verify_talos_version "$TALOS_TO_VERSION"
+    verify_talos_version "$TALOS_UPGRADE_VERSION"
 
     log "============================================"
     log "TalosUpgrade test PASSED"
@@ -222,11 +202,11 @@ main() {
     log "============================================"
 
     log "Creating KubernetesUpgrade CR..."
-    export K8S_TO_VERSION
+    export K8S_UPGRADE_VERSION
     envsubst < "${CR_TEMPLATES_DIR}/k8s-upgrade.yaml" | kubectl apply -f -
 
     wait_for_cr_completed kubernetesupgrade e2e-k8s-upgrade 900
-    verify_k8s_version "$K8S_TO_VERSION"
+    verify_k8s_version "$K8S_UPGRADE_VERSION"
 
     log "============================================"
     log "KubernetesUpgrade test PASSED"

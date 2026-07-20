@@ -1,0 +1,12 @@
+---
+rules:
+  # The e2e workflow builds and pushes a controller image in a job where
+  # mise-action has caching on, which the rule reads as a cached tool feeding a
+  # published artifact. It does not apply here on two counts: the Dockerfile
+  # builds FROM the official golang image, so no mise-managed tool reaches the
+  # binary (mise supplies only the version string), and the image is pushed to a
+  # registry running on the runner itself, so it never leaves the job that built
+  # it.
+  cache-poisoning:
+    ignore:
+      - e2e.yaml

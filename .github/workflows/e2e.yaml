@@ -8,7 +8,6 @@ on:
       - opened
       - synchronize
       - reopened
-      - closed
     branches:
       - main
     paths:
@@ -25,59 +24,43 @@ permissions:
   contents: read
 
 jobs:
-  prune:
-    name: Prune previous runs
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    defaults:
-      run:
-        working-directory: test/e2e-hetzner
-    steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          persist-credentials: false
-
-      - name: Setup Mise
-        uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
-        with:
-          experimental: true
-          install_args: --locked
-
-      - name: Prune previous runs on this branch
-        env:
-          HCLOUD_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
-          BRANCH: ${{ github.head_ref || github.ref_name }}
-        run: ./prune.sh "branch=${BRANCH}"
-
   e2e-test:
     name: E2E (${{ matrix.controllers }}cp/${{ matrix.workers }}w)
-    if: github.event_name == 'workflow_dispatch' || github.event.action != 'closed'
-    needs: prune
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
+      # The legs are independent local clusters, so a failure in one should not
+      # cost us the signal from the other.
+      fail-fast: false
       matrix:
-        # TODO: Full matrix once hetzner limits are lifted
-        # controllers: [1, 3]
-        # workers: [0, 3]
+        # Each entry runs on its own runner, so legs are cheap to add. What is
+        # bounded is the VM count within one leg, at 2GiB per VM on a 16GB
+        # runner.
         include:
-          - controllers: 3
+          # Covers the self-hosted path: with one node tuppr upgrades the node
+          # it is running on, so it skips the drain and issues the upgrade
+          # without --wait. No other leg reaches that code.
+          - controllers: 1
             workers: 0
           - controllers: 1
             workers: 1
+          - controllers: 3
+            workers: 0
     env:
-      TF_VAR_hcloud_token: ${{ secrets.HETZNER_API_TOKEN }}
-      TF_VAR_control_plane_count: ${{ matrix.controllers }}
-      TF_VAR_worker_count: ${{ matrix.workers }}
-      TF_VAR_run_id: ${{ github.run_id }}
-      TF_VAR_branch_name: ${{ github.head_ref || github.ref_name }}
+      CONTROL_PLANE_COUNT: ${{ matrix.controllers }}
+      WORKER_COUNT: ${{ matrix.workers }}
+      # Two names for one image in the runner-local registry. The nodes pull
+      # registry.e2e, which the Talos mirror in patches/all.yaml points at the
+      # bridge gateway; buildx pushes to the same registry over loopback. The
+      # alias matters beyond taste: test.sh splits CONTROLLER_IMAGE on ':' to
+      # get the Helm repo and tag, so a host:port form would parse wrong.
+      CONTROLLER_IMAGE: registry.e2e/tuppr:e2e
+      PUSH_IMAGE: localhost:5000/tuppr:e2e
     defaults:
       run:
-        working-directory: test/e2e-hetzner
+        working-directory: test/e2e-qemu
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -90,31 +73,60 @@ jobs:
           experimental: true
           install_args: --locked
 
-      - name: OpenTofu init image
-        run: tofu -chdir=tofu-image init -lockfile=readonly
+      - name: Install QEMU
+        run: |-
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils ovmf
 
-      - name: OpenTofu init cluster
-        run: tofu -chdir=tofu init -lockfile=readonly
+      # Headroom for the upgrade phase, when each node unpacks the installer
+      # alongside etcd and the API server. Its own file, so it adds to the
+      # runner's existing swap instead of replacing it.
+      - name: Enable swap
+        run: |-
+          sudo fallocate -l 8G /mnt/e2e-swapfile
+          sudo chmod 600 /mnt/e2e-swapfile
+          sudo mkswap /mnt/e2e-swapfile
+          sudo swapon /mnt/e2e-swapfile
 
-      - name: Materialize Talos snapshot
-        run: tofu -chdir=tofu-image apply -auto-approve
+      - name: Resolve toolchain versions
+        id: tools
+        working-directory: .
+        run: echo "go=$(mise config get tools.go)" >> "$GITHUB_OUTPUT"
 
-      - name: Apply infrastructure
-        env:
-          KUBE_LAZY_LOAD: "true"
-        run: tofu -chdir=tofu apply -auto-approve
+      - name: Start image registry
+        run: docker run -d --name e2e-registry -p 5000:5000 registry:3
+
+      # Booting the VMs and building the controller share no inputs, so they
+      # overlap. They do contend for the runner's 4 vCPUs, so the saving is
+      # less than the build time, but the build leaves the critical path.
+      - name: Create cluster
+        id: cluster
+        background: true
+        run: mise exec --locked --no-deps -- ./cluster.sh
+
+      # network=host so the builder container can reach the registry published
+      # on the runner's loopback.
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          driver-opts: network=host
+
+      # All three legs build byte-identical images, so they share one cache
+      # scope. Only one leg writes it back: concurrent cache-to writes to the
+      # same scope evict each other.
+      - name: Build controller image
+        id: image
+        background: true
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          push: true
+          tags: ${{ env.PUSH_IMAGE }}
+          build-args: GO_VERSION=${{ steps.tools.outputs.go }}
+          cache-from: type=gha,scope=e2e-controller
+          cache-to: ${{ matrix.controllers == 3 && 'type=gha,mode=max,scope=e2e-controller' || '' }}
+
+      - wait: [cluster, image]
 
       - name: Run e2e tests
         run: mise exec --locked --no-deps -- ./test.sh
-
-      - name: Prune all resources
-        if: always()
-        env:
-          HCLOUD_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
-        run: |-
-          CLUSTER_NAME="tuppr-e2e-${TF_VAR_run_id}-${TF_VAR_control_plane_count}cp-${TF_VAR_worker_count}w"
-          if [[ -z "$CLUSTER_NAME" ]]; then
-            echo "ERROR: Could not determine cluster name - resources may be orphaned!"
-            exit 1
-          fi
-          ./prune.sh "cluster=${CLUSTER_NAME}"

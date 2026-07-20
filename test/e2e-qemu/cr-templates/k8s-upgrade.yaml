@@ -4,4 +4,4 @@ metadata:
   name: e2e-k8s-upgrade
 spec:
   kubernetes:
-    version: ${K8S_TO_VERSION}
+    version: ${K8S_UPGRADE_VERSION}
