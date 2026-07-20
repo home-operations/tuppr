@@ -100,6 +100,33 @@ verify_k8s_version() {
     return 0
 }
 
+# Apply a rendered CR template, tolerating the brief window right after the Helm
+# install where the webhook's Service has no ready endpoints yet. The webhook is
+# failurePolicy: Fail, and /readyz gates on the webhook server starting, so
+# `helm --wait` returns once the pod is Ready. Programming that pod into the
+# Service's endpoints lags Ready by a moment, and until kube-proxy has the route
+# the API server rejects the create with "connection refused". A GitOps tool
+# would just retry, so the test does too rather than reading the race as failure.
+apply_cr() {
+    local template=$1
+    local rendered deadline err
+    rendered=$(envsubst < "$template")
+    deadline=$((SECONDS + 120))
+
+    while true; do
+        if err=$(kubectl apply -f - <<<"$rendered" 2>&1); then
+            echo "$err"
+            return 0
+        fi
+        if [[ "$err" != *webhook* ]] || [[ $SECONDS -ge $deadline ]]; then
+            echo "$err" >&2
+            return 1
+        fi
+        log "Webhook not reachable yet, retrying CR apply..."
+        sleep 5
+    done
+}
+
 run_talos_upgrade() {
     log "============================================"
     log "Starting TalosUpgrade test"
@@ -107,7 +134,7 @@ run_talos_upgrade() {
 
     log "Creating TalosUpgrade CR..."
     export TALOS_UPGRADE_VERSION
-    envsubst < "${CR_TEMPLATES_DIR}/talos-upgrade.yaml" | kubectl apply -f -
+    apply_cr "${CR_TEMPLATES_DIR}/talos-upgrade.yaml"
 
     wait_for_cr_completed talosupgrade e2e-talos-upgrade 1200
     verify_talos_version "$TALOS_UPGRADE_VERSION"
@@ -124,7 +151,7 @@ run_kubernetes_upgrade() {
 
     log "Creating KubernetesUpgrade CR..."
     export K8S_UPGRADE_VERSION
-    envsubst < "${CR_TEMPLATES_DIR}/k8s-upgrade.yaml" | kubectl apply -f -
+    apply_cr "${CR_TEMPLATES_DIR}/k8s-upgrade.yaml"
 
     wait_for_cr_completed kubernetesupgrade e2e-k8s-upgrade 900
     verify_k8s_version "$K8S_UPGRADE_VERSION"
