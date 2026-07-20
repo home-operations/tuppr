@@ -34,9 +34,11 @@ set -gx CONTROLLER_IMAGE ghcr.io/you/tuppr:dev
 ```
 
 When `CONTROLLER_IMAGE` is unset, `test.sh` builds and pushes one itself via
-`image.sh`. CI instead sets the tag up front and runs `image.sh` concurrently
-with `cluster.sh`, since the build and the VMs share no inputs; `test.sh` then
-finds the image already built and skips straight to installing it.
+`image.sh`. CI instead fixes the tag up front and builds it concurrently with
+`cluster.sh`, since the build and the VMs share no inputs; `test.sh` then finds
+the image already built and skips straight to installing it. CI builds through
+`docker/build-push-action` rather than `image.sh` so the layers land in the
+GitHub Actions cache, which `image.sh` has no way to reach.
 
 ## Configuration
 
