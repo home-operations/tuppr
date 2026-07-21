@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.3.3](https://github.com/home-operations/tuppr/compare/0.3.2...0.3.3) (2026-07-21)
+
+
+### Features
+
+* **deps:** update module github.com/prometheus/client_golang (v1.23.2 → v1.24.0) ([#391](https://github.com/home-operations/tuppr/issues/391)) ([5e00779](https://github.com/home-operations/tuppr/commit/5e007795a6163178e236542aaeb5ca422250559f))
+
+
+### Bug Fixes
+
+* **container:** update talos group (v1.13.6 → v1.13.7) ([#399](https://github.com/home-operations/tuppr/issues/399)) ([ed62a17](https://github.com/home-operations/tuppr/commit/ed62a175cf59ece715f4e73eaa5518660674f192))
+* **deps:** update module github.com/go-logr/logr (v1.4.3 → v1.4.4) ([#394](https://github.com/home-operations/tuppr/issues/394)) ([9c2c9d9](https://github.com/home-operations/tuppr/commit/9c2c9d951e8358c9efeb5095e05db5d3bba4cf35))
+
+
+### Styles
+
+* match .github editorconfig and reflow markdown yaml to 2-space ([#393](https://github.com/home-operations/tuppr/issues/393)) ([e067556](https://github.com/home-operations/tuppr/commit/e067556726f4f539a0d57b74d1c3b58b1fe6253c))
+
+
+### Miscellaneous Chores
+
+* **mise:** Update tool cosign (3.1.1 → 3.1.2) ([#388](https://github.com/home-operations/tuppr/issues/388)) ([3a6a917](https://github.com/home-operations/tuppr/commit/3a6a917f6121a5c7dbd5090dd8c19cd277f11bc7))
+* **renovate:** group Talos updates ([#398](https://github.com/home-operations/tuppr/issues/398)) ([facac29](https://github.com/home-operations/tuppr/commit/facac29d1b6557afa5cfc9ab7d578c02c205ad68))
+
 ## [0.3.2](https://github.com/home-operations/tuppr/compare/0.3.1...0.3.2) (2026-07-16)
 
 
