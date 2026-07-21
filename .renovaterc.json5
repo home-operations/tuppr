@@ -1,5 +1,16 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
   extends: ["local>home-operations/renovate-config"],
+  packageRules: [
+    {
+      groupName: "Talos Group",
+      matchPackageNames: [
+        "ghcr.io/siderolabs/installer",
+        "github.com/siderolabs/talos/pkg/machinery",
+        "talosctl",
+      ],
+      minimumGroupSize: 3,
+    },
+  ],
   postUpdateOptions: ["gomodTidy", "gomodUpdateImportPaths"],
 }
