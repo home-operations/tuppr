@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	github.com/cosi-project/runtime v1.16.2
-	github.com/go-logr/logr v1.4.3
+	github.com/go-logr/logr v1.4.4
 	github.com/google/cel-go v0.29.2
 	github.com/google/go-containerregistry v0.21.7
 	github.com/google/uuid v1.6.0
