@@ -63,13 +63,20 @@ env: []
 # - name: FOO
 #   value: bar
 
+# Upgrade notifications are delivered via apprise-go. The referenced Secret must
+# hold an apprise URL; see https://github.com/unraid/apprise-go for the supported
+# services and URL schemes.
 notification:
   # -- Enable upgrade notifications.
   enabled: false
-  # -- Name of the Secret holding the notification (shoutrrr) URL.
+  # -- Name of the Secret holding the notification (apprise) URL.
   secretName: ""
   # -- Key within the Secret holding the notification URL.
   secretKey: url
+  # -- Go template for the notification title; empty uses the built-in default. Helpers are the go-sprout/sprout safe set (e.g. `toUpper`); fields are `.Node`, `.CurrentVersion`, `.TargetVersion`, `.Plan`.
+  titleTemplate: ""
+  # -- Go template for the notification message; empty uses the built-in default. Same helpers and fields as titleTemplate.
+  messageTemplate: ""
 
 # -- Container securityContext (no privilege escalation, read-only root filesystem, drops ALL capabilities).
 securityContext:

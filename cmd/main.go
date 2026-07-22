@@ -128,8 +128,17 @@ func main() {
 	reporter.InitializeAtBoot()
 
 	notificationURL := os.Getenv("NOTIFICATION_URL")
-	notifier := notification.NewShoutrrrNotifier(notificationURL)
+	notifier := notification.NewAppriseNotifier(notificationURL)
 	notificationsEnabled := notifier != nil
+
+	notificationRenderer, err := notification.NewRenderer(
+		os.Getenv("NOTIFICATION_TITLE_TEMPLATE"),
+		os.Getenv("NOTIFICATION_MESSAGE_TEMPLATE"),
+	)
+	if err != nil {
+		setupLog.Error(err, "invalid notification template")
+		os.Exit(1)
+	}
 
 	if metricsServiceName == "" {
 		metricsServiceName = "tuppr-metrics-service"
@@ -262,6 +271,7 @@ func main() {
 		ControllerNodeName:  controllerNodeName,
 		ControllerPodName:   controllerPodName,
 		Notifier:            notifier,
+		Renderer:            notificationRenderer,
 		Recorder:            talosRecorder,
 		MetricsReporter:     reporter,
 	}).SetupWithManager(mgr); err != nil {

@@ -24,6 +24,7 @@ import (
 	"github.com/home-operations/tuppr/internal/controller/jobs"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/metrics"
+	"github.com/home-operations/tuppr/internal/notification"
 )
 
 // findActiveJobs returns all active (non-completed, non-failed) upgrade jobs and their target node names.
@@ -372,23 +373,20 @@ func (r *Reconciler) createJob(ctx context.Context, talosUpgrade *tupprv1alpha1.
 
 	logger.Info("Successfully created upgrade job", "job", job.Name, "node", nodeName)
 	if r.Notifier != nil {
-		message := fmt.Sprintf("Starting upgrade for node %s", nodeName)
-		targetVersion := r.getTargetVersion(targetNode, talosUpgrade.Spec.Talos.Version)
 		currentVersion, err := r.TalosClient.GetNodeVersion(ctx, nodeIP)
 		if err != nil {
 			logger.V(1).Info("Failed to determine current Talos version for notification", "error", err, "job", job.Name, "node", nodeName)
-		} else {
-			message = fmt.Sprintf(
-				"Node %s is upgrading Talos from %s -> %s",
-				nodeName,
-				currentVersion,
-				targetVersion,
-			)
+			currentVersion = ""
 		}
-		if err := r.Notifier.Send(
-			"Tuppr Upgrade Started",
-			message,
-		); err != nil {
+		title, message, err := r.Renderer.Render(notification.EventData{
+			Node:           nodeName,
+			CurrentVersion: currentVersion,
+			TargetVersion:  r.getTargetVersion(targetNode, talosUpgrade.Spec.Talos.Version),
+			Plan:           talosUpgrade.Name,
+		})
+		if err != nil {
+			logger.V(1).Info("Failed to render notification", "error", err, "job", job.Name, "node", nodeName)
+		} else if err := r.Notifier.Send(title, message); err != nil {
 			logger.V(1).Info("Failed to send start notification", "error", err, "job", job.Name, "node", nodeName)
 		}
 	}

@@ -347,12 +347,19 @@
       "type": "object"
     },
     "notification": {
+      "description": "Upgrade notifications are delivered via apprise-go. The referenced Secret must\nhold an apprise URL; see https://github.com/unraid/apprise-go for the supported\nservices and URL schemes.",
       "properties": {
         "enabled": {
           "default": false,
           "description": "Enable upgrade notifications.",
           "title": "enabled",
           "type": "boolean"
+        },
+        "messageTemplate": {
+          "default": "",
+          "description": "Go template for the notification message; empty uses the built-in default. Same helpers and fields as titleTemplate.",
+          "title": "messageTemplate",
+          "type": "string"
         },
         "secretKey": {
           "default": "url",
@@ -362,8 +369,14 @@
         },
         "secretName": {
           "default": "",
-          "description": "Name of the Secret holding the notification (shoutrrr) URL.",
+          "description": "Name of the Secret holding the notification (apprise) URL.",
           "title": "secretName",
+          "type": "string"
+        },
+        "titleTemplate": {
+          "default": "",
+          "description": "Go template for the notification title; empty uses the built-in default. Helpers are the go-sprout/sprout safe set (e.g. `toUpper`); fields are `.Node`, `.CurrentVersion`, `.TargetVersion`, `.Plan`.",
+          "title": "titleTemplate",
           "type": "string"
         }
       },
