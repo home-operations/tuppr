@@ -16,7 +16,7 @@ run = "mise run helm-docs && git add charts/tuppr/README.md charts/tuppr/values.
 # The generated chart README/schema are .prettierignore'd; exclude them from the
 # shared formatters too (oxfmt exits non-zero when every input is ignored).
 [pre-commit.commands.format-markdown]
-exclude = ["charts/tuppr/README.md"]
+exclude = ["charts/tuppr/README.md", "docs/**"]
 
 [pre-commit.commands.format-json]
 exclude = ["charts/tuppr/values.schema.json"]
