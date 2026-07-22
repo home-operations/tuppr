@@ -73,6 +73,16 @@ spec:
                   name: {{ .Values.notification.secretName }}
                   key: {{ .Values.notification.secretKey }}
             {{- end }}
+            {{- if .Values.notification.enabled }}
+            {{- with .Values.notification.titleTemplate }}
+            - name: NOTIFICATION_TITLE_TEMPLATE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.notification.messageTemplate }}
+            - name: NOTIFICATION_MESSAGE_TEMPLATE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

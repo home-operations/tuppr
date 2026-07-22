@@ -109,6 +109,7 @@ type Reconciler struct {
 	Now                 Now
 	ImageChecker        ImageChecker
 	Notifier            notification.Notifier
+	Renderer            *notification.Renderer
 	Recorder            record.EventRecorder
 }
 

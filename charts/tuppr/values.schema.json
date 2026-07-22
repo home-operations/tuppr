@@ -355,6 +355,12 @@
           "title": "enabled",
           "type": "boolean"
         },
+        "messageTemplate": {
+          "default": "",
+          "description": "Go template for the notification message; empty uses the built-in default. Same helpers and fields as titleTemplate.",
+          "title": "messageTemplate",
+          "type": "string"
+        },
         "secretKey": {
           "default": "url",
           "description": "Key within the Secret holding the notification URL.",
@@ -365,6 +371,12 @@
           "default": "",
           "description": "Name of the Secret holding the notification (apprise) URL.",
           "title": "secretName",
+          "type": "string"
+        },
+        "titleTemplate": {
+          "default": "",
+          "description": "Go template for the notification title; empty uses the built-in default. Helpers are the go-sprout/sprout safe set (e.g. `toUpper`); fields are `.Node`, `.CurrentVersion`, `.TargetVersion`, `.Plan`.",
+          "title": "titleTemplate",
           "type": "string"
         }
       },

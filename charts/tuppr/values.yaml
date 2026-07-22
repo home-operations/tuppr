@@ -73,6 +73,10 @@ notification:
   secretName: ""
   # -- Key within the Secret holding the notification URL.
   secretKey: url
+  # -- Go template for the notification title; empty uses the built-in default. Helpers are the go-sprout/sprout safe set (e.g. `toUpper`); fields are `.Node`, `.CurrentVersion`, `.TargetVersion`, `.Plan`.
+  titleTemplate: ""
+  # -- Go template for the notification message; empty uses the built-in default. Same helpers and fields as titleTemplate.
+  messageTemplate: ""
 
 # -- Container securityContext (no privilege escalation, read-only root filesystem, drops ALL capabilities).
 securityContext:

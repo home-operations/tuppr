@@ -79,8 +79,10 @@ Kubernetes: `>=1.25.0-0`
 | nameOverride | string | `""` | Override the chart name used in resource names. |
 | nodeSelector | object | `{}` | Node selector for pod scheduling. |
 | notification.enabled | bool | `false` | Enable upgrade notifications. |
+| notification.messageTemplate | string | `""` | Go template for the notification message; empty uses the built-in default. Same helpers and fields as titleTemplate. |
 | notification.secretKey | string | `"url"` | Key within the Secret holding the notification URL. |
 | notification.secretName | string | `""` | Name of the Secret holding the notification (apprise) URL. |
+| notification.titleTemplate | string | `""` | Go template for the notification title; empty uses the built-in default. Helpers are the go-sprout/sprout safe set (e.g. `toUpper`); fields are `.Node`, `.CurrentVersion`, `.TargetVersion`, `.Plan`. |
 | podAnnotations | object | `{}` | Annotations added to the pod. |
 | podLabels | object | `{}` | Labels added to the pod. |
 | podSecurityContext | object | `{"fsGroup":65532,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}}` | Pod-level securityContext (runs as non-root uid/gid 65532). |

@@ -13,6 +13,7 @@ import (
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
 	"github.com/home-operations/tuppr/internal/metrics"
+	"github.com/home-operations/tuppr/internal/notification"
 	"github.com/home-operations/tuppr/internal/talos"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -242,6 +243,7 @@ func newTalosReconciler(cl client.Client, scheme *runtime.Scheme, talosClient Ta
 		MetricsReporter:     metrics.NewReporter(),
 		Now:                 &nodeutil.Clock{},
 		ImageChecker:        &mockImageChecker{availableImages: nil},
+		Renderer:            notification.DefaultRenderer(),
 	}
 }
 
