@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.4.0](https://github.com/home-operations/tuppr/compare/0.3.3...0.4.0) (2026-07-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **notification:** apprise-go backend + customizable templates ([#404](https://github.com/home-operations/tuppr/issues/404))
+
+### Features
+
+* **notification:** apprise-go backend + customizable templates ([#404](https://github.com/home-operations/tuppr/issues/404)) ([171a7bf](https://github.com/home-operations/tuppr/commit/171a7bf335eaaf720af7fbe0ddcd7133b8f1d39d))
+
+
+### Documentation
+
+* add MkDocs Material site and trim README ([#405](https://github.com/home-operations/tuppr/issues/405)) ([a8fce64](https://github.com/home-operations/tuppr/commit/a8fce647a7bc96e812a4195ab58afbd29cd97279))
+
+
+### Miscellaneous Chores
+
+* **mise:** Update tool aqua:astral-sh/uv (0.11.29 → 0.11.31) ([#406](https://github.com/home-operations/tuppr/issues/406)) ([95e4955](https://github.com/home-operations/tuppr/commit/95e495587d21d3b3930dcee63f848ddeb585ef83))
+* **mise:** Update tool oxfmt (0.59.0 → 0.60.0) ([#403](https://github.com/home-operations/tuppr/issues/403)) ([f171506](https://github.com/home-operations/tuppr/commit/f171506afeaa1c508cc75ec1a254141b86d270ab))
+* **mise:** Update tool zizmor (1.27.0 → 1.28.0) ([#401](https://github.com/home-operations/tuppr/issues/401)) ([f333b5e](https://github.com/home-operations/tuppr/commit/f333b5e7dd5e33290783d386954ed93fe692b2ad))
+
 ## [0.3.3](https://github.com/home-operations/tuppr/compare/0.3.2...0.3.3) (2026-07-21)
 
 
