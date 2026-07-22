@@ -80,7 +80,7 @@ Kubernetes: `>=1.25.0-0`
 | nodeSelector | object | `{}` | Node selector for pod scheduling. |
 | notification.enabled | bool | `false` | Enable upgrade notifications. |
 | notification.secretKey | string | `"url"` | Key within the Secret holding the notification URL. |
-| notification.secretName | string | `""` | Name of the Secret holding the notification (shoutrrr) URL. |
+| notification.secretName | string | `""` | Name of the Secret holding the notification (apprise) URL. |
 | podAnnotations | object | `{}` | Annotations added to the pod. |
 | podLabels | object | `{}` | Labels added to the pod. |
 | podSecurityContext | object | `{"fsGroup":65532,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}}` | Pod-level securityContext (runs as non-root uid/gid 65532). |

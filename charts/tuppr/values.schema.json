@@ -347,6 +347,7 @@
       "type": "object"
     },
     "notification": {
+      "description": "Upgrade notifications are delivered via apprise-go. The referenced Secret must\nhold an apprise URL; see https://github.com/unraid/apprise-go for the supported\nservices and URL schemes.",
       "properties": {
         "enabled": {
           "default": false,
@@ -362,7 +363,7 @@
         },
         "secretName": {
           "default": "",
-          "description": "Name of the Secret holding the notification (shoutrrr) URL.",
+          "description": "Name of the Secret holding the notification (apprise) URL.",
           "title": "secretName",
           "type": "string"
         }

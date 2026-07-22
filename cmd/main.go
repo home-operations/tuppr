@@ -128,7 +128,7 @@ func main() {
 	reporter.InitializeAtBoot()
 
 	notificationURL := os.Getenv("NOTIFICATION_URL")
-	notifier := notification.NewShoutrrrNotifier(notificationURL)
+	notifier := notification.NewAppriseNotifier(notificationURL)
 	notificationsEnabled := notifier != nil
 
 	if metricsServiceName == "" {

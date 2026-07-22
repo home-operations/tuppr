@@ -63,10 +63,13 @@ env: []
 # - name: FOO
 #   value: bar
 
+# Upgrade notifications are delivered via apprise-go. The referenced Secret must
+# hold an apprise URL; see https://github.com/unraid/apprise-go for the supported
+# services and URL schemes.
 notification:
   # -- Enable upgrade notifications.
   enabled: false
-  # -- Name of the Secret holding the notification (shoutrrr) URL.
+  # -- Name of the Secret holding the notification (apprise) URL.
   secretName: ""
   # -- Key within the Secret holding the notification URL.
   secretKey: url
