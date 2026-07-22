@@ -17,6 +17,8 @@ talosctl = "1.13.7"
 zizmor = "1.28.0"
 "aqua:dadav/helm-schema" = "0.23.4"
 yq = "4.53.3"
+# Docs site toolchain: MkDocs + Material run via uv (pyproject.toml / uv.lock).
+"aqua:astral-sh/uv" = "0.11.29"
 
 [tasks.manifests]
 description = "Generate CRD, RBAC, and webhook manifests"
@@ -120,6 +122,14 @@ version="${VERSION:-$(git describe --tags --always 2>/dev/null || echo dev)}"
 commit="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 go run -ldflags "-X main.version=$version -X main.commit=$commit" ./cmd/main.go
 '''
+
+[tasks.docs]
+description = "Build the docs site (MkDocs Material) into site/"
+run = "scripts/build-docs.sh"
+
+[tasks.docs-serve]
+description = "Serve the docs locally with live reload"
+run = "uv run mkdocs serve"
 
 [hooks]
 postinstall = "lefthook install"

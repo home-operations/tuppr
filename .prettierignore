@@ -9,3 +9,7 @@ charts/tuppr/crds/
 config/crd/bases/
 config/rbac/role.yaml
 config/webhook/manifests.yaml
+# Authored MkDocs docs site (pymdownx blocks admonitions/tabs break under oxfmt)
+# and its build output.
+docs/
+site/
