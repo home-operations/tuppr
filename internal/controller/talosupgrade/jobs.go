@@ -275,13 +275,16 @@ func (r *Reconciler) completeNodeUpgrade(ctx context.Context, talosUpgrade *tupp
 		logger.Error(err, "Failed to remove upgrading label from node", "node", nodeName)
 	}
 
-	if err := r.clearRebootTracking(ctx, talosUpgrade, nodeName); err != nil {
-		logger.Error(err, "Failed to clear reboot tracking", "node", nodeName)
-	}
-
+	// Record the outcome before dropping the reboot-tracking entry: a leftover
+	// entry is cleaned up as already-resolved on the next pass, but a node
+	// missing from both lists would vanish from durable status.
 	if err := r.addCompletedNode(ctx, talosUpgrade, nodeName); err != nil {
 		logger.Error(err, "Failed to add completed node", "node", nodeName)
 		return err
+	}
+
+	if err := r.clearRebootTracking(ctx, talosUpgrade, nodeName); err != nil {
+		logger.Error(err, "Failed to clear reboot tracking", "node", nodeName)
 	}
 
 	r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, nodeName, "success")

@@ -4377,3 +4377,35 @@ func TestTalosReconcile_RebootingNodeAfterJobGC_CompletesWhenReady(t *testing.T)
 		t.Fatalf("expected phase Completed, got: %s", updated.Status.Phase)
 	}
 }
+
+// A leftover tracking entry for a node already recorded as completed (e.g. a
+// crash between the two status patches) must be dropped, not re-verified.
+func TestTalosReconcile_StaleRebootTrackingCleared(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhaseRebooting),
+		withCompletedNodes(fakeNodeA),
+		withRebootingNodes(time.Now().Add(10*time.Minute), fakeNodeA),
+	)
+	node := newNode(fakeNodeA, testNodeIP1)
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{testNodeIP1: fakeTalosVersion},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	reconcileTalos(t, r, testUpgradeName)
+
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	if len(updated.Status.RebootingNodes) != 0 {
+		t.Fatalf("expected stale reboot tracking cleared, got: %v", updated.Status.RebootingNodes)
+	}
+	if !slices.Contains(updated.Status.CompletedNodes, fakeNodeA) {
+		t.Fatalf("expected node-a to remain completed, got: %v", updated.Status.CompletedNodes)
+	}
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
+		t.Fatalf("expected phase Completed, got: %s", updated.Status.Phase)
+	}
+}
