@@ -26,6 +26,10 @@ type Validator struct {
 	Client            client.Client
 	TalosConfigSecret string
 	Namespace         string
+	// AlertmanagerConfigured reflects whether the operator has an Alertmanager
+	// connection, so spec.silences without one warns at apply time instead of
+	// being silently inert.
+	AlertmanagerConfigured bool
 }
 
 // +kubebuilder:webhook:path=/validate-tuppr-home-operations-com-v1alpha1-talosupgrade,mutating=false,failurePolicy=fail,sideEffects=None,groups=tuppr.home-operations.com,resources=talosupgrades,verbs=create;update,versions=v1alpha1,name=vtalosupgrade.kb.io,admissionReviewVersions=v1
@@ -110,6 +114,9 @@ func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade)
 	}
 	if t.Spec.Policy.Placement == "soft" {
 		warnings = append(warnings, "Soft placement preset used.")
+	}
+	if len(t.Spec.Silences) > 0 && !v.AlertmanagerConfigured {
+		warnings = append(warnings, "spec.silences is configured but the operator has no Alertmanager connection (set silences.* in the Helm chart); no silences will be created.")
 	}
 
 	// Validate maintenance window if specified

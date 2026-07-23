@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/alerting"
 	"github.com/home-operations/tuppr/internal/controller/jobs"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
@@ -47,18 +48,19 @@ const (
 )
 
 const (
-	appLabelKey          = jobs.AppLabelKey
-	appInstanceLabelKey  = jobs.AppInstanceLabelKey
-	appPartOfLabelKey    = jobs.AppPartOfLabelKey
-	appPartOfTuppr       = jobs.AppPartOfTuppr
-	targetNodeLabelKey   = jobs.TargetNodeLabelKey
-	talosUpgradeAppName  = "talos-upgrade"
-	statusCompletedNodes = "completedNodes"
-	statusFailedNodes    = "failedNodes"
-	statusRebootingNodes = "rebootingNodes"
-	statusPreHookFailed  = "preHookFailed"
-	statusPreHookIndex   = "preHookIndex"
-	statusPostHookIndex  = "postHookIndex"
+	appLabelKey           = jobs.AppLabelKey
+	appInstanceLabelKey   = jobs.AppInstanceLabelKey
+	appPartOfLabelKey     = jobs.AppPartOfLabelKey
+	appPartOfTuppr        = jobs.AppPartOfTuppr
+	targetNodeLabelKey    = jobs.TargetNodeLabelKey
+	talosUpgradeAppName   = "talos-upgrade"
+	statusAlertSilenceIDs = "alertSilenceIDs"
+	statusCompletedNodes  = "completedNodes"
+	statusFailedNodes     = "failedNodes"
+	statusRebootingNodes  = "rebootingNodes"
+	statusPreHookFailed   = "preHookFailed"
+	statusPreHookIndex    = "preHookIndex"
+	statusPostHookIndex   = "postHookIndex"
 )
 
 // TalosClient defines the interface for Talos operations
@@ -111,6 +113,7 @@ type Reconciler struct {
 	ImageChecker        ImageChecker
 	Notifier            notification.Notifier
 	Renderer            *notification.Renderer
+	Silencer            alerting.Silencer
 	Recorder            record.EventRecorder
 }
 
@@ -143,6 +146,20 @@ func (r *Reconciler) cleanup(ctx context.Context, talosUpgrade *tupprv1alpha1.Ta
 	logger.V(1).Info("Cleaning up TalosUpgrade", "name", talosUpgrade.Name)
 
 	r.clearOutdatedTaints(ctx, talosUpgrade)
+
+	// Best-effort: a deleted mid-run CR shouldn't leave its silences open for
+	// the full TTL. On failure the leases lapse on their own.
+	if r.Silencer != nil {
+		for _, id := range talosUpgrade.Status.AlertSilenceIDs {
+			if id == "" {
+				continue
+			}
+			if err := r.Silencer.Expire(ctx, id, silenceTail); err != nil {
+				logger.V(1).Info("Failed to expire Alertmanager silence on deletion; it lapses at its TTL",
+					"silenceID", id, "error", err)
+			}
+		}
+	}
 
 	logger.V(1).Info("Removing finalizer", "name", talosUpgrade.Name, "finalizer", TalosUpgradeFinalizer)
 	controllerutil.RemoveFinalizer(talosUpgrade, TalosUpgradeFinalizer)

@@ -78,6 +78,18 @@ notification:
   # -- Go template for the notification message; empty uses the built-in default. Same helpers and fields as titleTemplate.
   messageTemplate: ""
 
+# Alertmanager silences held while upgrades run. Which alerts get silenced is
+# per-resource and user-authored (`spec.silences` on a TalosUpgrade); this only
+# configures how the operator reaches Alertmanager.
+silences:
+  # -- Enable upgrade-run silences.
+  enabled: false
+  alertmanager:
+    # -- Alertmanager base URL (e.g. http://alertmanager.monitoring.svc:9093). Anything speaking the v2 silences API works (VMAlertmanager, Grafana-managed alerting behind its prefix).
+    address: ""
+    # -- Name of a Secret whose keys/values are sent as HTTP headers on every Alertmanager request (e.g. Authorization, X-Scope-OrgID).
+    secretName: ""
+
 # -- Container securityContext (no privilege escalation, read-only root filesystem, drops ALL capabilities).
 securityContext:
   allowPrivilegeEscalation: false

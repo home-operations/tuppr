@@ -200,6 +200,86 @@ spec:
 - A `TalosUpgrade` re-checks the window between nodes.
 - No windows configured → upgrades start immediately.
 
+## Alertmanager silences
+
+Every node reboot during an upgrade fires a burst of expected alerts
+(`CephMonDown`, `KubeNodeUnreachable`, `TargetDown`, ...). tuppr knows exactly
+when that window starts and ends, so it can hold an Alertmanager silence open
+for the run.
+
+The connection is operator-level (credentials stay out of CRs - see the
+[chart values](configuration.md)); which alerts get silenced is per-resource
+and user-authored, same philosophy as `healthChecks`:
+
+```yaml
+# Helm values
+silences:
+  enabled: true
+  alertmanager: # where the silences are created
+    address: http://alertmanager.monitoring.svc:9093
+    secretName: tuppr-alertmanager # optional: Secret of HTTP headers (Authorization, X-Scope-OrgID)
+```
+
+```yaml
+# TalosUpgrade
+spec:
+  silences: # requires silences.* configured in the Helm chart
+    - matchers:
+        - name: alertname
+          value: ^(CephMonDown|CephOSDDown|KubeNodeUnreachable|TargetDown)$
+          matchType: "=~" # "=", "!=", "=~", "!~"
+      maxDuration: 2h # default 4h
+```
+
+Each list entry is one Alertmanager silence, held for the whole run.
+
+/// warning | Matchers within one silence are ANDed
+Alertmanager semantics: a silence matches an alert only when **all** its
+matchers do. To cover alternatives, use a regex value (as above); to silence
+independent scopes - say Ceph alerts only in `namespace=rook-ceph` plus a
+cluster-wide `TargetDown` - use separate `silences` entries, one per scope.
+///
+
+Anything speaking the Alertmanager v2 silences API works: Prometheus
+Alertmanager, VMAlertmanager, or Grafana-managed alerting behind its prefix.
+
+### The silence is a lease, not a timer
+
+tuppr never guesses how long the run will take. It creates a **short silence
+(~25m) and re-extends it on every reconcile** while the run is active, then
+expires it down to a ~5m tail at the terminal phase (so the last reboot's
+alert tail stays covered). Every failure mode converges to "the silence lapses
+within its TTL":
+
+- Controller crash or CR deleted mid-run → lapses on its own.
+- Alertmanager unreachable → logged and evented, **never gates the upgrade**.
+- Run parked (`Pending`, `MaintenanceWindow`, coordination wait) → lapses;
+  re-established when the run resumes. A cluster parked overnight should alert.
+- Suspending the CR (the `suspend` annotation) expires the silence immediately.
+
+Two details worth knowing:
+
+- The silence is created only once the run **leaves its initial health check**,
+  so alerts stay live while the cluster is still being verified - and it keeps
+  being extended through inter-batch health checks, so there is no mid-run gap.
+- A run that is active but stuck (health checks failing for hours because
+  something is genuinely broken) stops extending at each entry's `maxDuration`
+  and emits a `SilenceMaxDurationReached` event - you get paged again instead
+  of masking a real failure.
+
+The silence IDs are visible in `.status.alertSilenceIDs` (indexed like
+`spec.silences`), and their lifecycle is emitted as Events (`SilenceCreated`,
+`SilenceExpired`, ...) on the resource. Configuring `spec.silences` without the
+operator-level Alertmanager connection warns at apply time (admission webhook)
+and as a `SilencesNotConfigured` event.
+
+/// tip | Alternative: Alertmanager inhibition
+If you'd rather keep alert routing entirely in Alertmanager, you can wire an
+inhibition rule keyed on tuppr's `tuppr_talos_upgrade_phase` metric (via an
+always-firing "upgrade in progress" alert) instead - zero tuppr configuration,
+at the cost of maintaining the alert + `inhibit_rules` by hand.
+///
+
 ## Per-node overrides
 
 Annotations on a **Node** override the plan for that node - handy for a canary

@@ -204,3 +204,42 @@ tests:
           content:
             name: extra
             mountPath: /extra
+
+  - it: should fail when silences are enabled without an alertmanager address
+    set:
+      silences.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: silences.alertmanager.address is required
+
+  - it: should wire the alertmanager env and headers secret when silences are enabled
+    set:
+      silences.enabled: true
+      silences.alertmanager.address: http://alertmanager.monitoring.svc:9093
+      silences.alertmanager.secretName: tuppr-alertmanager
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ALERTMANAGER_ADDRESS
+            value: http://alertmanager.monitoring.svc:9093
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ALERTMANAGER_HEADERS_DIR
+            value: /var/run/secrets/alertmanager-headers
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: alertmanager-headers
+            secret:
+              secretName: tuppr-alertmanager
+              defaultMode: 420
+
+  - it: should not render alertmanager env when disabled
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ALERTMANAGER_ADDRESS
+          any: true

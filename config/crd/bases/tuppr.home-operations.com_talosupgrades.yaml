@@ -4835,6 +4835,61 @@ spec:
                       Multi-Attach error when a fast reboot orphans a mount. No-op on single-node.
                     type: boolean
                 type: object
+              silences:
+                description: |-
+                  Silences are Alertmanager silences held while this upgrade runs, one per
+                  entry. Requires the operator-level Alertmanager connection (Helm
+                  `silences.*`).
+                items:
+                  description: |-
+                    SilenceSpec describes one Alertmanager silence held during an upgrade run.
+                    The silence is a short lease re-extended on every reconcile while the run is
+                    active, so it lapses on its own if the controller stops driving the run.
+                  properties:
+                    matchers:
+                      description: |-
+                        Matchers select the alerts this silence covers. Alertmanager ANDs the
+                        matchers of one silence; use a regex value to cover alternatives, or
+                        additional silences for independent scopes.
+                      items:
+                        description: SilenceMatcher is one Alertmanager silence matcher.
+                        properties:
+                          matchType:
+                            default: =
+                            description: 'MatchType is the match operator: = (equals),
+                              != , =~ (regex), !~.'
+                            enum:
+                            - =
+                            - '!='
+                            - =~
+                            - '!~'
+                            type: string
+                          name:
+                            description: Name of the alert label to match.
+                            minLength: 1
+                            type: string
+                          value:
+                            description: Value the label is matched against.
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        - value
+                        type: object
+                      minItems: 1
+                      type: array
+                    maxDuration:
+                      default: 4h
+                      description: |-
+                        MaxDuration hard-caps how long past the run start the silence keeps
+                        being extended; a run still active beyond it alerts again.
+                      pattern: ^([0-9]+[smh])+$
+                      type: string
+                  required:
+                  - matchers
+                  type: object
+                minItems: 1
+                type: array
               talos:
                 description: Talos specifies the talos configuration for upgrade operations
                 properties:
@@ -4877,6 +4932,15 @@ spec:
           status:
             description: TalosUpgradeStatus defines the observed state of TalosUpgrade
             properties:
+              alertSilenceIDs:
+                description: |-
+                  AlertSilenceIDs are the Alertmanager silences this run holds open, indexed
+                  like spec.silences (an empty entry is a silence not yet created). Persisted
+                  so the leases are re-adopted across controller restarts and expired when
+                  the run leaves its active phases.
+                items:
+                  type: string
+                type: array
               completedAt:
                 description: CompletedAt is the time the upgrade reached a terminal
                   phase
