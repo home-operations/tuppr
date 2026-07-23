@@ -67,6 +67,7 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, talosUpgrade *tu
 	if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", nil, "Reset requested via annotation", map[string]any{
 		statusCompletedNodes: []string{},
 		statusFailedNodes:    []tupprv1alpha1.NodeUpgradeStatus{},
+		statusRebootingNodes: []tupprv1alpha1.NodeRebootStatus{},
 		statusPreHookIndex:   0,
 		statusPostHookIndex:  0,
 		statusPreHookFailed:  false,
@@ -92,6 +93,7 @@ func (r *Reconciler) handleGenerationChange(ctx context.Context, talosUpgrade *t
 	if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", nil, "Spec updated, restarting upgrade process", map[string]any{
 		statusCompletedNodes: []string{},
 		statusFailedNodes:    []tupprv1alpha1.NodeUpgradeStatus{},
+		statusRebootingNodes: []tupprv1alpha1.NodeRebootStatus{},
 		statusPreHookIndex:   0,
 		statusPostHookIndex:  0,
 		statusPreHookFailed:  false,

@@ -5082,6 +5082,29 @@ spec:
                   PreHookIndex is the index of the next pre-hook to run.
                   Equals len(spec.hooks.pre) once all pre-hooks are done.
                 type: integer
+              rebootingNodes:
+                description: |-
+                  RebootingNodes tracks nodes whose upgrade job finished but whose
+                  post-reboot readiness has not been verified yet. Persisted in status so
+                  the wait survives upgrade Job garbage collection; a node that never
+                  comes back is marked failed once its deadline passes.
+                items:
+                  description: NodeRebootStatus tracks a node awaiting post-upgrade
+                    reboot verification
+                  properties:
+                    deadline:
+                      description: Deadline is when the reboot wait expires and the
+                        node is marked failed
+                      format: date-time
+                      type: string
+                    nodeName:
+                      description: NodeName is the name of the node
+                      type: string
+                  required:
+                  - deadline
+                  - nodeName
+                  type: object
+                type: array
               startedAt:
                 description: StartedAt is the time the current upgrade run began
                 format: date-time

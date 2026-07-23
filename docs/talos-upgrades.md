@@ -74,7 +74,7 @@ Health checks are also available on [`KubernetesUpgrade`](kubernetes-upgrades.md
 | `rebootMode`          | `default` | `default`, or `powercycle` for nodes that don't reboot cleanly.                    |
 | `stage`               | `false`   | Stage the upgrade and apply it on the next reboot (two reboots total).             |
 | `waitForVolumeDetach` | `false`   | Drain and wait for CSI volumes to detach before the reboot (see below).            |
-| `timeout`             | `30m`     | Per-node upgrade timeout.                                                           |
+| `timeout`             | `30m`     | Per-node upgrade timeout, including how long a node may take to become ready after its reboot before being marked failed. |
 
 /// tip | waitForVolumeDetach
 Set this when a fast reboot could orphan a mount and pin a volume to the node -

@@ -50,6 +50,7 @@ const (
 	ReasonCreateJob              = "CreateJob"
 	ReasonCheckNodeVersions      = "CheckNodeVersions"
 	ReasonSuspended              = "Suspended"
+	ReasonNodeUnreachable        = "NodeUnreachable"
 )
 
 // ApplyConditions sets Progressing and Ready for the given phase. Empty reason
