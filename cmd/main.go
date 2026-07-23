@@ -143,12 +143,14 @@ func main() {
 
 	var silencer alerting.Silencer
 	if alertmanagerAddress := os.Getenv("ALERTMANAGER_ADDRESS"); alertmanagerAddress != "" {
-		headers, err := alerting.LoadHeadersDir(os.Getenv("ALERTMANAGER_HEADERS_DIR"))
-		if err != nil {
+		headersDir := os.Getenv("ALERTMANAGER_HEADERS_DIR")
+		// Fail fast on an unreadable headers dir; the client re-reads it per
+		// request so Secret rotation takes effect without a restart.
+		if _, err := alerting.LoadHeadersDir(headersDir); err != nil {
 			setupLog.Error(err, "invalid alertmanager headers")
 			os.Exit(1)
 		}
-		silencer = alerting.NewClient(alertmanagerAddress, headers)
+		silencer = alerting.NewClient(alertmanagerAddress, headersDir)
 	}
 
 	if metricsServiceName == "" {

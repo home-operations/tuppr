@@ -65,23 +65,32 @@ type silence struct {
 	} `json:"status,omitempty"`
 }
 
+// renewLeeway is how much of the lease may elapse before Ensure renews it:
+// an extension is skipped while more than ttl-renewLeeway remains, so steady
+// state is one GET per reconcile and one POST per ~renewLeeway. 5m leaves
+// ample margin over controller-runtime's maximum error backoff (~16.7m)
+// against the 25m lease.
+const renewLeeway = 5 * time.Minute
+
 // Client talks to one Alertmanager (or any v2-compatible endpoint: VMAlertmanager,
 // Grafana-managed alerting behind its prefix).
 type Client struct {
-	baseURL string
-	headers map[string]string
-	hc      *http.Client
-	now     func() time.Time
+	baseURL    string
+	headersDir string
+	hc         *http.Client
+	now        func() time.Time
 }
 
-// NewClient builds a Client for the given base URL. Every request carries the
-// given headers (e.g. Authorization, X-Scope-OrgID).
-func NewClient(baseURL string, headers map[string]string) *Client {
+// NewClient builds a Client for the given base URL. When headersDir is
+// non-empty, every request carries the headers read from it (file name =
+// header name); reading per request keeps a rotated Secret volume current
+// without a restart.
+func NewClient(baseURL, headersDir string) *Client {
 	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		headers: headers,
-		hc:      &http.Client{Timeout: 10 * time.Second},
-		now:     time.Now,
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		headersDir: headersDir,
+		hc:         &http.Client{Timeout: 10 * time.Second},
+		now:        time.Now,
 	}
 }
 
@@ -101,6 +110,12 @@ func (c *Client) Ensure(ctx context.Context, id string, matchers []Matcher, ttl 
 		if existing, err := c.get(ctx, id); err != nil {
 			return "", err
 		} else if existing != nil && (existing.Status == nil || existing.Status.State != "expired") {
+			// Still fresh: skip the renewal POST until the lease enters its
+			// renewal window. Matcher edits reset the run anyway, so a skipped
+			// pass never leaves stale matchers in place for long.
+			if ttl > renewLeeway && existing.EndsAt.Sub(now) > ttl-renewLeeway {
+				return id, nil
+			}
 			sil.ID = id
 			sil.StartsAt = existing.StartsAt
 		}
@@ -183,16 +198,22 @@ func (c *Client) post(ctx context.Context, sil silence) (string, error) {
 }
 
 func (c *Client) do(req *http.Request) (*http.Response, error) {
-	for k, v := range c.headers {
+	// Re-read per request so a rotated headers Secret takes effect without a
+	// pod restart; the volume is tmpfs, so this is trivial next to the HTTP call.
+	headers, err := LoadHeadersDir(c.headersDir)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
 	return c.hc.Do(req)
 }
 
 // LoadHeadersDir reads a directory of files into a header map (file name =
-// header name, trimmed contents = value) — the shape of a mounted Secret
-// volume. A missing or empty dir yields nil. Kubernetes' atomic-update
-// machinery ("..data" and friends) is skipped.
+// header name, trimmed contents = value): the shape of a mounted Secret
+// volume. An empty dir path yields nil; a missing directory is an error.
+// Kubernetes' atomic-update machinery ("..data" and friends) is skipped.
 func LoadHeadersDir(dir string) (map[string]string, error) {
 	if dir == "" {
 		return nil, nil

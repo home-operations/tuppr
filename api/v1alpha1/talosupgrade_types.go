@@ -201,6 +201,7 @@ type TalosUpgradeSpec struct {
 	// `silences.*`).
 	// +optional
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=8
 	Silences []SilenceSpec `json:"silences,omitempty"`
 }
 
@@ -290,6 +291,12 @@ type TalosUpgradeStatus struct {
 	// the run leaves its active phases.
 	// +optional
 	AlertSilenceIDs []string `json:"alertSilenceIDs,omitempty"`
+
+	// AlertSilencesSince is when the current silence hold began; each entry's
+	// maxDuration caps extension relative to it. Cleared when the hold is
+	// released, so a resumed run gets a fresh budget.
+	// +optional
+	AlertSilencesSince *metav1.Time `json:"alertSilencesSince,omitempty"`
 }
 
 // TalosUpgradeHistoryEntry records a single completed Talos upgrade run

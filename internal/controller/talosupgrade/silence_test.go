@@ -67,10 +67,10 @@ func withHeldSilence(tu *tupprv1alpha1.TalosUpgrade) {
 	tu.Status.AlertSilenceIDs = []string{testSilenceID}
 }
 
-func withStartedAt(t time.Time) func(*tupprv1alpha1.TalosUpgrade) {
+func withSilencesSince(t time.Time) func(*tupprv1alpha1.TalosUpgrade) {
 	return func(tu *tupprv1alpha1.TalosUpgrade) {
-		started := metav1.NewTime(t)
-		tu.Status.StartedAt = &started
+		since := metav1.NewTime(t)
+		tu.Status.AlertSilencesSince = &since
 	}
 }
 
@@ -84,21 +84,45 @@ func newSilenceReconciler(t *testing.T, tu *tupprv1alpha1.TalosUpgrade, silencer
 	return r
 }
 
-func TestSyncAlertSilences_NilSilencerWarnsWhenConfigured(t *testing.T) {
+func TestSyncAlertSilences_NilSilencerWarnsOnce(t *testing.T) {
 	tu := newTalosUpgrade("test", withSilences, withPhase(tupprv1alpha1.JobPhaseUpgrading))
 	r := newSilenceReconciler(t, tu, nil)
 	recorder := record.NewFakeRecorder(4)
 	r.Recorder = recorder
 
+	// The warning is latched: repeated reconciles emit it exactly once.
+	r.syncAlertSilences(context.Background(), tu, false)
 	r.syncAlertSilences(context.Background(), tu, false)
 
-	select {
-	case event := <-recorder.Events:
-		if !strings.Contains(event, "SilencesNotConfigured") {
-			t.Fatalf("unexpected event: %s", event)
+	events := drainEvents(recorder)
+	if len(events) != 1 || !strings.Contains(events[0], "SilencesNotConfigured") {
+		t.Fatalf("expected exactly one SilencesNotConfigured event, got %v", events)
+	}
+}
+
+func TestSyncAlertSilences_NilSilencerClearsStaleIDs(t *testing.T) {
+	// Operator redeployed without silences while a run held IDs: the silences
+	// lapsed at their TTL, so the stale status entries are cleared.
+	tu := newTalosUpgrade("test", withSilences,
+		withPhase(tupprv1alpha1.JobPhaseUpgrading), withHeldSilence)
+	r := newSilenceReconciler(t, tu, nil)
+
+	r.syncAlertSilences(context.Background(), tu, false)
+
+	if stored := getTalosUpgrade(t, r.Client, "test"); len(stored.Status.AlertSilenceIDs) != 0 {
+		t.Fatalf("stale silence IDs not cleared: %v", stored.Status.AlertSilenceIDs)
+	}
+}
+
+func drainEvents(recorder *record.FakeRecorder) []string {
+	var events []string
+	for {
+		select {
+		case e := <-recorder.Events:
+			events = append(events, e)
+		default:
+			return events
 		}
-	default:
-		t.Fatal("expected a SilencesNotConfigured warning event")
 	}
 }
 
@@ -159,8 +183,28 @@ func TestSyncAlertSilences_OneLeasePerEntry(t *testing.T) {
 	if !slices.Equal(silencer.expiredIDs, []string{testSilenceID, testSilenceID2}) {
 		t.Fatalf("expected both silences expired, got %v", silencer.expiredIDs)
 	}
-	if stored := getTalosUpgrade(t, r.Client, "test"); len(stored.Status.AlertSilenceIDs) != 0 {
-		t.Fatalf("silence IDs not cleared: %v", stored.Status.AlertSilenceIDs)
+	if stored := getTalosUpgrade(t, r.Client, "test"); len(stored.Status.AlertSilenceIDs) != 0 || stored.Status.AlertSilencesSince != nil {
+		t.Fatalf("silence IDs/since not cleared: %v / %v", stored.Status.AlertSilenceIDs, stored.Status.AlertSilencesSince)
+	}
+}
+
+func TestSyncAlertSilences_ReplacedSilenceEmitsRecreatedEvent(t *testing.T) {
+	// Alertmanager lost the silence (restart, lapse): Ensure mints a new ID
+	// and the move is surfaced as an event.
+	tu := newTalosUpgrade("test", withSilences,
+		withPhase(tupprv1alpha1.JobPhaseUpgrading), withHeldSilence, withSilencesSince(time.Now()))
+	silencer := &mockSilencer{returnIDs: []string{testSilenceID2}}
+	r := newSilenceReconciler(t, tu, silencer)
+	recorder := record.NewFakeRecorder(4)
+	r.Recorder = recorder
+
+	r.syncAlertSilences(context.Background(), tu, false)
+
+	if !slices.Equal(tu.Status.AlertSilenceIDs, []string{testSilenceID2}) {
+		t.Fatalf("replacement ID not persisted: %v", tu.Status.AlertSilenceIDs)
+	}
+	if events := drainEvents(recorder); len(events) != 1 || !strings.Contains(events[0], "SilenceRecreated") {
+		t.Fatalf("expected a SilenceRecreated event, got %v", events)
 	}
 }
 
@@ -211,10 +255,13 @@ func TestSyncAlertSilences_ExpireFailureStillClearsIDs(t *testing.T) {
 func TestSyncAlertSilences_MaxDurationStopsExtending(t *testing.T) {
 	tu := newTalosUpgrade("test", withSilences,
 		withPhase(tupprv1alpha1.JobPhaseUpgrading), withHeldSilence,
-		withStartedAt(time.Now().Add(-5*time.Hour))) // past the 4h default cap
+		withSilencesSince(time.Now().Add(-5*time.Hour))) // hold older than the 4h default cap
 	silencer := &mockSilencer{}
 	r := newSilenceReconciler(t, tu, silencer)
+	recorder := record.NewFakeRecorder(4)
+	r.Recorder = recorder
 
+	r.syncAlertSilences(context.Background(), tu, false)
 	r.syncAlertSilences(context.Background(), tu, false)
 
 	if silencer.ensureCalls != 0 {
@@ -222,6 +269,31 @@ func TestSyncAlertSilences_MaxDurationStopsExtending(t *testing.T) {
 	}
 	if !slices.Equal(tu.Status.AlertSilenceIDs, []string{testSilenceID}) {
 		t.Fatalf("capped silence ID should stay for later expiry: %v", tu.Status.AlertSilenceIDs)
+	}
+	// The cap warning is latched: repeated reconciles emit it exactly once.
+	if events := drainEvents(recorder); len(events) != 1 || !strings.Contains(events[0], "SilenceMaxDurationReached") {
+		t.Fatalf("expected exactly one SilenceMaxDurationReached event, got %v", events)
+	}
+}
+
+func TestSyncAlertSilences_ParkedRunGetsFreshMaxDurationBudget(t *testing.T) {
+	// A run resumed after a long MaintenanceWindow park has no hold (IDs and
+	// alertSilencesSince were cleared at park), so silences are re-created
+	// regardless of how long ago the RUN started.
+	tu := newTalosUpgrade("test", withSilences, withPhase(tupprv1alpha1.JobPhaseUpgrading))
+	started := metav1.NewTime(time.Now().Add(-9 * time.Hour)) // run started long ago
+	tu.Status.StartedAt = &started
+	silencer := &mockSilencer{returnIDs: []string{testSilenceID}}
+	r := newSilenceReconciler(t, tu, silencer)
+
+	r.syncAlertSilences(context.Background(), tu, false)
+
+	if silencer.ensureCalls != 1 {
+		t.Fatalf("expected the resumed run to re-create its silence, got %d Ensure calls", silencer.ensureCalls)
+	}
+	stored := getTalosUpgrade(t, r.Client, "test")
+	if stored.Status.AlertSilencesSince == nil {
+		t.Fatal("expected alertSilencesSince to start a fresh hold budget")
 	}
 }
 

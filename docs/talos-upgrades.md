@@ -263,9 +263,11 @@ Two details worth knowing:
   so alerts stay live while the cluster is still being verified - and it keeps
   being extended through inter-batch health checks, so there is no mid-run gap.
 - A run that is active but stuck (health checks failing for hours because
-  something is genuinely broken) stops extending at each entry's `maxDuration`
-  and emits a `SilenceMaxDurationReached` event - you get paged again instead
-  of masking a real failure.
+  something is genuinely broken) stops extending once the continuous hold
+  exceeds an entry's `maxDuration`, emitting a `SilenceMaxDurationReached`
+  event (once) - you get paged again instead of masking a real failure. The
+  budget re-arms when the hold is released, so a run resumed after a long
+  park silences its remaining reboots normally.
 
 The silence IDs are visible in `.status.alertSilenceIDs` (indexed like
 `spec.silences`), and their lifecycle is emitted as Events (`SilenceCreated`,

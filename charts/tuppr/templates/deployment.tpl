@@ -2,6 +2,9 @@
 {{- if and .Values.silences.enabled (not .Values.silences.alertmanager.address) }}
 {{- fail "silences.alertmanager.address is required when silences.enabled is true" }}
 {{- end }}
+{{- /* The guard above makes enabled imply address, so the body only needs
+       enabled plus this one derived condition for the three header-secret sites. */}}
+{{- $silenceHeaders := and .Values.silences.enabled .Values.silences.alertmanager.secretName }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -86,10 +89,10 @@ spec:
               value: {{ . | quote }}
             {{- end }}
             {{- end }}
-            {{- if and .Values.silences.enabled .Values.silences.alertmanager.address }}
+            {{- if .Values.silences.enabled }}
             - name: ALERTMANAGER_ADDRESS
               value: {{ .Values.silences.alertmanager.address | quote }}
-            {{- if .Values.silences.alertmanager.secretName }}
+            {{- if $silenceHeaders }}
             - name: ALERTMANAGER_HEADERS_DIR
               value: /var/run/secrets/alertmanager-headers
             {{- end }}
@@ -122,7 +125,7 @@ spec:
             - name: talosconfig
               mountPath: /var/run/secrets/talos.dev
               readOnly: true
-            {{- if and .Values.silences.enabled .Values.silences.alertmanager.address .Values.silences.alertmanager.secretName }}
+            {{- if $silenceHeaders }}
             - name: alertmanager-headers
               mountPath: /var/run/secrets/alertmanager-headers
               readOnly: true
@@ -141,7 +144,7 @@ spec:
           secret:
             secretName: {{ include "tuppr.serviceAccountName" . }}-talosconfig
             defaultMode: 420
-        {{- if and .Values.silences.enabled .Values.silences.alertmanager.address .Values.silences.alertmanager.secretName }}
+        {{- if $silenceHeaders }}
         - name: alertmanager-headers
           secret:
             secretName: {{ .Values.silences.alertmanager.secretName }}

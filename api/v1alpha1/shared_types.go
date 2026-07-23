@@ -55,8 +55,9 @@ type SilenceSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	Matchers []SilenceMatcher `json:"matchers"`
 
-	// MaxDuration hard-caps how long past the run start the silence keeps
-	// being extended; a run still active beyond it alerts again.
+	// MaxDuration hard-caps how long a continuous silence hold keeps being
+	// extended; a run still holding this silence beyond it alerts again. The
+	// budget re-arms when the hold is released (run parked or finished).
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:Pattern=`^([0-9]+[smh])+$`
 	// +kubebuilder:default="4h"

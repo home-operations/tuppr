@@ -13,10 +13,11 @@ import (
 // fakeAM is a minimal Alertmanager v2 silences endpoint: stores one silence,
 // mints IDs, and mirrors the get/post surface the client uses.
 type fakeAM struct {
-	t        *testing.T
-	silences map[string]silence
-	nextID   int
-	lastAuth string
+	t         *testing.T
+	silences  map[string]silence
+	nextID    int
+	postCount int
+	lastAuth  string
 }
 
 func (f *fakeAM) handler() http.Handler {
@@ -33,6 +34,7 @@ func (f *fakeAM) handler() http.Handler {
 		}
 	})
 	mux.HandleFunc("POST /api/v2/silences", func(w http.ResponseWriter, r *http.Request) {
+		f.postCount++
 		f.lastAuth = r.Header.Get("Authorization")
 		var sil silence
 		if err := json.NewDecoder(r.Body).Decode(&sil); err != nil {
@@ -62,7 +64,11 @@ func newFakeAM(t *testing.T) (*fakeAM, *Client) {
 	am := &fakeAM{t: t, silences: map[string]silence{}}
 	srv := httptest.NewServer(am.handler())
 	t.Cleanup(srv.Close)
-	return am, NewClient(srv.URL, map[string]string{"Authorization": "Bearer token"})
+	headersDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(headersDir, "Authorization"), []byte("Bearer token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return am, NewClient(srv.URL, headersDir)
 }
 
 var testMatchers = []Matcher{{Name: "alertname", Value: "^CephMonDown$", IsRegex: true, IsEqual: true}}
@@ -113,6 +119,27 @@ func TestEnsure_ExtendsKeepingIDAndStartsAt(t *testing.T) {
 	}
 	if !extended.EndsAt.After(created.EndsAt) {
 		t.Fatalf("endsAt not extended: %s -> %s", created.EndsAt, extended.EndsAt)
+	}
+}
+
+func TestEnsure_SkipsRenewalWhileFresh(t *testing.T) {
+	am, c := newFakeAM(t)
+
+	id, err := c.Ensure(t.Context(), "", testMatchers, 25*time.Minute, "tuppr/cluster", "test")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Immediately re-ensuring finds >20m remaining: no renewal POST.
+	newID, err := c.Ensure(t.Context(), id, testMatchers, 25*time.Minute, "tuppr/cluster", "test")
+	if err != nil {
+		t.Fatalf("re-ensure: %v", err)
+	}
+	if newID != id {
+		t.Fatalf("skip changed ID: %q -> %q", id, newID)
+	}
+	if am.postCount != 1 {
+		t.Fatalf("expected the fresh lease to skip the renewal POST, got %d POSTs", am.postCount)
 	}
 }
 

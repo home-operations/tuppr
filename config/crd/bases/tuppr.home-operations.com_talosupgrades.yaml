@@ -4881,13 +4881,15 @@ spec:
                     maxDuration:
                       default: 4h
                       description: |-
-                        MaxDuration hard-caps how long past the run start the silence keeps
-                        being extended; a run still active beyond it alerts again.
+                        MaxDuration hard-caps how long a continuous silence hold keeps being
+                        extended; a run still holding this silence beyond it alerts again. The
+                        budget re-arms when the hold is released (run parked or finished).
                       pattern: ^([0-9]+[smh])+$
                       type: string
                   required:
                   - matchers
                   type: object
+                maxItems: 8
                 minItems: 1
                 type: array
               talos:
@@ -4941,6 +4943,13 @@ spec:
                 items:
                   type: string
                 type: array
+              alertSilencesSince:
+                description: |-
+                  AlertSilencesSince is when the current silence hold began; each entry's
+                  maxDuration caps extension relative to it. Cleared when the hold is
+                  released, so a resumed run gets a fresh budget.
+                format: date-time
+                type: string
               completedAt:
                 description: CompletedAt is the time the upgrade reached a terminal
                   phase
