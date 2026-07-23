@@ -11,7 +11,8 @@
       "include-component-in-tag": false,
       "include-v-in-tag": false,
       "include-v-in-release-name": false,
-      "always-update": true
+      "always-update": true,
+      "extra-files": ["charts/tuppr/Chart.yaml", "charts/tuppr/README.md"]
     }
   },
   "changelog-sections": [
