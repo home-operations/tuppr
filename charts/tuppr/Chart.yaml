@@ -6,8 +6,12 @@ type: application
 # Floor matching the chart's surface: restricted Pod Security (seccompProfile),
 # the admission webhook (admissionregistration.k8s.io/v1), and CRDs.
 kubeVersion: ">=1.25.0-0"
-version: 0.0.0
-appVersion: "0.0.0"
+# Chart + default image version, stamped by release-please on every release so
+# a git-sourced install deploys real image tags (the release workflow re-stamps
+# both at package time anyway; these keep the repo copy from going stale).
+version: 0.4.0 # x-release-please-version
+# Operator/image version this chart deploys by default.
+appVersion: "0.4.0" # x-release-please-version
 home: https://github.com/home-operations/tuppr
 sources:
   - https://github.com/home-operations/tuppr

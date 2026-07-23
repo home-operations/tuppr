@@ -7,11 +7,13 @@ tests:
       - isKind:
           of: Deployment
 
-  - it: should use the correct image
+  # The tag floats with the release-please-stamped appVersion; assert the
+  # repo:semver shape rather than a hardcoded version.
+  - it: should default the image tag to the chart appVersion
     asserts:
-      - equal:
+      - matchRegex:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/home-operations/tuppr:0.0.0
+          pattern: ^ghcr\.io/home-operations/tuppr:\d+\.\d+\.\d+$
 
   - it: should use custom image tag
     set:
