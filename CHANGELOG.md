@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.4.1](https://github.com/home-operations/tuppr/compare/0.4.0...0.4.1) (2026-07-23)
+
+
+### Features
+
+* **talosupgrade:** lease-based Alertmanager silence during upgrade runs ([#416](https://github.com/home-operations/tuppr/issues/416)) ([00a8ffd](https://github.com/home-operations/tuppr/commit/00a8ffd7a806fe7e029f77b1fb34774183e06754))
+
+
+### Bug Fixes
+
+* **container:** update image ghcr.io/siderolabs/kubelet (v1.36.2 → v1.36.3) ([#411](https://github.com/home-operations/tuppr/issues/411)) ([1c2258f](https://github.com/home-operations/tuppr/commit/1c2258f1ce07436aa57a27489b875ef54f07aeb4))
+* **deps:** update kubernetes monorepo (v0.36.2 → v0.36.3) ([#408](https://github.com/home-operations/tuppr/issues/408)) ([69a12e0](https://github.com/home-operations/tuppr/commit/69a12e0227bb511abaa0ca4c4732d7438214b0ce))
+* **helm:** stamp Chart.yaml version on release ([#414](https://github.com/home-operations/tuppr/issues/414)) ([a769302](https://github.com/home-operations/tuppr/commit/a769302f5b9fbcabd4d4034108f68279d0915f99))
+* **release:** use the generic updater for Chart.yaml stamping ([#415](https://github.com/home-operations/tuppr/issues/415)) ([a64bd11](https://github.com/home-operations/tuppr/commit/a64bd11e8b4aeef3ce0f9eecbd2238ac230ee640))
+* **talos:** handle unreachable nodes without stack-trace log spam ([#413](https://github.com/home-operations/tuppr/issues/413)) ([313dec8](https://github.com/home-operations/tuppr/commit/313dec80bc3420771faba7c6ca73e195d24274c1))
+
+
+### Miscellaneous Chores
+
+* **mise:** Update tool kubectl (1.36.2 → 1.36.3) ([#407](https://github.com/home-operations/tuppr/issues/407)) ([38a7513](https://github.com/home-operations/tuppr/commit/38a7513fb831171e662fef9a7f28a1ad284a8cd5))
+
 ## [0.4.0](https://github.com/home-operations/tuppr/compare/0.3.3...0.4.0) (2026-07-22)
 
 
