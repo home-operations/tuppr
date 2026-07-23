@@ -71,6 +71,11 @@ func syncLocalAuditFields(status *tupprv1alpha1.TalosUpgradeStatus, updates map[
 			status.FailedNodes = s
 		}
 	}
+	if v, ok := updates[statusRebootingNodes]; ok {
+		if s, isSlice := v.([]tupprv1alpha1.NodeRebootStatus); isSlice {
+			status.RebootingNodes = s
+		}
+	}
 }
 
 // completionCyclesForVersion counts consecutive newest-first Completed entries

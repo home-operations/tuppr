@@ -59,7 +59,9 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 			logger.V(1).Info("Talos upgrade in terminal state, skipping", "phase", talosUpgrade.Status.Phase)
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 		}
-		nextNodes, err := r.findNextNodes(ctx, talosUpgrade, 1)
+		// Unreachable nodes are ignored here: a completed upgrade shouldn't
+		// restart (or error) because a node went offline afterwards.
+		nextNodes, _, err := r.findNextNodes(ctx, talosUpgrade, 1)
 		if err != nil {
 			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonFindNextNodes, "re-check nodes for restart", time.Minute*5, err), nil
 		}
@@ -84,6 +86,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", nil, "New node detected, restarting upgrade", map[string]any{
 			statusCompletedNodes: []string{},
 			statusFailedNodes:    []tupprv1alpha1.NodeUpgradeStatus{},
+			statusRebootingNodes: []tupprv1alpha1.NodeRebootStatus{},
 			statusPreHookIndex:   0,
 			statusPostHookIndex:  0,
 			statusPreHookFailed:  false,
@@ -137,6 +140,12 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 	} else if len(activeJobs) > 0 {
 		logger.V(1).Info("Found active jobs, handling batch status", "count", len(activeJobs), "nodes", activeNodes)
 		return r.handleBatchJobStatus(ctx, talosUpgrade, activeJobs, activeNodes)
+	}
+
+	// The upgrade Job may have been garbage collected while a node was still
+	// rebooting; resume the reboot wait from status before anything else.
+	if result, done := r.processRebootingNodes(ctx, talosUpgrade); done {
+		return result, nil
 	}
 
 	if len(talosUpgrade.Status.FailedNodes) > 0 {
@@ -281,9 +290,21 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	ctx = context.WithValue(ctx, metrics.ContextKeyUpgradeName, talosUpgrade.Name)
 
 	parallelism := getParallelism(talosUpgrade.Spec)
-	nextNodes, err := r.findNextNodes(ctx, talosUpgrade, parallelism)
+	nextNodes, unreachableNodes, err := r.findNextNodes(ctx, talosUpgrade, parallelism)
 	if err != nil {
 		return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonFindNextNodes, "find candidate nodes", time.Minute, err), nil
+	}
+
+	// An unreachable node pauses the upgrade rather than failing the reconcile:
+	// rebooting more nodes while one is already down risks quorum loss, and a
+	// hard error would log a stack trace on every requeue.
+	if len(unreachableNodes) > 0 {
+		logger.Info("Waiting for unreachable node(s) before continuing upgrade", "nodes", unreachableNodes)
+		message := fmt.Sprintf("Waiting for unreachable node(s): %s", strings.Join(unreachableNodes, ", "))
+		if err := r.setPendingWithReason(ctx, talosUpgrade, upgradeaudit.ReasonNodeUnreachable, message); err != nil {
+			logger.Error(err, "Failed to update phase while waiting for unreachable nodes")
+		}
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
 	if len(nextNodes) == 0 {
@@ -397,6 +418,62 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 }
 
+// processRebootingNodes resumes the post-upgrade reboot wait for nodes whose
+// upgrade Job no longer exists (e.g. garbage collected by its TTL while the
+// node was still down). Each tracked node is verified against the Talos API:
+// ready nodes are completed, nodes past their deadline (or failing
+// verification outright) are marked failed, and the rest keep waiting.
+// Returns done=true when the caller should return the result.
+func (r *Reconciler) processRebootingNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, bool) {
+	logger := log.FromContext(ctx)
+
+	var waiting []string
+	for _, entry := range slices.Clone(talosUpgrade.Status.RebootingNodes) {
+		nodeName := entry.NodeName
+
+		// Drop entries already resolved (e.g. a crash between recording the
+		// outcome and clearing the tracking entry).
+		if slices.Contains(talosUpgrade.Status.CompletedNodes, nodeName) ||
+			slices.ContainsFunc(talosUpgrade.Status.FailedNodes, func(fn tupprv1alpha1.NodeUpgradeStatus) bool {
+				return fn.NodeName == nodeName
+			}) {
+			if err := r.clearRebootTracking(ctx, talosUpgrade, nodeName); err != nil {
+				logger.Error(err, "Failed to clear stale reboot tracking", "node", nodeName)
+			}
+			continue
+		}
+
+		isReady, err := r.verifyNodeUpgrade(ctx, talosUpgrade, nodeName)
+		switch {
+		case err != nil:
+			if err := r.processSingleJobFailure(ctx, talosUpgrade, nodeName, err.Error()); err != nil {
+				logger.Error(err, "Failed to record failed node", "node", nodeName)
+			}
+		case isReady:
+			if err := r.completeNodeUpgrade(ctx, talosUpgrade, nodeName); err != nil {
+				logger.Error(err, "Failed to record completed node", "node", nodeName)
+			}
+		case r.rebootDeadlineExpired(talosUpgrade, nodeName):
+			message := fmt.Sprintf("Node did not become ready within %s after upgrade", nodeUpgradeTimeout(talosUpgrade))
+			if err := r.processSingleJobFailure(ctx, talosUpgrade, nodeName, message); err != nil {
+				logger.Error(err, "Failed to record failed node", "node", nodeName)
+			}
+		default:
+			waiting = append(waiting, nodeName)
+		}
+	}
+
+	if len(waiting) == 0 {
+		return ctrl.Result{}, false
+	}
+
+	message := fmt.Sprintf("Waiting for %d node(s) to finish rebooting", len(waiting))
+	if err := r.setPhaseWithNodes(ctx, talosUpgrade, tupprv1alpha1.JobPhaseRebooting, waiting, message); err != nil {
+		logger.Error(err, "Failed to update phase for rebooting")
+	}
+	return ctrl.Result{RequeueAfter: 30 * time.Second}, true
+}
+
 func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) error {
 	logger := log.FromContext(ctx)
 
@@ -421,6 +498,10 @@ func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpg
 
 		needsUpgrade, err := r.nodeNeedsUpgrade(ctx, node, crdTargetVersion)
 		if err != nil {
+			if talos.IsTransientError(err) {
+				logger.V(1).Info("Node unreachable, skipping out-of-band check", "node", node.Name, "error", err.Error())
+				continue
+			}
 			return fmt.Errorf("check node %s: %w", node.Name, err)
 		}
 		if needsUpgrade {
@@ -448,19 +529,22 @@ func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpg
 	})
 }
 
-// findNextNodes returns up to `count` node names that need upgrading, sorted alphabetically.
-func (r *Reconciler) findNextNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, count int) ([]string, error) {
+// findNextNodes returns up to `count` node names that need upgrading, sorted
+// alphabetically, plus the nodes whose version could not be checked because
+// the Talos API is unreachable. Unreachable nodes are an expected condition
+// (e.g. a node stuck mid-reboot), not a reconcile error.
+func (r *Reconciler) findNextNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, count int) ([]string, []string, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Finding next nodes to upgrade", "talosupgrade", talosUpgrade.Name, "count", count)
 
 	nodes, err := r.getSortedNodes(ctx, talosUpgrade.Spec.NodeSelector)
 	if err != nil {
-		logger.Error(err, "Failed to get nodes")
-		return nil, err
+		return nil, nil, err
 	}
 
 	crdTargetVersion := talosUpgrade.Spec.Talos.Version
 	var result []string
+	var unreachable []string
 
 	// Reconcile the outdated taint across the whole selected set; no early break.
 	for i := range nodes {
@@ -481,8 +565,12 @@ func (r *Reconciler) findNextNodes(ctx context.Context, talosUpgrade *tupprv1alp
 
 		needsUpgrade, err := r.nodeNeedsUpgrade(ctx, node, crdTargetVersion)
 		if err != nil {
-			logger.Error(err, "Failed to check if node needs upgrade", "node", node.Name)
-			return nil, fmt.Errorf("failed to check node %s: %w", node.Name, err)
+			if talos.IsTransientError(err) {
+				logger.Info("Node unreachable, cannot check version", "node", node.Name, "error", err.Error())
+				unreachable = append(unreachable, node.Name)
+				continue
+			}
+			return nil, nil, fmt.Errorf("failed to check node %s: %w", node.Name, err)
 		}
 
 		if needsUpgrade {
@@ -498,10 +586,10 @@ func (r *Reconciler) findNextNodes(ctx context.Context, talosUpgrade *tupprv1alp
 		}
 	}
 
-	if len(result) == 0 {
+	if len(result) == 0 && len(unreachable) == 0 {
 		logger.V(1).Info("All nodes are up to date")
 	}
-	return result, nil
+	return result, unreachable, nil
 }
 
 func (r *Reconciler) getSortedNodes(ctx context.Context, nodeSelector *metav1.LabelSelector) ([]corev1.Node, error) {

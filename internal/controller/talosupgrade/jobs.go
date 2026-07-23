@@ -152,18 +152,38 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 		}
 	}
 
-	// If any nodes are still rebooting, wait for all of them before proceeding
+	// If any nodes are still rebooting, wait for all of them before proceeding.
+	// The wait is recorded in status with a deadline so it survives Job garbage
+	// collection and a node that never comes back is eventually marked failed.
 	if len(rebootingNodes) > 0 {
-		message := fmt.Sprintf("Waiting for %d node(s) to finish rebooting", len(rebootingNodes))
-		if err := r.setPhaseWithNodes(ctx, talosUpgrade, tupprv1alpha1.JobPhaseRebooting, activeNodes, message); err != nil {
-			logger.Error(err, "Failed to update phase for rebooting")
+		if err := r.trackRebootingNodes(ctx, talosUpgrade, rebootingNodes); err != nil {
+			logger.Error(err, "Failed to track rebooting nodes")
 		}
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		var waiting []string
+		for _, nodeName := range rebootingNodes {
+			if !r.rebootDeadlineExpired(talosUpgrade, nodeName) {
+				waiting = append(waiting, nodeName)
+				continue
+			}
+			message := fmt.Sprintf("Node did not become ready within %s after upgrade", nodeUpgradeTimeout(talosUpgrade))
+			if err := r.processSingleJobFailure(ctx, talosUpgrade, nodeName, message); err != nil {
+				return ctrl.Result{RequeueAfter: time.Minute}, err
+			}
+		}
+		if len(waiting) > 0 {
+			message := fmt.Sprintf("Waiting for %d node(s) to finish rebooting", len(waiting))
+			if err := r.setPhaseWithNodes(ctx, talosUpgrade, tupprv1alpha1.JobPhaseRebooting, activeNodes, message); err != nil {
+				logger.Error(err, "Failed to update phase for rebooting")
+			}
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+		// All rebooting nodes timed out; re-reconcile to stop on the failures.
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	// Process failed jobs
 	for _, nodeName := range failedNodes {
-		if err := r.processSingleJobFailure(ctx, talosUpgrade, nodeName); err != nil {
+		if err := r.processSingleJobFailure(ctx, talosUpgrade, nodeName, "Job failed permanently"); err != nil {
 			return ctrl.Result{RequeueAfter: time.Minute}, err
 		}
 	}
@@ -227,6 +247,18 @@ func (r *Reconciler) processSingleJobSuccess(ctx context.Context, talosUpgrade *
 
 	logger.Info("Node verified as upgraded and ready", "node", nodeName)
 
+	if err := r.completeNodeUpgrade(ctx, talosUpgrade, nodeName); err != nil {
+		return jobResultSuccess, err
+	}
+	return jobResultSuccess, nil
+}
+
+// completeNodeUpgrade runs the post-verification bookkeeping for a node that
+// upgraded successfully: sync install image, uncordon, cleanup job, drop
+// labels and reboot tracking, record completion.
+func (r *Reconciler) completeNodeUpgrade(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) error {
+	logger := log.FromContext(ctx)
+
 	if err := r.syncNodeInstallImage(ctx, talosUpgrade, nodeName); err != nil {
 		logger.Error(err, "Failed to sync install image in machine config, continuing", "node", nodeName)
 	} else {
@@ -243,14 +275,21 @@ func (r *Reconciler) processSingleJobSuccess(ctx context.Context, talosUpgrade *
 		logger.Error(err, "Failed to remove upgrading label from node", "node", nodeName)
 	}
 
+	// Record the outcome before dropping the reboot-tracking entry: a leftover
+	// entry is cleaned up as already-resolved on the next pass, but a node
+	// missing from both lists would vanish from durable status.
 	if err := r.addCompletedNode(ctx, talosUpgrade, nodeName); err != nil {
 		logger.Error(err, "Failed to add completed node", "node", nodeName)
-		return jobResultSuccess, err
+		return err
+	}
+
+	if err := r.clearRebootTracking(ctx, talosUpgrade, nodeName); err != nil {
+		logger.Error(err, "Failed to clear reboot tracking", "node", nodeName)
 	}
 
 	r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeTalos, talosUpgrade.Name, nodeName, "success")
 	logger.Info("Node upgrade completed", "node", nodeName)
-	return jobResultSuccess, nil
+	return nil
 }
 
 // ensureNodeUncordoned uncordons the node after a successful upgrade when tuppr
@@ -282,9 +321,9 @@ func (r *Reconciler) ensureNodeUncordoned(ctx context.Context, talosUpgrade *tup
 }
 
 // processSingleJobFailure handles a single failed job: cleanup labels, record failure.
-func (r *Reconciler) processSingleJobFailure(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) error {
+func (r *Reconciler) processSingleJobFailure(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName, lastError string) error {
 	logger := log.FromContext(ctx)
-	logger.Info("Node upgrade failed", "node", nodeName)
+	logger.Info("Node upgrade failed", "node", nodeName, "error", lastError)
 
 	if err := r.removeNodeUpgradingLabel(ctx, nodeName); err != nil {
 		logger.Error(err, "Failed to remove upgrading label from node", "node", nodeName)
@@ -292,12 +331,16 @@ func (r *Reconciler) processSingleJobFailure(ctx context.Context, talosUpgrade *
 
 	nodeStatus := tupprv1alpha1.NodeUpgradeStatus{
 		NodeName:  nodeName,
-		LastError: "Job failed permanently",
+		LastError: lastError,
 	}
 
 	if err := r.addFailedNode(ctx, talosUpgrade, nodeStatus); err != nil {
 		logger.Error(err, "Failed to add failed node", "node", nodeName)
 		return err
+	}
+
+	if err := r.clearRebootTracking(ctx, talosUpgrade, nodeName); err != nil {
+		logger.Error(err, "Failed to clear reboot tracking", "node", nodeName)
 	}
 
 	if err := r.cleanupJobForNode(ctx, nodeName); err != nil {
@@ -471,10 +514,7 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 
 	talosctlImage := talosctlRepo + ":" + talosctlTag
 
-	timeout := TalosJobDefaultTimeout
-	if talosUpgrade.Spec.Policy.Timeout != nil {
-		timeout = talosUpgrade.Spec.Policy.Timeout.Duration
-	}
+	timeout := nodeUpgradeTimeout(talosUpgrade)
 
 	// On a single-node cluster the pod runs on the node it upgrades, so --wait would
 	// have it killed by the reboot and fail the Job. Issue the upgrade and exit; the
@@ -585,6 +625,15 @@ func (r *Reconciler) syncNodeInstallImage(ctx context.Context, talosUpgrade *tup
 	}
 
 	return r.TalosClient.PatchNodeInstallImage(ctx, nodeIP, targetImage)
+}
+
+// nodeUpgradeTimeout returns the per-node upgrade timeout, used both as the
+// talosctl --wait timeout and as the post-upgrade reboot-wait deadline.
+func nodeUpgradeTimeout(talosUpgrade *tupprv1alpha1.TalosUpgrade) time.Duration {
+	if talosUpgrade.Spec.Policy.Timeout != nil {
+		return talosUpgrade.Spec.Policy.Timeout.Duration
+	}
+	return TalosJobDefaultTimeout
 }
 
 func getActiveDeadlineSeconds(timeout time.Duration) int64 {

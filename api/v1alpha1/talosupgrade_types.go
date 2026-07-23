@@ -227,6 +227,13 @@ type TalosUpgradeStatus struct {
 	// +optional
 	FailedNodes []NodeUpgradeStatus `json:"failedNodes,omitempty"`
 
+	// RebootingNodes tracks nodes whose upgrade job finished but whose
+	// post-reboot readiness has not been verified yet. Persisted in status so
+	// the wait survives upgrade Job garbage collection; a node that never
+	// comes back is marked failed once its deadline passes.
+	// +optional
+	RebootingNodes []NodeRebootStatus `json:"rebootingNodes,omitempty"`
+
 	// LastUpdated timestamp of last status update
 	// +optional
 	LastUpdated metav1.Time `json:"lastUpdated,omitempty"`
@@ -296,6 +303,17 @@ type TalosUpgradeHistoryEntry struct {
 	// FailedNodes are the nodes that failed during the run
 	// +optional
 	FailedNodes []string `json:"failedNodes,omitempty"`
+}
+
+// NodeRebootStatus tracks a node awaiting post-upgrade reboot verification
+type NodeRebootStatus struct {
+	// NodeName is the name of the node
+	// +kubebuilder:validation:Required
+	NodeName string `json:"nodeName"`
+
+	// Deadline is when the reboot wait expires and the node is marked failed
+	// +kubebuilder:validation:Required
+	Deadline metav1.Time `json:"deadline"`
 }
 
 // NodeUpgradeStatus tracks the upgrade status of individual nodes

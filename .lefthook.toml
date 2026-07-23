@@ -20,3 +20,10 @@ exclude = ["charts/tuppr/README.md", "docs/**"]
 
 [pre-commit.commands.format-json]
 exclude = ["charts/tuppr/values.schema.json"]
+
+[pre-commit.commands.format-yaml]
+exclude = [
+  "config/crd/bases/**",
+  "config/rbac/role.yaml",
+  "config/webhook/manifests.yaml",
+]

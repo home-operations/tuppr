@@ -55,6 +55,7 @@ const (
 	talosUpgradeAppName  = "talos-upgrade"
 	statusCompletedNodes = "completedNodes"
 	statusFailedNodes    = "failedNodes"
+	statusRebootingNodes = "rebootingNodes"
 	statusPreHookFailed  = "preHookFailed"
 	statusPreHookIndex   = "preHookIndex"
 	statusPostHookIndex  = "postHookIndex"
@@ -374,6 +375,53 @@ func (r *Reconciler) addFailedNode(ctx context.Context, talosUpgrade *tupprv1alp
 	return r.updateStatus(ctx, talosUpgrade, map[string]any{
 		statusFailedNodes: talosUpgrade.Status.FailedNodes,
 	})
+}
+
+// trackRebootingNodes ensures each named node has a reboot-wait entry with a
+// deadline of now + the per-node upgrade timeout. Existing entries keep their
+// original deadline so requeues don't push the deadline out.
+func (r *Reconciler) trackRebootingNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeNames []string) error {
+	deadline := metav1.NewTime(r.Now.Now().Add(nodeUpgradeTimeout(talosUpgrade)))
+	entries := talosUpgrade.Status.RebootingNodes
+	changed := false
+	for _, nodeName := range nodeNames {
+		if slices.ContainsFunc(entries, func(e tupprv1alpha1.NodeRebootStatus) bool {
+			return e.NodeName == nodeName
+		}) {
+			continue
+		}
+		entries = append(entries, tupprv1alpha1.NodeRebootStatus{NodeName: nodeName, Deadline: deadline})
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	talosUpgrade.Status.RebootingNodes = entries
+	return r.updateStatus(ctx, talosUpgrade, map[string]any{statusRebootingNodes: entries})
+}
+
+// clearRebootTracking drops the reboot-wait entry for the node, if present.
+func (r *Reconciler) clearRebootTracking(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) error {
+	idx := slices.IndexFunc(talosUpgrade.Status.RebootingNodes, func(e tupprv1alpha1.NodeRebootStatus) bool {
+		return e.NodeName == nodeName
+	})
+	if idx < 0 {
+		return nil
+	}
+	entries := slices.Delete(slices.Clone(talosUpgrade.Status.RebootingNodes), idx, idx+1)
+	talosUpgrade.Status.RebootingNodes = entries
+	return r.updateStatus(ctx, talosUpgrade, map[string]any{statusRebootingNodes: entries})
+}
+
+// rebootDeadlineExpired reports whether the node has a tracked reboot deadline
+// in the past.
+func (r *Reconciler) rebootDeadlineExpired(talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) bool {
+	for _, e := range talosUpgrade.Status.RebootingNodes {
+		if e.NodeName == nodeName {
+			return r.Now.Now().After(e.Deadline.Time)
+		}
+	}
+	return false
 }
 
 func (r *Reconciler) getTotalNodeCount(ctx context.Context) (int, error) {
