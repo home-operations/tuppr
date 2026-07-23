@@ -101,6 +101,9 @@ Kubernetes: `>=1.25.0-0`
 | serviceAccount.automount | bool | `true` | Automount the API token (on by default: the controller talks to the cluster API). |
 | serviceAccount.create | bool | `true` | Create a ServiceAccount. |
 | serviceAccount.name | string | `""` | ServiceAccount name; generated from the release name if empty. |
+| silences.alertmanager.address | string | `""` | Alertmanager base URL (e.g. http://alertmanager.monitoring.svc:9093). Anything speaking the v2 silences API works (VMAlertmanager, Grafana-managed alerting behind its prefix). |
+| silences.alertmanager.secretName | string | `""` | Name of a Secret whose keys/values are sent as HTTP headers on every Alertmanager request (e.g. Authorization, X-Scope-OrgID). |
+| silences.enabled | bool | `false` | Enable upgrade-run silences. |
 | talosServiceAccount.create | bool | `true` | Create the talos.dev/v1alpha1 ServiceAccount that makes Talos generate the `<name>-talosconfig` Secret the controller mounts. Requires the Talos API-access CRD (a real Talos cluster). Set false on non-Talos clusters (e.g. e2e/kind) and provide that Secret yourself. |
 | tolerations | list | `[{"key":"CriticalAddonsOnly","operator":"Exists"},{"effect":"NoSchedule","key":"node-role.kubernetes.io/control-plane","operator":"Exists"},{"effect":"NoSchedule","key":"node.kubernetes.io/unschedulable","operator":"Exists"}]` | Tolerations for pod scheduling (defaults keep the controller schedulable on control-plane and cordoned nodes so it can uncordon after an upgrade reboot). |
 | volumeMounts | list | `[]` | Additional volume mounts on the container. |

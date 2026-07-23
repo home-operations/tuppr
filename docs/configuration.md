@@ -15,6 +15,10 @@ their behavior is explained - followed by the full `values.yaml` for reference.
   deployment itself.
 - **`notification`** (`enabled`, `secretName`, `secretKey`, `titleTemplate`,
   `messageTemplate`): upgrade notifications - see [Notifications](notifications.md).
+- **`silences`** (`enabled`, `alertmanager.address`, `alertmanager.secretName`):
+  the operator-level Alertmanager connection for upgrade-run silences
+  (`spec.silences` on a TalosUpgrade) - see
+  [Alertmanager silences](talos-upgrades.md#alertmanager-silences).
 - **`monitoring`** (`serviceMonitor`, `prometheusRule`, `dashboards`): see
   [Monitoring](monitoring.md).
 - **`rbac`** and **`webhook`** (`certManager`): the ClusterRole the controller

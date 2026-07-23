@@ -606,6 +606,39 @@
       "title": "serviceAccount",
       "type": "object"
     },
+    "silences": {
+      "description": "Alertmanager silences held while upgrades run. Which alerts get silenced is\nper-resource and user-authored (`spec.silences` on a TalosUpgrade); this only\nconfigures how the operator reaches Alertmanager.",
+      "properties": {
+        "alertmanager": {
+          "properties": {
+            "address": {
+              "default": "",
+              "description": "Alertmanager base URL (e.g. http://alertmanager.monitoring.svc:9093). Anything speaking the v2 silences API works (VMAlertmanager, Grafana-managed alerting behind its prefix).",
+              "title": "address",
+              "type": "string"
+            },
+            "secretName": {
+              "default": "",
+              "description": "Name of a Secret whose keys/values are sent as HTTP headers on every Alertmanager request (e.g. Authorization, X-Scope-OrgID).",
+              "title": "secretName",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "title": "alertmanager",
+          "type": "object"
+        },
+        "enabled": {
+          "default": false,
+          "description": "Enable upgrade-run silences.",
+          "title": "enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "title": "silences",
+      "type": "object"
+    },
     "talosServiceAccount": {
       "properties": {
         "create": {

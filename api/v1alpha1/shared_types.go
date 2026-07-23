@@ -44,6 +44,46 @@ type HealthCheckSpec struct {
 	Description string `json:"description,omitempty"`
 }
 
+// SilenceSpec describes one Alertmanager silence held during an upgrade run.
+// The silence is a short lease re-extended on every reconcile while the run is
+// active, so it lapses on its own if the controller stops driving the run.
+type SilenceSpec struct {
+	// Matchers select the alerts this silence covers. Alertmanager ANDs the
+	// matchers of one silence; use a regex value to cover alternatives, or
+	// additional silences for independent scopes.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	Matchers []SilenceMatcher `json:"matchers"`
+
+	// MaxDuration hard-caps how long a continuous silence hold keeps being
+	// extended; a run still holding this silence beyond it alerts again. The
+	// budget re-arms when the hold is released (run parked or finished).
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern=`^([0-9]+[smh])+$`
+	// +kubebuilder:default="4h"
+	// +optional
+	MaxDuration *metav1.Duration `json:"maxDuration,omitempty"`
+}
+
+// SilenceMatcher is one Alertmanager silence matcher.
+type SilenceMatcher struct {
+	// Name of the alert label to match.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// Value the label is matched against.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Value string `json:"value"`
+
+	// MatchType is the match operator: = (equals), != , =~ (regex), !~.
+	// +kubebuilder:validation:Enum==;!=;=~;!~
+	// +kubebuilder:default="="
+	// +optional
+	MatchType string `json:"matchType,omitempty"`
+}
+
 // TalosctlImage defines talosctl container image details
 type TalosctlImageSpec struct {
 	// Repository is the talosctl container image repository

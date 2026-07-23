@@ -195,6 +195,14 @@ type TalosUpgradeSpec struct {
 	// Hooks configures pre/post-upgrade Jobs (e.g. `ceph osd set/unset noout`).
 	// +optional
 	Hooks *HooksSpec `json:"hooks,omitempty"`
+
+	// Silences are Alertmanager silences held while this upgrade runs, one per
+	// entry. Requires the operator-level Alertmanager connection (Helm
+	// `silences.*`).
+	// +optional
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=8
+	Silences []SilenceSpec `json:"silences,omitempty"`
 }
 
 // TalosUpgradeStatus defines the observed state of TalosUpgrade
@@ -276,6 +284,19 @@ type TalosUpgradeStatus struct {
 	// terminal phase ends up Failed even after post-hooks (cleanup) succeed.
 	// +optional
 	PreHookFailed bool `json:"preHookFailed,omitempty"`
+
+	// AlertSilenceIDs are the Alertmanager silences this run holds open, indexed
+	// like spec.silences (an empty entry is a silence not yet created). Persisted
+	// so the leases are re-adopted across controller restarts and expired when
+	// the run leaves its active phases.
+	// +optional
+	AlertSilenceIDs []string `json:"alertSilenceIDs,omitempty"`
+
+	// AlertSilencesSince is when the current silence hold began; each entry's
+	// maxDuration caps extension relative to it. Cleared when the hold is
+	// released, so a resumed run gets a fresh budget.
+	// +optional
+	AlertSilencesSince *metav1.Time `json:"alertSilencesSince,omitempty"`
 }
 
 // TalosUpgradeHistoryEntry records a single completed Talos upgrade run

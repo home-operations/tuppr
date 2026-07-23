@@ -21,3 +21,7 @@ The chart wires up the standard observability stack on demand:
 
 All three are off by default. See the [Helm chart values](configuration.md) for
 the full set.
+
+To silence *your own* alerts (Ceph, node-down, scrape failures) during upgrade
+windows, see [Alertmanager
+silences](talos-upgrades.md#alertmanager-silences).

@@ -42,8 +42,12 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 
 	logger.V(1).Info("Starting upgrade processing")
 
-	if suspended, err := r.handleSuspendAnnotation(ctx, talosUpgrade); err != nil || suspended {
-		return ctrl.Result{RequeueAfter: time.Minute * 30}, err
+	suspended, suspendErr := r.handleSuspendAnnotation(ctx, talosUpgrade)
+	// The silence leases ride every reconcile pass: extended while the run is
+	// active, expired when it parks, suspends, or finishes.
+	r.syncAlertSilences(ctx, talosUpgrade, suspended)
+	if suspendErr != nil || suspended {
+		return ctrl.Result{RequeueAfter: time.Minute * 30}, suspendErr
 	}
 
 	if resetRequested, err := r.handleResetAnnotation(ctx, talosUpgrade); err != nil || resetRequested {

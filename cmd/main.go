@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	tupperv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/alerting"
 	"github.com/home-operations/tuppr/internal/controller/kubernetesupgrade"
 	"github.com/home-operations/tuppr/internal/controller/talosupgrade"
 	"github.com/home-operations/tuppr/internal/metrics"
@@ -138,6 +139,18 @@ func main() {
 	if err != nil {
 		setupLog.Error(err, "invalid notification template")
 		os.Exit(1)
+	}
+
+	var silencer alerting.Silencer
+	if alertmanagerAddress := os.Getenv("ALERTMANAGER_ADDRESS"); alertmanagerAddress != "" {
+		headersDir := os.Getenv("ALERTMANAGER_HEADERS_DIR")
+		// Fail fast on an unreadable headers dir; the client re-reads it per
+		// request so Secret rotation takes effect without a restart.
+		if _, err := alerting.LoadHeadersDir(headersDir); err != nil {
+			setupLog.Error(err, "invalid alertmanager headers")
+			os.Exit(1)
+		}
+		silencer = alerting.NewClient(alertmanagerAddress, headersDir)
 	}
 
 	if metricsServiceName == "" {
@@ -272,6 +285,7 @@ func main() {
 		ControllerPodName:   controllerPodName,
 		Notifier:            notifier,
 		Renderer:            notificationRenderer,
+		Silencer:            silencer,
 		Recorder:            talosRecorder,
 		MetricsReporter:     reporter,
 	}).SetupWithManager(mgr); err != nil {
@@ -309,9 +323,10 @@ func main() {
 
 		// +kubebuilder:scaffold:builder
 		if err := (&taloswebhook.Validator{
-			Client:            mgr.GetClient(),
-			TalosConfigSecret: talosConfigSecret,
-			Namespace:         controllerNamespace,
+			Client:                 mgr.GetClient(),
+			TalosConfigSecret:      talosConfigSecret,
+			Namespace:              controllerNamespace,
+			AlertmanagerConfigured: silencer != nil,
 		}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "TalosUpgrade")
 			os.Exit(1)
