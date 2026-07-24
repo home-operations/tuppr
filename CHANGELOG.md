@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.2](https://github.com/home-operations/tuppr/compare/0.4.1...0.4.2) (2026-07-24)
+
+
+### Bug Fixes
+
+* delete core dump ([36b02a4](https://github.com/home-operations/tuppr/commit/36b02a4db2ee00765a520771837cba958ed57ece))
+* **go:** update module github.com/prometheus/client_golang (v1.24.0 → v1.24.1) ([#418](https://github.com/home-operations/tuppr/issues/418)) ([1f47fc5](https://github.com/home-operations/tuppr/commit/1f47fc56b2c996fc98f98fc883853268046bae7c))
+
+
+### Miscellaneous Chores
+
+* **mise:** Update tool aqua:astral-sh/uv (0.11.31 → 0.11.32) ([#420](https://github.com/home-operations/tuppr/issues/420)) ([a9f06c0](https://github.com/home-operations/tuppr/commit/a9f06c0d59a8db63a276507b20d033c88b60abf6))
+
 ## [0.4.1](https://github.com/home-operations/tuppr/compare/0.4.0...0.4.1) (2026-07-23)
 
 
