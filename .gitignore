@@ -31,3 +31,10 @@ go.work
 # MkDocs build output and uv-managed venv (docs toolchain)
 site/
 .venv/
+
+# OpenTofu/Terraform working dirs and state. State holds cluster CA keys, an SSH
+# private key and provider tokens in cleartext, so it must never be committable.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
