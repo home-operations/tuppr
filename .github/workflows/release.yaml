@@ -19,6 +19,12 @@ concurrency:
 jobs:
   versions:
     name: Versions
+    # The release-please merge commit is followed seconds later by its own
+    # `release: published` run, which builds the same tree — skip the snapshot
+    # build for it and let the release do the work.
+    if: >-
+      ${{ github.event_name == 'release'
+        || !startsWith(github.event.head_commit.message, 'chore(main): release') }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -44,6 +50,9 @@ jobs:
   release:
     name: Release
     needs: versions
+    if: >-
+      ${{ github.event_name == 'release'
+        || !startsWith(github.event.head_commit.message, 'chore(main): release') }}
     permissions:
       contents: read
       id-token: write
