@@ -3,22 +3,17 @@
 name: Docs
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      deploy:
+        description: Publish the built site to GitHub Pages
+        type: boolean
+        required: true
 
-# Serialize Pages deploys (matches the official GitHub Pages flow); never cancel
-# an in-flight deploy.
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
-permissions:
-  contents: read
+# No workflow-level permissions: they would apply to publish as well, capping it
+# at contents: read and starving actions/deploy-pages of pages: write and
+# id-token: write. publish inherits the caller's grant instead; build declares
+# its own reduction below, which is valid from either caller.
 
 jobs:
   build:
@@ -38,33 +33,28 @@ jobs:
           experimental: true
           install_args: --locked
 
-      # Only needed for deployment (configures the base path); skip on PRs.
       - name: Configure Pages
-        if: github.event_name != 'pull_request'
+        if: ${{ inputs.deploy }}
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
       - name: Build docs site
         run: mise run docs
 
       - name: Upload artifact
-        if: github.event_name != 'pull_request'
+        if: ${{ inputs.deploy }}
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: ./site
 
   publish:
     name: Publish to GitHub Pages
-    # PRs build for breakage detection but do not deploy.
-    if: github.event_name != 'pull_request'
+    if: ${{ inputs.deploy }}
     needs:
       - build
     runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    permissions:
-      pages: write
-      id-token: write
     steps:
       - name: Publish to GitHub Pages
         id: deployment
