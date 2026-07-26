@@ -1,4 +1,5 @@
 [tools]
+actionlint = "1.7.12"
 go = "1.26.5"
 golangci-lint = "2.12.2"
 helm = "4.2.3"
