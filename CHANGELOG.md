@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.4.2](https://github.com/home-operations/tuppr/compare/0.4.1...0.4.2) (2026-07-27)
+
+
+### Features
+
+* **chart:** add deploymentAnnotations value ([#436](https://github.com/home-operations/tuppr/issues/436)) ([c07554a](https://github.com/home-operations/tuppr/commit/c07554ad5ed5d4b6e36ce2328eb97dc755284e22))
+* **go:** update module github.com/google/cel-go (v0.29.2 → v0.30.0) ([#429](https://github.com/home-operations/tuppr/issues/429)) ([8443ea5](https://github.com/home-operations/tuppr/commit/8443ea53c59183d96720d0c9bd43e2488c314d5a))
+
+
+### Bug Fixes
+
+* delete core dump ([36b02a4](https://github.com/home-operations/tuppr/commit/36b02a4db2ee00765a520771837cba958ed57ece))
+* **go:** update module github.com/prometheus/client_golang (v1.24.0 → v1.24.1) ([#418](https://github.com/home-operations/tuppr/issues/418)) ([1f47fc5](https://github.com/home-operations/tuppr/commit/1f47fc56b2c996fc98f98fc883853268046bae7c))
+
+
+### Miscellaneous Chores
+
+* **github-release:** Update release helm-unittest/helm-unittest (v1.1.1 → v1.1.2) ([#422](https://github.com/home-operations/tuppr/issues/422)) ([981e2ea](https://github.com/home-operations/tuppr/commit/981e2eade7fca4314044d2681f9f9715e84e391b))
+* **mise:** Update tool aqua:astral-sh/uv (0.11.31 → 0.11.32) ([#420](https://github.com/home-operations/tuppr/issues/420)) ([a9f06c0](https://github.com/home-operations/tuppr/commit/a9f06c0d59a8db63a276507b20d033c88b60abf6))
+* **mise:** Update tool oxfmt (0.60.0 → 0.61.0) ([#435](https://github.com/home-operations/tuppr/issues/435)) ([bc9743e](https://github.com/home-operations/tuppr/commit/bc9743e179eacaca4016b7cd36e7db5399af7f00))
+
 ## [0.4.1](https://github.com/home-operations/tuppr/compare/0.4.0...0.4.1) (2026-07-23)
 
 
