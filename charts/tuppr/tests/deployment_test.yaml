@@ -32,6 +32,20 @@ tests:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/home-operations/tuppr@sha256:abc123
 
+  - it: should set deployment annotations from values
+    set:
+      deploymentAnnotations:
+        reloader.stakater.com/auto: "true"
+    asserts:
+      - equal:
+          path: metadata.annotations["reloader.stakater.com/auto"]
+          value: "true"
+
+  - it: should not render deployment annotations by default
+    asserts:
+      - notExists:
+          path: metadata.annotations
+
   - it: should set replicas from values
     set:
       replicaCount: 3

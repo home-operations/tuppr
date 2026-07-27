@@ -46,6 +46,7 @@ Kubernetes: `>=1.25.0-0`
 | controller.logLevel | string | `"debug"` | Controller log level: info or debug. |
 | controller.metrics.annotations | object | `{}` | Annotations for the metrics Service. |
 | controller.metrics.port | int | `8081` | Operational port: /metrics plus the /healthz and /readyz probes (plain HTTP; always on — restrict with a NetworkPolicy rather than disabling). |
+| deploymentAnnotations | object | `{}` | Annotations added to the Deployment (e.g. for reloader). |
 | env | list | `[]` | Extra environment variables passed to the container. |
 | fullnameOverride | string | `""` | Override the full release name. |
 | image.digest | string | `""` | Pin the image by digest (sha256:…); when set, overrides the tag. |

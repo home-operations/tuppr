@@ -43,6 +43,9 @@ talosServiceAccount:
   # e2e/kind) and provide that Secret yourself.
   create: true
 
+# -- Annotations added to the Deployment (e.g. for reloader).
+deploymentAnnotations: {}
+
 # -- Annotations added to the pod.
 podAnnotations: {}
 # -- Labels added to the pod.
