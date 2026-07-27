@@ -12,6 +12,10 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "tuppr.labels" . | nindent 4 }}
+  {{- with .Values.deploymentAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:

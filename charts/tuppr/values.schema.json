@@ -53,6 +53,12 @@
       "title": "controller",
       "type": "object"
     },
+    "deploymentAnnotations": {
+      "description": "Annotations added to the Deployment (e.g. for reloader).",
+      "required": [],
+      "title": "deploymentAnnotations",
+      "type": "object"
+    },
     "env": {
       "description": "Extra environment variables passed to the container.",
       "items": {
