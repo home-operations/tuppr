@@ -21,10 +21,20 @@ func withPrePullDisabled(tu *tupprv1alpha1.TalosUpgrade) {
 	tu.Spec.Talos.PrePull = &disabled
 }
 
-func withPrePulledNodes(nodes ...string) func(*tupprv1alpha1.TalosUpgrade) {
+// prePullTestImage is what the standard test fixtures resolve to: the
+// version-swapped testFactoryInstaller repo at the spec target version.
+const prePullTestImage = "factory.talos.dev/installer:" + fakeTalosVersion
+
+func withPrePulledNodes(nodes ...tupprv1alpha1.PrePulledNode) func(*tupprv1alpha1.TalosUpgrade) {
 	return func(tu *tupprv1alpha1.TalosUpgrade) {
 		tu.Status.PrePulledNodes = nodes
 	}
+}
+
+func hasPrePulledNode(records []tupprv1alpha1.PrePulledNode, nodeName string) bool {
+	return slices.ContainsFunc(records, func(e tupprv1alpha1.PrePulledNode) bool {
+		return e.NodeName == nodeName
+	})
 }
 
 func newPrePullMockClient() *mockTalosClient {
@@ -71,9 +81,8 @@ func TestTalosReconcile_PrePull_FleetPulledBeforeFirstJob(t *testing.T) {
 			t.Fatalf("expected pre-pull for %s, got: %v", ip, tc.pullCalls)
 		}
 	}
-	expectedImage := "factory.talos.dev/installer:" + fakeTalosVersion
-	if got := tc.pullImageRefs[testNodeIP2]; got != expectedImage {
-		t.Fatalf("expected pre-pull of %s, got: %s", expectedImage, got)
+	if got := tc.pullImageRefs[testNodeIP2]; got != prePullTestImage {
+		t.Fatalf("expected pre-pull of %s, got: %s", prePullTestImage, got)
 	}
 
 	if jobs := listJobs(t, cl); len(jobs) != 1 {
@@ -82,8 +91,8 @@ func TestTalosReconcile_PrePull_FleetPulledBeforeFirstJob(t *testing.T) {
 
 	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	for _, n := range []string{fakeNodeA, fakeNodeB, fakeNodeC} {
-		if !slices.Contains(updated.Status.PrePulledNodes, n) {
-			t.Fatalf("expected %s in status.prePulledNodes, got: %v", n, updated.Status.PrePulledNodes)
+		if !slices.Contains(updated.Status.PrePulledNodes, tupprv1alpha1.PrePulledNode{NodeName: n, Image: prePullTestImage}) {
+			t.Fatalf("expected %s recorded with %s in status.prePulledNodes, got: %v", n, prePullTestImage, updated.Status.PrePulledNodes)
 		}
 	}
 }
@@ -143,10 +152,10 @@ func TestTalosReconcile_PrePull_FailureParksRunBeforeDisruption(t *testing.T) {
 		t.Fatalf("expected phase Pending (parked), got: %s", updated.Status.Phase)
 	}
 	// Progress up to the failure is persisted; the failing node is not.
-	if !slices.Contains(updated.Status.PrePulledNodes, fakeNodeA) {
+	if !hasPrePulledNode(updated.Status.PrePulledNodes, fakeNodeA) {
 		t.Fatalf("expected node-a recorded as pre-pulled, got: %v", updated.Status.PrePulledNodes)
 	}
-	if slices.Contains(updated.Status.PrePulledNodes, fakeNodeB) {
+	if hasPrePulledNode(updated.Status.PrePulledNodes, fakeNodeB) {
 		t.Fatalf("expected node-b not recorded after failure, got: %v", updated.Status.PrePulledNodes)
 	}
 	// The message names the node and the image ref.
@@ -187,7 +196,7 @@ func TestTalosReconcile_PrePull_UnimplementedNodeSkipped(t *testing.T) {
 	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	// The unsupported node is recorded as handled so it isn't re-attempted.
 	for _, n := range []string{fakeNodeA, fakeNodeB} {
-		if !slices.Contains(updated.Status.PrePulledNodes, n) {
+		if !hasPrePulledNode(updated.Status.PrePulledNodes, n) {
 			t.Fatalf("expected %s in status.prePulledNodes, got: %v", n, updated.Status.PrePulledNodes)
 		}
 	}
@@ -196,7 +205,7 @@ func TestTalosReconcile_PrePull_UnimplementedNodeSkipped(t *testing.T) {
 func TestTalosReconcile_PrePull_RecordedNodesNotRepeated(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade(testUpgradeName, withFinalizer, withPhase(tupprv1alpha1.JobPhasePending),
-		withPrePulledNodes(fakeNodeA))
+		withPrePulledNodes(tupprv1alpha1.PrePulledNode{NodeName: fakeNodeA, Image: prePullTestImage}))
 	nodeA := newNode(fakeNodeA, testNodeIP1)
 
 	tc := newPrePullMockClient()
@@ -214,13 +223,43 @@ func TestTalosReconcile_PrePull_RecordedNodesNotRepeated(t *testing.T) {
 	}
 }
 
+func TestTalosReconcile_PrePull_RePullsWhenResolvedImageChanges(t *testing.T) {
+	scheme := newTestScheme()
+	// node-a was pre-pulled earlier in the run, but its resolved installer
+	// ref has changed since (e.g. a version or factory-url annotation edit).
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer, withPhase(tupprv1alpha1.JobPhasePending),
+		withPrePulledNodes(tupprv1alpha1.PrePulledNode{NodeName: fakeNodeA, Image: "factory.talos.dev/installer:v1.11.0"}))
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+
+	tc := newPrePullMockClient()
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, nodeA).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	reconcileTalos(t, r, testUpgradeName)
+
+	if got := tc.pullImageRefs[testNodeIP1]; got != prePullTestImage {
+		t.Fatalf("expected re-pull of the newly resolved image %s, got: %q (calls: %v)", prePullTestImage, got, tc.pullCalls)
+	}
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	if !slices.Contains(updated.Status.PrePulledNodes, tupprv1alpha1.PrePulledNode{NodeName: fakeNodeA, Image: prePullTestImage}) {
+		t.Fatalf("expected node-a record updated to the new image, got: %v", updated.Status.PrePulledNodes)
+	}
+	if len(updated.Status.PrePulledNodes) != 1 {
+		t.Fatalf("expected the stale record replaced, not duplicated, got: %v", updated.Status.PrePulledNodes)
+	}
+}
+
 func TestTalosReconcile_PrePull_LateNodePulledMidRun(t *testing.T) {
 	scheme := newTestScheme()
 	// Mid-run state: node-a already upgraded, node-a and node-b already
 	// pre-pulled. node-c joined after the run started.
 	tu := newTalosUpgrade(testUpgradeName, withFinalizer, withPhase(tupprv1alpha1.JobPhasePending),
 		withCompletedNodes(fakeNodeA),
-		withPrePulledNodes(fakeNodeA, fakeNodeB))
+		withPrePulledNodes(
+			tupprv1alpha1.PrePulledNode{NodeName: fakeNodeA, Image: prePullTestImage},
+			tupprv1alpha1.PrePulledNode{NodeName: fakeNodeB, Image: prePullTestImage},
+		))
 	nodeA := newNode(fakeNodeA, testNodeIP1)
 	nodeB := newNode(fakeNodeB, testNodeIP2)
 	nodeC := newNode(fakeNodeC, testNodeIP3)
@@ -241,7 +280,7 @@ func TestTalosReconcile_PrePull_LateNodePulledMidRun(t *testing.T) {
 		t.Fatalf("expected one job for node-b, got: %+v", jobs)
 	}
 	updated := getTalosUpgrade(t, cl, testUpgradeName)
-	if !slices.Contains(updated.Status.PrePulledNodes, fakeNodeC) {
+	if !hasPrePulledNode(updated.Status.PrePulledNodes, fakeNodeC) {
 		t.Fatalf("expected node-c recorded as pre-pulled, got: %v", updated.Status.PrePulledNodes)
 	}
 }
@@ -251,7 +290,7 @@ func TestTalosReconcile_PrePull_ResetOnGenerationChange(t *testing.T) {
 	tu := newTalosUpgrade(testUpgradeName, withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 		withGeneration(2, 1),
-		withPrePulledNodes(fakeNodeA),
+		withPrePulledNodes(tupprv1alpha1.PrePulledNode{NodeName: fakeNodeA, Image: prePullTestImage}),
 	)
 	nodeA := newNode(fakeNodeA, testNodeIP1)
 

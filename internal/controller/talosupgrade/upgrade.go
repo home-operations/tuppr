@@ -95,7 +95,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 			statusPreHookIndex:   0,
 			statusPostHookIndex:  0,
 			statusPreHookFailed:  false,
-			statusPrePulledNodes: []string{},
+			statusPrePulledNodes: []tupprv1alpha1.PrePulledNode{},
 		}); err != nil {
 			logger.Error(err, "Failed to re-enter Pending after completion")
 			return ctrl.Result{RequeueAfter: time.Minute}, err

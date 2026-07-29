@@ -144,9 +144,10 @@ spec:
 ```
 
 A parked run retries every minute and resumes on its own once the registry
-serves the image; partial pulls resume where they left off. Pulled nodes are
-tracked in `status.prePulledNodes`, so a node that joins (or becomes eligible)
-mid-run is pre-pulled before its first batch.
+serves the image; partial pulls resume where they left off. Pulled images are
+tracked per node in `status.prePulledNodes`, keyed by the resolved ref: a node
+that joins (or becomes eligible) mid-run, or whose resolved image changes, is
+pre-pulled before its next batch.
 
 ## Draining
 

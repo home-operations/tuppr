@@ -298,12 +298,14 @@ type TalosUpgradeStatus struct {
 	// +optional
 	PreHookFailed bool `json:"preHookFailed,omitempty"`
 
-	// PrePulledNodes are nodes whose installer image was pre-pulled during
-	// this run (or that were skipped because their Talos version predates the
-	// ImageService API), so pulls are not repeated on every reconcile. Nodes
-	// that become eligible mid-run are pre-pulled before their first batch.
+	// PrePulledNodes records the installer image pre-pulled on each node
+	// during this run (or noted as skipped because the node's Talos version
+	// predates the ImageService API), so pulls are not repeated on every
+	// reconcile. A record is keyed by the resolved ref: a node that becomes
+	// eligible mid-run, or whose resolved image changes (annotations, machine
+	// config), is pre-pulled before its next batch.
 	// +optional
-	PrePulledNodes []string `json:"prePulledNodes,omitempty"`
+	PrePulledNodes []PrePulledNode `json:"prePulledNodes,omitempty"`
 
 	// AlertSilenceIDs are the Alertmanager silences this run holds open, indexed
 	// like spec.silences (an empty entry is a silence not yet created). Persisted
@@ -344,6 +346,19 @@ type TalosUpgradeHistoryEntry struct {
 	// FailedNodes are the nodes that failed during the run
 	// +optional
 	FailedNodes []string `json:"failedNodes,omitempty"`
+}
+
+// PrePulledNode records one node's handled installer pre-pull for this run.
+type PrePulledNode struct {
+	// NodeName is the name of the node.
+	// +kubebuilder:validation:Required
+	NodeName string `json:"nodeName"`
+
+	// Image is the installer ref that was resolved for the node when it was
+	// pulled (or skipped as unsupported). A different resolved ref
+	// invalidates the record.
+	// +kubebuilder:validation:Required
+	Image string `json:"image"`
 }
 
 // NodeRebootStatus tracks a node awaiting post-upgrade reboot verification
