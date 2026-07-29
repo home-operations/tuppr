@@ -3,6 +3,7 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // Talos defines the talos configuration
@@ -11,6 +12,15 @@ type TalosSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern=`^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\-\.]+)?$`
 	Version string `json:"version,omitempty"`
+
+	// PrePull pulls each node's resolved installer image at the start of a run,
+	// before the first node is cordoned, so an unreachable registry or a bad
+	// schematic/tag parks the run before any disruption. Nodes running Talos
+	// older than v1.13 (no ImageService API) are skipped. Disable for airgapped
+	// clusters that seed images out of band.
+	// +kubebuilder:default=true
+	// +optional
+	PrePull *bool `json:"prePull,omitempty"`
 }
 
 // Policy defines upgrade behavior options
@@ -154,6 +164,10 @@ func (s *TalosUpgradeSpec) DrainEnabled() bool {
 	return s.Drain != nil && s.Drain.Enabled
 }
 
+func (s *TalosUpgradeSpec) PrePullEnabled() bool {
+	return s.Talos.PrePull == nil || *s.Talos.PrePull
+}
+
 // TalosUpgradeSpec defines the desired state of TalosUpgrade
 type TalosUpgradeSpec struct {
 	// HealthChecks defines a list of CEL-based health checks to perform before each node upgrade
@@ -285,6 +299,16 @@ type TalosUpgradeStatus struct {
 	// +optional
 	PreHookFailed bool `json:"preHookFailed,omitempty"`
 
+	// PrePulledNodes records the installer image pre-pulled on each node
+	// during this run (or noted as skipped because the node's Talos version
+	// predates the ImageService API), so pulls are not repeated on every
+	// reconcile. A record is keyed by the resolved ref and the Node UID: a
+	// node that becomes eligible mid-run, is recreated under the same name,
+	// or whose resolved image changes (annotations, machine config), is
+	// pre-pulled before its next batch.
+	// +optional
+	PrePulledNodes []PrePulledNode `json:"prePulledNodes,omitempty"`
+
 	// AlertSilenceIDs are the Alertmanager silences this run holds open, indexed
 	// like spec.silences (an empty entry is a silence not yet created). Persisted
 	// so the leases are re-adopted across controller restarts and expired when
@@ -324,6 +348,25 @@ type TalosUpgradeHistoryEntry struct {
 	// FailedNodes are the nodes that failed during the run
 	// +optional
 	FailedNodes []string `json:"failedNodes,omitempty"`
+}
+
+// PrePulledNode records one node's handled installer pre-pull for this run.
+type PrePulledNode struct {
+	// NodeName is the name of the node.
+	// +kubebuilder:validation:Required
+	NodeName string `json:"nodeName"`
+
+	// NodeUID is the UID of the Node object the pull was performed against.
+	// A node recreated under the same name (new UID) invalidates the record:
+	// its image store starts empty.
+	// +kubebuilder:validation:Required
+	NodeUID types.UID `json:"nodeUID"`
+
+	// Image is the installer ref that was resolved for the node when it was
+	// pulled (or skipped as unsupported). A different resolved ref
+	// invalidates the record.
+	// +kubebuilder:validation:Required
+	Image string `json:"image"`
 }
 
 // NodeRebootStatus tracks a node awaiting post-upgrade reboot verification

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"syscall"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/cosi-project/runtime/pkg/resource"
 	"github.com/siderolabs/go-retry/retry"
+	"github.com/siderolabs/talos/pkg/machinery/api/common"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
 	"github.com/siderolabs/talos/pkg/machinery/client"
 	"github.com/siderolabs/talos/pkg/machinery/config/configloader"
@@ -28,6 +30,7 @@ type talosClient interface {
 	COSIGet(ctx context.Context, namespace, typ, id string) (resource.Resource, error)
 	COSIList(ctx context.Context, namespace, typ string) ([]resource.Resource, error)
 	ApplyConfiguration(ctx context.Context, req *machine.ApplyConfigurationRequest, opts ...grpc.CallOption) (*machine.ApplyConfigurationResponse, error)
+	ImagePull(ctx context.Context, req *machine.ImageServicePullRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[machine.ImageServicePullResponse], error)
 	Close() error
 }
 
@@ -47,6 +50,10 @@ func (r *realTalosClient) COSIList(ctx context.Context, namespace, typ string) (
 		return nil, err
 	}
 	return list.Items, nil
+}
+
+func (r *realTalosClient) ImagePull(ctx context.Context, req *machine.ImageServicePullRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[machine.ImageServicePullResponse], error) {
+	return r.ImageClient.Pull(ctx, req, opts...)
 }
 
 type Client struct {
@@ -246,6 +253,38 @@ func (s *Client) PatchNodeInstallImage(ctx context.Context, nodeIP, newImage str
 	return nil
 }
 
+// PullImage pulls imageRef into the node's system containerd image store — the
+// store machined runs the installer from — so the pull at upgrade time is a
+// skip. Requires Talos >= v1.13 (ImageService); older nodes return Unimplemented.
+func (s *Client) PullImage(ctx context.Context, nodeIP, imageRef string) error {
+	nodeCtx := client.WithNode(ctx, nodeIP)
+
+	err := s.executeWithRetry(ctx, func() error {
+		stream, err := s.talos.ImagePull(nodeCtx, &machine.ImageServicePullRequest{
+			Containerd: &common.ContainerdInstance{
+				Driver:    common.ContainerDriver_CONTAINERD,
+				Namespace: common.ContainerdNamespace_NS_SYSTEM,
+			},
+			ImageRef: imageRef,
+		})
+		if err != nil {
+			return err
+		}
+		for {
+			if _, err := stream.Recv(); err != nil {
+				if errors.Is(err, io.EOF) {
+					return nil
+				}
+				return err
+			}
+		}
+	})
+	if err != nil {
+		return fmt.Errorf("failed to pull image %s on node %s: %w", imageRef, nodeIP, err)
+	}
+	return nil
+}
+
 func (s *Client) CheckNodeReady(ctx context.Context, nodeIP, nodeName string) error {
 	logger := log.FromContext(ctx)
 
@@ -292,6 +331,15 @@ func (s *Client) executeWithRetry(ctx context.Context, operation func() error) e
 		}
 		return retry.ExpectedError(err)
 	})
+}
+
+// IsUnimplementedError reports whether the node's Talos API lacks the called
+// RPC (e.g. ImageService on Talos < v1.13).
+func IsUnimplementedError(err error) bool {
+	if st, ok := status.FromError(err); ok {
+		return st.Code() == codes.Unimplemented
+	}
+	return false
 }
 
 func IsTransientError(err error) bool {
