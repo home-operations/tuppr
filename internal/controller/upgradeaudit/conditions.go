@@ -41,6 +41,8 @@ const (
 	ReasonMaintenanceWindow = "MaintenanceWindow"
 
 	ReasonWaitingForImage        = "WaitingForImage"
+	ReasonPrePulling             = "PrePulling"
+	ReasonPrePullFailed          = "PrePullFailed"
 	ReasonWaitingForOtherUpgrade = "WaitingForOtherUpgrade"
 	ReasonBuildTargetImage       = "BuildTargetImage"
 	ReasonFindActiveJobs         = "FindActiveJobs"

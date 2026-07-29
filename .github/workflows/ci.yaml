@@ -26,6 +26,14 @@ env:
   # renovate: datasource=github-releases depName=helm-unittest/helm-unittest
   HELM_UNITTEST_VERSION: "v1.1.2"
 
+  # The tag e2e-image builds under and every leg pushes to its own runner-local
+  # registry. The nodes pull the registry.e2e name instead (see the go-e2e env),
+  # which the Talos mirror in patches/registry.yaml points at port 5000 on the
+  # bridge gateway. The split matters beyond taste: test.sh splits
+  # CONTROLLER_IMAGE on ':' for the Helm repo and tag, so the host:port push form
+  # would parse wrong there.
+  PUSH_IMAGE: localhost:5000/tuppr:e2e
+
 jobs:
   docs:
     if: ${{ github.event_name != 'push' }}
@@ -36,12 +44,74 @@ jobs:
     with:
       deploy: false
 
+  # Built once and handed to every e2e leg, so they all install identical bytes
+  # instead of four builds racing one GHA cache scope.
+  e2e-image:
+    if: >-
+      ${{ github.event_name != 'push'
+      && !(startsWith(github.head_ref, 'release-please--')
+      && github.event.pull_request.head.repo.full_name == github.repository) }}
+    name: E2E Image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Nothing here runs a pinned tool; the build happens inside Docker and only
+      # the Go version is read back out of the config.
+      - name: Setup Mise
+        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          install: false
+
+      - name: Resolve toolchain versions
+        id: tools
+        run: echo "go=$(mise config get tools.go)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      # load: true rather than a push: this job owns no registry, and one docker
+      # save is what the legs get handed. One writer per scope now, so cache-to
+      # is unconditional.
+      - name: Build controller image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          load: true
+          tags: ${{ env.PUSH_IMAGE }}
+          build-args: GO_VERSION=${{ steps.tools.outputs.go }}
+          cache-from: type=gha,scope=e2e-controller
+          cache-to: type=gha,mode=max,scope=e2e-controller
+
+      # gzip because the daemon may export layers uncompressed depending on its
+      # image store, and docker load reads either. shell: bash for the pipefail
+      # the implicit `bash -e` default lacks -- a failed save would otherwise
+      # leave gzip's exit status to pass the step and hand every leg a truncated
+      # tarball.
+      - name: Export the image
+        shell: bash
+        run: docker save "${PUSH_IMAGE}" | gzip -1 > "${RUNNER_TEMP}/e2e-image.tar.gz"
+
+      - name: Upload the image
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-image
+          path: ${{ runner.temp }}/e2e-image.tar.gz
+          retention-days: 1
+
   go-e2e:
     if: >-
       ${{ github.event_name != 'push'
       && !(startsWith(github.head_ref, 'release-please--')
       && github.event.pull_request.head.repo.full_name == github.repository) }}
     name: Go E2E (${{ matrix.upgrade }} ${{ matrix.leg }})
+    needs: e2e-image
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -75,13 +145,10 @@ jobs:
           - leg: 1cp-1w
             upgrade: kubernetes
     env:
-      # Two names for one image in the runner-local registry. The nodes pull
-      # registry.e2e, which the Talos mirror in patches/registry.yaml points at
-      # the bridge gateway; buildx pushes to the same registry over loopback.
-      # The alias matters beyond taste: test.sh splits CONTROLLER_IMAGE on ':'
-      # to get the Helm repo and tag, so a host:port form would parse wrong.
+      # What the chart is pointed at, and so what the nodes pull: the other half
+      # of the two-names-for-one-image split described on the PUSH_IMAGE var
+      # above.
       CONTROLLER_IMAGE: registry.e2e/tuppr:e2e
-      PUSH_IMAGE: localhost:5000/tuppr:e2e
       # test.sh packages the chart, pushes it here, and installs it back over
       # OCI, so the run exercises the distributed artifact rather than the
       # working tree. Same runner-local registry as the image, over loopback, so
@@ -118,17 +185,11 @@ jobs:
           sudo mkswap /mnt/e2e-swapfile
           sudo swapon /mnt/e2e-swapfile
 
-      - name: Resolve toolchain versions
-        id: tools
-        working-directory: .
-        run: echo "go=$(mise config get tools.go)" >> "$GITHUB_OUTPUT"
-
       - name: Start image registry
         run: docker run -d --name e2e-registry -p 5000:5000 registry:3
 
-      # Booting the VMs and building the controller share no inputs, so they
-      # overlap. They do contend for the runner's 4 vCPUs, so the saving is
-      # less than the build time, but the build leaves the critical path.
+      # Booting the VMs and filling the registry share no inputs, so they overlap
+      # the way the build this leg used to run did.
       #
       # The config path is relative to the workspace: defaults.run applies to
       # run steps only. talosctl comes from mise, whose shim the action unwraps
@@ -140,29 +201,20 @@ jobs:
         with:
           config: test/e2e-qemu/${{ matrix.leg }}.yaml
 
-      # network=host so the builder container can reach the registry published
-      # on the runner's loopback.
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Download the image
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          driver-opts: network=host
+          name: e2e-image
+          path: ${{ runner.temp }}
 
-      # Every leg builds a byte-identical image, so they share one cache scope.
-      # Only one writes it back: concurrent cache-to writes to the same scope
-      # evict each other. 3cp-0w is unique across the matrix, so it names one leg.
-      - name: Build controller image
-        id: image
-        background: true
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: .
-          push: true
-          tags: ${{ env.PUSH_IMAGE }}
-          build-args: GO_VERSION=${{ steps.tools.outputs.go }}
-          cache-from: type=gha,scope=e2e-controller
-          cache-to: ${{ matrix.leg == '3cp-0w' && 'type=gha,mode=max,scope=e2e-controller' || '' }}
+      # Straight into this leg's own registry, so the nodes still pull over
+      # loopback and nothing crosses the internet.
+      - name: Load the image into the registry
+        run: |
+          docker load -i "${RUNNER_TEMP}/e2e-image.tar.gz"
+          docker push "${PUSH_IMAGE}"
 
-      - wait: [cluster, image]
+      - wait: [cluster]
 
       # The action exports KUBECONFIG and TALOSCONFIG too, but naming the outputs
       # keeps it visible which cluster the tests are pointed at, and test.sh
@@ -342,6 +394,7 @@ jobs:
     name: Build Success
     needs:
       - docs
+      - e2e-image
       - go-e2e
       - go-lint
       - go-test

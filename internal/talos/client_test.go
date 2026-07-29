@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
 	"github.com/cosi-project/runtime/pkg/resource"
+	"github.com/siderolabs/talos/pkg/machinery/api/common"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
 	"github.com/siderolabs/talos/pkg/machinery/config/configloader"
 	"github.com/siderolabs/talos/pkg/machinery/resources/config"
@@ -32,6 +34,9 @@ type mockTalosClient struct {
 	cosiListErr     error
 	applyConfigReq  *machine.ApplyConfigurationRequest
 	applyConfigErr  error
+	imagePullReqs   []*machine.ImageServicePullRequest
+	imagePullErr    error
+	pullStreamErr   error
 }
 
 func (m *mockTalosClient) Version(_ context.Context, _ ...grpc.CallOption) (*machine.VersionResponse, error) {
@@ -66,6 +71,33 @@ func (m *mockTalosClient) COSIList(_ context.Context, _, _ string) ([]resource.R
 func (m *mockTalosClient) ApplyConfiguration(_ context.Context, req *machine.ApplyConfigurationRequest, _ ...grpc.CallOption) (*machine.ApplyConfigurationResponse, error) {
 	m.applyConfigReq = req
 	return &machine.ApplyConfigurationResponse{}, m.applyConfigErr
+}
+
+// fakePullStream replays a canned pull stream: one progress message, then
+// pullStreamErr or a clean EOF.
+type fakePullStream struct {
+	grpc.ClientStream
+	err  error
+	recv int
+}
+
+func (f *fakePullStream) Recv() (*machine.ImageServicePullResponse, error) {
+	f.recv++
+	if f.recv == 1 {
+		return &machine.ImageServicePullResponse{}, nil
+	}
+	if f.err != nil {
+		return nil, f.err
+	}
+	return nil, io.EOF
+}
+
+func (m *mockTalosClient) ImagePull(_ context.Context, req *machine.ImageServicePullRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[machine.ImageServicePullResponse], error) {
+	m.imagePullReqs = append(m.imagePullReqs, req)
+	if m.imagePullErr != nil {
+		return nil, m.imagePullErr
+	}
+	return &fakePullStream{err: m.pullStreamErr}, nil
 }
 
 func (m *mockTalosClient) Close() error {
@@ -564,4 +596,85 @@ func TestClient_PatchNodeInstallImage_ApplyError(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to apply configuration")
+}
+
+func TestClient_PullImage_Success(t *testing.T) {
+	ctx := context.Background()
+	mock := &mockTalosClient{}
+
+	c := &Client{
+		talos:         mock,
+		newClientFunc: func(ctx context.Context) (talosClient, error) { return mock, nil },
+	}
+
+	err := c.PullImage(ctx, "10.0.0.1", "factory.talos.dev/installer/abc:v1.13.7")
+
+	require.NoError(t, err)
+	require.Len(t, mock.imagePullReqs, 1)
+	req := mock.imagePullReqs[0]
+	assert.Equal(t, "factory.talos.dev/installer/abc:v1.13.7", req.ImageRef)
+	// The installer runs from the system containerd instance's system
+	// namespace; pulling anywhere else would be silently useless.
+	assert.Equal(t, common.ContainerDriver_CONTAINERD, req.Containerd.Driver)
+	assert.Equal(t, common.ContainerdNamespace_NS_SYSTEM, req.Containerd.Namespace)
+}
+
+func TestClient_PullImage_CallError(t *testing.T) {
+	ctx := context.Background()
+	mock := &mockTalosClient{
+		imagePullErr: status.Error(codes.NotFound, "error pulling image: not found"),
+	}
+
+	c := &Client{
+		talos:         mock,
+		newClientFunc: func(ctx context.Context) (talosClient, error) { return mock, nil },
+	}
+
+	err := c.PullImage(ctx, "10.0.0.1", "factory.talos.dev/installer/abc:v1.13.7")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to pull image factory.talos.dev/installer/abc:v1.13.7 on node 10.0.0.1")
+	assert.False(t, IsUnimplementedError(err))
+}
+
+func TestClient_PullImage_StreamError(t *testing.T) {
+	ctx := context.Background()
+	mock := &mockTalosClient{
+		pullStreamErr: status.Error(codes.Internal, "error pulling image: manifest unknown"),
+	}
+
+	c := &Client{
+		talos:         mock,
+		newClientFunc: func(ctx context.Context) (talosClient, error) { return mock, nil },
+	}
+
+	err := c.PullImage(ctx, "10.0.0.1", "factory.talos.dev/installer/abc:v1.13.7")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "manifest unknown")
+}
+
+func TestClient_PullImage_Unimplemented(t *testing.T) {
+	ctx := context.Background()
+	mock := &mockTalosClient{
+		imagePullErr: status.Error(codes.Unimplemented, "unknown service machine.ImageService"),
+	}
+
+	c := &Client{
+		talos:         mock,
+		newClientFunc: func(ctx context.Context) (talosClient, error) { return mock, nil },
+	}
+
+	err := c.PullImage(ctx, "10.0.0.1", "factory.talos.dev/installer/abc:v1.13.7")
+
+	require.Error(t, err)
+	assert.True(t, IsUnimplementedError(err), "Unimplemented must survive the error wrap")
+}
+
+func TestIsUnimplementedError(t *testing.T) {
+	assert.False(t, IsUnimplementedError(nil))
+	assert.False(t, IsUnimplementedError(errors.New("plain error")))
+	assert.False(t, IsUnimplementedError(status.Error(codes.Unavailable, "down")))
+	assert.True(t, IsUnimplementedError(status.Error(codes.Unimplemented, "nope")))
+	assert.True(t, IsUnimplementedError(fmt.Errorf("wrapped: %w", status.Error(codes.Unimplemented, "nope"))))
 }

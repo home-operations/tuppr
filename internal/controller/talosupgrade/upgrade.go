@@ -3,6 +3,7 @@ package talosupgrade
 import (
 	"context"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -94,11 +95,12 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 			statusPreHookIndex:   0,
 			statusPostHookIndex:  0,
 			statusPreHookFailed:  false,
+			statusPrePulledNodes: []tupprv1alpha1.PrePulledNode{},
 		}); err != nil {
 			logger.Error(err, "Failed to re-enter Pending after completion")
 			return ctrl.Result{RequeueAfter: time.Minute}, err
 		}
-		resetHookProgress(&talosUpgrade.Status)
+		resetRunProgress(&talosUpgrade.Status)
 		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
 
@@ -293,8 +295,9 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	ctx = context.WithValue(ctx, metrics.ContextKeyUpgradeType, metrics.UpgradeTypeTalos)
 	ctx = context.WithValue(ctx, metrics.ContextKeyUpgradeName, talosUpgrade.Name)
 
-	parallelism := getParallelism(talosUpgrade.Spec)
-	nextNodes, unreachableNodes, err := r.findNextNodes(ctx, talosUpgrade, parallelism)
+	// All pending nodes are collected (not just this batch's) so the run-start
+	// pre-pull can warm the whole fleet before the first node is cordoned.
+	pendingNodes, unreachableNodes, err := r.findNextNodes(ctx, talosUpgrade, math.MaxInt)
 	if err != nil {
 		return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonFindNextNodes, "find candidate nodes", time.Minute, err), nil
 	}
@@ -311,38 +314,23 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
-	if len(nextNodes) == 0 {
+	if len(pendingNodes) == 0 {
 		if err := r.recordOutOfBandCompletedNodes(ctx, talosUpgrade); err != nil {
 			logger.Error(err, "Failed to record out-of-band upgraded nodes")
 		}
 		return r.transitionToFinalize(ctx, talosUpgrade)
 	}
 
-	// Image availability is checked before HealthChecking: a stuck external
-	// registry must not flip the phase on every reconcile.
-	type nodeImage struct {
-		nodeName string
-		image    string
+	if result, done := r.prePullInstallerImages(ctx, talosUpgrade, pendingNodes); done {
+		return result, nil
 	}
-	var batch []nodeImage
 
-	for _, nodeName := range nextNodes {
-		targetImage, err := r.buildTalosUpgradeImage(ctx, talosUpgrade, nodeName)
-		if err != nil {
-			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonBuildTargetImage, fmt.Sprintf("build target image for node %s", nodeName), time.Minute, err), nil
-		}
+	parallelism := getParallelism(talosUpgrade.Spec)
+	nextNodes := pendingNodes[:min(parallelism, len(pendingNodes))]
 
-		logger.V(1).Info("Verifying target image availability", "node", nodeName, "image", targetImage)
-		if err := r.ImageChecker.Check(ctx, targetImage); err != nil {
-			logger.Info("Waiting for target image to become available", "node", nodeName, "image", targetImage, "error", err.Error())
-			message := fmt.Sprintf("Waiting for image availability for node %s: %s", nodeName, err.Error())
-			if err := r.setPendingWithReason(ctx, talosUpgrade, upgradeaudit.ReasonWaitingForImage, message); err != nil {
-				logger.Error(err, "Failed to update phase while waiting for image")
-			}
-			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
-		}
-
-		batch = append(batch, nodeImage{nodeName: nodeName, image: targetImage})
+	batch, result, done := r.buildBatchImages(ctx, talosUpgrade, nextNodes)
+	if done {
+		return result, nil
 	}
 
 	// Skip the inter-batch health check re-run when pre-hooks are configured and
@@ -420,6 +408,40 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		return ctrl.Result{RequeueAfter: time.Second * 30}, err
 	}
 	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+}
+
+type nodeImage struct {
+	nodeName string
+	image    string
+}
+
+// buildBatchImages resolves each batch node's target image and verifies the
+// registry serves it, before HealthChecking: a stuck external registry must
+// not flip the phase on every reconcile. Returns done=true when the caller
+// should return the result.
+func (r *Reconciler) buildBatchImages(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nextNodes []string) ([]nodeImage, ctrl.Result, bool) {
+	logger := log.FromContext(ctx)
+
+	var batch []nodeImage
+	for _, nodeName := range nextNodes {
+		targetImage, err := r.buildTalosUpgradeImage(ctx, talosUpgrade, nodeName)
+		if err != nil {
+			return nil, r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonBuildTargetImage, fmt.Sprintf("build target image for node %s", nodeName), time.Minute, err), true
+		}
+
+		logger.V(1).Info("Verifying target image availability", "node", nodeName, "image", targetImage)
+		if err := r.ImageChecker.Check(ctx, targetImage); err != nil {
+			logger.Info("Waiting for target image to become available", "node", nodeName, "image", targetImage, "error", err.Error())
+			message := fmt.Sprintf("Waiting for image availability for node %s: %s", nodeName, err.Error())
+			if err := r.setPendingWithReason(ctx, talosUpgrade, upgradeaudit.ReasonWaitingForImage, message); err != nil {
+				logger.Error(err, "Failed to update phase while waiting for image")
+			}
+			return nil, ctrl.Result{RequeueAfter: 1 * time.Minute}, true
+		}
+
+		batch = append(batch, nodeImage{nodeName: nodeName, image: targetImage})
+	}
+	return batch, ctrl.Result{}, false
 }
 
 // processRebootingNodes resumes the post-upgrade reboot wait for nodes whose

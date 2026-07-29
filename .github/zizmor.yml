@@ -1,16 +1,13 @@
 ---
 rules:
-  # The e2e legs (the go-e2e job in ci.yaml) build an image with `load: true`:
-  # it is loaded into the kind cluster for the test and never pushed to a
-  # registry or released, so there is no published artifact for a poisoned
-  # tool/layer cache to compromise.
-  # The e2e workflow builds and pushes a controller image in a job where
-  # mise-action has caching on, which the rule reads as a cached tool feeding a
-  # published artifact. It does not apply here on two counts: the Dockerfile
-  # builds FROM the official golang image, so no mise-managed tool reaches the
-  # binary (mise supplies only the version string), and the image is pushed to a
-  # registry running on the runner itself, so it never leaves the job that built
-  # it.
+  # The e2e-image job in ci.yaml builds a controller image from a cached layer
+  # set, in a job where mise-action has caching on, which the rule reads as a
+  # cached tool feeding a published artifact. It does not apply here on two
+  # counts: the Dockerfile builds FROM the official golang image, so no
+  # mise-managed tool reaches the binary (mise supplies only the version
+  # string), and what it produces only ever reaches the throwaway QEMU clusters
+  # the e2e legs boot -- a runner-local registry, never one outside it and never
+  # a release.
   cache-poisoning:
     ignore:
       - ci.yaml

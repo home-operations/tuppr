@@ -72,6 +72,10 @@ type mockTalosClient struct {
 	getExtensionsErr error
 	patchCalls       []string
 	patchImageErr    error
+	pullCalls        []string
+	pullImageRefs    map[string]string
+	pullErrs         map[string]error
+	pullErr          error
 }
 
 func (m *mockTalosClient) GetNodeVersion(ctx context.Context, nodeIP string) (string, error) {
@@ -114,6 +118,18 @@ func (m *mockTalosClient) GetNodeExtensions(ctx context.Context, nodeIP string) 
 func (m *mockTalosClient) PatchNodeInstallImage(ctx context.Context, nodeIP, newImage string) error {
 	m.patchCalls = append(m.patchCalls, nodeIP)
 	return m.patchImageErr
+}
+
+func (m *mockTalosClient) PullImage(ctx context.Context, nodeIP, imageRef string) error {
+	m.pullCalls = append(m.pullCalls, nodeIP)
+	if m.pullImageRefs == nil {
+		m.pullImageRefs = map[string]string{}
+	}
+	m.pullImageRefs[nodeIP] = imageRef
+	if err, ok := m.pullErrs[nodeIP]; ok {
+		return err
+	}
+	return m.pullErr
 }
 
 type mockHealthChecker struct {

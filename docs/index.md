@@ -53,8 +53,8 @@ flowchart LR
   and Kubernetes upgrades.
 - **[Upgrade coordination](coordination.md)**: how plans queue and why the two
   upgrade kinds never overlap.
-- **[Talos upgrades](talos-upgrades.md)**: policies, parallelism, hooks,
-  maintenance windows, per-node overrides, and health checks.
+- **[Talos upgrades](talos-upgrades.md)**: policies, parallelism, installer
+  pre-pull, hooks, maintenance windows, per-node overrides, and health checks.
 - **[Kubernetes upgrades](kubernetes-upgrades.md)**: the single-resource model
   and its history.
 - **[Notifications](notifications.md)**: send upgrade notifications through

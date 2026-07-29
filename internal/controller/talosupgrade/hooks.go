@@ -242,8 +242,9 @@ func (r *Reconciler) buildHookJob(tu *tupprv1alpha1.TalosUpgrade, hook tupprv1al
 	}
 }
 
-func resetHookProgress(status *tupprv1alpha1.TalosUpgradeStatus) {
+func resetRunProgress(status *tupprv1alpha1.TalosUpgradeStatus) {
 	status.PreHookIndex = 0
 	status.PostHookIndex = 0
 	status.PreHookFailed = false
+	status.PrePulledNodes = nil
 }

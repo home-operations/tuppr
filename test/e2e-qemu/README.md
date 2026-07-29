@@ -84,14 +84,17 @@ When `CONTROLLER_IMAGE` is unset, `test.sh` builds and pushes one itself via
 set -gx CONTROLLER_IMAGE ghcr.io/you/tuppr:dev
 ```
 
-CI instead fixes the tag up front and builds it concurrently with the cluster,
-since the build and the VMs share no inputs; `test.sh` then finds the image already
-built and skips straight to installing it. CI builds through
-`docker/build-push-action` rather than `image.sh` so the layers land in the GitHub
-Actions cache, which `image.sh` has no way to reach.
+CI instead builds it once, in the `e2e-image` job that runs ahead of the matrix,
+and hands it to every leg as a `docker save` tarball. Each leg loads that tarball
+while its VMs boot and pushes it into its own registry, so the legs install
+identical bytes rather than whatever each rebuild produced, and one job owns the
+GitHub Actions cache scope instead of every leg racing for it. `test.sh` finds the
+image already tagged and skips straight to installing it. CI builds through
+`docker/build-push-action` rather than `image.sh` so the layers land in that cache,
+which `image.sh` has no way to reach.
 
-CI also runs its own registry on the runner and pushes there, so the image never
-crosses the internet. The nodes reach it as `registry.e2e`, which the mirror in
+Each leg still runs its own registry on the runner, so the image never crosses the
+internet. The nodes reach it as `registry.e2e`, which the mirror in
 `patches/registry.yaml` points at port 5000 on the QEMU bridge gateway. That mirror
 entry is inert for a local run, where nothing references `registry.e2e`.
 

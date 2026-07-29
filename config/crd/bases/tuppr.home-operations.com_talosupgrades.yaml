@@ -4895,6 +4895,15 @@ spec:
               talos:
                 description: Talos specifies the talos configuration for upgrade operations
                 properties:
+                  prePull:
+                    default: true
+                    description: |-
+                      PrePull pulls each node's resolved installer image at the start of a run,
+                      before the first node is cordoned, so an unreachable registry or a bad
+                      schematic/tag parks the run before any disruption. Nodes running Talos
+                      older than v1.13 (no ImageService API) are skipped. Disable for airgapped
+                      clusters that seed images out of band.
+                    type: boolean
                   version:
                     description: Version is the target Talos version to upgrade to
                       (e.g., "v1.11.0")
@@ -5155,6 +5164,40 @@ spec:
                   PreHookIndex is the index of the next pre-hook to run.
                   Equals len(spec.hooks.pre) once all pre-hooks are done.
                 type: integer
+              prePulledNodes:
+                description: |-
+                  PrePulledNodes records the installer image pre-pulled on each node
+                  during this run (or noted as skipped because the node's Talos version
+                  predates the ImageService API), so pulls are not repeated on every
+                  reconcile. A record is keyed by the resolved ref and the Node UID: a
+                  node that becomes eligible mid-run, is recreated under the same name,
+                  or whose resolved image changes (annotations, machine config), is
+                  pre-pulled before its next batch.
+                items:
+                  description: PrePulledNode records one node's handled installer
+                    pre-pull for this run.
+                  properties:
+                    image:
+                      description: |-
+                        Image is the installer ref that was resolved for the node when it was
+                        pulled (or skipped as unsupported). A different resolved ref
+                        invalidates the record.
+                      type: string
+                    nodeName:
+                      description: NodeName is the name of the node.
+                      type: string
+                    nodeUID:
+                      description: |-
+                        NodeUID is the UID of the Node object the pull was performed against.
+                        A node recreated under the same name (new UID) invalidates the record:
+                        its image store starts empty.
+                      type: string
+                  required:
+                  - image
+                  - nodeName
+                  - nodeUID
+                  type: object
+                type: array
               rebootingNodes:
                 description: |-
                   RebootingNodes tracks nodes whose upgrade job finished but whose
