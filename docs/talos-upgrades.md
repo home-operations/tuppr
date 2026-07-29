@@ -145,9 +145,10 @@ spec:
 
 A parked run retries every minute and resumes on its own once the registry
 serves the image; partial pulls resume where they left off. Pulled images are
-tracked per node in `status.prePulledNodes`, keyed by the resolved ref: a node
-that joins (or becomes eligible) mid-run, or whose resolved image changes, is
-pre-pulled before its next batch.
+tracked per node in `status.prePulledNodes`, keyed by the resolved ref and the
+Node UID: a node that joins (or becomes eligible) mid-run, is recreated under
+the same name, or whose resolved image changes, is pre-pulled before its next
+batch.
 
 ## Draining
 

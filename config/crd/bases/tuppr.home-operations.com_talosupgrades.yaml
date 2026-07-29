@@ -5169,9 +5169,10 @@ spec:
                   PrePulledNodes records the installer image pre-pulled on each node
                   during this run (or noted as skipped because the node's Talos version
                   predates the ImageService API), so pulls are not repeated on every
-                  reconcile. A record is keyed by the resolved ref: a node that becomes
-                  eligible mid-run, or whose resolved image changes (annotations, machine
-                  config), is pre-pulled before its next batch.
+                  reconcile. A record is keyed by the resolved ref and the Node UID: a
+                  node that becomes eligible mid-run, is recreated under the same name,
+                  or whose resolved image changes (annotations, machine config), is
+                  pre-pulled before its next batch.
                 items:
                   description: PrePulledNode records one node's handled installer
                     pre-pull for this run.
@@ -5185,9 +5186,16 @@ spec:
                     nodeName:
                       description: NodeName is the name of the node.
                       type: string
+                    nodeUID:
+                      description: |-
+                        NodeUID is the UID of the Node object the pull was performed against.
+                        A node recreated under the same name (new UID) invalidates the record:
+                        its image store starts empty.
+                      type: string
                   required:
                   - image
                   - nodeName
+                  - nodeUID
                   type: object
                 type: array
               rebootingNodes:

@@ -3,6 +3,7 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // Talos defines the talos configuration
@@ -301,9 +302,10 @@ type TalosUpgradeStatus struct {
 	// PrePulledNodes records the installer image pre-pulled on each node
 	// during this run (or noted as skipped because the node's Talos version
 	// predates the ImageService API), so pulls are not repeated on every
-	// reconcile. A record is keyed by the resolved ref: a node that becomes
-	// eligible mid-run, or whose resolved image changes (annotations, machine
-	// config), is pre-pulled before its next batch.
+	// reconcile. A record is keyed by the resolved ref and the Node UID: a
+	// node that becomes eligible mid-run, is recreated under the same name,
+	// or whose resolved image changes (annotations, machine config), is
+	// pre-pulled before its next batch.
 	// +optional
 	PrePulledNodes []PrePulledNode `json:"prePulledNodes,omitempty"`
 
@@ -353,6 +355,12 @@ type PrePulledNode struct {
 	// NodeName is the name of the node.
 	// +kubebuilder:validation:Required
 	NodeName string `json:"nodeName"`
+
+	// NodeUID is the UID of the Node object the pull was performed against.
+	// A node recreated under the same name (new UID) invalidates the record:
+	// its image store starts empty.
+	// +kubebuilder:validation:Required
+	NodeUID types.UID `json:"nodeUID"`
 
 	// Image is the installer ref that was resolved for the node when it was
 	// pulled (or skipped as unsupported). A different resolved ref

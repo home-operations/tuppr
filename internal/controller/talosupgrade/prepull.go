@@ -22,13 +22,21 @@ import (
 // resumes from the already-fetched layers on the next attempt.
 const prePullTimeout = 10 * time.Minute
 
+// prePullWork is one node's outstanding pull: its would-be status record plus
+// the IP to pull against.
+type prePullWork struct {
+	entry  tupprv1alpha1.PrePulledNode
+	nodeIP string
+}
+
 // prePullInstallerImages pulls every pending node's resolved installer image
 // into the node's system containerd store before the node is cordoned, so an
 // unreachable registry or a bad schematic/tag parks the run before any
 // disruption (and the upgrade's own pull becomes a skip). The image is
 // resolved per node every pass: schematic matching means two nodes can need
-// different installer refs, and records are keyed by the resolved ref so a
-// node that becomes eligible mid-run, or whose resolution inputs change
+// different installer refs, and records are keyed by the resolved ref and the
+// Node UID so a node that becomes eligible mid-run, is recreated under the
+// same name (fresh image store), or whose resolution inputs change
 // (annotations, machine config), is pulled before its next batch. Nodes on
 // Talos < v1.13 predate the ImageService API and are skipped with an event.
 // Returns done=true when the caller should return the result.
@@ -37,15 +45,25 @@ func (r *Reconciler) prePullInstallerImages(ctx context.Context, talosUpgrade *t
 		return ctrl.Result{}, false
 	}
 
-	var toPull []tupprv1alpha1.PrePulledNode
+	var toPull []prePullWork
 	for _, nodeName := range pendingNodes {
+		node := &corev1.Node{}
+		if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
+			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonPrePullFailed, fmt.Sprintf("get node %s for pre-pull", nodeName), time.Minute, err), true
+		}
 		targetImage, err := r.buildTalosUpgradeImage(ctx, talosUpgrade, nodeName)
 		if err != nil {
 			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonBuildTargetImage, fmt.Sprintf("build target image for node %s", nodeName), time.Minute, err), true
 		}
-		if !slices.Contains(talosUpgrade.Status.PrePulledNodes, tupprv1alpha1.PrePulledNode{NodeName: nodeName, Image: targetImage}) {
-			toPull = append(toPull, tupprv1alpha1.PrePulledNode{NodeName: nodeName, Image: targetImage})
+		entry := tupprv1alpha1.PrePulledNode{NodeName: nodeName, NodeUID: node.UID, Image: targetImage}
+		if slices.Contains(talosUpgrade.Status.PrePulledNodes, entry) {
+			continue
 		}
+		nodeIP, err := nodeutil.GetNodeIP(node)
+		if err != nil {
+			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonPrePullFailed, fmt.Sprintf("get node IP for %s", nodeName), time.Minute, err), true
+		}
+		toPull = append(toPull, prePullWork{entry: entry, nodeIP: nodeIP})
 	}
 	if len(toPull) == 0 {
 		return ctrl.Result{}, false
@@ -60,21 +78,12 @@ func (r *Reconciler) prePullInstallerImages(ctx context.Context, talosUpgrade *t
 	}
 
 	records := slices.Clone(talosUpgrade.Status.PrePulledNodes)
-	for _, entry := range toPull {
-		node := &corev1.Node{}
-		if err := r.Get(ctx, types.NamespacedName{Name: entry.NodeName}, node); err != nil {
-			r.recordPrePulledNodes(ctx, talosUpgrade, records)
-			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonPrePullFailed, fmt.Sprintf("get node %s for pre-pull", entry.NodeName), time.Minute, err), true
-		}
-		nodeIP, err := nodeutil.GetNodeIP(node)
-		if err != nil {
-			r.recordPrePulledNodes(ctx, talosUpgrade, records)
-			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonPrePullFailed, fmt.Sprintf("get node IP for %s", entry.NodeName), time.Minute, err), true
-		}
+	for _, work := range toPull {
+		entry := work.entry
 
 		logger.V(1).Info("Pre-pulling installer image", "node", entry.NodeName, "image", entry.Image)
 		pullCtx, cancel := context.WithTimeout(ctx, prePullTimeout)
-		err = r.TalosClient.PullImage(pullCtx, nodeIP, entry.Image)
+		err := r.TalosClient.PullImage(pullCtx, work.nodeIP, entry.Image)
 		cancel()
 
 		switch {
@@ -113,12 +122,12 @@ func (r *Reconciler) prePullInstallerImages(ctx context.Context, talosUpgrade *t
 	return ctrl.Result{}, false
 }
 
-// upsertPrePulledNode replaces the node's record (its resolved ref changed)
-// or appends a new one.
+// upsertPrePulledNode replaces the node's record (its resolved ref or UID
+// changed) or appends a new one.
 func upsertPrePulledNode(records []tupprv1alpha1.PrePulledNode, entry tupprv1alpha1.PrePulledNode) []tupprv1alpha1.PrePulledNode {
 	for i := range records {
 		if records[i].NodeName == entry.NodeName {
-			records[i].Image = entry.Image
+			records[i] = entry
 			return records
 		}
 	}

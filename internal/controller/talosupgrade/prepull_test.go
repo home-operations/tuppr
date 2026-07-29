@@ -250,6 +250,34 @@ func TestTalosReconcile_PrePull_RePullsWhenResolvedImageChanges(t *testing.T) {
 	}
 }
 
+func TestTalosReconcile_PrePull_RePullsWhenNodeRecreated(t *testing.T) {
+	scheme := newTestScheme()
+	// node-a was pre-pulled, then reinstalled under the same name (new UID):
+	// its image store is empty even though the resolved ref is unchanged.
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer, withPhase(tupprv1alpha1.JobPhasePending),
+		withPrePulledNodes(tupprv1alpha1.PrePulledNode{NodeName: fakeNodeA, NodeUID: "uid-old", Image: prePullTestImage}))
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	nodeA.UID = "uid-new"
+
+	tc := newPrePullMockClient()
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, nodeA).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	reconcileTalos(t, r, testUpgradeName)
+
+	if !slices.Equal(tc.pullCalls, []string{testNodeIP1}) {
+		t.Fatalf("expected a re-pull for the recreated node, got: %v", tc.pullCalls)
+	}
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	if !slices.Contains(updated.Status.PrePulledNodes, tupprv1alpha1.PrePulledNode{NodeName: fakeNodeA, NodeUID: "uid-new", Image: prePullTestImage}) {
+		t.Fatalf("expected node-a record updated to the new UID, got: %v", updated.Status.PrePulledNodes)
+	}
+	if len(updated.Status.PrePulledNodes) != 1 {
+		t.Fatalf("expected the stale record replaced, not duplicated, got: %v", updated.Status.PrePulledNodes)
+	}
+}
+
 func TestTalosReconcile_PrePull_LateNodePulledMidRun(t *testing.T) {
 	scheme := newTestScheme()
 	// Mid-run state: node-a already upgraded, node-a and node-b already
