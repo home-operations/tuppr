@@ -220,8 +220,8 @@ main() {
 
     cd "$REPO_ROOT"
 
-    # CI sets CONTROLLER_IMAGE and builds it concurrently with the cluster, so
-    # by the time we get here there is nothing to do.
+    # CI sets CONTROLLER_IMAGE and loads a prebuilt one into its registry while
+    # the cluster boots, so by the time we get here there is nothing to do.
     if [[ -n "${CONTROLLER_IMAGE:-}" ]]; then
         log "Using pre-built controller image: $CONTROLLER_IMAGE"
     else
