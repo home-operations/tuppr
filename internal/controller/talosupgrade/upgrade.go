@@ -89,13 +89,13 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 		}
 		logger.Info("Node detected requiring upgrade after completion, restarting campaign", "node", nextNodes[0], "cycle", cycles+1)
 		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", nil, "New node detected, restarting upgrade", map[string]any{
-			statusCompletedNodes:   []string{},
-			statusFailedNodes:      []tupprv1alpha1.NodeUpgradeStatus{},
-			statusRebootingNodes:   []tupprv1alpha1.NodeRebootStatus{},
-			statusPreHookIndex:     0,
-			statusPostHookIndex:    0,
-			statusPreHookFailed:    false,
-			statusPrePullCompleted: false,
+			statusCompletedNodes: []string{},
+			statusFailedNodes:    []tupprv1alpha1.NodeUpgradeStatus{},
+			statusRebootingNodes: []tupprv1alpha1.NodeRebootStatus{},
+			statusPreHookIndex:   0,
+			statusPostHookIndex:  0,
+			statusPreHookFailed:  false,
+			statusPrePulledNodes: []string{},
 		}); err != nil {
 			logger.Error(err, "Failed to re-enter Pending after completion")
 			return ctrl.Result{RequeueAfter: time.Minute}, err

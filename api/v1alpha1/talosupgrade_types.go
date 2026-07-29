@@ -298,10 +298,12 @@ type TalosUpgradeStatus struct {
 	// +optional
 	PreHookFailed bool `json:"preHookFailed,omitempty"`
 
-	// PrePullCompleted records that this run's fleet-wide installer image
-	// pre-pull finished, so it is not repeated on every reconcile or batch.
+	// PrePulledNodes are nodes whose installer image was pre-pulled during
+	// this run (or that were skipped because their Talos version predates the
+	// ImageService API), so pulls are not repeated on every reconcile. Nodes
+	// that become eligible mid-run are pre-pulled before their first batch.
 	// +optional
-	PrePullCompleted bool `json:"prePullCompleted,omitempty"`
+	PrePulledNodes []string `json:"prePulledNodes,omitempty"`
 
 	// AlertSilenceIDs are the Alertmanager silences this run holds open, indexed
 	// like spec.silences (an empty entry is a silence not yet created). Persisted

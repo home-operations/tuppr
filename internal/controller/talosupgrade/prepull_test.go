@@ -21,8 +21,10 @@ func withPrePullDisabled(tu *tupprv1alpha1.TalosUpgrade) {
 	tu.Spec.Talos.PrePull = &disabled
 }
 
-func withPrePullCompleted(tu *tupprv1alpha1.TalosUpgrade) {
-	tu.Status.PrePullCompleted = true
+func withPrePulledNodes(nodes ...string) func(*tupprv1alpha1.TalosUpgrade) {
+	return func(tu *tupprv1alpha1.TalosUpgrade) {
+		tu.Status.PrePulledNodes = nodes
+	}
 }
 
 func newPrePullMockClient() *mockTalosClient {
@@ -79,8 +81,10 @@ func TestTalosReconcile_PrePull_FleetPulledBeforeFirstJob(t *testing.T) {
 	}
 
 	updated := getTalosUpgrade(t, cl, testUpgradeName)
-	if !updated.Status.PrePullCompleted {
-		t.Fatal("expected prePullCompleted to be latched in status")
+	for _, n := range []string{fakeNodeA, fakeNodeB, fakeNodeC} {
+		if !slices.Contains(updated.Status.PrePulledNodes, n) {
+			t.Fatalf("expected %s in status.prePulledNodes, got: %v", n, updated.Status.PrePulledNodes)
+		}
 	}
 }
 
@@ -103,8 +107,8 @@ func TestTalosReconcile_PrePull_Disabled(t *testing.T) {
 		t.Fatalf("expected the upgrade to proceed without pre-pull, got %d jobs", len(jobs))
 	}
 	updated := getTalosUpgrade(t, cl, testUpgradeName)
-	if updated.Status.PrePullCompleted {
-		t.Fatal("expected prePullCompleted to stay false when disabled")
+	if len(updated.Status.PrePulledNodes) != 0 {
+		t.Fatalf("expected empty status.prePulledNodes when disabled, got: %v", updated.Status.PrePulledNodes)
 	}
 }
 
@@ -138,8 +142,12 @@ func TestTalosReconcile_PrePull_FailureParksRunBeforeDisruption(t *testing.T) {
 	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
 		t.Fatalf("expected phase Pending (parked), got: %s", updated.Status.Phase)
 	}
-	if updated.Status.PrePullCompleted {
-		t.Fatal("expected prePullCompleted to stay false after failure")
+	// Progress up to the failure is persisted; the failing node is not.
+	if !slices.Contains(updated.Status.PrePulledNodes, fakeNodeA) {
+		t.Fatalf("expected node-a recorded as pre-pulled, got: %v", updated.Status.PrePulledNodes)
+	}
+	if slices.Contains(updated.Status.PrePulledNodes, fakeNodeB) {
+		t.Fatalf("expected node-b not recorded after failure, got: %v", updated.Status.PrePulledNodes)
 	}
 	// The message names the node and the image ref.
 	expectedImage := "factory.talos.dev/installer:" + fakeTalosVersion
@@ -177,14 +185,18 @@ func TestTalosReconcile_PrePull_UnimplementedNodeSkipped(t *testing.T) {
 		t.Fatalf("expected the upgrade to proceed, got %d jobs", len(jobs))
 	}
 	updated := getTalosUpgrade(t, cl, testUpgradeName)
-	if !updated.Status.PrePullCompleted {
-		t.Fatal("expected prePullCompleted to be latched despite the skipped node")
+	// The unsupported node is recorded as handled so it isn't re-attempted.
+	for _, n := range []string{fakeNodeA, fakeNodeB} {
+		if !slices.Contains(updated.Status.PrePulledNodes, n) {
+			t.Fatalf("expected %s in status.prePulledNodes, got: %v", n, updated.Status.PrePulledNodes)
+		}
 	}
 }
 
-func TestTalosReconcile_PrePull_LatchedNotRepeated(t *testing.T) {
+func TestTalosReconcile_PrePull_RecordedNodesNotRepeated(t *testing.T) {
 	scheme := newTestScheme()
-	tu := newTalosUpgrade(testUpgradeName, withFinalizer, withPhase(tupprv1alpha1.JobPhasePending), withPrePullCompleted)
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer, withPhase(tupprv1alpha1.JobPhasePending),
+		withPrePulledNodes(fakeNodeA))
 	nodeA := newNode(fakeNodeA, testNodeIP1)
 
 	tc := newPrePullMockClient()
@@ -195,10 +207,42 @@ func TestTalosReconcile_PrePull_LatchedNotRepeated(t *testing.T) {
 	reconcileTalos(t, r, testUpgradeName)
 
 	if len(tc.pullCalls) != 0 {
-		t.Fatalf("expected no pre-pull calls once latched, got: %v", tc.pullCalls)
+		t.Fatalf("expected no pre-pull calls for already-pulled nodes, got: %v", tc.pullCalls)
 	}
 	if jobs := listJobs(t, cl); len(jobs) != 1 {
 		t.Fatalf("expected the upgrade to proceed, got %d jobs", len(jobs))
+	}
+}
+
+func TestTalosReconcile_PrePull_LateNodePulledMidRun(t *testing.T) {
+	scheme := newTestScheme()
+	// Mid-run state: node-a already upgraded, node-a and node-b already
+	// pre-pulled. node-c joined after the run started.
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer, withPhase(tupprv1alpha1.JobPhasePending),
+		withCompletedNodes(fakeNodeA),
+		withPrePulledNodes(fakeNodeA, fakeNodeB))
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+	nodeB := newNode(fakeNodeB, testNodeIP2)
+	nodeC := newNode(fakeNodeC, testNodeIP3)
+
+	tc := newPrePullMockClient()
+	tc.nodeVersions[testNodeIP1] = fakeTalosVersion // node-a is at target
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, nodeA, nodeB, nodeC).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	reconcileTalos(t, r, testUpgradeName)
+
+	// Only the late joiner is pulled; the batch still proceeds on node-b.
+	if !slices.Equal(tc.pullCalls, []string{testNodeIP3}) {
+		t.Fatalf("expected exactly one pre-pull for the late node, got: %v", tc.pullCalls)
+	}
+	if jobs := listJobs(t, cl); len(jobs) != 1 || jobs[0].Labels[targetNodeLabelKey] != fakeNodeB {
+		t.Fatalf("expected one job for node-b, got: %+v", jobs)
+	}
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	if !slices.Contains(updated.Status.PrePulledNodes, fakeNodeC) {
+		t.Fatalf("expected node-c recorded as pre-pulled, got: %v", updated.Status.PrePulledNodes)
 	}
 }
 
@@ -207,7 +251,7 @@ func TestTalosReconcile_PrePull_ResetOnGenerationChange(t *testing.T) {
 	tu := newTalosUpgrade(testUpgradeName, withFinalizer,
 		withPhase(tupprv1alpha1.JobPhasePending),
 		withGeneration(2, 1),
-		withPrePullCompleted,
+		withPrePulledNodes(fakeNodeA),
 	)
 	nodeA := newNode(fakeNodeA, testNodeIP1)
 
@@ -219,7 +263,7 @@ func TestTalosReconcile_PrePull_ResetOnGenerationChange(t *testing.T) {
 	reconcileTalos(t, r, testUpgradeName)
 
 	updated := getTalosUpgrade(t, cl, testUpgradeName)
-	if updated.Status.PrePullCompleted {
-		t.Fatal("expected prePullCompleted to be reset when the spec changes")
+	if len(updated.Status.PrePulledNodes) != 0 {
+		t.Fatalf("expected status.prePulledNodes reset when the spec changes, got: %v", updated.Status.PrePulledNodes)
 	}
 }

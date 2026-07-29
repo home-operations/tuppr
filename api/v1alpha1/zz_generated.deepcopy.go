@@ -634,6 +634,11 @@ func (in *TalosUpgradeStatus) DeepCopyInto(out *TalosUpgradeStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.PrePulledNodes != nil {
+		in, out := &in.PrePulledNodes, &out.PrePulledNodes
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.AlertSilenceIDs != nil {
 		in, out := &in.AlertSilenceIDs, &out.AlertSilenceIDs
 		*out = make([]string, len(*in))

@@ -5164,11 +5164,15 @@ spec:
                   PreHookIndex is the index of the next pre-hook to run.
                   Equals len(spec.hooks.pre) once all pre-hooks are done.
                 type: integer
-              prePullCompleted:
+              prePulledNodes:
                 description: |-
-                  PrePullCompleted records that this run's fleet-wide installer image
-                  pre-pull finished, so it is not repeated on every reconcile or batch.
-                type: boolean
+                  PrePulledNodes are nodes whose installer image was pre-pulled during
+                  this run (or that were skipped because their Talos version predates the
+                  ImageService API), so pulls are not repeated on every reconcile. Nodes
+                  that become eligible mid-run are pre-pulled before their first batch.
+                items:
+                  type: string
+                type: array
               rebootingNodes:
                 description: |-
                   RebootingNodes tracks nodes whose upgrade job finished but whose
