@@ -4895,6 +4895,15 @@ spec:
               talos:
                 description: Talos specifies the talos configuration for upgrade operations
                 properties:
+                  prePull:
+                    default: true
+                    description: |-
+                      PrePull pulls each node's resolved installer image at the start of a run,
+                      before the first node is cordoned, so an unreachable registry or a bad
+                      schematic/tag parks the run before any disruption. Nodes running Talos
+                      older than v1.13 (no ImageService API) are skipped. Disable for airgapped
+                      clusters that seed images out of band.
+                    type: boolean
                   version:
                     description: Version is the target Talos version to upgrade to
                       (e.g., "v1.11.0")
@@ -5155,6 +5164,11 @@ spec:
                   PreHookIndex is the index of the next pre-hook to run.
                   Equals len(spec.hooks.pre) once all pre-hooks are done.
                 type: integer
+              prePullCompleted:
+                description: |-
+                  PrePullCompleted records that this run's fleet-wide installer image
+                  pre-pull finished, so it is not repeated on every reconcile or batch.
+                type: boolean
               rebootingNodes:
                 description: |-
                   RebootingNodes tracks nodes whose upgrade job finished but whose

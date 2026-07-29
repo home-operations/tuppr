@@ -121,6 +121,31 @@ the selector matches. When `parallelism > 1`:
 - Any failure in a batch stops further batches.
 - `status.currentNodes` lists the active batch.
 
+## Installer pre-pull
+
+Before the first node is cordoned, tuppr pulls each node's resolved installer
+image into the node's image store (the per-node resolution described in
+[How the upgrade image is resolved](#how-the-upgrade-image-is-resolved)). An
+unreachable registry, a missing schematic, or a wrong tag then parks the run
+with a clear `PrePullFailed` status - before anything is drained - instead of
+failing mid-roll with one node down. The upgrade's own image pull becomes a
+no-op, since Talos skips images that are already present.
+
+Pre-pull is on by default. It requires the node to be running Talos v1.13 or
+newer (the `ImageService` API); older nodes are skipped with an event and
+upgrade exactly as before. Disable it for airgapped clusters that seed images
+out of band, or when the extra pull is unwanted on constrained links:
+
+```yaml
+spec:
+  talos:
+    version: v1.13.7
+    prePull: false
+```
+
+A parked run retries every minute and resumes on its own once the registry
+serves the image; partial pulls resume where they left off.
+
 ## Draining
 
 ```yaml

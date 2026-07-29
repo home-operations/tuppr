@@ -65,17 +65,18 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, talosUpgrade *tu
 	}
 
 	if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", nil, "Reset requested via annotation", map[string]any{
-		statusCompletedNodes: []string{},
-		statusFailedNodes:    []tupprv1alpha1.NodeUpgradeStatus{},
-		statusRebootingNodes: []tupprv1alpha1.NodeRebootStatus{},
-		statusPreHookIndex:   0,
-		statusPostHookIndex:  0,
-		statusPreHookFailed:  false,
+		statusCompletedNodes:   []string{},
+		statusFailedNodes:      []tupprv1alpha1.NodeUpgradeStatus{},
+		statusRebootingNodes:   []tupprv1alpha1.NodeRebootStatus{},
+		statusPreHookIndex:     0,
+		statusPostHookIndex:    0,
+		statusPreHookFailed:    false,
+		statusPrePullCompleted: false,
 	}); err != nil {
 		logger.Error(err, "Failed to reset status after annotation")
 		return false, err
 	}
-	resetHookProgress(&talosUpgrade.Status)
+	resetRunProgress(&talosUpgrade.Status)
 
 	return true, nil
 }
@@ -91,15 +92,16 @@ func (r *Reconciler) handleGenerationChange(ctx context.Context, talosUpgrade *t
 		"observed", talosUpgrade.Status.ObservedGeneration)
 
 	if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", nil, "Spec updated, restarting upgrade process", map[string]any{
-		statusCompletedNodes: []string{},
-		statusFailedNodes:    []tupprv1alpha1.NodeUpgradeStatus{},
-		statusRebootingNodes: []tupprv1alpha1.NodeRebootStatus{},
-		statusPreHookIndex:   0,
-		statusPostHookIndex:  0,
-		statusPreHookFailed:  false,
+		statusCompletedNodes:   []string{},
+		statusFailedNodes:      []tupprv1alpha1.NodeUpgradeStatus{},
+		statusRebootingNodes:   []tupprv1alpha1.NodeRebootStatus{},
+		statusPreHookIndex:     0,
+		statusPostHookIndex:    0,
+		statusPreHookFailed:    false,
+		statusPrePullCompleted: false,
 	}); err != nil {
 		return false, err
 	}
-	resetHookProgress(&talosUpgrade.Status)
+	resetRunProgress(&talosUpgrade.Status)
 	return true, nil
 }

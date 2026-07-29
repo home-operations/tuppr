@@ -11,6 +11,15 @@ type TalosSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern=`^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\-\.]+)?$`
 	Version string `json:"version,omitempty"`
+
+	// PrePull pulls each node's resolved installer image at the start of a run,
+	// before the first node is cordoned, so an unreachable registry or a bad
+	// schematic/tag parks the run before any disruption. Nodes running Talos
+	// older than v1.13 (no ImageService API) are skipped. Disable for airgapped
+	// clusters that seed images out of band.
+	// +kubebuilder:default=true
+	// +optional
+	PrePull *bool `json:"prePull,omitempty"`
 }
 
 // Policy defines upgrade behavior options
@@ -154,6 +163,10 @@ func (s *TalosUpgradeSpec) DrainEnabled() bool {
 	return s.Drain != nil && s.Drain.Enabled
 }
 
+func (s *TalosUpgradeSpec) PrePullEnabled() bool {
+	return s.Talos.PrePull == nil || *s.Talos.PrePull
+}
+
 // TalosUpgradeSpec defines the desired state of TalosUpgrade
 type TalosUpgradeSpec struct {
 	// HealthChecks defines a list of CEL-based health checks to perform before each node upgrade
@@ -284,6 +297,11 @@ type TalosUpgradeStatus struct {
 	// terminal phase ends up Failed even after post-hooks (cleanup) succeed.
 	// +optional
 	PreHookFailed bool `json:"preHookFailed,omitempty"`
+
+	// PrePullCompleted records that this run's fleet-wide installer image
+	// pre-pull finished, so it is not repeated on every reconcile or batch.
+	// +optional
+	PrePullCompleted bool `json:"prePullCompleted,omitempty"`
 
 	// AlertSilenceIDs are the Alertmanager silences this run holds open, indexed
 	// like spec.silences (an empty entry is a silence not yet created). Persisted

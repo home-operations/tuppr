@@ -63,6 +63,7 @@ const (
 	statusPreHookFailed      = "preHookFailed"
 	statusPreHookIndex       = "preHookIndex"
 	statusPostHookIndex      = "postHookIndex"
+	statusPrePullCompleted   = "prePullCompleted"
 )
 
 // TalosClient defines the interface for Talos operations
@@ -72,6 +73,7 @@ type TalosClient interface {
 	GetNodeInstallImage(ctx context.Context, nodeIP string) (string, error)
 	GetNodeExtensions(ctx context.Context, nodeIP string) (talos.ExtensionInfo, error)
 	PatchNodeInstallImage(ctx context.Context, nodeIP, newImage string) error
+	PullImage(ctx context.Context, nodeIP, imageRef string) error
 }
 
 // ImageChecker defines the interface for checking image availability
