@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.4.3](https://github.com/home-operations/tuppr/compare/0.4.2...0.4.3) (2026-07-29)
+
+
+### Features
+
+* pre-pull the Talos installer image before starting a run ([#445](https://github.com/home-operations/tuppr/issues/445)) ([224074f](https://github.com/home-operations/tuppr/commit/224074fa8600e62aceb44c0b0cafdf37b4c52b4e))
+
+
+### Bug Fixes
+
+* **go:** update module github.com/netresearch/go-cron (v0.15.0 → v0.15.1) ([#441](https://github.com/home-operations/tuppr/issues/441)) ([dcb45da](https://github.com/home-operations/tuppr/commit/dcb45da2aaff67bedaedf6e68fecb5a1d45af59e))
+
+
+### Continuous Integration
+
+* build the e2e image once and hand it to every leg ([#442](https://github.com/home-operations/tuppr/issues/442)) ([562e9ac](https://github.com/home-operations/tuppr/commit/562e9ac900c24672948a4e9e4099326cb12683c9))
+* **github-action:** Update action jdx/mise-action (v4.2.2 → v4.2.3) ([#437](https://github.com/home-operations/tuppr/issues/437)) ([0e13632](https://github.com/home-operations/tuppr/commit/0e136327ce97dc35e90cdf0d1c2f8c2cae96dff3))
+
+
+### Miscellaneous Chores
+
+* **mise:** Update tool aqua:astral-sh/uv (0.11.32 → 0.12.0) ([#440](https://github.com/home-operations/tuppr/issues/440)) ([caf8759](https://github.com/home-operations/tuppr/commit/caf87595455a6f8b5a8784c6b486fd1914e239bb))
+* standardize release-please changelog sections ([#438](https://github.com/home-operations/tuppr/issues/438)) ([0d719dd](https://github.com/home-operations/tuppr/commit/0d719dd7191ac9cb54e6f0456d4f9537c03343f1))
+
 ## [0.4.2](https://github.com/home-operations/tuppr/compare/0.4.1...0.4.2) (2026-07-27)
 
 
