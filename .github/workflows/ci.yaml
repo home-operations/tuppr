@@ -110,7 +110,7 @@ jobs:
       ${{ github.event_name != 'push'
       && !(startsWith(github.head_ref, 'release-please--')
       && github.event.pull_request.head.repo.full_name == github.repository) }}
-    name: Go E2E (${{ matrix.upgrade }} ${{ matrix.leg }})
+    name: Go E2E (${{ matrix.name || format('{0} {1}', matrix.upgrade, matrix.leg) }})
     needs: e2e-image
     runs-on: ubuntu-24.04
     permissions:
@@ -131,18 +131,40 @@ jobs:
         # one picks a single control plane node and runs one job there, so it
         # gets one leg rather than a shape sweep of its own.
         include:
+          # Every Talos leg boots the previous minor (via the previous action
+          # release, since v0.2.x refuses pre-1.14 pins) and upgrades it across
+          # the 1.13 -> 1.14 config-model boundary: the migration every real
+          # cluster performs. Same-minor 1.14 pairs return once two 1.14 tags
+          # exist whose API-access grant works: v1.14.0-beta.0 sits mid-migration
+          # of the kubernetesTalosAPIAccess feature to its 1.14 document, and
+          # neither form conveys roles there, so nothing can authorize the
+          # upgrade pods on a beta.0-booted cluster.
+          #
           # Covers the self-hosted path: with one node tuppr upgrades the node
           # it is running on, so it skips the drain and issues the upgrade
           # without --wait. No other leg reaches that code.
           - leg: 1cp-0w
             upgrade: talos
+            legacy-action: true
           - leg: 1cp-1w
             upgrade: talos
+            legacy-action: true
           - leg: 3cp-0w
             upgrade: talos
+            legacy-action: true
+          # The same-minor pair on the previous line (1.13.5 -> 1.13.7): what
+          # clusters run repeatedly before they ever migrate. Same code path as
+          # the cross-boundary legs on the tuppr side, kept as its own proof.
+          - leg: 1cp-0w
+            name: talos 1.13-same-minor
+            upgrade: talos
+            legacy-action: true
+            talos-upgrade-version: v1.13.7
           # A control plane and a worker, so both kinds of kubelet have to
-          # converge on the new version before the CR reports Completed.
-          - leg: 1cp-1w
+          # converge on the new version before the CR reports Completed. Boots
+          # current Talos through the current action: no Talos upgrade happens
+          # here, so the beta.0 grant gap does not bite.
+          - leg: k8s-1cp-1w
             upgrade: kubernetes
     env:
       # What the chart is pointed at, and so what the nodes pull: the other half
@@ -196,6 +218,18 @@ jobs:
       # itself, because the QEMU provisioner runs under sudo.
       - name: Create cluster
         id: cluster
+        if: ${{ !matrix.legacy-action }}
+        background: true
+        uses: home-operations/talosctl-cluster-action@9181b206f3e87c685ef63f53bbf5dc25ed45e85a # v0.2.1
+        with:
+          config: test/e2e-qemu/${{ matrix.leg }}.yaml
+          cache: true
+
+      # The previous release boots the previous Talos minor; a `uses:` ref cannot
+      # come from the matrix, so the legacy leg gets its own step.
+      - name: Create cluster (previous action)
+        id: cluster-legacy
+        if: ${{ matrix.legacy-action }}
         background: true
         uses: home-operations/talosctl-cluster-action@42a2d1c476f87245e2d1882ec825fb31368b9686 # v0.1.6
         with:
@@ -215,7 +249,7 @@ jobs:
           docker load -i "${RUNNER_TEMP}/e2e-image.tar.gz"
           docker push "${PUSH_IMAGE}"
 
-      - wait: [cluster]
+      - wait: [cluster, cluster-legacy]
 
       # The action exports KUBECONFIG and TALOSCONFIG too, but naming the outputs
       # keeps it visible which cluster the tests are pointed at, and test.sh
@@ -223,10 +257,12 @@ jobs:
       - name: Run e2e tests
         env:
           UPGRADE_KIND: ${{ matrix.upgrade }}
-          CLUSTER_NAME: ${{ steps.cluster.outputs.cluster-name }}
-          ENDPOINT: ${{ steps.cluster.outputs.endpoint }}
-          KUBECONFIG: ${{ steps.cluster.outputs.kubeconfig }}
-          TALOSCONFIG: ${{ steps.cluster.outputs.talosconfig }}
+          # Empty for most legs, so common.sh's default (the next minor) holds.
+          TALOS_UPGRADE_VERSION: ${{ matrix.talos-upgrade-version || '' }}
+          CLUSTER_NAME: ${{ steps.cluster.outputs.cluster-name || steps.cluster-legacy.outputs.cluster-name }}
+          ENDPOINT: ${{ steps.cluster.outputs.endpoint || steps.cluster-legacy.outputs.endpoint }}
+          KUBECONFIG: ${{ steps.cluster.outputs.kubeconfig || steps.cluster-legacy.outputs.kubeconfig }}
+          TALOSCONFIG: ${{ steps.cluster.outputs.talosconfig || steps.cluster-legacy.outputs.talosconfig }}
         run: mise exec --locked --no-deps -- ./test.sh
 
   go-lint:

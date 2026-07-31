@@ -11,16 +11,20 @@ import (
 	"github.com/cosi-project/runtime/pkg/resource"
 	"github.com/siderolabs/talos/pkg/machinery/api/common"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
-	"github.com/siderolabs/talos/pkg/machinery/config/configloader"
-	"github.com/siderolabs/talos/pkg/machinery/resources/config"
+	configpb "github.com/siderolabs/talos/pkg/machinery/api/resource/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 type mockTalosClient struct {
+	readCalls       int
+	readErr         error
+	readErrUntil    int
+	readData        string
 	versionCalls    int
 	versionErr      error
 	versionErrUntil int
@@ -48,6 +52,17 @@ func (m *mockTalosClient) Version(_ context.Context, _ ...grpc.CallOption) (*mac
 		return nil, m.versionErr
 	}
 	return m.versionResp, nil
+}
+
+func (m *mockTalosClient) COSIGetRawSpec(_ context.Context, _, _, _ string) ([]byte, error) {
+	m.readCalls++
+	if m.readErrUntil > 0 && m.readCalls <= m.readErrUntil {
+		return nil, m.readErr
+	}
+	if m.readErr != nil && m.readCalls == 1 {
+		return nil, m.readErr
+	}
+	return proto.Marshal(&configpb.MachineConfigSpec{YamlMarshalled: []byte(m.readData)})
 }
 
 func (m *mockTalosClient) COSIGet(_ context.Context, _, _, _ string) (resource.Resource, error) {
@@ -300,67 +315,47 @@ func TestClient_GetNodeVersion_NilVersion(t *testing.T) {
 	assert.Contains(t, err.Error(), "version is nil")
 }
 
-func TestClient_GetNodeMachineConfig_Success(t *testing.T) {
+func TestClient_ReadMachineConfigRaw_Success(t *testing.T) {
 	ctx := context.Background()
-	expectedConfig := &config.MachineConfig{}
+	raw := "version: v1alpha1\nmachine:\n  install:\n    image: img\n"
 
-	mock := &mockTalosClient{
-		versionResp:  makeVersionResponse("v1.10.0"),
-		cosiResource: expectedConfig,
-	}
+	mock := &mockTalosClient{readData: raw}
+	c := &Client{talos: mock, newClientFunc: func(ctx context.Context) (talosClient, error) { return mock, nil }}
 
-	c := &Client{
-		talos:         mock,
-		newClientFunc: func(ctx context.Context) (talosClient, error) { return mock, nil },
-	}
-
-	cfg, err := c.GetNodeMachineConfig(ctx, "10.0.0.1")
+	got, err := c.readMachineConfigRaw(ctx, "10.0.0.1")
 
 	require.NoError(t, err)
-	assert.Equal(t, expectedConfig, cfg)
+	assert.Equal(t, raw, got)
 }
 
-func TestClient_GetNodeMachineConfig_RetriesOnCertError(t *testing.T) {
+func TestClient_ReadMachineConfigRaw_RetriesOnCertError(t *testing.T) {
 	ctx := context.Background()
-	certErr := status.Error(codes.Unavailable, "tls: expired certificate")
 
-	mc := &config.MachineConfig{}
 	mock := &mockTalosClient{
-		versionResp:     makeVersionResponse("v1.10.0"),
-		cosiGetErr:      certErr,
-		cosiGetErrUntil: 1,
-		cosiResource:    mc,
+		readData:     "version: v1alpha1\n",
+		readErr:      status.Error(codes.Unavailable, "tls: expired certificate"),
+		readErrUntil: 1,
 	}
+	c := &Client{talos: mock, newClientFunc: func(ctx context.Context) (talosClient, error) { return mock, nil }}
 
-	c := &Client{
-		talos:         mock,
-		newClientFunc: func(ctx context.Context) (talosClient, error) { return mock, nil },
-	}
-
-	result, err := c.GetNodeMachineConfig(ctx, "10.0.0.1")
+	_, err := c.readMachineConfigRaw(ctx, "10.0.0.1")
 
 	require.NoError(t, err)
-	assert.Equal(t, mc, result)
-	assert.GreaterOrEqual(t, mock.cosiGetCalls, 2, "should retry on cert error")
+	assert.GreaterOrEqual(t, mock.readCalls, 2, "should retry on cert error")
 }
 
-func TestClient_GetNodeMachineConfig_UnexpectedType(t *testing.T) {
+// A config carrying document kinds this binary has never heard of must still be
+// readable: the read path never decodes the whole config.
+func TestClient_GetNodeInstallImage_UnknownDocumentKinds(t *testing.T) {
 	ctx := context.Background()
 
-	mock := &mockTalosClient{
-		versionResp:  makeVersionResponse("v1.10.0"),
-		cosiResource: nil,
-	}
+	mock := &mockTalosClient{readData: "version: v1alpha1\nmachine:\n  install:\n    image: factory.talos.dev/installer/abc:v1.13.5\n---\napiVersion: v1alpha1\nkind: BGPPeerConfig\nname: peer-1\npeerAddress: 10.0.0.254\n"}
+	c := &Client{talos: mock, newClientFunc: func(ctx context.Context) (talosClient, error) { return mock, nil }}
 
-	c := &Client{
-		talos:         mock,
-		newClientFunc: func(ctx context.Context) (talosClient, error) { return mock, nil },
-	}
+	image, err := c.GetNodeInstallImage(ctx, "10.0.0.1")
 
-	_, err := c.GetNodeMachineConfig(ctx, "10.0.0.1")
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unexpected resource type")
+	require.NoError(t, err)
+	assert.Equal(t, "factory.talos.dev/installer/abc:v1.13.5", image)
 }
 
 func TestClient_RefreshTalosClient_Success(t *testing.T) {
@@ -464,10 +459,9 @@ func TestClient_ExecuteWithRetry_MultipleRetries(t *testing.T) {
 func TestClient_CheckNodeReady_Integration(t *testing.T) {
 	ctx := context.Background()
 
-	mc := &config.MachineConfig{}
 	mock := &mockTalosClient{
-		versionResp:  makeVersionResponse("v1.10.0"),
-		cosiResource: mc,
+		versionResp: makeVersionResponse("v1.10.0"),
+		readData:    "version: v1alpha1\n",
 	}
 
 	c := &Client{
@@ -479,18 +473,11 @@ func TestClient_CheckNodeReady_Integration(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, mock.versionCalls, 1)
-	assert.GreaterOrEqual(t, mock.cosiGetCalls, 1)
+	assert.GreaterOrEqual(t, mock.readCalls, 1)
 }
 
-func makeMachineConfig(t *testing.T, image string) *config.MachineConfig {
-	t.Helper()
-
-	cfgYAML := fmt.Sprintf("version: v1alpha1\nmachine:\n  install:\n    image: %q\n", image)
-
-	provider, err := configloader.NewFromBytes([]byte(cfgYAML))
-	require.NoError(t, err)
-
-	return config.NewMachineConfig(provider)
+func v1alpha1ConfigYAML(image string) string {
+	return fmt.Sprintf("version: v1alpha1\nmachine:\n  install:\n    image: %q\n", image)
 }
 
 func TestClient_PatchNodeInstallImage_Success(t *testing.T) {
@@ -498,10 +485,9 @@ func TestClient_PatchNodeInstallImage_Success(t *testing.T) {
 	oldImage := "factory.talos.dev/installer/abc:v1.11.0"
 	newImage := "factory.talos.dev/installer/abc:v1.12.0"
 
-	mc := makeMachineConfig(t, oldImage)
 	mock := &mockTalosClient{
-		versionResp:  makeVersionResponse("v1.12.0"),
-		cosiResource: mc,
+		versionResp: makeVersionResponse("v1.12.0"),
+		readData:    v1alpha1ConfigYAML(oldImage),
 	}
 
 	c := &Client{
@@ -531,13 +517,10 @@ func TestClient_PatchNodeInstallImage_MultiDocumentConfig(t *testing.T) {
 			"apiVersion: v1alpha1\nkind: SideroLinkConfig\napiUrl: https://siderolink.example/?jointoken=secret\n",
 		oldImage,
 	)
-	provider, err := configloader.NewFromBytes([]byte(cfgYAML))
-	require.NoError(t, err)
-	mc := config.NewMachineConfig(provider)
 
 	mock := &mockTalosClient{
-		versionResp:  makeVersionResponse("v1.12.0"),
-		cosiResource: mc,
+		versionResp: makeVersionResponse("v1.12.0"),
+		readData:    cfgYAML,
 	}
 
 	c := &Client{
@@ -545,7 +528,7 @@ func TestClient_PatchNodeInstallImage_MultiDocumentConfig(t *testing.T) {
 		newClientFunc: func(ctx context.Context) (talosClient, error) { return mock, nil },
 	}
 
-	err = c.PatchNodeInstallImage(ctx, "10.0.0.1", newImage)
+	err := c.PatchNodeInstallImage(ctx, "10.0.0.1", newImage)
 
 	require.NoError(t, err)
 	require.NotNil(t, mock.applyConfigReq)
@@ -560,9 +543,8 @@ func TestClient_PatchNodeInstallImage_GetConfigError(t *testing.T) {
 	ctx := context.Background()
 
 	mock := &mockTalosClient{
-		versionResp:  makeVersionResponse("v1.12.0"),
-		cosiGetErr:   errors.New("connection refused"),
-		cosiResource: nil,
+		versionResp: makeVersionResponse("v1.12.0"),
+		readErr:     errors.New("connection refused"),
 	}
 
 	c := &Client{
@@ -579,11 +561,9 @@ func TestClient_PatchNodeInstallImage_GetConfigError(t *testing.T) {
 
 func TestClient_PatchNodeInstallImage_ApplyError(t *testing.T) {
 	ctx := context.Background()
-	mc := makeMachineConfig(t, "factory.talos.dev/installer/abc:v1.11.0")
-
 	mock := &mockTalosClient{
 		versionResp:    makeVersionResponse("v1.12.0"),
-		cosiResource:   mc,
+		readData:       v1alpha1ConfigYAML("factory.talos.dev/installer/abc:v1.11.0"),
 		applyConfigErr: errors.New("permission denied"),
 	}
 

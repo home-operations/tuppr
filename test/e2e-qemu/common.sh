@@ -5,7 +5,7 @@
 # What the cluster boots on is declared in the leg documents (<cp>cp-<w>w.yaml);
 # these are what tuppr upgrades it to, and have to stay ahead of them or the run
 # proves nothing.
-TALOS_UPGRADE_VERSION="${TALOS_UPGRADE_VERSION:-v1.13.6}"
+TALOS_UPGRADE_VERSION="${TALOS_UPGRADE_VERSION:-v1.14.0-beta.1}"
 K8S_UPGRADE_VERSION="${K8S_UPGRADE_VERSION:-v1.35.0}"
 
 log() {

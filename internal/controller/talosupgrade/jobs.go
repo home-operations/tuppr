@@ -236,8 +236,14 @@ func (r *Reconciler) processSingleJobSuccess(ctx context.Context, talosUpgrade *
 
 	isReady, err := r.verifyNodeUpgrade(ctx, talosUpgrade, nodeName)
 	if err != nil {
-		logger.Error(err, "Failed to verify node", "node", nodeName)
-		return jobResultFailed, nil
+		// A verification error is not a failed upgrade: mid-reboot the Talos API
+		// answers with transient errors (1.14's install flow has a window where
+		// apid returns PermissionDenied), and the node's true state only settles
+		// once it is back. Treat it as rebooting; the reboot deadline bounds the
+		// wait and fails the node with a clear message if it never returns.
+		logger.Info("Could not verify node yet, waiting for it to settle",
+			"node", nodeName, "error", err.Error())
+		return jobResultRebooting, nil
 	}
 
 	if !isReady {
