@@ -955,6 +955,22 @@ func TestTalosReconcile_HandleJobSuccess_PatchInstallImageFails_Continues(t *tes
 	}
 }
 
+// expireRebootDeadlines rewinds every tracked reboot deadline so the next
+// reconcile treats the wait as exhausted.
+func expireRebootDeadlines(t *testing.T, cl client.Client, name string) {
+	t.Helper()
+	tu := getTalosUpgrade(t, cl, name)
+	if len(tu.Status.RebootingNodes) == 0 {
+		t.Fatalf("expected reboot tracking entries to expire, found none")
+	}
+	for i := range tu.Status.RebootingNodes {
+		tu.Status.RebootingNodes[i].Deadline = metav1.NewTime(time.Now().Add(-time.Hour))
+	}
+	if err := cl.Status().Update(context.Background(), tu); err != nil {
+		t.Fatalf("failed to expire reboot deadlines: %v", err)
+	}
+}
+
 func TestTalosReconcile_HandlesJobFailure(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade(testUpgradeName,
@@ -979,12 +995,26 @@ func TestTalosReconcile_HandlesJobFailure(t *testing.T) {
 		WithObjects(tu, job).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
 
+	// A verification error is no longer an instant failure: the node may be
+	// mid-reboot with the Talos API answering transient errors, so the first
+	// pass tracks it as rebooting and the deadline decides.
 	result := reconcileTalos(t, r, testUpgradeName)
-	if result.RequeueAfter != 10*time.Minute {
-		t.Fatalf("expected 10m requeue, got: %v", result.RequeueAfter)
+	if result.RequeueAfter != 30*time.Second {
+		t.Fatalf("expected 30s rebooting requeue, got: %v", result.RequeueAfter)
+	}
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseRebooting {
+		t.Fatalf("expected phase Rebooting, got: %s", updated.Status.Phase)
 	}
 
-	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	expireRebootDeadlines(t, cl, testUpgradeName)
+	reconcileTalos(t, r, testUpgradeName) // records the timed-out node as failed
+	result = reconcileTalos(t, r, testUpgradeName)
+	if result.RequeueAfter != 5*time.Minute {
+		t.Fatalf("expected the completion requeue, got: %v", result.RequeueAfter)
+	}
+
+	updated = getTalosUpgrade(t, cl, testUpgradeName)
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
 		t.Fatalf("expected phase Failed, got: %s", updated.Status.Phase)
 	}
@@ -1152,9 +1182,18 @@ func TestTalosReconcile_JobVerificationFailure(t *testing.T) {
 		WithObjects(tu, node, job).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
+	// A version mismatch right after the job is indistinguishable from a node
+	// still rebooting into the new version, so the first pass waits.
 	result := reconcileTalos(t, r, testUpgradeName)
-	if result.RequeueAfter != 10*time.Minute {
-		t.Fatalf("expected 10m requeue, got: %v", result.RequeueAfter)
+	if result.RequeueAfter != 30*time.Second {
+		t.Fatalf("expected 30s rebooting requeue, got: %v", result.RequeueAfter)
+	}
+
+	expireRebootDeadlines(t, cl, testUpgradeName)
+	reconcileTalos(t, r, testUpgradeName)
+	result = reconcileTalos(t, r, testUpgradeName)
+	if result.RequeueAfter != 5*time.Minute {
+		t.Fatalf("expected the completion requeue, got: %v", result.RequeueAfter)
 	}
 
 	updated := getTalosUpgrade(t, cl, testUpgradeName)
@@ -2065,10 +2104,18 @@ func TestTalosReconcile_HandleJobSuccess_VerificationFailed_Permanent(t *testing
 
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
+	// First pass: the mismatch is treated as a node still rebooting.
 	result := reconcileTalos(t, r, testUpgradeName)
+	if result.RequeueAfter != 30*time.Second {
+		t.Errorf("expected 30s rebooting requeue, got %v", result.RequeueAfter)
+	}
 
-	if result.RequeueAfter != 10*time.Minute {
-		t.Errorf("expected 10m requeue for failure, got %v", result.RequeueAfter)
+	// The mismatch never resolves; the reboot deadline turns it permanent.
+	expireRebootDeadlines(t, cl, testUpgradeName)
+	reconcileTalos(t, r, testUpgradeName)
+	result = reconcileTalos(t, r, testUpgradeName)
+	if result.RequeueAfter != 5*time.Minute {
+		t.Errorf("expected the completion requeue for failure, got %v", result.RequeueAfter)
 	}
 
 	updated := getTalosUpgrade(t, cl, testUpgradeName)
@@ -3691,7 +3738,11 @@ func TestTalosReconcile_BatchOneJobFails(t *testing.T) {
 		}
 	}
 
-	// Step 3: Reconcile — should process both, then fail
+	// Step 3: Reconcile — node-a completes, node-b's failed job is first held as
+	// possibly rebooting, and only the expired deadline makes it a failure.
+	reconcileTalos(t, r, testUpgradeName)
+	expireRebootDeadlines(t, cl, testUpgradeName)
+	reconcileTalos(t, r, testUpgradeName)
 	reconcileTalos(t, r, testUpgradeName)
 
 	updated := getTalosUpgrade(t, cl, testUpgradeName)

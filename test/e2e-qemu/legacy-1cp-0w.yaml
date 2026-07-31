@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/home-operations/talosctl-cluster-action/main/schema/talos-cluster.json
+---
+# The migration path: a cluster on the previous Talos minor that tuppr carries
+# across the 1.13 -> 1.14 boundary, where the config model changed under it
+# (UnattendedInstall document, typed multi-documents). Booted by the previous
+# action release, because v0.2.x targets Talos 1.14+ and refuses this pin.
+apiVersion: v1alpha1
+kind: TalosCluster
+metadata:
+  name: tuppr-e2e-legacy-1cp-0w
+spec:
+  kubernetes-version: v1.34.0
+  controlplanes:
+    count: 1
+  workers:
+    count: 0
+  qemu:
+    talos-version: v1.13.5
+    disks:
+      - virtio:10GiB
+  config-patches:
+    cluster: ["@patches/registry.yaml"]
+    controlplanes: ["@patches/talos-api-access.yaml"]

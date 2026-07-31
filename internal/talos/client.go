@@ -15,9 +15,6 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/api/common"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
 	"github.com/siderolabs/talos/pkg/machinery/client"
-	"github.com/siderolabs/talos/pkg/machinery/config/configloader"
-	"github.com/siderolabs/talos/pkg/machinery/config/configpatcher"
-	"github.com/siderolabs/talos/pkg/machinery/resources/config"
 	talosruntime "github.com/siderolabs/talos/pkg/machinery/resources/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -31,6 +28,7 @@ type talosClient interface {
 	COSIList(ctx context.Context, namespace, typ string) ([]resource.Resource, error)
 	ApplyConfiguration(ctx context.Context, req *machine.ApplyConfigurationRequest, opts ...grpc.CallOption) (*machine.ApplyConfigurationResponse, error)
 	ImagePull(ctx context.Context, req *machine.ImageServicePullRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[machine.ImageServicePullResponse], error)
+	Read(ctx context.Context, path string) (io.ReadCloser, error)
 	Close() error
 }
 
@@ -142,25 +140,32 @@ func (s *Client) GetNodeVersion(ctx context.Context, nodeIP string) (string, err
 	return version.GetTag(), nil
 }
 
-func (s *Client) GetNodeMachineConfig(ctx context.Context, nodeIP string) (*config.MachineConfig, error) {
+// machineConfigPath is where machined persists the applied config on the STATE
+// partition, stable across Talos versions.
+const machineConfigPath = "/system/state/config.yaml"
+
+// readMachineConfigRaw reads the node's machine config off disk over the
+// machine API, never decoding it: a config can carry document kinds newer than
+// any machinery this binary links, and the typed decoders hard-error on unknown
+// kinds (see machineconfig.go).
+func (s *Client) readMachineConfigRaw(ctx context.Context, nodeIP string) (string, error) {
 	nodeCtx := client.WithNode(ctx, nodeIP)
-	var r resource.Resource
+	var raw []byte
 
 	err := s.executeWithRetry(ctx, func() error {
-		var err error
-		r, err = s.talos.COSIGet(nodeCtx, "config", "MachineConfigs.config.talos.dev", "v1alpha1")
+		rc, err := s.talos.Read(nodeCtx, machineConfigPath)
+		if err != nil {
+			return err
+		}
+		defer rc.Close() //nolint:errcheck
+		raw, err = io.ReadAll(rc)
 		return err
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get machine config from node %s: %w", nodeIP, err)
+		return "", fmt.Errorf("failed to get machine config from node %s: %w", nodeIP, err)
 	}
 
-	mc, ok := r.(*config.MachineConfig)
-	if !ok {
-		return nil, fmt.Errorf("unexpected resource type for machine config from node %s", nodeIP)
-	}
-
-	return mc, nil
+	return string(raw), nil
 }
 
 type ExtensionInfo struct {
@@ -198,68 +203,35 @@ func (s *Client) GetNodeExtensions(ctx context.Context, nodeIP string) (Extensio
 }
 
 func (s *Client) GetNodeInstallImage(ctx context.Context, nodeIP string) (string, error) {
-	mc, err := s.GetNodeMachineConfig(ctx, nodeIP)
+	raw, err := s.readMachineConfigRaw(ctx, nodeIP)
 	if err != nil {
 		return "", err
 	}
 
-	// Talos 1.14 configs carry the install image in the UnattendedInstall
-	// document and leave .machine.install empty.
-	if ui := mc.Config().UnattendedInstallConfig(); ui != nil {
-		if image := ui.InstallerImage(); image != "" {
-			return image, nil
-		}
-	}
-
-	image := mc.Config().Machine().Install().Image()
-	if image == "" {
-		return "", fmt.Errorf("install image is empty for node %s", nodeIP)
+	image, err := installImageFromConfig(raw)
+	if err != nil {
+		return "", fmt.Errorf("%w for node %s", err, nodeIP)
 	}
 
 	return image, nil
 }
 
 func (s *Client) PatchNodeInstallImage(ctx context.Context, nodeIP, newImage string) error {
-	mc, err := s.GetNodeMachineConfig(ctx, nodeIP)
+	raw, err := s.readMachineConfigRaw(ctx, nodeIP)
 	if err != nil {
 		return fmt.Errorf("failed to patch install image on node %s: %w", nodeIP, err)
 	}
 
-	// JSON6902 patches reject multi-document configs; strategic merge does not.
-	patchYAML := fmt.Sprintf("version: v1alpha1\nmachine:\n  install:\n    image: %q\n", newImage)
-
-	// On a config carrying the UnattendedInstall document (Talos 1.14+), the
-	// image lives there, and the document's validator rejects any
-	// .machine.install section alongside it; patch the document instead.
-	if mc.Config().UnattendedInstallConfig() != nil {
-		patchYAML = fmt.Sprintf(
-			"apiVersion: v1alpha1\nkind: UnattendedInstallConfig\ninstaller:\n  image: %q\n",
-			newImage,
-		)
-	}
-
-	patchProvider, err := configloader.NewFromBytes([]byte(patchYAML))
+	patched, err := setInstallImage(raw, newImage)
 	if err != nil {
-		return fmt.Errorf("failed to load config patch: %w", err)
-	}
-
-	patch := configpatcher.NewStrategicMergePatch(patchProvider)
-
-	output, err := configpatcher.Apply(configpatcher.WithConfig(mc.Provider()), []configpatcher.Patch{patch})
-	if err != nil {
-		return fmt.Errorf("failed to apply config patch: %w", err)
-	}
-
-	patchedBytes, err := output.Bytes()
-	if err != nil {
-		return fmt.Errorf("failed to serialize patched config: %w", err)
+		return fmt.Errorf("failed to patch install image on node %s: %w", nodeIP, err)
 	}
 
 	nodeCtx := client.WithNode(ctx, nodeIP)
 
 	err = s.executeWithRetry(ctx, func() error {
 		_, err := s.talos.ApplyConfiguration(nodeCtx, &machine.ApplyConfigurationRequest{
-			Data: patchedBytes,
+			Data: []byte(patched),
 			Mode: machine.ApplyConfigurationRequest_NO_REBOOT,
 		})
 		return err
@@ -418,7 +390,7 @@ func (s *Client) checkNodeReady(ctx context.Context, nodeIP string) error {
 		return fmt.Errorf("API not ready: %w", err)
 	}
 
-	if _, err := s.GetNodeMachineConfig(ctx, nodeIP); err != nil {
+	if _, err := s.readMachineConfigRaw(ctx, nodeIP); err != nil {
 		return fmt.Errorf("machine config not accessible: %w", err)
 	}
 
