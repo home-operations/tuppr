@@ -95,8 +95,9 @@ which `image.sh` has no way to reach.
 
 Each leg still runs its own registry on the runner, so the image never crosses the
 internet. The nodes reach it as `registry.e2e`, which the mirror in
-`patches/registry.yaml` points at port 5000 on the QEMU bridge gateway. That mirror
-entry is inert for a local run, where nothing references `registry.e2e`.
+`patches/registry.yaml` points at port 5000 on the QEMU bridge gateway through the
+action's `${GATEWAY}` substitution. That mirror entry is CI-only: a local run has no
+substitution and nothing references `registry.e2e` anyway, so leave the patch out.
 
 ## How the chart is installed
 
