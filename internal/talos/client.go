@@ -10,15 +10,18 @@ import (
 	"syscall"
 	"time"
 
+	cosiv1alpha1 "github.com/cosi-project/runtime/api/v1alpha1"
 	"github.com/cosi-project/runtime/pkg/resource"
 	"github.com/siderolabs/go-retry/retry"
 	"github.com/siderolabs/talos/pkg/machinery/api/common"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
+	configpb "github.com/siderolabs/talos/pkg/machinery/api/resource/config"
 	"github.com/siderolabs/talos/pkg/machinery/client"
 	talosruntime "github.com/siderolabs/talos/pkg/machinery/resources/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -28,7 +31,7 @@ type talosClient interface {
 	COSIList(ctx context.Context, namespace, typ string) ([]resource.Resource, error)
 	ApplyConfiguration(ctx context.Context, req *machine.ApplyConfigurationRequest, opts ...grpc.CallOption) (*machine.ApplyConfigurationResponse, error)
 	ImagePull(ctx context.Context, req *machine.ImageServicePullRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[machine.ImageServicePullResponse], error)
-	Read(ctx context.Context, path string) (io.ReadCloser, error)
+	COSIGetRawSpec(ctx context.Context, namespace, typ, id string) ([]byte, error)
 	Close() error
 }
 
@@ -52,6 +55,23 @@ func (r *realTalosClient) COSIList(ctx context.Context, namespace, typ string) (
 
 func (r *realTalosClient) ImagePull(ctx context.Context, req *machine.ImageServicePullRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[machine.ImageServicePullResponse], error) {
 	return r.ImageClient.Pull(ctx, req, opts...)
+}
+
+// COSIGetRawSpec fetches a resource over the raw COSI state API and returns its
+// wire spec bytes untouched. The typed COSI client decodes specs through the
+// resource registry, which for MachineConfig runs the whole config through the
+// machinery decoder; the raw bytes carry no such requirement.
+func (r *realTalosClient) COSIGetRawSpec(ctx context.Context, namespace, typ, id string) ([]byte, error) {
+	resp, err := cosiv1alpha1.NewStateClient(r.Conn()).Get(ctx, &cosiv1alpha1.GetRequest{
+		Namespace: namespace,
+		Type:      typ,
+		Id:        id,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.GetResource().GetSpec().GetProtoSpec(), nil
 }
 
 type Client struct {
@@ -140,32 +160,29 @@ func (s *Client) GetNodeVersion(ctx context.Context, nodeIP string) (string, err
 	return version.GetTag(), nil
 }
 
-// machineConfigPath is where machined persists the applied config on the STATE
-// partition, stable across Talos versions.
-const machineConfigPath = "/system/state/config.yaml"
-
-// readMachineConfigRaw reads the node's machine config off disk over the
-// machine API, never decoding it: a config can carry document kinds newer than
-// any machinery this binary links, and the typed decoders hard-error on unknown
-// kinds (see machineconfig.go).
+// readMachineConfigRaw reads the node's machine config as the raw bytes inside
+// the MachineConfig resource's wire spec, never decoding the documents: a
+// config can carry kinds newer than any machinery this binary links, and the
+// typed decoders hard-error on unknown kinds (see machineconfig.go).
 func (s *Client) readMachineConfigRaw(ctx context.Context, nodeIP string) (string, error) {
 	nodeCtx := client.WithNode(ctx, nodeIP)
-	var raw []byte
+	var protoBytes []byte
 
 	err := s.executeWithRetry(ctx, func() error {
-		rc, err := s.talos.Read(nodeCtx, machineConfigPath)
-		if err != nil {
-			return err
-		}
-		defer rc.Close() //nolint:errcheck
-		raw, err = io.ReadAll(rc)
+		var err error
+		protoBytes, err = s.talos.COSIGetRawSpec(nodeCtx, "config", "MachineConfigs.config.talos.dev", "v1alpha1")
 		return err
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to get machine config from node %s: %w", nodeIP, err)
 	}
 
-	return string(raw), nil
+	var spec configpb.MachineConfigSpec
+	if err := proto.Unmarshal(protoBytes, &spec); err != nil {
+		return "", fmt.Errorf("failed to unmarshal machine config spec from node %s: %w", nodeIP, err)
+	}
+
+	return string(spec.YamlMarshalled), nil
 }
 
 type ExtensionInfo struct {

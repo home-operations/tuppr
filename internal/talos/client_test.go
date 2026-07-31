@@ -4,18 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"testing"
 
 	"github.com/cosi-project/runtime/pkg/resource"
 	"github.com/siderolabs/talos/pkg/machinery/api/common"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
+	configpb "github.com/siderolabs/talos/pkg/machinery/api/resource/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 type mockTalosClient struct {
@@ -52,7 +53,7 @@ func (m *mockTalosClient) Version(_ context.Context, _ ...grpc.CallOption) (*mac
 	return m.versionResp, nil
 }
 
-func (m *mockTalosClient) Read(_ context.Context, _ string) (io.ReadCloser, error) {
+func (m *mockTalosClient) COSIGetRawSpec(_ context.Context, _, _, _ string) ([]byte, error) {
 	m.readCalls++
 	if m.readErrUntil > 0 && m.readCalls <= m.readErrUntil {
 		return nil, m.readErr
@@ -60,7 +61,7 @@ func (m *mockTalosClient) Read(_ context.Context, _ string) (io.ReadCloser, erro
 	if m.readErr != nil && m.readCalls == 1 {
 		return nil, m.readErr
 	}
-	return io.NopCloser(strings.NewReader(m.readData)), nil
+	return proto.Marshal(&configpb.MachineConfigSpec{YamlMarshalled: []byte(m.readData)})
 }
 
 func (m *mockTalosClient) COSIGet(_ context.Context, _, _, _ string) (resource.Resource, error) {
