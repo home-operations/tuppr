@@ -20,4 +20,4 @@ spec:
       - virtio:10GiB
   config-patches:
     cluster: ["@patches/registry.yaml"]
-    controlplanes: ["@patches/talos-api-access.yaml"]
+    controlplanes: ["@patches/talos-api-access-v1alpha1.yaml"]
