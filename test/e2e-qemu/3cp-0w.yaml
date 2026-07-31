@@ -18,7 +18,7 @@ spec:
   workers:
     count: 0
   qemu:
-    talos-version: v1.13.5
+    talos-version: v1.14.0-beta.0
     disks:
       - virtio:10GiB
   config-patches:
