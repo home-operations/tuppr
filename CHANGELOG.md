@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.4.4](https://github.com/home-operations/tuppr/compare/0.4.3...0.4.4) (2026-07-31)
+
+
+### Features
+
+* **go:** update module google.golang.org/grpc (v1.82.1 → v1.83.0) ([#446](https://github.com/home-operations/tuppr/issues/446)) ([f9419a6](https://github.com/home-operations/tuppr/commit/f9419a6ed07b769879eeecd5b4148a8329d5475a))
+* support Talos 1.14 upgrades end to end ([#453](https://github.com/home-operations/tuppr/issues/453)) ([087388d](https://github.com/home-operations/tuppr/commit/087388d6a828712641c76c32e5d613200236447e))
+
+
+### Bug Fixes
+
+* **ci:** key the lint cache on the toolchain and drop the prefix fallback ([#448](https://github.com/home-operations/tuppr/issues/448)) ([ef37fdb](https://github.com/home-operations/tuppr/commit/ef37fdb53127372ca77f609d179f35b7e8f4ed83))
+* **go:** update module github.com/google/go-containerregistry (v0.21.7 → v0.21.8) ([#454](https://github.com/home-operations/tuppr/issues/454)) ([17ef959](https://github.com/home-operations/tuppr/commit/17ef95946e52da016537eb2fd997d3a50482cffc))
+
+
+### Continuous Integration
+
+* **e2e:** adopt talosctl-cluster-action v0.1.6 ([#452](https://github.com/home-operations/tuppr/issues/452)) ([7fd237f](https://github.com/home-operations/tuppr/commit/7fd237fb54a84caf2c8ba5f040e295aeabba3f98))
+* **github-action:** Update action actions/stale (v10.4.0 → v11.0.0) ([#450](https://github.com/home-operations/tuppr/issues/450)) ([70d3717](https://github.com/home-operations/tuppr/commit/70d3717de998ba785368f5de81c4979c9f955386))
+* **github-action:** Update action docker/github-builder (v1.14.0 → v1.15.0) ([#447](https://github.com/home-operations/tuppr/issues/447)) ([10b33dd](https://github.com/home-operations/tuppr/commit/10b33dd6fb995cb68e5226f78f1a6cf6aa7cee5c))
+* **github-action:** Update action docker/login-action (v4.5.1 → v4.5.2) ([#451](https://github.com/home-operations/tuppr/issues/451)) ([fe223f7](https://github.com/home-operations/tuppr/commit/fe223f7b3a54b3a0ed7cb9018f07a53833c9106d))
+
+
+### Miscellaneous Chores
+
+* **mise:** Update tool aqua:astral-sh/uv (0.12.0 → 0.12.1) ([#456](https://github.com/home-operations/tuppr/issues/456)) ([5c02a0d](https://github.com/home-operations/tuppr/commit/5c02a0d2b5c3be4420a5f2612917d61fcaa1652c))
+
 ## [0.4.3](https://github.com/home-operations/tuppr/compare/0.4.2...0.4.3) (2026-07-29)
 
 
