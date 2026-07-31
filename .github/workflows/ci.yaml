@@ -156,7 +156,7 @@ jobs:
           # converge on the new version before the CR reports Completed. Boots
           # current Talos through the current action: no Talos upgrade happens
           # here, so the beta.0 grant gap does not bite.
-          - leg: 1cp-1w
+          - leg: k8s-1cp-1w
             upgrade: kubernetes
     env:
       # What the chart is pointed at, and so what the nodes pull: the other half
