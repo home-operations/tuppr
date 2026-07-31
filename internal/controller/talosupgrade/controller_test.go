@@ -957,9 +957,9 @@ func TestTalosReconcile_HandleJobSuccess_PatchInstallImageFails_Continues(t *tes
 
 // expireRebootDeadlines rewinds every tracked reboot deadline so the next
 // reconcile treats the wait as exhausted.
-func expireRebootDeadlines(t *testing.T, cl client.Client, name string) {
+func expireRebootDeadlines(t *testing.T, cl client.Client) {
 	t.Helper()
-	tu := getTalosUpgrade(t, cl, name)
+	tu := getTalosUpgrade(t, cl, testUpgradeName)
 	if len(tu.Status.RebootingNodes) == 0 {
 		t.Fatalf("expected reboot tracking entries to expire, found none")
 	}
@@ -1007,7 +1007,7 @@ func TestTalosReconcile_HandlesJobFailure(t *testing.T) {
 		t.Fatalf("expected phase Rebooting, got: %s", updated.Status.Phase)
 	}
 
-	expireRebootDeadlines(t, cl, testUpgradeName)
+	expireRebootDeadlines(t, cl)
 	reconcileTalos(t, r, testUpgradeName) // records the timed-out node as failed
 	result = reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != 5*time.Minute {
@@ -1189,7 +1189,7 @@ func TestTalosReconcile_JobVerificationFailure(t *testing.T) {
 		t.Fatalf("expected 30s rebooting requeue, got: %v", result.RequeueAfter)
 	}
 
-	expireRebootDeadlines(t, cl, testUpgradeName)
+	expireRebootDeadlines(t, cl)
 	reconcileTalos(t, r, testUpgradeName)
 	result = reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != 5*time.Minute {
@@ -2111,7 +2111,7 @@ func TestTalosReconcile_HandleJobSuccess_VerificationFailed_Permanent(t *testing
 	}
 
 	// The mismatch never resolves; the reboot deadline turns it permanent.
-	expireRebootDeadlines(t, cl, testUpgradeName)
+	expireRebootDeadlines(t, cl)
 	reconcileTalos(t, r, testUpgradeName)
 	result = reconcileTalos(t, r, testUpgradeName)
 	if result.RequeueAfter != 5*time.Minute {
@@ -3741,7 +3741,7 @@ func TestTalosReconcile_BatchOneJobFails(t *testing.T) {
 	// Step 3: Reconcile — node-a completes, node-b's failed job is first held as
 	// possibly rebooting, and only the expired deadline makes it a failure.
 	reconcileTalos(t, r, testUpgradeName)
-	expireRebootDeadlines(t, cl, testUpgradeName)
+	expireRebootDeadlines(t, cl)
 	reconcileTalos(t, r, testUpgradeName)
 	reconcileTalos(t, r, testUpgradeName)
 
