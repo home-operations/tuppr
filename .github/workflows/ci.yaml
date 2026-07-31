@@ -131,26 +131,33 @@ jobs:
         # one picks a single control plane node and runs one job there, so it
         # gets one leg rather than a shape sweep of its own.
         include:
+          # Every Talos leg boots the previous minor (via the previous action
+          # release, since v0.2.x refuses pre-1.14 pins) and upgrades it across
+          # the 1.13 -> 1.14 config-model boundary: the migration every real
+          # cluster performs. Same-minor 1.14 pairs return once two 1.14 tags
+          # exist whose API-access grant works: v1.14.0-beta.0 sits mid-migration
+          # of the kubernetesTalosAPIAccess feature to its 1.14 document, and
+          # neither form conveys roles there, so nothing can authorize the
+          # upgrade pods on a beta.0-booted cluster.
+          #
           # Covers the self-hosted path: with one node tuppr upgrades the node
           # it is running on, so it skips the drain and issues the upgrade
           # without --wait. No other leg reaches that code.
           - leg: 1cp-0w
             upgrade: talos
+            legacy-action: true
           - leg: 1cp-1w
-            upgrade: talos
-          - leg: 3cp-0w
-            upgrade: talos
-          # A control plane and a worker, so both kinds of kubelet have to
-          # converge on the new version before the CR reports Completed.
-          - leg: 1cp-1w
-            upgrade: kubernetes
-          # The migration path: boots the previous Talos minor (via the previous
-          # action release, since v0.2.x refuses pre-1.14 pins) and upgrades it
-          # across the 1.13 -> 1.14 config-model boundary. This is the leg that
-          # proves tuppr can carry real clusters into 1.14.
-          - leg: legacy-1cp-0w
             upgrade: talos
             legacy-action: true
+          - leg: 3cp-0w
+            upgrade: talos
+            legacy-action: true
+          # A control plane and a worker, so both kinds of kubelet have to
+          # converge on the new version before the CR reports Completed. Boots
+          # current Talos through the current action: no Talos upgrade happens
+          # here, so the beta.0 grant gap does not bite.
+          - leg: 1cp-1w
+            upgrade: kubernetes
     env:
       # What the chart is pointed at, and so what the nodes pull: the other half
       # of the two-names-for-one-image split described on the PUSH_IMAGE var
