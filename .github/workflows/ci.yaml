@@ -110,7 +110,7 @@ jobs:
       ${{ github.event_name != 'push'
       && !(startsWith(github.head_ref, 'release-please--')
       && github.event.pull_request.head.repo.full_name == github.repository) }}
-    name: Go E2E (${{ matrix.upgrade }} ${{ matrix.leg }})
+    name: Go E2E (${{ matrix.name || format('{0} {1}', matrix.upgrade, matrix.leg) }})
     needs: e2e-image
     runs-on: ubuntu-24.04
     permissions:
@@ -152,6 +152,14 @@ jobs:
           - leg: 3cp-0w
             upgrade: talos
             legacy-action: true
+          # The same-minor pair on the previous line (1.13.5 -> 1.13.7): what
+          # clusters run repeatedly before they ever migrate. Same code path as
+          # the cross-boundary legs on the tuppr side, kept as its own proof.
+          - leg: 1cp-0w
+            name: talos 1.13-same-minor
+            upgrade: talos
+            legacy-action: true
+            talos-upgrade-version: v1.13.7
           # A control plane and a worker, so both kinds of kubelet have to
           # converge on the new version before the CR reports Completed. Boots
           # current Talos through the current action: no Talos upgrade happens
@@ -249,6 +257,8 @@ jobs:
       - name: Run e2e tests
         env:
           UPGRADE_KIND: ${{ matrix.upgrade }}
+          # Empty for most legs, so common.sh's default (the next minor) holds.
+          TALOS_UPGRADE_VERSION: ${{ matrix.talos-upgrade-version || '' }}
           CLUSTER_NAME: ${{ steps.cluster.outputs.cluster-name || steps.cluster-legacy.outputs.cluster-name }}
           ENDPOINT: ${{ steps.cluster.outputs.endpoint || steps.cluster-legacy.outputs.endpoint }}
           KUBECONFIG: ${{ steps.cluster.outputs.kubeconfig || steps.cluster-legacy.outputs.kubeconfig }}
