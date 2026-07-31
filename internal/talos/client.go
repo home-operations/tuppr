@@ -203,6 +203,14 @@ func (s *Client) GetNodeInstallImage(ctx context.Context, nodeIP string) (string
 		return "", err
 	}
 
+	// Talos 1.14 configs carry the install image in the UnattendedInstall
+	// document and leave .machine.install empty.
+	if ui := mc.Config().UnattendedInstallConfig(); ui != nil {
+		if image := ui.InstallerImage(); image != "" {
+			return image, nil
+		}
+	}
+
 	image := mc.Config().Machine().Install().Image()
 	if image == "" {
 		return "", fmt.Errorf("install image is empty for node %s", nodeIP)
@@ -219,6 +227,16 @@ func (s *Client) PatchNodeInstallImage(ctx context.Context, nodeIP, newImage str
 
 	// JSON6902 patches reject multi-document configs; strategic merge does not.
 	patchYAML := fmt.Sprintf("version: v1alpha1\nmachine:\n  install:\n    image: %q\n", newImage)
+
+	// On a config carrying the UnattendedInstall document (Talos 1.14+), the
+	// image lives there, and the document's validator rejects any
+	// .machine.install section alongside it; patch the document instead.
+	if mc.Config().UnattendedInstallConfig() != nil {
+		patchYAML = fmt.Sprintf(
+			"apiVersion: v1alpha1\nkind: UnattendedInstallConfig\ninstaller:\n  image: %q\n",
+			newImage,
+		)
+	}
 
 	patchProvider, err := configloader.NewFromBytes([]byte(patchYAML))
 	if err != nil {
