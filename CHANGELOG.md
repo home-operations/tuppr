@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.5](https://github.com/home-operations/tuppr/compare/0.4.4...0.4.5) (2026-08-01)
+
+
+### Features
+
+* **prepull:** fail stalled pulls fast, surface and back off failure streaks ([#462](https://github.com/home-operations/tuppr/issues/462)) ([c15b955](https://github.com/home-operations/tuppr/commit/c15b955cc4598620b6b0b2e61d5622c00ccb99d1))
+
+
+### Miscellaneous Chores
+
+* **deps:** lock file maintenance (pep621) ([#461](https://github.com/home-operations/tuppr/issues/461)) ([097c160](https://github.com/home-operations/tuppr/commit/097c160798fd558cd74ec2c790183d8819d9b699))
+
 ## [0.4.4](https://github.com/home-operations/tuppr/compare/0.4.3...0.4.4) (2026-07-31)
 
 
