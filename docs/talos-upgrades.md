@@ -143,8 +143,15 @@ spec:
     prePull: false
 ```
 
-A parked run retries every minute and resumes on its own once the registry
-serves the image; partial pulls resume where they left off. Pulled images are
+A pull that reports no progress for 90 seconds fails fast (a registry serving
+errors that the node retries internally would otherwise be indistinguishable
+from a slow link), while a slow but progressing pull gets up to 10 minutes. A
+parked run retries with backoff (1 minute doubling to a 5 minute cap) and
+resumes on its own once the registry serves the image; partial pulls resume
+where they left off. The retry streak is tracked in `status.prePullFailure`
+(attempt count and last error) and surfaced in the status message, so a
+crash-looping pre-pull is visible in `kubectl get talosupgrade` rather than
+only in events. Pulled images are
 tracked per node in `status.prePulledNodes`, keyed by the resolved ref and the
 Node UID: a node that joins (or becomes eligible) mid-run, is recreated under
 the same name, or whose resolved image changes, is pre-pulled before its next

@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cosi-project/runtime/pkg/resource"
 	"github.com/siderolabs/talos/pkg/machinery/api/common"
@@ -41,6 +42,7 @@ type mockTalosClient struct {
 	imagePullReqs   []*machine.ImageServicePullRequest
 	imagePullErr    error
 	pullStreamErr   error
+	pullStreamFunc  func(ctx context.Context) grpc.ServerStreamingClient[machine.ImageServicePullResponse]
 }
 
 func (m *mockTalosClient) Version(_ context.Context, _ ...grpc.CallOption) (*machine.VersionResponse, error) {
@@ -107,12 +109,68 @@ func (f *fakePullStream) Recv() (*machine.ImageServicePullResponse, error) {
 	return nil, io.EOF
 }
 
-func (m *mockTalosClient) ImagePull(_ context.Context, req *machine.ImageServicePullRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[machine.ImageServicePullResponse], error) {
+func (m *mockTalosClient) ImagePull(ctx context.Context, req *machine.ImageServicePullRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[machine.ImageServicePullResponse], error) {
 	m.imagePullReqs = append(m.imagePullReqs, req)
 	if m.imagePullErr != nil {
 		return nil, m.imagePullErr
 	}
+	if m.pullStreamFunc != nil {
+		return m.pullStreamFunc(ctx), nil
+	}
 	return &fakePullStream{err: m.pullStreamErr}, nil
+}
+
+// pacedPullStream replays msgs with a fixed delay before each, then a clean
+// EOF; used to exercise the stall watchdog against a live-but-slow stream.
+type pacedPullStream struct {
+	grpc.ClientStream
+	msgs     []*machine.ImageServicePullResponse
+	interval time.Duration
+	i        int
+}
+
+func (s *pacedPullStream) Recv() (*machine.ImageServicePullResponse, error) {
+	if s.i >= len(s.msgs) {
+		return nil, io.EOF
+	}
+	time.Sleep(s.interval)
+	msg := s.msgs[s.i]
+	s.i++
+	return msg, nil
+}
+
+// stallingPullStream replays msgs, then blocks like a stalled transfer until
+// the stream context ends, returning its error the way gRPC would.
+type stallingPullStream struct {
+	grpc.ClientStream
+	ctx  context.Context
+	msgs []*machine.ImageServicePullResponse
+	i    int
+}
+
+func (s *stallingPullStream) Recv() (*machine.ImageServicePullResponse, error) {
+	if s.i < len(s.msgs) {
+		msg := s.msgs[s.i]
+		s.i++
+		return msg, nil
+	}
+	<-s.ctx.Done()
+	return nil, status.FromContextError(s.ctx.Err()).Err()
+}
+
+func pullProgressMsg(layer string, st machine.ImageServicePullLayerProgress_Status, offset, total int64) *machine.ImageServicePullResponse {
+	return &machine.ImageServicePullResponse{
+		Response: &machine.ImageServicePullResponse_PullProgress{
+			PullProgress: &machine.ImageServicePullProgress{
+				LayerId: layer,
+				Progress: &machine.ImageServicePullLayerProgress{
+					Status: st,
+					Offset: offset,
+					Total:  total,
+				},
+			},
+		},
+	}
 }
 
 func (m *mockTalosClient) Close() error {
@@ -649,6 +707,136 @@ func TestClient_PullImage_Unimplemented(t *testing.T) {
 
 	require.Error(t, err)
 	assert.True(t, IsUnimplementedError(err), "Unimplemented must survive the error wrap")
+}
+
+func TestClient_PullImage_StallFailsFast(t *testing.T) {
+	ctx := context.Background()
+	// The stream stays open but transfers nothing — the shape of a registry
+	// serving errors that containerd retries internally.
+	mock := &mockTalosClient{
+		pullStreamFunc: func(ctx context.Context) grpc.ServerStreamingClient[machine.ImageServicePullResponse] {
+			return &stallingPullStream{ctx: ctx}
+		},
+	}
+
+	c := &Client{
+		talos:           mock,
+		newClientFunc:   func(ctx context.Context) (talosClient, error) { return mock, nil },
+		pullIdleTimeout: 100 * time.Millisecond,
+	}
+
+	start := time.Now()
+	err := c.PullImage(ctx, "10.0.0.1", "factory.talos.dev/installer/abc:v1.13.7")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no pull progress after 100ms")
+	assert.Contains(t, err.Error(), "0 layers, 0 bytes received")
+	assert.Less(t, time.Since(start), 5*time.Second, "watchdog must fail fast, not wait for a deadline")
+}
+
+func TestClient_PullImage_IdenticalProgressReportsDoNotFeedWatchdog(t *testing.T) {
+	ctx := context.Background()
+	// A steady stream of identical reports is a stalled transfer, not a live
+	// one: the watchdog must still fire.
+	frozen := pullProgressMsg("layer-a", machine.ImageServicePullLayerProgress_DOWNLOADING, 1<<20, 8<<20)
+	msgs := make([]*machine.ImageServicePullResponse, 50)
+	for i := range msgs {
+		msgs[i] = frozen
+	}
+	mock := &mockTalosClient{
+		pullStreamFunc: func(ctx context.Context) grpc.ServerStreamingClient[machine.ImageServicePullResponse] {
+			return &pacedPullStream{msgs: msgs, interval: 20 * time.Millisecond}
+		},
+	}
+
+	c := &Client{
+		talos:           mock,
+		newClientFunc:   func(ctx context.Context) (talosClient, error) { return mock, nil },
+		pullIdleTimeout: 150 * time.Millisecond,
+	}
+
+	err := c.PullImage(ctx, "10.0.0.1", "factory.talos.dev/installer/abc:v1.13.7")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no pull progress after 150ms")
+	assert.Contains(t, err.Error(), "1 layer(s), 1.0/8.0 MiB received")
+}
+
+func TestClient_PullImage_AdvancingProgressFeedsWatchdog(t *testing.T) {
+	ctx := context.Background()
+	// Each message advances the offset; the pull outlives the idle timeout
+	// several times over and must still succeed.
+	msgs := make([]*machine.ImageServicePullResponse, 8)
+	for i := range msgs {
+		msgs[i] = pullProgressMsg("layer-a", machine.ImageServicePullLayerProgress_DOWNLOADING, int64(i)<<20, 8<<20)
+	}
+	mock := &mockTalosClient{
+		pullStreamFunc: func(ctx context.Context) grpc.ServerStreamingClient[machine.ImageServicePullResponse] {
+			return &pacedPullStream{msgs: msgs, interval: 50 * time.Millisecond}
+		},
+	}
+
+	c := &Client{
+		talos:           mock,
+		newClientFunc:   func(ctx context.Context) (talosClient, error) { return mock, nil },
+		pullIdleTimeout: 150 * time.Millisecond,
+	}
+
+	err := c.PullImage(ctx, "10.0.0.1", "factory.talos.dev/installer/abc:v1.13.7")
+
+	require.NoError(t, err)
+}
+
+func TestClient_PullImage_DeadlineErrorIncludesProgress(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	mock := &mockTalosClient{
+		pullStreamFunc: func(ctx context.Context) grpc.ServerStreamingClient[machine.ImageServicePullResponse] {
+			return &stallingPullStream{ctx: ctx, msgs: []*machine.ImageServicePullResponse{
+				pullProgressMsg("layer-a", machine.ImageServicePullLayerProgress_DOWNLOADING, 384<<20, 512<<20),
+			}}
+		},
+	}
+
+	c := &Client{
+		talos:           mock,
+		newClientFunc:   func(ctx context.Context) (talosClient, error) { return mock, nil },
+		pullIdleTimeout: time.Minute, // only the caller's deadline can end this pull
+	}
+
+	err := c.PullImage(ctx, "10.0.0.1", "factory.talos.dev/installer/abc:v1.13.7")
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Contains(t, err.Error(), "pull timed out at 1 layer(s), 384.0/512.0 MiB received")
+	assert.NotContains(t, err.Error(), "error(s) occurred", "a dead context must not produce a retry multierror")
+}
+
+func TestClient_ExecuteWithRetry_DeadContextSkipsRetryAndRefresh(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	transientErr := status.Error(codes.Unavailable, "connection error")
+
+	mock := &mockTalosClient{}
+	refreshCount := 0
+	c := &Client{
+		talos: mock,
+		newClientFunc: func(ctx context.Context) (talosClient, error) {
+			refreshCount++
+			return mock, nil
+		},
+	}
+
+	callCount := 0
+	err := c.executeWithRetry(ctx, func() error {
+		callCount++
+		return transientErr
+	})
+
+	require.ErrorIs(t, err, transientErr)
+	assert.Equal(t, 1, callCount, "a dead context must not be retried against")
+	assert.Equal(t, 0, refreshCount, "a dead context must not trigger a client refresh")
 }
 
 func TestIsUnimplementedError(t *testing.T) {

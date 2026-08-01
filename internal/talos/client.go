@@ -78,6 +78,7 @@ type Client struct {
 	talos            talosClient
 	newClientFunc    func(ctx context.Context) (talosClient, error)
 	endpointResolver func(ctx context.Context) []string
+	pullIdleTimeout  time.Duration
 }
 
 type ClientOption func(*Client)
@@ -260,36 +261,143 @@ func (s *Client) PatchNodeInstallImage(ctx context.Context, nodeIP, newImage str
 	return nil
 }
 
+// defaultPullIdleTimeout is how long a pull stream may go without progress
+// before it is failed. Long enough for manifest resolution and slow layer
+// starts; far shorter than the caller's overall pull budget.
+const defaultPullIdleTimeout = 90 * time.Second
+
+// pullLayerState is one layer's last observed pull progress.
+type pullLayerState struct {
+	status machine.ImageServicePullLayerProgress_Status
+	offset int64
+	total  int64
+}
+
+// pullProgress accumulates per-layer state from the pull stream so stall
+// detection and error messages can report how far a pull got.
+type pullProgress struct {
+	layers map[string]pullLayerState
+}
+
+// observe folds one stream message in and reports whether it advanced the
+// pull: a new layer, a status change, or a byte-offset change. Identical
+// re-reports do not count as progress, so a transfer containerd is silently
+// retrying (e.g. a registry serving 5xx) cannot keep the watchdog fed.
+func (p *pullProgress) observe(resp *machine.ImageServicePullResponse) bool {
+	pp := resp.GetPullProgress()
+	if pp == nil {
+		// The terminal message carrying the pulled image name.
+		return true
+	}
+	lp := pp.GetProgress()
+	cur := pullLayerState{status: lp.GetStatus(), offset: lp.GetOffset(), total: lp.GetTotal()}
+	prev, seen := p.layers[pp.GetLayerId()]
+	if seen && prev.status == cur.status && prev.offset == cur.offset {
+		return false
+	}
+	p.layers[pp.GetLayerId()] = cur
+	return true
+}
+
+func (p *pullProgress) summary() string {
+	if len(p.layers) == 0 {
+		return "0 layers, 0 bytes received"
+	}
+	var offset, total int64
+	for _, l := range p.layers {
+		offset += l.offset
+		total += l.total
+	}
+	return fmt.Sprintf("%d layer(s), %.1f/%.1f MiB received",
+		len(p.layers), float64(offset)/(1<<20), float64(total)/(1<<20))
+}
+
 // PullImage pulls imageRef into the node's system containerd image store — the
 // store machined runs the installer from — so the pull at upgrade time is a
-// skip. Requires Talos >= v1.13 (ImageService); older nodes return Unimplemented.
+// skip. A pull whose stream reports no progress for pullIdleTimeout fails fast
+// instead of burning the caller's whole budget: containerd retries registry
+// 5xx internally, so a broken registry otherwise looks identical to a slow
+// link until the deadline. Requires Talos >= v1.13 (ImageService); older
+// nodes return Unimplemented.
 func (s *Client) PullImage(ctx context.Context, nodeIP, imageRef string) error {
 	nodeCtx := client.WithNode(ctx, nodeIP)
 
 	err := s.executeWithRetry(ctx, func() error {
-		stream, err := s.talos.ImagePull(nodeCtx, &machine.ImageServicePullRequest{
-			Containerd: &common.ContainerdInstance{
-				Driver:    common.ContainerDriver_CONTAINERD,
-				Namespace: common.ContainerdNamespace_NS_SYSTEM,
-			},
-			ImageRef: imageRef,
-		})
-		if err != nil {
-			return err
-		}
-		for {
-			if _, err := stream.Recv(); err != nil {
-				if errors.Is(err, io.EOF) {
-					return nil
-				}
-				return err
-			}
-		}
+		return s.pullImageOnce(nodeCtx, imageRef)
 	})
 	if err != nil {
 		return fmt.Errorf("failed to pull image %s on node %s: %w", imageRef, nodeIP, err)
 	}
 	return nil
+}
+
+func (s *Client) pullImageOnce(ctx context.Context, imageRef string) error {
+	// Cancelled on return so a watchdog-abandoned stream (and its Recv
+	// goroutine) is torn down rather than left pulling.
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	stream, err := s.talos.ImagePull(streamCtx, &machine.ImageServicePullRequest{
+		Containerd: &common.ContainerdInstance{
+			Driver:    common.ContainerDriver_CONTAINERD,
+			Namespace: common.ContainerdNamespace_NS_SYSTEM,
+		},
+		ImageRef: imageRef,
+	})
+	if err != nil {
+		return err
+	}
+
+	type recvResult struct {
+		resp *machine.ImageServicePullResponse
+		err  error
+	}
+	recvCh := make(chan recvResult)
+	go func() {
+		for {
+			resp, err := stream.Recv()
+			select {
+			case recvCh <- recvResult{resp: resp, err: err}:
+			case <-streamCtx.Done():
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	idleTimeout := s.pullIdleTimeout
+	if idleTimeout <= 0 {
+		idleTimeout = defaultPullIdleTimeout
+	}
+	idle := time.NewTimer(idleTimeout)
+	defer idle.Stop()
+
+	progress := pullProgress{layers: map[string]pullLayerState{}}
+	for {
+		select {
+		case r := <-recvCh:
+			if r.err != nil {
+				if errors.Is(r.err, io.EOF) {
+					return nil
+				}
+				if ctx.Err() != nil {
+					return fmt.Errorf("pull timed out at %s: %w", progress.summary(), ctx.Err())
+				}
+				return r.err
+			}
+			if progress.observe(r.resp) {
+				idle.Reset(idleTimeout)
+			}
+		case <-ctx.Done():
+			// Watched directly: the Recv goroutine's error delivery races
+			// its own shutdown once the context dies.
+			return fmt.Errorf("pull timed out at %s: %w", progress.summary(), ctx.Err())
+		case <-idle.C:
+			return fmt.Errorf("no pull progress after %s (%s); registry may be failing requests", idleTimeout, progress.summary())
+		}
+	}
 }
 
 func (s *Client) CheckNodeReady(ctx context.Context, nodeIP, nodeName string) error {
@@ -325,9 +433,19 @@ func (s *Client) refreshTalosClient(ctx context.Context) error {
 }
 
 func (s *Client) executeWithRetry(ctx context.Context, operation func() error) error {
-	return retry.Constant(10*time.Second, retry.WithUnits(100*time.Millisecond)).Retry(func() error {
+	var ctxDeadErr error
+	err := retry.Constant(10*time.Second, retry.WithUnits(100*time.Millisecond)).Retry(func() error {
 		err := operation()
 		if err == nil {
+			return nil
+		}
+		// A dead local context is not a transient server condition: every
+		// retry against it fails instantly, the client refresh is wasted
+		// work, and go-retry misreads the DeadlineExceeded as its own
+		// attempt timeout (the confusing "…; timeout" multierror). Stop the
+		// retryer and surface the failure as-is.
+		if ctx.Err() != nil {
+			ctxDeadErr = err
 			return nil
 		}
 		if !IsTransientError(err) {
@@ -338,6 +456,10 @@ func (s *Client) executeWithRetry(ctx context.Context, operation func() error) e
 		}
 		return retry.ExpectedError(err)
 	})
+	if ctxDeadErr != nil {
+		return ctxDeadErr
+	}
+	return err
 }
 
 // IsUnimplementedError reports whether the node's Talos API lacks the called

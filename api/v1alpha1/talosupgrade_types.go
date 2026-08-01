@@ -309,6 +309,13 @@ type TalosUpgradeStatus struct {
 	// +optional
 	PrePulledNodes []PrePulledNode `json:"prePulledNodes,omitempty"`
 
+	// PrePullFailure tracks the current streak of consecutive failed pre-pull
+	// cycles, so a crash-looping pre-pull stays visible in status instead of
+	// being overwritten by the next cycle's Pre-pulling message. Drives the
+	// retry backoff; cleared once a pass completes without a failure.
+	// +optional
+	PrePullFailure *PrePullFailure `json:"prePullFailure,omitempty"`
+
 	// AlertSilenceIDs are the Alertmanager silences this run holds open, indexed
 	// like spec.silences (an empty entry is a silence not yet created). Persisted
 	// so the leases are re-adopted across controller restarts and expired when
@@ -348,6 +355,18 @@ type TalosUpgradeHistoryEntry struct {
 	// FailedNodes are the nodes that failed during the run
 	// +optional
 	FailedNodes []string `json:"failedNodes,omitempty"`
+}
+
+// PrePullFailure records a run's current streak of consecutive failed
+// pre-pull cycles.
+type PrePullFailure struct {
+	// Attempts is the number of consecutive pre-pull cycles that have failed.
+	// +kubebuilder:validation:Required
+	Attempts int `json:"attempts"`
+
+	// LastError is the failure from the most recent cycle.
+	// +kubebuilder:validation:Required
+	LastError string `json:"lastError"`
 }
 
 // PrePulledNode records one node's handled installer pre-pull for this run.

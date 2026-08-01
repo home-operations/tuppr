@@ -247,4 +247,5 @@ func resetRunProgress(status *tupprv1alpha1.TalosUpgradeStatus) {
 	status.PostHookIndex = 0
 	status.PreHookFailed = false
 	status.PrePulledNodes = nil
+	status.PrePullFailure = nil
 }
