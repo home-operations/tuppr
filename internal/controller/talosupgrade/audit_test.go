@@ -89,6 +89,16 @@ func TestApplyPhaseAuditFields_Talos(t *testing.T) {
 			},
 		},
 		{
+			name: "terminal without startedAt records no history (no-op run)",
+			status: tupprv1alpha1.TalosUpgradeStatus{
+				Phase:          tupprv1alpha1.JobPhasePending,
+				CompletedNodes: []string{fakeNodeA, fakeNodeB},
+			},
+			nextPhase:     tupprv1alpha1.JobPhaseCompleted,
+			targetVersion: fakeTalosVersion,
+			wantCompleted: now,
+		},
+		{
 			name: "re-entry to Pending clears timestamps",
 			status: tupprv1alpha1.TalosUpgradeStatus{
 				Phase:       tupprv1alpha1.JobPhaseCompleted,

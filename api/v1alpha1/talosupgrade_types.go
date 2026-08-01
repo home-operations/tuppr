@@ -282,8 +282,14 @@ type TalosUpgradeStatus struct {
 
 	// History records past version transitions on this CR, newest first
 	// +optional
-	// +kubebuilder:validation:MaxItems=10
+	// +kubebuilder:validation:MaxItems=3
 	History []TalosUpgradeHistoryEntry `json:"history,omitempty"`
+
+	// CompletionCycles counts Completed→Pending re-entries: a completed run
+	// re-opened because a matching node still needs the target version. Bounds
+	// restart loops; reset by spec changes and the reset annotation.
+	// +optional
+	CompletionCycles int `json:"completionCycles,omitempty"`
 
 	// PreHookIndex is the index of the next pre-hook to run.
 	// Equals len(spec.hooks.pre) once all pre-hooks are done.

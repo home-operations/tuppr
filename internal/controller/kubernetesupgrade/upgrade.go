@@ -54,7 +54,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 		if allUpgraded {
 			return ctrl.Result{RequeueAfter: time.Hour}, nil
 		}
-		cycles := completionCyclesForVersion(kubernetesUpgrade.Status.History, targetVersion)
+		cycles := kubernetesUpgrade.Status.CompletionCycles
 		if cycles >= upgradeaudit.MaxCompletionCycles {
 			message := fmt.Sprintf(
 				"Some nodes never converged to %s after %d completion cycles; add the %s annotation or bump the spec to retry",
@@ -68,10 +68,13 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 			return ctrl.Result{RequeueAfter: time.Hour}, nil
 		}
 		logger.Info("Node lagging target version, restarting campaign", "target", targetVersion, "cycle", cycles+1)
-		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "Node lagging target version, restarting upgrade"); err != nil {
+		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "", "Node lagging target version, restarting upgrade", map[string]any{
+			statusFieldCompletionCycles: cycles + 1,
+		}); err != nil {
 			logger.Error(err, "Failed to re-enter Pending after completion")
 			return ctrl.Result{RequeueAfter: time.Minute}, err
 		}
+		kubernetesUpgrade.Status.CompletionCycles = cycles + 1
 		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
 

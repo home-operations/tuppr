@@ -132,6 +132,22 @@ func TestApplyPhaseAuditFields_TerminalTransition(t *testing.T) {
 		}
 	})
 
+	t.Run("terminal without startedAt records no history (no-op run)", func(t *testing.T) {
+		status := tupprv1alpha1.KubernetesUpgradeStatus{
+			Phase:          tupprv1alpha1.JobPhasePending,
+			CurrentVersion: toVer,
+			TargetVersion:  toVer,
+		}
+		updates := map[string]any{}
+		applyPhaseAuditFields(&status, updates, tupprv1alpha1.JobPhaseCompleted, now, "done")
+		if _, ok := updates["history"]; ok {
+			t.Fatal("no-op run must not append history")
+		}
+		if got := updates["completedAt"].(metav1.Time); !got.Equal(&now) {
+			t.Fatalf("want completedAt %v, got %v", now, got)
+		}
+	})
+
 	t.Run("already-terminal does not append duplicate", func(t *testing.T) {
 		status := tupprv1alpha1.KubernetesUpgradeStatus{
 			Phase:     tupprv1alpha1.JobPhaseCompleted,

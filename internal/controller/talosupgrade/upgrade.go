@@ -74,7 +74,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 			return ctrl.Result{RequeueAfter: time.Hour}, nil
 		}
 		targetVersion := talosUpgrade.Spec.Talos.Version
-		cycles := completionCyclesForVersion(talosUpgrade.Status.History, targetVersion)
+		cycles := talosUpgrade.Status.CompletionCycles
 		if cycles >= upgradeaudit.MaxCompletionCycles {
 			message := fmt.Sprintf(
 				"Node(s) never converged to %s after %d completion cycles; add the %s annotation or bump the spec to retry",
@@ -89,18 +89,20 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 		}
 		logger.Info("Node detected requiring upgrade after completion, restarting campaign", "node", nextNodes[0], "cycle", cycles+1)
 		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", nil, "New node detected, restarting upgrade", map[string]any{
-			statusCompletedNodes: []string{},
-			statusFailedNodes:    []tupprv1alpha1.NodeUpgradeStatus{},
-			statusRebootingNodes: []tupprv1alpha1.NodeRebootStatus{},
-			statusPreHookIndex:   0,
-			statusPostHookIndex:  0,
-			statusPreHookFailed:  false,
-			statusPrePulledNodes: []tupprv1alpha1.PrePulledNode{},
-			statusPrePullFailure: nil,
+			statusCompletedNodes:   []string{},
+			statusFailedNodes:      []tupprv1alpha1.NodeUpgradeStatus{},
+			statusRebootingNodes:   []tupprv1alpha1.NodeRebootStatus{},
+			statusPreHookIndex:     0,
+			statusPostHookIndex:    0,
+			statusPreHookFailed:    false,
+			statusPrePulledNodes:   []tupprv1alpha1.PrePulledNode{},
+			statusPrePullFailure:   nil,
+			statusCompletionCycles: cycles + 1,
 		}); err != nil {
 			logger.Error(err, "Failed to re-enter Pending after completion")
 			return ctrl.Result{RequeueAfter: time.Minute}, err
 		}
+		talosUpgrade.Status.CompletionCycles = cycles + 1
 		resetRunProgress(&talosUpgrade.Status)
 		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}

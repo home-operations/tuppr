@@ -29,10 +29,13 @@ func applyPhaseAuditFields(status *tupprv1alpha1.TalosUpgradeStatus, updates map
 		}
 		updates["completedAt"] = now
 
-		startedAt := now
-		if status.StartedAt != nil {
-			startedAt = *status.StartedAt
+		// A run that never went active (StartedAt unset) did no work, e.g. a
+		// spec re-apply with every node already at target. Recording it would
+		// fabricate a zero-duration entry claiming nodes the run never touched.
+		if status.StartedAt == nil {
+			return
 		}
+		startedAt := *status.StartedAt
 
 		failedNames := make([]string, 0, len(status.FailedNodes))
 		for _, n := range status.FailedNodes {
@@ -76,19 +79,6 @@ func syncLocalAuditFields(status *tupprv1alpha1.TalosUpgradeStatus, updates map[
 			status.RebootingNodes = s
 		}
 	}
-}
-
-// completionCyclesForVersion counts consecutive newest-first Completed entries
-// for the given target version.
-func completionCyclesForVersion(history []tupprv1alpha1.TalosUpgradeHistoryEntry, version string) int {
-	count := 0
-	for _, e := range history {
-		if e.Phase != tupprv1alpha1.JobPhaseCompleted || e.ToVersion != version {
-			break
-		}
-		count++
-	}
-	return count
 }
 
 func (r *Reconciler) emitPhaseEvent(tu *tupprv1alpha1.TalosUpgrade, prev, next tupprv1alpha1.JobPhase, message string) {

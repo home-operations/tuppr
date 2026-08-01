@@ -47,8 +47,9 @@ kubectl edit kubernetesupgrade kubernetes
 ## History and status
 
 Each run records `.status.startedAt` / `.status.completedAt`, and past runs are
-kept in `.status.history[]` (newest first, capped at 10). Phase transitions are
-emitted as Kubernetes Events:
+kept in `.status.history[]` (newest first, capped at 3). A run that did no work
+(e.g. a spec re-apply with the cluster already at target) is not recorded.
+Phase transitions are emitted as Kubernetes Events:
 
 ```bash
 kubectl describe kubernetesupgrade kubernetes

@@ -109,8 +109,14 @@ type KubernetesUpgradeStatus struct {
 
 	// History records past version transitions on this CR, newest first
 	// +optional
-	// +kubebuilder:validation:MaxItems=10
+	// +kubebuilder:validation:MaxItems=3
 	History []UpgradeHistoryEntry `json:"history,omitempty"`
+
+	// CompletionCycles counts Completed→Pending re-entries: a completed run
+	// re-opened because a node still lags the target version. Bounds restart
+	// loops; reset by spec changes and the reset annotation.
+	// +optional
+	CompletionCycles int `json:"completionCycles,omitempty"`
 }
 
 // UpgradeHistoryEntry records a single completed version transition
