@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -310,6 +311,79 @@ func TestTalosReconcile_PrePull_LateNodePulledMidRun(t *testing.T) {
 	updated := getTalosUpgrade(t, cl, testUpgradeName)
 	if !hasPrePulledNode(updated.Status.PrePulledNodes, fakeNodeC) {
 		t.Fatalf("expected node-c recorded as pre-pulled, got: %v", updated.Status.PrePulledNodes)
+	}
+}
+
+func TestTalosReconcile_PrePull_FailureStreakGrowsWithBackoff(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer, withPhase(tupprv1alpha1.JobPhasePending))
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+
+	tc := newPrePullMockClient()
+	tc.pullErrs = map[string]error{testNodeIP1: errors.New("no pull progress after 1m30s")}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, nodeA).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	result := reconcileTalos(t, r, testUpgradeName)
+
+	if result.RequeueAfter != time.Minute {
+		t.Fatalf("expected 1m backoff after the first failure, got: %s", result.RequeueAfter)
+	}
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	f := updated.Status.PrePullFailure
+	if f == nil || f.Attempts != 1 || !strings.Contains(f.LastError, "no pull progress") {
+		t.Fatalf("expected failure streak {1, no pull progress...} in status, got: %+v", f)
+	}
+
+	result = reconcileTalos(t, r, testUpgradeName)
+
+	if result.RequeueAfter != 2*time.Minute {
+		t.Fatalf("expected 2m backoff after the second failure, got: %s", result.RequeueAfter)
+	}
+	updated = getTalosUpgrade(t, cl, testUpgradeName)
+	if f := updated.Status.PrePullFailure; f == nil || f.Attempts != 2 {
+		t.Fatalf("expected failure streak to persist across cycles, got: %+v", f)
+	}
+	// kubectl get is self-diagnosing: the attempt count rides the message.
+	if !strings.Contains(updated.Status.Message, "(attempt 2)") {
+		t.Fatalf("expected attempt count in status message, got: %q", updated.Status.Message)
+	}
+}
+
+func TestTalosReconcile_PrePull_FailureStreakClearedOnSuccess(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer, withPhase(tupprv1alpha1.JobPhasePending))
+	tu.Status.PrePullFailure = &tupprv1alpha1.PrePullFailure{Attempts: 3, LastError: "registry down"}
+	nodeA := newNode(fakeNodeA, testNodeIP1)
+
+	tc := newPrePullMockClient()
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, nodeA).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	reconcileTalos(t, r, testUpgradeName)
+
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	if updated.Status.PrePullFailure != nil {
+		t.Fatalf("expected failure streak cleared after a successful pass, got: %+v", updated.Status.PrePullFailure)
+	}
+	if jobs := listJobs(t, cl); len(jobs) != 1 {
+		t.Fatalf("expected the upgrade to proceed after recovery, got %d jobs", len(jobs))
+	}
+}
+
+func TestPrePullFailureBackoff(t *testing.T) {
+	for attempts, want := range map[int]time.Duration{
+		1: time.Minute,
+		2: 2 * time.Minute,
+		3: 4 * time.Minute,
+		4: 5 * time.Minute,
+		9: 5 * time.Minute,
+	} {
+		if got := prePullFailureBackoff(attempts); got != want {
+			t.Errorf("prePullFailureBackoff(%d) = %s, want %s", attempts, got, want)
+		}
 	}
 }
 

@@ -5164,6 +5164,24 @@ spec:
                   PreHookIndex is the index of the next pre-hook to run.
                   Equals len(spec.hooks.pre) once all pre-hooks are done.
                 type: integer
+              prePullFailure:
+                description: |-
+                  PrePullFailure tracks the current streak of consecutive failed pre-pull
+                  cycles, so a crash-looping pre-pull stays visible in status instead of
+                  being overwritten by the next cycle's Pre-pulling message. Drives the
+                  retry backoff; cleared once a pass completes without a failure.
+                properties:
+                  attempts:
+                    description: Attempts is the number of consecutive pre-pull cycles
+                      that have failed.
+                    type: integer
+                  lastError:
+                    description: LastError is the failure from the most recent cycle.
+                    type: string
+                required:
+                - attempts
+                - lastError
+                type: object
               prePulledNodes:
                 description: |-
                   PrePulledNodes records the installer image pre-pulled on each node

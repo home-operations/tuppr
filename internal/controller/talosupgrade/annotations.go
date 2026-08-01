@@ -72,6 +72,7 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, talosUpgrade *tu
 		statusPostHookIndex:  0,
 		statusPreHookFailed:  false,
 		statusPrePulledNodes: []tupprv1alpha1.PrePulledNode{},
+		statusPrePullFailure: nil,
 	}); err != nil {
 		logger.Error(err, "Failed to reset status after annotation")
 		return false, err
@@ -99,6 +100,7 @@ func (r *Reconciler) handleGenerationChange(ctx context.Context, talosUpgrade *t
 		statusPostHookIndex:  0,
 		statusPreHookFailed:  false,
 		statusPrePulledNodes: []tupprv1alpha1.PrePulledNode{},
+		statusPrePullFailure: nil,
 	}); err != nil {
 		return false, err
 	}
