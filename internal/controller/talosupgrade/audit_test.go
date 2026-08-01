@@ -89,6 +89,35 @@ func TestApplyPhaseAuditFields_Talos(t *testing.T) {
 			},
 		},
 		{
+			name: "Completed without startedAt records no history (no-op run)",
+			status: tupprv1alpha1.TalosUpgradeStatus{
+				Phase:          tupprv1alpha1.JobPhasePending,
+				CompletedNodes: []string{fakeNodeA, fakeNodeB},
+			},
+			nextPhase:     tupprv1alpha1.JobPhaseCompleted,
+			targetVersion: fakeTalosVersion,
+			wantCompleted: now,
+		},
+		{
+			name: "Failed without startedAt still records history",
+			status: tupprv1alpha1.TalosUpgradeStatus{
+				Phase: tupprv1alpha1.JobPhasePending,
+			},
+			nextPhase:     tupprv1alpha1.JobPhaseFailed,
+			targetVersion: fakeTalosVersion,
+			wantCompleted: now,
+			wantHistoryOp: func(t *testing.T, updates map[string]any) {
+				t.Helper()
+				h := updates["history"].([]tupprv1alpha1.TalosUpgradeHistoryEntry)
+				if len(h) != 1 || h[0].Phase != tupprv1alpha1.JobPhaseFailed {
+					t.Fatalf("want 1 Failed entry, got %+v", h)
+				}
+				if !h[0].StartedAt.Equal(&now) {
+					t.Fatalf("want startedAt fallback to now, got %v", h[0].StartedAt)
+				}
+			},
+		},
+		{
 			name: "re-entry to Pending clears timestamps",
 			status: tupprv1alpha1.TalosUpgradeStatus{
 				Phase:       tupprv1alpha1.JobPhaseCompleted,

@@ -56,7 +56,9 @@ const (
 )
 
 // ApplyConditions sets Progressing and Ready for the given phase. Empty reason
-// defaults to the phase name.
+// defaults to the phase name. Ready is False until the CR is first observed
+// and while the phase is Failed, so `kubectl wait` and kstatus-style health
+// checks see a failed upgrade as not ready.
 func ApplyConditions(existing []metav1.Condition, phase tupprv1alpha1.JobPhase, reason, message string, observedGeneration int64) []metav1.Condition {
 	initialized := true
 	if reason == "" {
@@ -85,7 +87,7 @@ func ApplyConditions(existing []metav1.Condition, phase tupprv1alpha1.JobPhase, 
 		Message:            message,
 		ObservedGeneration: observedGeneration,
 	}
-	if initialized {
+	if initialized && phase != tupprv1alpha1.JobPhaseFailed {
 		ready.Status = metav1.ConditionTrue
 	}
 

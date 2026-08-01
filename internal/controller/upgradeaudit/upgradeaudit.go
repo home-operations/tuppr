@@ -1,10 +1,9 @@
 package upgradeaudit
 
-const HistoryMaxEntries = 10
+const HistoryMaxEntries = 3
 
-// MaxCompletionCycles caps Completed→Pending re-entries before the run is
-// marked Failed. Each cycle adds one history entry, so this must stay below
-// HistoryMaxEntries.
+// MaxCompletionCycles caps Completed→Pending re-entries (tracked in
+// status.completionCycles) before the run is marked Failed.
 const MaxCompletionCycles = 5
 
 func PrependHistory[T any](history []T, entry T, limit int) []T {

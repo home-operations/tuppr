@@ -1114,21 +1114,11 @@ func TestTalosReconcile_OutOfBandUpgradedNodeRecorded(t *testing.T) {
 
 func TestTalosReconcile_CompletedCyclesExhaustedTransitionsToFailed(t *testing.T) {
 	scheme := newTestScheme()
-	now := metav1.Now()
-	history := make([]tupprv1alpha1.TalosUpgradeHistoryEntry, upgradeaudit.MaxCompletionCycles)
-	for i := range history {
-		history[i] = tupprv1alpha1.TalosUpgradeHistoryEntry{
-			ToVersion:   fakeTalosVersion,
-			Phase:       tupprv1alpha1.JobPhaseCompleted,
-			StartedAt:   now,
-			CompletedAt: now,
-		}
-	}
 	tu := newTalosUpgrade(testUpgradeName,
 		withFinalizer,
 		withPhase(tupprv1alpha1.JobPhaseCompleted),
 		func(tu *tupprv1alpha1.TalosUpgrade) {
-			tu.Status.History = history
+			tu.Status.CompletionCycles = upgradeaudit.MaxCompletionCycles
 		},
 	)
 	laggingNode := newNode(fakeNodeA, testNodeIP1)
@@ -1150,6 +1140,34 @@ func TestTalosReconcile_CompletedCyclesExhaustedTransitionsToFailed(t *testing.T
 	}
 	if !strings.Contains(updated.Status.Message, "never converged") {
 		t.Fatalf("expected Failed message to mention non-convergence, got: %q", updated.Status.Message)
+	}
+}
+
+func TestTalosReconcile_CompletedWithLaggingNodeIncrementsCycles(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhaseCompleted),
+	)
+	laggingNode := newNode(fakeNodeA, testNodeIP1)
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{
+			testNodeIP1: "factory.talos.dev/installer:" + testV110Talos,
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, laggingNode).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	reconcileTalos(t, r, testUpgradeName)
+
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
+		t.Fatalf("expected phase Pending after campaign restart, got: %s", updated.Status.Phase)
+	}
+	if updated.Status.CompletionCycles != 1 {
+		t.Fatalf("expected completionCycles=1 after restart, got %d", updated.Status.CompletionCycles)
 	}
 }
 

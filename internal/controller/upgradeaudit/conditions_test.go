@@ -57,7 +57,6 @@ func TestApplyConditions_ReadyOnceAccepted(t *testing.T) {
 	for _, phase := range []tupprv1alpha1.JobPhase{
 		tupprv1alpha1.JobPhasePending,
 		tupprv1alpha1.JobPhaseUpgrading,
-		tupprv1alpha1.JobPhaseFailed,
 	} {
 		t.Run(string(phase), func(t *testing.T) {
 			conds := ApplyConditions(nil, phase, "", "msg", 1)
@@ -66,6 +65,22 @@ func TestApplyConditions_ReadyOnceAccepted(t *testing.T) {
 				t.Fatalf("want Ready=True, got %+v", r)
 			}
 		})
+	}
+}
+
+func TestApplyConditions_ReadyFalseOnFailed(t *testing.T) {
+	conds := ApplyConditions(nil, tupprv1alpha1.JobPhaseFailed, "", "boom", 1)
+	r := findCond(conds, tupprv1alpha1.ConditionTypeReady)
+	if r == nil || r.Status != metav1.ConditionFalse {
+		t.Fatalf("want Ready=False on Failed, got %+v", r)
+	}
+	if r.Reason != ReasonFailed {
+		t.Fatalf("want Reason=%s, got %s", ReasonFailed, r.Reason)
+	}
+
+	recovered := ApplyConditions(conds, tupprv1alpha1.JobPhaseCompleted, "", "done", 2)
+	if r := findCond(recovered, tupprv1alpha1.ConditionTypeReady); r == nil || r.Status != metav1.ConditionTrue {
+		t.Fatalf("want Ready=True again after recovery, got %+v", r)
 	}
 }
 

@@ -4970,6 +4970,12 @@ spec:
                 items:
                   type: string
                 type: array
+              completionCycles:
+                description: |-
+                  CompletionCycles counts Completed→Pending re-entries: a completed run
+                  re-opened because a matching node still needs the target version. Bounds
+                  restart loops; reset by spec changes and the reset annotation.
+                type: integer
               conditions:
                 description: Conditions report the upgrade's "Progressing" and "Ready"
                   status.
@@ -5118,7 +5124,7 @@ spec:
                   - startedAt
                   - toVersion
                   type: object
-                maxItems: 10
+                maxItems: 3
                 type: array
               lastUpdated:
                 description: LastUpdated timestamp of last status update

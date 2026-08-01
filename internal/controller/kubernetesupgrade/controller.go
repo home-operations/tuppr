@@ -42,17 +42,18 @@ const (
 )
 
 const (
-	appLabelKey               = jobs.AppLabelKey
-	appInstanceLabelKey       = jobs.AppInstanceLabelKey
-	appPartOfLabelKey         = jobs.AppPartOfLabelKey
-	appPartOfTuppr            = jobs.AppPartOfTuppr
-	kubernetesUpgradeAppName  = "kubernetes-upgrade"
-	statusFieldJobName        = "jobName"
-	statusFieldCurrentVersion = "currentVersion"
-	statusFieldTargetVersion  = "targetVersion"
-	statusFieldLastError      = "lastError"
-	targetNodeLabelKey        = jobs.TargetNodeLabelKey
-	upgradeK8sCommand         = "upgrade-k8s"
+	appLabelKey                 = jobs.AppLabelKey
+	appInstanceLabelKey         = jobs.AppInstanceLabelKey
+	appPartOfLabelKey           = jobs.AppPartOfLabelKey
+	appPartOfTuppr              = jobs.AppPartOfTuppr
+	kubernetesUpgradeAppName    = "kubernetes-upgrade"
+	statusFieldJobName          = "jobName"
+	statusFieldCurrentVersion   = "currentVersion"
+	statusFieldTargetVersion    = "targetVersion"
+	statusFieldLastError        = "lastError"
+	statusFieldCompletionCycles = "completionCycles"
+	targetNodeLabelKey          = jobs.TargetNodeLabelKey
+	upgradeK8sCommand           = "upgrade-k8s"
 
 	// Fallback when Reconciler.DefaultEndpoint is unset (tests).
 	defaultKubernetesAPIEndpoint = "https://kubernetes.default.svc.cluster.local:443"
