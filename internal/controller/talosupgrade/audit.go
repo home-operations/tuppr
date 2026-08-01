@@ -29,13 +29,17 @@ func applyPhaseAuditFields(status *tupprv1alpha1.TalosUpgradeStatus, updates map
 		}
 		updates["completedAt"] = now
 
-		// A run that never went active (StartedAt unset) did no work, e.g. a
-		// spec re-apply with every node already at target. Recording it would
-		// fabricate a zero-duration entry claiming nodes the run never touched.
-		if status.StartedAt == nil {
+		// A Completed run that never went active (StartedAt unset) did no
+		// work, e.g. a spec re-apply with every node already at target;
+		// recording it would fabricate a zero-duration entry claiming nodes
+		// the run never touched. Failed runs are always recorded.
+		if nextPhase == tupprv1alpha1.JobPhaseCompleted && status.StartedAt == nil {
 			return
 		}
-		startedAt := *status.StartedAt
+		startedAt := now
+		if status.StartedAt != nil {
+			startedAt = *status.StartedAt
+		}
 
 		failedNames := make([]string, 0, len(status.FailedNodes))
 		for _, n := range status.FailedNodes {

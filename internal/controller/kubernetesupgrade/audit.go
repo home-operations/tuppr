@@ -29,16 +29,21 @@ func applyPhaseAuditFields(status *tupprv1alpha1.KubernetesUpgradeStatus, update
 		}
 		updates["completedAt"] = now
 
-		// A run that never went active (StartedAt unset) did no work, e.g. a
-		// spec re-apply with the cluster already at target. Recording it would
-		// fabricate a zero-duration entry for an upgrade that never happened.
-		if status.StartedAt == nil {
+		// A Completed run that never went active (StartedAt unset) did no
+		// work, e.g. a spec re-apply with the cluster already at target;
+		// recording it would fabricate a zero-duration entry for an upgrade
+		// that never happened. Failed runs are always recorded.
+		if nextPhase == tupprv1alpha1.JobPhaseCompleted && status.StartedAt == nil {
 			return
+		}
+		startedAt := now
+		if status.StartedAt != nil {
+			startedAt = *status.StartedAt
 		}
 		entry := tupprv1alpha1.UpgradeHistoryEntry{
 			FromVersion: status.CurrentVersion,
 			ToVersion:   status.TargetVersion,
-			StartedAt:   *status.StartedAt,
+			StartedAt:   startedAt,
 			CompletedAt: now,
 			Phase:       nextPhase,
 			Retries:     status.Retries,
