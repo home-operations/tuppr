@@ -146,16 +146,18 @@ func (r *Reconciler) prePullInstallerImages(ctx context.Context, talosUpgrade *t
 }
 
 // clearPrePullFailure ends the failure streak once a pass completes without
-// one. Best-effort like recordPrePulledNodes: a failed write just means the
-// next failure restarts the count.
+// one. Best-effort: on a failed write the streak stays set (in memory too, so
+// status stays truthful) and every later pass through pre-pull retries the
+// clear.
 func (r *Reconciler) clearPrePullFailure(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) {
 	if talosUpgrade.Status.PrePullFailure == nil {
 		return
 	}
-	talosUpgrade.Status.PrePullFailure = nil
 	if err := r.updateStatus(ctx, talosUpgrade, map[string]any{statusPrePullFailure: nil}); err != nil {
 		log.FromContext(ctx).Error(err, "Failed to clear pre-pull failure streak")
+		return
 	}
+	talosUpgrade.Status.PrePullFailure = nil
 }
 
 // upsertPrePulledNode replaces the node's record (its resolved ref or UID
