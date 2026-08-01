@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.6](https://github.com/home-operations/tuppr/compare/0.4.5...0.4.6) (2026-08-01)
+
+
+### Bug Fixes
+
+* **status:** keep conditions and history truthful ([#466](https://github.com/home-operations/tuppr/issues/466)) ([2f85931](https://github.com/home-operations/tuppr/commit/2f859314eb9251c1fe2cb1d170de99dac8c25f1c))
+
+
+### Miscellaneous Chores
+
+* **release-please:** standardize the release pull request title pattern ([#464](https://github.com/home-operations/tuppr/issues/464)) ([14e1955](https://github.com/home-operations/tuppr/commit/14e1955ca19c7f67f7a1a9ab692cfdbf6a57c680))
+
 ## [0.4.5](https://github.com/home-operations/tuppr/compare/0.4.4...0.4.5) (2026-08-01)
 
 
