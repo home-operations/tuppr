@@ -55,9 +55,10 @@ timeout`), which is what drives release-please's version bumps. Individual
   a comment: that belongs in the PR description and rots as the code moves
   on.
 - **Go 1.26.** Check `go.mod`'s `go` directive and `.mise/config.toml`'s
-  `tools.go` for the exact pinned versions before assuming they match:
-  Renovate bumps them independently, so a patch-version gap between the two
-  is normal, not a bug to "fix" reflexively. When a newer construct is
+  `tools.go` for the exact pinned versions. Renovate bumps them together
+  in one grouped Go-toolchain PR, patch releases included, so the two
+  should match; a lingering gap means a toolchain PR hasn't merged yet
+  (or something is off) and is worth flagging, not routine drift. When a newer construct is
   genuinely more idiomatic, use it: Go 1.26 added `errors.AsType[T](err)`, a
   generic type-safe replacement for the `var t *T; errors.As(err, &t)`
   two-step; prefer it in new code. `go fix` (rebuilt in 1.26 as a
