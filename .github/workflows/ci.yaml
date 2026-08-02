@@ -350,6 +350,29 @@ jobs:
       - name: Running Integration Tests
         run: mise run test-integration
 
+  go-vulncheck:
+    if: >-
+      ${{ !(startsWith(github.head_ref, 'release-please--')
+      && github.event.pull_request.head.repo.full_name == github.repository) }}
+    name: Go Vulncheck
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Mise
+        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          experimental: true
+          install_args: --locked
+
+      - name: Run govulncheck
+        run: mise run vulncheck
+
   helm-lint:
     if: >-
       ${{ !(startsWith(github.head_ref, 'release-please--')
@@ -441,6 +464,7 @@ jobs:
       - go-e2e
       - go-lint
       - go-test
+      - go-vulncheck
       - helm-lint
       - helm-unittest
       - workflow-lint
