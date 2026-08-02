@@ -190,7 +190,8 @@ assuming.
 
 ## Security
 
-`govulncheck ./...` (`go install golang.org/x/vuln/cmd/govulncheck@latest`)
-isn't wired into CI anywhere in the fleet yet. Run it before cutting a
-release regardless, and consider proposing it as a `mise run` task / CI job
-here.
+`govulncheck ./...` runs in CI as the `Go Vulncheck` job, via `mise run
+vulncheck` with the tool version pinned in `.mise/config.toml`. Run the
+same task locally before cutting a release; a new advisory that fails the
+job is an action item (upgrade the module or the Go toolchain), not noise
+to suppress.
