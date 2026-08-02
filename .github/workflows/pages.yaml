@@ -20,7 +20,7 @@ permissions:
 jobs:
   docs:
     name: Docs
-    uses: ./.github/workflows/docs.yaml
+    uses: $/.github/workflows/docs.yaml
     permissions:
       contents: read
       pages: write

@@ -28,7 +28,7 @@ jobs:
           persist-credentials: false
 
       - name: Build docs site
-        uses: home-operations/.github/actions/docs-build@d55d4551bf9ad29becda40b66792d94892a6307c # docs-build-1.0.0
+        uses: home-operations/.github/actions/docs-build@4f44306d499ec70355fae5540103c2033955fc2c # docs-build-v1.0.1
         with:
           deploy: ${{ inputs.deploy }}
 
