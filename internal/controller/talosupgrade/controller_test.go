@@ -1618,6 +1618,69 @@ func TestTalosReconcile_FailedJobButNodeRebooting_TreatedAsRebooting(t *testing.
 	}
 }
 
+func TestTalosReconcile_FailedOffTargetJobWithOldVersion_FailsImmediately(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
+	)
+	node := newNode(fakeNodeA, testNodeIP1)
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      testJobNameNodeA,
+			Namespace: testNamespace,
+			UID:       "job-uid",
+			Labels: map[string]string{
+				appLabelKey:         talosUpgradeAppName,
+				appInstanceLabelKey: testUpgradeName,
+				appPartOfLabelKey:   appPartOfTuppr,
+				targetNodeLabelKey:  fakeNodeA,
+			},
+		},
+		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
+		Status: batchv1.JobStatus{Failed: 2},
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-upgrade-node-a-pod",
+			Namespace: testNamespace,
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: "batch/v1",
+				Kind:       "Job",
+				Name:       job.Name,
+				UID:        job.UID,
+				Controller: ptr.To(true),
+			}},
+		},
+		Spec: corev1.PodSpec{NodeName: fakeNodeB},
+	}
+	tc := &mockTalosClient{
+		nodeVersions: map[string]string{testNodeIP1: testV110Talos},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node, job, pod).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	result := reconcileTalos(t, r, testUpgradeName)
+	if result.RequeueAfter != 10*time.Minute {
+		t.Fatalf("expected 10m failed requeue, got: %v", result.RequeueAfter)
+	}
+
+	updated := getTalosUpgrade(t, cl, testUpgradeName)
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
+		t.Fatalf("expected phase Failed, got: %s", updated.Status.Phase)
+	}
+	if len(updated.Status.FailedNodes) != 1 || updated.Status.FailedNodes[0].NodeName != fakeNodeA {
+		t.Fatalf("expected %s to be failed, got: %v", fakeNodeA, updated.Status.FailedNodes)
+	}
+	if !strings.Contains(updated.Status.FailedNodes[0].LastError, "remained at "+testV110Talos) {
+		t.Fatalf("expected previous version in failure, got: %s", updated.Status.FailedNodes[0].LastError)
+	}
+	if len(updated.Status.RebootingNodes) != 0 {
+		t.Fatalf("expected no reboot tracking, got: %v", updated.Status.RebootingNodes)
+	}
+}
+
 // Single-node: the upgrade must be issued with --wait=false so the reboot doesn't
 // kill the pod mid-wait.
 func TestTalosReconcile_SingleNode_DisablesWait(t *testing.T) {

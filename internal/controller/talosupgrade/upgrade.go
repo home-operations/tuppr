@@ -832,6 +832,16 @@ func (r *Reconciler) getTargetVersion(node *corev1.Node, crdTargetVersion string
 	return crdTargetVersion
 }
 
+type nodeVersionMismatchError struct {
+	nodeName       string
+	currentVersion string
+	targetVersion  string
+}
+
+func (e *nodeVersionMismatchError) Error() string {
+	return fmt.Sprintf("node %s version mismatch: current=%s, target=%s", e.nodeName, e.currentVersion, e.targetVersion)
+}
+
 func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (bool, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Verifying node upgrade using Talos client", "node", nodeName)
@@ -866,8 +876,11 @@ func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv
 	}
 
 	if currentVersion != targetVersion {
-		return false, fmt.Errorf("node %s version mismatch: current=%s, target=%s",
-			nodeName, currentVersion, targetVersion)
+		return false, &nodeVersionMismatchError{
+			nodeName:       nodeName,
+			currentVersion: currentVersion,
+			targetVersion:  targetVersion,
+		}
 	}
 
 	logger.V(1).Info("Node upgrade verification successful",

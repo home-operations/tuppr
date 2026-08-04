@@ -2,6 +2,7 @@ package talosupgrade
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -75,7 +76,7 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 	logger := log.FromContext(ctx)
 
 	var stillRunning []string
-	var terminalNodes []string
+	var terminalJobs []batchv1.Job
 	var succeededCount, failedCount int
 
 	for i, job := range activeJobs {
@@ -94,10 +95,10 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 		switch {
 		case job.Status.Succeeded > 0:
 			succeededCount++
-			terminalNodes = append(terminalNodes, nodeName)
+			terminalJobs = append(terminalJobs, job)
 		case job.Status.Failed >= *job.Spec.BackoffLimit:
 			failedCount++
-			terminalNodes = append(terminalNodes, nodeName)
+			terminalJobs = append(terminalJobs, job)
 		default:
 			stillRunning = append(stillRunning, nodeName)
 		}
@@ -139,8 +140,13 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 	// even when the node upgraded fine — the node's actual state is authoritative.
 	var rebootingNodes []string
 	var failedNodes []string
-	for _, nodeName := range terminalNodes {
-		result, err := r.processSingleJobSuccess(ctx, talosUpgrade, nodeName)
+	failedNodeMessages := make(map[string]string)
+	for i := range terminalJobs {
+		job := &terminalJobs[i]
+		nodeName := job.Labels[targetNodeLabelKey]
+		jobFailed := job.Status.Failed >= *job.Spec.BackoffLimit
+
+		result, failureMessage, err := r.processTerminalJob(ctx, talosUpgrade, job, nodeName, jobFailed)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -149,6 +155,7 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 			rebootingNodes = append(rebootingNodes, nodeName)
 		case jobResultFailed:
 			failedNodes = append(failedNodes, nodeName)
+			failedNodeMessages[nodeName] = failureMessage
 		}
 	}
 
@@ -183,7 +190,7 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 
 	// Process failed jobs
 	for _, nodeName := range failedNodes {
-		if err := r.processSingleJobFailure(ctx, talosUpgrade, nodeName, "Job failed permanently"); err != nil {
+		if err := r.processSingleJobFailure(ctx, talosUpgrade, nodeName, failedNodeMessages[nodeName]); err != nil {
 			return ctrl.Result{RequeueAfter: time.Minute}, err
 		}
 	}
@@ -228,14 +235,35 @@ const (
 	controlPlaneLabel    = "node-role.kubernetes.io/control-plane"
 )
 
-// processSingleJobSuccess handles a single succeeded job: verify, uncordon, cleanup.
-// Returns the result without setting overall phase or metrics.
-func (r *Reconciler) processSingleJobSuccess(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (jobResult, error) {
+func (r *Reconciler) processTerminalJob(
+	ctx context.Context,
+	talosUpgrade *tupprv1alpha1.TalosUpgrade,
+	job *batchv1.Job,
+	nodeName string,
+	jobFailed bool,
+) (jobResult, string, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Job completed, verifying node upgrade", "node", nodeName)
 
 	isReady, err := r.verifyNodeUpgrade(ctx, talosUpgrade, nodeName)
 	if err != nil {
+		mismatch, versionMismatch := errors.AsType[*nodeVersionMismatchError](err)
+		if jobFailed && versionMismatch {
+			ranOffTarget, placementErr := r.jobRanOffTargetNode(ctx, job, nodeName)
+			if placementErr != nil {
+				return jobResultRebooting, "", placementErr
+			}
+			if ranOffTarget {
+				message := fmt.Sprintf(
+					"Upgrade Job failed while node remained at %s; expected %s",
+					mismatch.currentVersion,
+					mismatch.targetVersion,
+				)
+				logger.Info("Failed off-target Job left node at its previous version", "node", nodeName, "currentVersion", mismatch.currentVersion, "targetVersion", mismatch.targetVersion)
+				return jobResultFailed, message, nil
+			}
+		}
+
 		// A verification error is not a failed upgrade: mid-reboot the Talos API
 		// answers with transient errors (1.14's install flow has a window where
 		// apid returns PermissionDenied), and the node's true state only settles
@@ -243,20 +271,43 @@ func (r *Reconciler) processSingleJobSuccess(ctx context.Context, talosUpgrade *
 		// wait and fails the node with a clear message if it never returns.
 		logger.Info("Could not verify node yet, waiting for it to settle",
 			"node", nodeName, "error", err.Error())
-		return jobResultRebooting, nil
+		return jobResultRebooting, "", nil
 	}
 
 	if !isReady {
 		logger.V(1).Info("Node not yet ready after upgrade, waiting for reboot", "node", nodeName)
-		return jobResultRebooting, nil
+		return jobResultRebooting, "", nil
 	}
 
 	logger.Info("Node verified as upgraded and ready", "node", nodeName)
 
 	if err := r.completeNodeUpgrade(ctx, talosUpgrade, nodeName); err != nil {
-		return jobResultSuccess, err
+		return jobResultSuccess, "", err
 	}
-	return jobResultSuccess, nil
+	return jobResultSuccess, "", nil
+}
+
+// Missing Job pods are inconclusive because garbage collection can precede observation.
+func (r *Reconciler) jobRanOffTargetNode(ctx context.Context, job *batchv1.Job, targetNode string) (bool, error) {
+	podList := &corev1.PodList{}
+	if err := r.List(ctx, podList, client.InNamespace(job.Namespace)); err != nil {
+		return false, fmt.Errorf("list pods for job %s: %w", job.Name, err)
+	}
+
+	var scheduled bool
+	for i := range podList.Items {
+		pod := &podList.Items[i]
+		owner := metav1.GetControllerOf(pod)
+		if owner == nil || owner.Kind != "Job" || owner.Name != job.Name || owner.UID != job.UID || pod.Spec.NodeName == "" {
+			continue
+		}
+
+		scheduled = true
+		if pod.Spec.NodeName == targetNode {
+			return false, nil
+		}
+	}
+	return scheduled, nil
 }
 
 // completeNodeUpgrade runs the post-verification bookkeeping for a node that
