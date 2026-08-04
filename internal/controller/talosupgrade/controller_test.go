@@ -59,6 +59,7 @@ const (
 	testUpgradeName         = "test-upgrade"
 	testNameStr             = "test"
 	testInstallerABC        = "factory.talos.dev/installer/abc:v1.10.0"
+	testPlatformHcloud      = "hcloud"
 )
 
 type mockTalosClient struct {
@@ -3171,7 +3172,7 @@ func TestTalosBuildTalosUpgradeImage_BuildsFactoryImageFromRuntimeMetadata(t *te
 	tc := &mockTalosClient{
 		installImages: map[string]string{testNodeIP1: testInstallerV111},
 		extensions:    map[string]talos.ExtensionInfo{testNodeIP1: {Schematic: testabc}},
-		platforms:     map[string]string{testNodeIP1: "hcloud"},
+		platforms:     map[string]string{testNodeIP1: testPlatformHcloud},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -3194,7 +3195,7 @@ func TestFactoryInstallerRepo(t *testing.T) {
 		want     string
 		ok       bool
 	}{
-		{platform: "hcloud", want: "hcloud-installer", ok: true},
+		{platform: testPlatformHcloud, want: "hcloud-installer", ok: true},
 		{platform: "equinixMetal", want: "installer", ok: true},
 		{platform: "container", ok: false},
 	}
@@ -3219,7 +3220,7 @@ func TestTalosBuildTalosUpgradeImage_RefusesUnsafeRuntimeMetadataFallbacks(t *te
 		{
 			name:         "private mirror",
 			installImage: "registry.home.example.com/siderolabs/installer:v1.11.0",
-			platform:     "hcloud",
+			platform:     testPlatformHcloud,
 		},
 		{
 			name:         "unsupported platform",
