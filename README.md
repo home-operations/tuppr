@@ -71,7 +71,7 @@ metadata:
 spec:
   talos:
     # renovate: datasource=docker depName=ghcr.io/siderolabs/installer
-    version: v1.13.7
+    version: v1.13.8
 ```
 
 Upgrade Kubernetes (one resource per cluster; edit the version to upgrade
