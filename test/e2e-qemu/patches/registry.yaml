@@ -1,0 +1,11 @@
+# CI runs a plain-HTTP registry on the runner and pushes the controller image there,
+# so the nodes pull it over the QEMU bridge instead of from the internet. The action
+# substitutes ${GATEWAY} with the bridge gateway, so the patch follows whatever CIDR
+# a leg picks. Only the action substitutes: a local run must not pass this patch raw
+# (and has no reason to; nothing resolves registry.e2e unless CONTROLLER_IMAGE names it).
+machine:
+  registries:
+    mirrors:
+      registry.e2e:
+        endpoints:
+          - http://${GATEWAY}:5000

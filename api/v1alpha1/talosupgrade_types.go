@@ -3,6 +3,7 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // Talos defines the talos configuration
@@ -11,6 +12,15 @@ type TalosSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern=`^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\-\.]+)?$`
 	Version string `json:"version,omitempty"`
+
+	// PrePull pulls each node's resolved installer image at the start of a run,
+	// before the first node is cordoned, so an unreachable registry or a bad
+	// schematic/tag parks the run before any disruption. Nodes running Talos
+	// older than v1.13 (no ImageService API) are skipped. Disable for airgapped
+	// clusters that seed images out of band.
+	// +kubebuilder:default=true
+	// +optional
+	PrePull *bool `json:"prePull,omitempty"`
 }
 
 // Policy defines upgrade behavior options
@@ -154,6 +164,10 @@ func (s *TalosUpgradeSpec) DrainEnabled() bool {
 	return s.Drain != nil && s.Drain.Enabled
 }
 
+func (s *TalosUpgradeSpec) PrePullEnabled() bool {
+	return s.Talos.PrePull == nil || *s.Talos.PrePull
+}
+
 // TalosUpgradeSpec defines the desired state of TalosUpgrade
 type TalosUpgradeSpec struct {
 	// HealthChecks defines a list of CEL-based health checks to perform before each node upgrade
@@ -195,6 +209,14 @@ type TalosUpgradeSpec struct {
 	// Hooks configures pre/post-upgrade Jobs (e.g. `ceph osd set/unset noout`).
 	// +optional
 	Hooks *HooksSpec `json:"hooks,omitempty"`
+
+	// Silences are Alertmanager silences held while this upgrade runs, one per
+	// entry. Requires the operator-level Alertmanager connection (Helm
+	// `silences.*`).
+	// +optional
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=8
+	Silences []SilenceSpec `json:"silences,omitempty"`
 }
 
 // TalosUpgradeStatus defines the observed state of TalosUpgrade
@@ -227,6 +249,13 @@ type TalosUpgradeStatus struct {
 	// +optional
 	FailedNodes []NodeUpgradeStatus `json:"failedNodes,omitempty"`
 
+	// RebootingNodes tracks nodes whose upgrade job finished but whose
+	// post-reboot readiness has not been verified yet. Persisted in status so
+	// the wait survives upgrade Job garbage collection; a node that never
+	// comes back is marked failed once its deadline passes.
+	// +optional
+	RebootingNodes []NodeRebootStatus `json:"rebootingNodes,omitempty"`
+
 	// LastUpdated timestamp of last status update
 	// +optional
 	LastUpdated metav1.Time `json:"lastUpdated,omitempty"`
@@ -253,8 +282,14 @@ type TalosUpgradeStatus struct {
 
 	// History records past version transitions on this CR, newest first
 	// +optional
-	// +kubebuilder:validation:MaxItems=10
+	// +kubebuilder:validation:MaxItems=3
 	History []TalosUpgradeHistoryEntry `json:"history,omitempty"`
+
+	// CompletionCycles counts Completed→Pending re-entries: a completed run
+	// re-opened because a matching node still needs the target version. Bounds
+	// restart loops; reset by spec changes and the reset annotation.
+	// +optional
+	CompletionCycles int `json:"completionCycles,omitempty"`
 
 	// PreHookIndex is the index of the next pre-hook to run.
 	// Equals len(spec.hooks.pre) once all pre-hooks are done.
@@ -269,6 +304,36 @@ type TalosUpgradeStatus struct {
 	// terminal phase ends up Failed even after post-hooks (cleanup) succeed.
 	// +optional
 	PreHookFailed bool `json:"preHookFailed,omitempty"`
+
+	// PrePulledNodes records the installer image pre-pulled on each node
+	// during this run (or noted as skipped because the node's Talos version
+	// predates the ImageService API), so pulls are not repeated on every
+	// reconcile. A record is keyed by the resolved ref and the Node UID: a
+	// node that becomes eligible mid-run, is recreated under the same name,
+	// or whose resolved image changes (annotations, machine config), is
+	// pre-pulled before its next batch.
+	// +optional
+	PrePulledNodes []PrePulledNode `json:"prePulledNodes,omitempty"`
+
+	// PrePullFailure tracks the current streak of consecutive failed pre-pull
+	// cycles, so a crash-looping pre-pull stays visible in status instead of
+	// being overwritten by the next cycle's Pre-pulling message. Drives the
+	// retry backoff; cleared once a pass completes without a failure.
+	// +optional
+	PrePullFailure *PrePullFailure `json:"prePullFailure,omitempty"`
+
+	// AlertSilenceIDs are the Alertmanager silences this run holds open, indexed
+	// like spec.silences (an empty entry is a silence not yet created). Persisted
+	// so the leases are re-adopted across controller restarts and expired when
+	// the run leaves its active phases.
+	// +optional
+	AlertSilenceIDs []string `json:"alertSilenceIDs,omitempty"`
+
+	// AlertSilencesSince is when the current silence hold began; each entry's
+	// maxDuration caps extension relative to it. Cleared when the hold is
+	// released, so a resumed run gets a fresh budget.
+	// +optional
+	AlertSilencesSince *metav1.Time `json:"alertSilencesSince,omitempty"`
 }
 
 // TalosUpgradeHistoryEntry records a single completed Talos upgrade run
@@ -296,6 +361,48 @@ type TalosUpgradeHistoryEntry struct {
 	// FailedNodes are the nodes that failed during the run
 	// +optional
 	FailedNodes []string `json:"failedNodes,omitempty"`
+}
+
+// PrePullFailure records a run's current streak of consecutive failed
+// pre-pull cycles.
+type PrePullFailure struct {
+	// Attempts is the number of consecutive pre-pull cycles that have failed.
+	// +kubebuilder:validation:Required
+	Attempts int `json:"attempts"`
+
+	// LastError is the failure from the most recent cycle.
+	// +kubebuilder:validation:Required
+	LastError string `json:"lastError"`
+}
+
+// PrePulledNode records one node's handled installer pre-pull for this run.
+type PrePulledNode struct {
+	// NodeName is the name of the node.
+	// +kubebuilder:validation:Required
+	NodeName string `json:"nodeName"`
+
+	// NodeUID is the UID of the Node object the pull was performed against.
+	// A node recreated under the same name (new UID) invalidates the record:
+	// its image store starts empty.
+	// +kubebuilder:validation:Required
+	NodeUID types.UID `json:"nodeUID"`
+
+	// Image is the installer ref that was resolved for the node when it was
+	// pulled (or skipped as unsupported). A different resolved ref
+	// invalidates the record.
+	// +kubebuilder:validation:Required
+	Image string `json:"image"`
+}
+
+// NodeRebootStatus tracks a node awaiting post-upgrade reboot verification
+type NodeRebootStatus struct {
+	// NodeName is the name of the node
+	// +kubebuilder:validation:Required
+	NodeName string `json:"nodeName"`
+
+	// Deadline is when the reboot wait expires and the node is marked failed
+	// +kubebuilder:validation:Required
+	Deadline metav1.Time `json:"deadline"`
 }
 
 // NodeUpgradeStatus tracks the upgrade status of individual nodes

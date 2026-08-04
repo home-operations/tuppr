@@ -4,22 +4,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"syscall"
 	"time"
 
+	cosiv1alpha1 "github.com/cosi-project/runtime/api/v1alpha1"
 	"github.com/cosi-project/runtime/pkg/resource"
 	"github.com/siderolabs/go-retry/retry"
+	"github.com/siderolabs/talos/pkg/machinery/api/common"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
+	configpb "github.com/siderolabs/talos/pkg/machinery/api/resource/config"
 	"github.com/siderolabs/talos/pkg/machinery/client"
-	"github.com/siderolabs/talos/pkg/machinery/config/configloader"
-	"github.com/siderolabs/talos/pkg/machinery/config/configpatcher"
-	"github.com/siderolabs/talos/pkg/machinery/resources/config"
 	talosruntime "github.com/siderolabs/talos/pkg/machinery/resources/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -28,6 +30,8 @@ type talosClient interface {
 	COSIGet(ctx context.Context, namespace, typ, id string) (resource.Resource, error)
 	COSIList(ctx context.Context, namespace, typ string) ([]resource.Resource, error)
 	ApplyConfiguration(ctx context.Context, req *machine.ApplyConfigurationRequest, opts ...grpc.CallOption) (*machine.ApplyConfigurationResponse, error)
+	ImagePull(ctx context.Context, req *machine.ImageServicePullRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[machine.ImageServicePullResponse], error)
+	COSIGetRawSpec(ctx context.Context, namespace, typ, id string) ([]byte, error)
 	Close() error
 }
 
@@ -49,10 +53,32 @@ func (r *realTalosClient) COSIList(ctx context.Context, namespace, typ string) (
 	return list.Items, nil
 }
 
+func (r *realTalosClient) ImagePull(ctx context.Context, req *machine.ImageServicePullRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[machine.ImageServicePullResponse], error) {
+	return r.ImageClient.Pull(ctx, req, opts...)
+}
+
+// COSIGetRawSpec fetches a resource over the raw COSI state API and returns its
+// wire spec bytes untouched. The typed COSI client decodes specs through the
+// resource registry, which for MachineConfig runs the whole config through the
+// machinery decoder; the raw bytes carry no such requirement.
+func (r *realTalosClient) COSIGetRawSpec(ctx context.Context, namespace, typ, id string) ([]byte, error) {
+	resp, err := cosiv1alpha1.NewStateClient(r.Conn()).Get(ctx, &cosiv1alpha1.GetRequest{
+		Namespace: namespace,
+		Type:      typ,
+		Id:        id,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.GetResource().GetSpec().GetProtoSpec(), nil
+}
+
 type Client struct {
 	talos            talosClient
 	newClientFunc    func(ctx context.Context) (talosClient, error)
 	endpointResolver func(ctx context.Context) []string
+	pullIdleTimeout  time.Duration
 }
 
 type ClientOption func(*Client)
@@ -135,25 +161,29 @@ func (s *Client) GetNodeVersion(ctx context.Context, nodeIP string) (string, err
 	return version.GetTag(), nil
 }
 
-func (s *Client) GetNodeMachineConfig(ctx context.Context, nodeIP string) (*config.MachineConfig, error) {
+// readMachineConfigRaw reads the node's machine config as the raw bytes inside
+// the MachineConfig resource's wire spec, never decoding the documents: a
+// config can carry kinds newer than any machinery this binary links, and the
+// typed decoders hard-error on unknown kinds (see machineconfig.go).
+func (s *Client) readMachineConfigRaw(ctx context.Context, nodeIP string) (string, error) {
 	nodeCtx := client.WithNode(ctx, nodeIP)
-	var r resource.Resource
+	var protoBytes []byte
 
 	err := s.executeWithRetry(ctx, func() error {
 		var err error
-		r, err = s.talos.COSIGet(nodeCtx, "config", "MachineConfigs.config.talos.dev", "v1alpha1")
+		protoBytes, err = s.talos.COSIGetRawSpec(nodeCtx, "config", "MachineConfigs.config.talos.dev", "v1alpha1")
 		return err
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get machine config from node %s: %w", nodeIP, err)
+		return "", fmt.Errorf("failed to get machine config from node %s: %w", nodeIP, err)
 	}
 
-	mc, ok := r.(*config.MachineConfig)
-	if !ok {
-		return nil, fmt.Errorf("unexpected resource type for machine config from node %s", nodeIP)
+	var spec configpb.MachineConfigSpec
+	if err := proto.Unmarshal(protoBytes, &spec); err != nil {
+		return "", fmt.Errorf("failed to unmarshal machine config spec from node %s: %w", nodeIP, err)
 	}
 
-	return mc, nil
+	return string(spec.YamlMarshalled), nil
 }
 
 type ExtensionInfo struct {
@@ -212,50 +242,35 @@ func (s *Client) GetNodePlatform(ctx context.Context, nodeIP string) (string, er
 }
 
 func (s *Client) GetNodeInstallImage(ctx context.Context, nodeIP string) (string, error) {
-	mc, err := s.GetNodeMachineConfig(ctx, nodeIP)
+	raw, err := s.readMachineConfigRaw(ctx, nodeIP)
 	if err != nil {
 		return "", err
 	}
 
-	image := mc.Config().Machine().Install().Image()
-	if image == "" {
-		return "", fmt.Errorf("install image is empty for node %s", nodeIP)
+	image, err := installImageFromConfig(raw)
+	if err != nil {
+		return "", fmt.Errorf("%w for node %s", err, nodeIP)
 	}
 
 	return image, nil
 }
 
 func (s *Client) PatchNodeInstallImage(ctx context.Context, nodeIP, newImage string) error {
-	mc, err := s.GetNodeMachineConfig(ctx, nodeIP)
+	raw, err := s.readMachineConfigRaw(ctx, nodeIP)
 	if err != nil {
 		return fmt.Errorf("failed to patch install image on node %s: %w", nodeIP, err)
 	}
 
-	// JSON6902 patches reject multi-document configs; strategic merge does not.
-	patchYAML := fmt.Sprintf("version: v1alpha1\nmachine:\n  install:\n    image: %q\n", newImage)
-
-	patchProvider, err := configloader.NewFromBytes([]byte(patchYAML))
+	patched, err := setInstallImage(raw, newImage)
 	if err != nil {
-		return fmt.Errorf("failed to load config patch: %w", err)
-	}
-
-	patch := configpatcher.NewStrategicMergePatch(patchProvider)
-
-	output, err := configpatcher.Apply(configpatcher.WithConfig(mc.Provider()), []configpatcher.Patch{patch})
-	if err != nil {
-		return fmt.Errorf("failed to apply config patch: %w", err)
-	}
-
-	patchedBytes, err := output.Bytes()
-	if err != nil {
-		return fmt.Errorf("failed to serialize patched config: %w", err)
+		return fmt.Errorf("failed to patch install image on node %s: %w", nodeIP, err)
 	}
 
 	nodeCtx := client.WithNode(ctx, nodeIP)
 
 	err = s.executeWithRetry(ctx, func() error {
 		_, err := s.talos.ApplyConfiguration(nodeCtx, &machine.ApplyConfigurationRequest{
-			Data: patchedBytes,
+			Data: []byte(patched),
 			Mode: machine.ApplyConfigurationRequest_NO_REBOOT,
 		})
 		return err
@@ -265,6 +280,145 @@ func (s *Client) PatchNodeInstallImage(ctx context.Context, nodeIP, newImage str
 	}
 
 	return nil
+}
+
+// defaultPullIdleTimeout is how long a pull stream may go without progress
+// before it is failed. Long enough for manifest resolution and slow layer
+// starts; far shorter than the caller's overall pull budget.
+const defaultPullIdleTimeout = 90 * time.Second
+
+// pullLayerState is one layer's last observed pull progress.
+type pullLayerState struct {
+	status machine.ImageServicePullLayerProgress_Status
+	offset int64
+	total  int64
+}
+
+// pullProgress accumulates per-layer state from the pull stream so stall
+// detection and error messages can report how far a pull got.
+type pullProgress struct {
+	layers map[string]pullLayerState
+}
+
+// observe folds one stream message in and reports whether it advanced the
+// pull: a new layer, a status change, or a byte-offset change. Identical
+// re-reports do not count as progress, so a transfer containerd is silently
+// retrying (e.g. a registry serving 5xx) cannot keep the watchdog fed.
+func (p *pullProgress) observe(resp *machine.ImageServicePullResponse) bool {
+	pp := resp.GetPullProgress()
+	if pp == nil {
+		// The terminal message carrying the pulled image name.
+		return true
+	}
+	lp := pp.GetProgress()
+	cur := pullLayerState{status: lp.GetStatus(), offset: lp.GetOffset(), total: lp.GetTotal()}
+	prev, seen := p.layers[pp.GetLayerId()]
+	if seen && prev.status == cur.status && prev.offset == cur.offset {
+		return false
+	}
+	p.layers[pp.GetLayerId()] = cur
+	return true
+}
+
+func (p *pullProgress) summary() string {
+	if len(p.layers) == 0 {
+		return "0 layers, 0 bytes received"
+	}
+	var offset, total int64
+	for _, l := range p.layers {
+		offset += l.offset
+		total += l.total
+	}
+	return fmt.Sprintf("%d layer(s), %.1f/%.1f MiB received",
+		len(p.layers), float64(offset)/(1<<20), float64(total)/(1<<20))
+}
+
+// PullImage pulls imageRef into the node's system containerd image store — the
+// store machined runs the installer from — so the pull at upgrade time is a
+// skip. A pull whose stream reports no progress for pullIdleTimeout fails fast
+// instead of burning the caller's whole budget: containerd retries registry
+// 5xx internally, so a broken registry otherwise looks identical to a slow
+// link until the deadline. Requires Talos >= v1.13 (ImageService); older
+// nodes return Unimplemented.
+func (s *Client) PullImage(ctx context.Context, nodeIP, imageRef string) error {
+	nodeCtx := client.WithNode(ctx, nodeIP)
+
+	err := s.executeWithRetry(ctx, func() error {
+		return s.pullImageOnce(nodeCtx, imageRef)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to pull image %s on node %s: %w", imageRef, nodeIP, err)
+	}
+	return nil
+}
+
+func (s *Client) pullImageOnce(ctx context.Context, imageRef string) error {
+	// Cancelled on return so a watchdog-abandoned stream (and its Recv
+	// goroutine) is torn down rather than left pulling.
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	stream, err := s.talos.ImagePull(streamCtx, &machine.ImageServicePullRequest{
+		Containerd: &common.ContainerdInstance{
+			Driver:    common.ContainerDriver_CONTAINERD,
+			Namespace: common.ContainerdNamespace_NS_SYSTEM,
+		},
+		ImageRef: imageRef,
+	})
+	if err != nil {
+		return err
+	}
+
+	type recvResult struct {
+		resp *machine.ImageServicePullResponse
+		err  error
+	}
+	recvCh := make(chan recvResult)
+	go func() {
+		for {
+			resp, err := stream.Recv()
+			select {
+			case recvCh <- recvResult{resp: resp, err: err}:
+			case <-streamCtx.Done():
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	idleTimeout := s.pullIdleTimeout
+	if idleTimeout <= 0 {
+		idleTimeout = defaultPullIdleTimeout
+	}
+	idle := time.NewTimer(idleTimeout)
+	defer idle.Stop()
+
+	progress := pullProgress{layers: map[string]pullLayerState{}}
+	for {
+		select {
+		case r := <-recvCh:
+			if r.err != nil {
+				if errors.Is(r.err, io.EOF) {
+					return nil
+				}
+				if ctx.Err() != nil {
+					return fmt.Errorf("pull timed out at %s: %w", progress.summary(), ctx.Err())
+				}
+				return r.err
+			}
+			if progress.observe(r.resp) {
+				idle.Reset(idleTimeout)
+			}
+		case <-ctx.Done():
+			// Watched directly: the Recv goroutine's error delivery races
+			// its own shutdown once the context dies.
+			return fmt.Errorf("pull timed out at %s: %w", progress.summary(), ctx.Err())
+		case <-idle.C:
+			return fmt.Errorf("no pull progress after %s (%s); registry may be failing requests", idleTimeout, progress.summary())
+		}
+	}
 }
 
 func (s *Client) CheckNodeReady(ctx context.Context, nodeIP, nodeName string) error {
@@ -300,9 +454,19 @@ func (s *Client) refreshTalosClient(ctx context.Context) error {
 }
 
 func (s *Client) executeWithRetry(ctx context.Context, operation func() error) error {
-	return retry.Constant(10*time.Second, retry.WithUnits(100*time.Millisecond)).Retry(func() error {
+	var ctxDeadErr error
+	err := retry.Constant(10*time.Second, retry.WithUnits(100*time.Millisecond)).Retry(func() error {
 		err := operation()
 		if err == nil {
+			return nil
+		}
+		// A dead local context is not a transient server condition: every
+		// retry against it fails instantly, the client refresh is wasted
+		// work, and go-retry misreads the DeadlineExceeded as its own
+		// attempt timeout (the confusing "…; timeout" multierror). Stop the
+		// retryer and surface the failure as-is.
+		if ctx.Err() != nil {
+			ctxDeadErr = err
 			return nil
 		}
 		if !IsTransientError(err) {
@@ -313,6 +477,19 @@ func (s *Client) executeWithRetry(ctx context.Context, operation func() error) e
 		}
 		return retry.ExpectedError(err)
 	})
+	if ctxDeadErr != nil {
+		return ctxDeadErr
+	}
+	return err
+}
+
+// IsUnimplementedError reports whether the node's Talos API lacks the called
+// RPC (e.g. ImageService on Talos < v1.13).
+func IsUnimplementedError(err error) bool {
+	if st, ok := status.FromError(err); ok {
+		return st.Code() == codes.Unimplemented
+	}
+	return false
 }
 
 func IsTransientError(err error) bool {
@@ -373,7 +550,7 @@ func (s *Client) checkNodeReady(ctx context.Context, nodeIP string) error {
 		return fmt.Errorf("API not ready: %w", err)
 	}
 
-	if _, err := s.GetNodeMachineConfig(ctx, nodeIP); err != nil {
+	if _, err := s.readMachineConfigRaw(ctx, nodeIP); err != nil {
 		return fmt.Errorf("machine config not accessible: %w", err)
 	}
 

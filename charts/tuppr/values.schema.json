@@ -53,6 +53,12 @@
       "title": "controller",
       "type": "object"
     },
+    "deploymentAnnotations": {
+      "description": "Annotations added to the Deployment (e.g. for reloader).",
+      "required": [],
+      "title": "deploymentAnnotations",
+      "type": "object"
+    },
     "env": {
       "description": "Extra environment variables passed to the container.",
       "items": {
@@ -347,12 +353,19 @@
       "type": "object"
     },
     "notification": {
+      "description": "Upgrade notifications are delivered via apprise-go. The referenced Secret must\nhold an apprise URL; see https://github.com/unraid/apprise-go for the supported\nservices and URL schemes.",
       "properties": {
         "enabled": {
           "default": false,
           "description": "Enable upgrade notifications.",
           "title": "enabled",
           "type": "boolean"
+        },
+        "messageTemplate": {
+          "default": "",
+          "description": "Go template for the notification message; empty uses the built-in default. Same helpers and fields as titleTemplate.",
+          "title": "messageTemplate",
+          "type": "string"
         },
         "secretKey": {
           "default": "url",
@@ -362,8 +375,14 @@
         },
         "secretName": {
           "default": "",
-          "description": "Name of the Secret holding the notification (shoutrrr) URL.",
+          "description": "Name of the Secret holding the notification (apprise) URL.",
           "title": "secretName",
+          "type": "string"
+        },
+        "titleTemplate": {
+          "default": "",
+          "description": "Go template for the notification title; empty uses the built-in default. Helpers are the go-sprout/sprout safe set (e.g. `toUpper`); fields are `.Node`, `.CurrentVersion`, `.TargetVersion`, `.Plan`.",
+          "title": "titleTemplate",
           "type": "string"
         }
       },
@@ -591,6 +610,39 @@
       },
       "required": [],
       "title": "serviceAccount",
+      "type": "object"
+    },
+    "silences": {
+      "description": "Alertmanager silences held while upgrades run. Which alerts get silenced is\nper-resource and user-authored (`spec.silences` on a TalosUpgrade); this only\nconfigures how the operator reaches Alertmanager.",
+      "properties": {
+        "alertmanager": {
+          "properties": {
+            "address": {
+              "default": "",
+              "description": "Alertmanager base URL (e.g. http://alertmanager.monitoring.svc:9093). Anything speaking the v2 silences API works (VMAlertmanager, Grafana-managed alerting behind its prefix).",
+              "title": "address",
+              "type": "string"
+            },
+            "secretName": {
+              "default": "",
+              "description": "Name of a Secret whose keys/values are sent as HTTP headers on every Alertmanager request (e.g. Authorization, X-Scope-OrgID).",
+              "title": "secretName",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "title": "alertmanager",
+          "type": "object"
+        },
+        "enabled": {
+          "default": false,
+          "description": "Enable upgrade-run silences.",
+          "title": "enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "title": "silences",
       "type": "object"
     },
     "talosServiceAccount": {

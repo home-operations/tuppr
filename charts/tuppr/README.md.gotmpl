@@ -1,6 +1,14 @@
 {{ template "chart.header" . }}
 
-{{ template "chart.badgesSection" . }}
+{{- /* Hand-rolled badges instead of chart.badgesSection so release-please can
+stamp the version: its updater replaces only the first semver on an annotated
+line and would swallow a `-color` suffix as a prerelease, so each version badge
+uses the static/v1 query form (version followed by `&`), keeps the version out
+of its alt text, and carries its own annotation. Keeps the committed README in
+sync with the stamped Chart.yaml. */}}
+![Version](https://img.shields.io/static/v1?label=Version&message={{ .Version }}&color=informational&style=flat-square) <!-- x-release-please-version -->
+![Type: {{ .Type }}](https://img.shields.io/badge/Type-{{ .Type }}-informational?style=flat-square)
+![AppVersion](https://img.shields.io/static/v1?label=AppVersion&message={{ .AppVersion }}&color=informational&style=flat-square) <!-- x-release-please-version -->
 
 {{ template "chart.description" . }}
 

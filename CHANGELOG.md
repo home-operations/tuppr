@@ -1,5 +1,177 @@
 # Changelog
 
+## [0.4.6](https://github.com/home-operations/tuppr/compare/0.4.5...0.4.6) (2026-08-01)
+
+
+### Bug Fixes
+
+* **status:** keep conditions and history truthful ([#466](https://github.com/home-operations/tuppr/issues/466)) ([2f85931](https://github.com/home-operations/tuppr/commit/2f859314eb9251c1fe2cb1d170de99dac8c25f1c))
+
+
+### Miscellaneous Chores
+
+* **release-please:** standardize the release pull request title pattern ([#464](https://github.com/home-operations/tuppr/issues/464)) ([14e1955](https://github.com/home-operations/tuppr/commit/14e1955ca19c7f67f7a1a9ab692cfdbf6a57c680))
+
+## [0.4.5](https://github.com/home-operations/tuppr/compare/0.4.4...0.4.5) (2026-08-01)
+
+
+### Features
+
+* **prepull:** fail stalled pulls fast, surface and back off failure streaks ([#462](https://github.com/home-operations/tuppr/issues/462)) ([c15b955](https://github.com/home-operations/tuppr/commit/c15b955cc4598620b6b0b2e61d5622c00ccb99d1))
+
+
+### Miscellaneous Chores
+
+* **deps:** lock file maintenance (pep621) ([#461](https://github.com/home-operations/tuppr/issues/461)) ([097c160](https://github.com/home-operations/tuppr/commit/097c160798fd558cd74ec2c790183d8819d9b699))
+
+## [0.4.4](https://github.com/home-operations/tuppr/compare/0.4.3...0.4.4) (2026-07-31)
+
+
+### Features
+
+* **go:** update module google.golang.org/grpc (v1.82.1 → v1.83.0) ([#446](https://github.com/home-operations/tuppr/issues/446)) ([f9419a6](https://github.com/home-operations/tuppr/commit/f9419a6ed07b769879eeecd5b4148a8329d5475a))
+* support Talos 1.14 upgrades end to end ([#453](https://github.com/home-operations/tuppr/issues/453)) ([087388d](https://github.com/home-operations/tuppr/commit/087388d6a828712641c76c32e5d613200236447e))
+
+
+### Bug Fixes
+
+* **ci:** key the lint cache on the toolchain and drop the prefix fallback ([#448](https://github.com/home-operations/tuppr/issues/448)) ([ef37fdb](https://github.com/home-operations/tuppr/commit/ef37fdb53127372ca77f609d179f35b7e8f4ed83))
+* **go:** update module github.com/google/go-containerregistry (v0.21.7 → v0.21.8) ([#454](https://github.com/home-operations/tuppr/issues/454)) ([17ef959](https://github.com/home-operations/tuppr/commit/17ef95946e52da016537eb2fd997d3a50482cffc))
+
+
+### Continuous Integration
+
+* **e2e:** adopt talosctl-cluster-action v0.1.6 ([#452](https://github.com/home-operations/tuppr/issues/452)) ([7fd237f](https://github.com/home-operations/tuppr/commit/7fd237fb54a84caf2c8ba5f040e295aeabba3f98))
+* **github-action:** Update action actions/stale (v10.4.0 → v11.0.0) ([#450](https://github.com/home-operations/tuppr/issues/450)) ([70d3717](https://github.com/home-operations/tuppr/commit/70d3717de998ba785368f5de81c4979c9f955386))
+* **github-action:** Update action docker/github-builder (v1.14.0 → v1.15.0) ([#447](https://github.com/home-operations/tuppr/issues/447)) ([10b33dd](https://github.com/home-operations/tuppr/commit/10b33dd6fb995cb68e5226f78f1a6cf6aa7cee5c))
+* **github-action:** Update action docker/login-action (v4.5.1 → v4.5.2) ([#451](https://github.com/home-operations/tuppr/issues/451)) ([fe223f7](https://github.com/home-operations/tuppr/commit/fe223f7b3a54b3a0ed7cb9018f07a53833c9106d))
+
+
+### Miscellaneous Chores
+
+* **mise:** Update tool aqua:astral-sh/uv (0.12.0 → 0.12.1) ([#456](https://github.com/home-operations/tuppr/issues/456)) ([5c02a0d](https://github.com/home-operations/tuppr/commit/5c02a0d2b5c3be4420a5f2612917d61fcaa1652c))
+
+## [0.4.3](https://github.com/home-operations/tuppr/compare/0.4.2...0.4.3) (2026-07-29)
+
+
+### Features
+
+* pre-pull the Talos installer image before starting a run ([#445](https://github.com/home-operations/tuppr/issues/445)) ([224074f](https://github.com/home-operations/tuppr/commit/224074fa8600e62aceb44c0b0cafdf37b4c52b4e))
+
+
+### Bug Fixes
+
+* **go:** update module github.com/netresearch/go-cron (v0.15.0 → v0.15.1) ([#441](https://github.com/home-operations/tuppr/issues/441)) ([dcb45da](https://github.com/home-operations/tuppr/commit/dcb45da2aaff67bedaedf6e68fecb5a1d45af59e))
+
+
+### Continuous Integration
+
+* build the e2e image once and hand it to every leg ([#442](https://github.com/home-operations/tuppr/issues/442)) ([562e9ac](https://github.com/home-operations/tuppr/commit/562e9ac900c24672948a4e9e4099326cb12683c9))
+* **github-action:** Update action jdx/mise-action (v4.2.2 → v4.2.3) ([#437](https://github.com/home-operations/tuppr/issues/437)) ([0e13632](https://github.com/home-operations/tuppr/commit/0e136327ce97dc35e90cdf0d1c2f8c2cae96dff3))
+
+
+### Miscellaneous Chores
+
+* **mise:** Update tool aqua:astral-sh/uv (0.11.32 → 0.12.0) ([#440](https://github.com/home-operations/tuppr/issues/440)) ([caf8759](https://github.com/home-operations/tuppr/commit/caf87595455a6f8b5a8784c6b486fd1914e239bb))
+* standardize release-please changelog sections ([#438](https://github.com/home-operations/tuppr/issues/438)) ([0d719dd](https://github.com/home-operations/tuppr/commit/0d719dd7191ac9cb54e6f0456d4f9537c03343f1))
+
+## [0.4.2](https://github.com/home-operations/tuppr/compare/0.4.1...0.4.2) (2026-07-27)
+
+
+### Features
+
+* **chart:** add deploymentAnnotations value ([#436](https://github.com/home-operations/tuppr/issues/436)) ([c07554a](https://github.com/home-operations/tuppr/commit/c07554ad5ed5d4b6e36ce2328eb97dc755284e22))
+* **go:** update module github.com/google/cel-go (v0.29.2 → v0.30.0) ([#429](https://github.com/home-operations/tuppr/issues/429)) ([8443ea5](https://github.com/home-operations/tuppr/commit/8443ea53c59183d96720d0c9bd43e2488c314d5a))
+
+
+### Bug Fixes
+
+* delete core dump ([36b02a4](https://github.com/home-operations/tuppr/commit/36b02a4db2ee00765a520771837cba958ed57ece))
+* **go:** update module github.com/prometheus/client_golang (v1.24.0 → v1.24.1) ([#418](https://github.com/home-operations/tuppr/issues/418)) ([1f47fc5](https://github.com/home-operations/tuppr/commit/1f47fc56b2c996fc98f98fc883853268046bae7c))
+
+
+### Miscellaneous Chores
+
+* **github-release:** Update release helm-unittest/helm-unittest (v1.1.1 → v1.1.2) ([#422](https://github.com/home-operations/tuppr/issues/422)) ([981e2ea](https://github.com/home-operations/tuppr/commit/981e2eade7fca4314044d2681f9f9715e84e391b))
+* **mise:** Update tool aqua:astral-sh/uv (0.11.31 → 0.11.32) ([#420](https://github.com/home-operations/tuppr/issues/420)) ([a9f06c0](https://github.com/home-operations/tuppr/commit/a9f06c0d59a8db63a276507b20d033c88b60abf6))
+* **mise:** Update tool oxfmt (0.60.0 → 0.61.0) ([#435](https://github.com/home-operations/tuppr/issues/435)) ([bc9743e](https://github.com/home-operations/tuppr/commit/bc9743e179eacaca4016b7cd36e7db5399af7f00))
+
+## [0.4.1](https://github.com/home-operations/tuppr/compare/0.4.0...0.4.1) (2026-07-23)
+
+
+### Features
+
+* **talosupgrade:** lease-based Alertmanager silence during upgrade runs ([#416](https://github.com/home-operations/tuppr/issues/416)) ([00a8ffd](https://github.com/home-operations/tuppr/commit/00a8ffd7a806fe7e029f77b1fb34774183e06754))
+
+
+### Bug Fixes
+
+* **container:** update image ghcr.io/siderolabs/kubelet (v1.36.2 → v1.36.3) ([#411](https://github.com/home-operations/tuppr/issues/411)) ([1c2258f](https://github.com/home-operations/tuppr/commit/1c2258f1ce07436aa57a27489b875ef54f07aeb4))
+* **deps:** update kubernetes monorepo (v0.36.2 → v0.36.3) ([#408](https://github.com/home-operations/tuppr/issues/408)) ([69a12e0](https://github.com/home-operations/tuppr/commit/69a12e0227bb511abaa0ca4c4732d7438214b0ce))
+* **helm:** stamp Chart.yaml version on release ([#414](https://github.com/home-operations/tuppr/issues/414)) ([a769302](https://github.com/home-operations/tuppr/commit/a769302f5b9fbcabd4d4034108f68279d0915f99))
+* **release:** use the generic updater for Chart.yaml stamping ([#415](https://github.com/home-operations/tuppr/issues/415)) ([a64bd11](https://github.com/home-operations/tuppr/commit/a64bd11e8b4aeef3ce0f9eecbd2238ac230ee640))
+* **talos:** handle unreachable nodes without stack-trace log spam ([#413](https://github.com/home-operations/tuppr/issues/413)) ([313dec8](https://github.com/home-operations/tuppr/commit/313dec80bc3420771faba7c6ca73e195d24274c1))
+
+
+### Miscellaneous Chores
+
+* **mise:** Update tool kubectl (1.36.2 → 1.36.3) ([#407](https://github.com/home-operations/tuppr/issues/407)) ([38a7513](https://github.com/home-operations/tuppr/commit/38a7513fb831171e662fef9a7f28a1ad284a8cd5))
+
+## [0.4.0](https://github.com/home-operations/tuppr/compare/0.3.3...0.4.0) (2026-07-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **notification:** apprise-go backend + customizable templates ([#404](https://github.com/home-operations/tuppr/issues/404))
+
+### Features
+
+* **notification:** apprise-go backend + customizable templates ([#404](https://github.com/home-operations/tuppr/issues/404)) ([171a7bf](https://github.com/home-operations/tuppr/commit/171a7bf335eaaf720af7fbe0ddcd7133b8f1d39d))
+
+
+### Documentation
+
+* add MkDocs Material site and trim README ([#405](https://github.com/home-operations/tuppr/issues/405)) ([a8fce64](https://github.com/home-operations/tuppr/commit/a8fce647a7bc96e812a4195ab58afbd29cd97279))
+
+
+### Miscellaneous Chores
+
+* **mise:** Update tool aqua:astral-sh/uv (0.11.29 → 0.11.31) ([#406](https://github.com/home-operations/tuppr/issues/406)) ([95e4955](https://github.com/home-operations/tuppr/commit/95e495587d21d3b3930dcee63f848ddeb585ef83))
+* **mise:** Update tool oxfmt (0.59.0 → 0.60.0) ([#403](https://github.com/home-operations/tuppr/issues/403)) ([f171506](https://github.com/home-operations/tuppr/commit/f171506afeaa1c508cc75ec1a254141b86d270ab))
+* **mise:** Update tool zizmor (1.27.0 → 1.28.0) ([#401](https://github.com/home-operations/tuppr/issues/401)) ([f333b5e](https://github.com/home-operations/tuppr/commit/f333b5e7dd5e33290783d386954ed93fe692b2ad))
+
+## [0.3.3](https://github.com/home-operations/tuppr/compare/0.3.2...0.3.3) (2026-07-21)
+
+
+### Features
+
+* **deps:** update module github.com/prometheus/client_golang (v1.23.2 → v1.24.0) ([#391](https://github.com/home-operations/tuppr/issues/391)) ([5e00779](https://github.com/home-operations/tuppr/commit/5e007795a6163178e236542aaeb5ca422250559f))
+
+
+### Bug Fixes
+
+* **container:** update talos group (v1.13.6 → v1.13.7) ([#399](https://github.com/home-operations/tuppr/issues/399)) ([ed62a17](https://github.com/home-operations/tuppr/commit/ed62a175cf59ece715f4e73eaa5518660674f192))
+* **deps:** update module github.com/go-logr/logr (v1.4.3 → v1.4.4) ([#394](https://github.com/home-operations/tuppr/issues/394)) ([9c2c9d9](https://github.com/home-operations/tuppr/commit/9c2c9d951e8358c9efeb5095e05db5d3bba4cf35))
+
+
+### Styles
+
+* match .github editorconfig and reflow markdown yaml to 2-space ([#393](https://github.com/home-operations/tuppr/issues/393)) ([e067556](https://github.com/home-operations/tuppr/commit/e067556726f4f539a0d57b74d1c3b58b1fe6253c))
+
+
+### Miscellaneous Chores
+
+* **mise:** Update tool cosign (3.1.1 → 3.1.2) ([#388](https://github.com/home-operations/tuppr/issues/388)) ([3a6a917](https://github.com/home-operations/tuppr/commit/3a6a917f6121a5c7dbd5090dd8c19cd277f11bc7))
+* **renovate:** group Talos updates ([#398](https://github.com/home-operations/tuppr/issues/398)) ([facac29](https://github.com/home-operations/tuppr/commit/facac29d1b6557afa5cfc9ab7d578c02c205ad68))
+
+## [0.3.2](https://github.com/home-operations/tuppr/compare/0.3.1...0.3.2) (2026-07-16)
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/grpc (v1.82.0 → v1.82.1) ([#384](https://github.com/home-operations/tuppr/issues/384)) ([8830b15](https://github.com/home-operations/tuppr/commit/8830b159fa8412e86fdefd015704d88b2f3626fb))
+* **talosupgrade:** let schematic annotation override runtime schematic ([#386](https://github.com/home-operations/tuppr/issues/386)) ([943234f](https://github.com/home-operations/tuppr/commit/943234fce8d7337736521ed08bf06ab51122272b))
+
 ## [0.3.1](https://github.com/home-operations/tuppr/compare/0.3.0...0.3.1) (2026-07-14)
 
 

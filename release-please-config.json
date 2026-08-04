@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "simple",
-  "exclude-paths": ["release-please-config.json", ".release-please-manifest.json"],
+  "pull-request-title-pattern": "chore(release):${component} ${version}",
   "packages": {
     ".": {
       "changelog-path": "CHANGELOG.md",
@@ -11,69 +11,64 @@
       "include-component-in-tag": false,
       "include-v-in-tag": false,
       "include-v-in-release-name": false,
-      "always-update": true
+      "always-update": true,
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "charts/tuppr/Chart.yaml"
+        },
+        "charts/tuppr/README.md"
+      ]
     }
   },
   "changelog-sections": [
     {
       "type": "feat",
-      "section": "Features",
-      "hidden": false
+      "section": "Features"
     },
     {
       "type": "fix",
-      "section": "Bug Fixes",
-      "hidden": false
+      "section": "Bug Fixes"
     },
     {
       "type": "perf",
-      "section": "Performance Improvements",
-      "hidden": false
-    },
-    {
-      "type": "revert",
-      "section": "Reverts",
-      "hidden": false
-    },
-    {
-      "type": "docs",
-      "section": "Documentation",
-      "hidden": false
-    },
-    {
-      "type": "style",
-      "section": "Styles",
-      "hidden": false
-    },
-    {
-      "type": "chore",
-      "section": "Miscellaneous Chores",
-      "hidden": false
+      "section": "Performance Improvements"
     },
     {
       "type": "refactor",
-      "section": "Code Refactoring",
-      "hidden": false
+      "section": "Code Refactoring"
+    },
+    {
+      "type": "revert",
+      "section": "Reverts"
+    },
+    {
+      "type": "docs",
+      "section": "Documentation"
+    },
+    {
+      "type": "style",
+      "section": "Styles"
     },
     {
       "type": "test",
-      "section": "Tests",
-      "hidden": true
+      "section": "Tests"
     },
     {
       "type": "build",
-      "section": "Build System",
-      "hidden": true
+      "section": "Build System"
     },
     {
       "type": "ci",
-      "section": "Continuous Integration",
-      "hidden": true
+      "section": "Continuous Integration"
+    },
+    {
+      "type": "chore",
+      "section": "Miscellaneous Chores"
     },
     {
       "type": "deps",
-      "section": "Dependencies",
-      "hidden": true
+      "section": "Dependencies"
     }
   ]
 }

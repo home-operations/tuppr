@@ -1,0 +1,29 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Serialize Pages deploys (matches the official GitHub Pages flow); never cancel
+# an in-flight deploy.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    name: Docs
+    uses: $/.github/workflows/docs.yaml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    with:
+      deploy: true

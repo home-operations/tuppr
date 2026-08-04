@@ -562,6 +562,12 @@ func TestK8sReconcile_HandlesJobFailure(t *testing.T) {
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
 		withK8sPhase(tupprv1alpha1.JobPhaseUpgrading),
+		func(ku *tupprv1alpha1.KubernetesUpgrade) {
+			// Entering an active phase always stamps StartedAt; a nil StartedAt
+			// at terminal time means a no-op run and would skip the history entry.
+			started := metav1.NewTime(time.Now().Add(-5 * time.Minute))
+			ku.Status.StartedAt = &started
+		},
 	)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1172,21 +1178,11 @@ func TestK8sReconcile_PendingFromLaggingWorkerStartsUpgrade(t *testing.T) {
 
 func TestK8sReconcile_CompletedCyclesExhaustedTransitionsToFailed(t *testing.T) {
 	scheme := newTestScheme()
-	now := metav1.Now()
-	history := make([]tupprv1alpha1.UpgradeHistoryEntry, upgradeaudit.MaxCompletionCycles)
-	for i := range history {
-		history[i] = tupprv1alpha1.UpgradeHistoryEntry{
-			ToVersion:   testK8sVersion,
-			Phase:       tupprv1alpha1.JobPhaseCompleted,
-			StartedAt:   now,
-			CompletedAt: now,
-		}
-	}
 	ku := newKubernetesUpgrade("test-upgrade",
 		withK8sFinalizer,
 		withK8sPhase(tupprv1alpha1.JobPhaseCompleted),
 		func(ku *tupprv1alpha1.KubernetesUpgrade) {
-			ku.Status.History = history
+			ku.Status.CompletionCycles = upgradeaudit.MaxCompletionCycles
 		},
 	)
 	cpAtTarget := newControllerNodeWithVersion("ctrl-1", testNodeIP, testK8sVersion)
@@ -1204,6 +1200,30 @@ func TestK8sReconcile_CompletedCyclesExhaustedTransitionsToFailed(t *testing.T) 
 	}
 	if !strings.Contains(updated.Status.Message, "never converged") {
 		t.Fatalf("expected Failed message to mention non-convergence, got: %q", updated.Status.Message)
+	}
+}
+
+func TestK8sReconcile_CompletedWithLaggingNodeIncrementsCycles(t *testing.T) {
+	scheme := newTestScheme()
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		withK8sPhase(tupprv1alpha1.JobPhaseCompleted),
+	)
+	cpAtTarget := newControllerNodeWithVersion("ctrl-1", testNodeIP, testK8sVersion)
+	workerLagging := newLaggingWorkerNode("10.0.0.5")
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku, cpAtTarget, workerLagging).WithStatusSubresource(ku).Build()
+	r := newK8sReconciler(cl, &mockVersionGetter{version: testK8sVersion}, &mockTalosClient{}, &mockHealthChecker{})
+
+	reconcileK8s(t, r, "test-upgrade")
+
+	updated := getK8sUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != tupprv1alpha1.JobPhasePending {
+		t.Fatalf("expected phase Pending after campaign restart, got: %s", updated.Status.Phase)
+	}
+	if updated.Status.CompletionCycles != 1 {
+		t.Fatalf("expected completionCycles=1 after restart, got %d", updated.Status.CompletionCycles)
 	}
 }
 
@@ -1318,6 +1338,7 @@ func TestK8sReconcile_ReportsReconcileErrorInStatus(t *testing.T) {
 			cond := findK8sCondition(updated.Status.Conditions, tupprv1alpha1.ConditionTypeProgressing)
 			if cond == nil {
 				t.Fatal("missing Progressing condition")
+				return
 			}
 			if cond.Reason != tt.wantReason {
 				t.Fatalf("expected Reason=%s, got %s", tt.wantReason, cond.Reason)

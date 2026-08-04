@@ -7,11 +7,13 @@ tests:
       - isKind:
           of: Deployment
 
-  - it: should use the correct image
+  # The tag floats with the release-please-stamped appVersion; assert the
+  # repo:semver shape rather than a hardcoded version.
+  - it: should default the image tag to the chart appVersion
     asserts:
-      - equal:
+      - matchRegex:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/home-operations/tuppr:0.0.0
+          pattern: ^ghcr\.io/home-operations/tuppr:\d+\.\d+\.\d+$
 
   - it: should use custom image tag
     set:
@@ -29,6 +31,20 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/home-operations/tuppr@sha256:abc123
+
+  - it: should set deployment annotations from values
+    set:
+      deploymentAnnotations:
+        reloader.stakater.com/auto: "true"
+    asserts:
+      - equal:
+          path: metadata.annotations["reloader.stakater.com/auto"]
+          value: "true"
+
+  - it: should not render deployment annotations by default
+    asserts:
+      - notExists:
+          path: metadata.annotations
 
   - it: should set replicas from values
     set:
@@ -202,3 +218,42 @@ tests:
           content:
             name: extra
             mountPath: /extra
+
+  - it: should fail when silences are enabled without an alertmanager address
+    set:
+      silences.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: silences.alertmanager.address is required
+
+  - it: should wire the alertmanager env and headers secret when silences are enabled
+    set:
+      silences.enabled: true
+      silences.alertmanager.address: http://alertmanager.monitoring.svc:9093
+      silences.alertmanager.secretName: tuppr-alertmanager
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ALERTMANAGER_ADDRESS
+            value: http://alertmanager.monitoring.svc:9093
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ALERTMANAGER_HEADERS_DIR
+            value: /var/run/secrets/alertmanager-headers
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: alertmanager-headers
+            secret:
+              secretName: tuppr-alertmanager
+              defaultMode: 420
+
+  - it: should not render alertmanager env when disabled
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ALERTMANAGER_ADDRESS
+          any: true

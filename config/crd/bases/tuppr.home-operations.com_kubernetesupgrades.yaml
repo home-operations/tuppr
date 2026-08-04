@@ -245,6 +245,12 @@ spec:
                   phase
                 format: date-time
                 type: string
+              completionCycles:
+                description: |-
+                  CompletionCycles counts Completed→Pending re-entries: a completed run
+                  re-opened because a node still lags the target version. Bounds restart
+                  loops; reset by spec changes and the reset annotation.
+                type: integer
               conditions:
                 description: Conditions report the upgrade's "Progressing" and "Ready"
                   status.
@@ -368,7 +374,7 @@ spec:
                   - startedAt
                   - toVersion
                   type: object
-                maxItems: 10
+                maxItems: 3
                 type: array
               jobName:
                 description: JobName is the name of the job handling the upgrade

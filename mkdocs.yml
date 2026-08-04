@@ -1,0 +1,134 @@
+# MkDocs configuration for the tuppr documentation site.
+#
+# The book source is the docs/ tree. Page order and grouping live in `nav:`
+# below; any docs/*.md NOT in `nav:` builds but is unlinked (--strict warns).
+#
+# `mise run docs` (scripts/build-docs.sh) builds this site with --strict and
+# publishes it to https://tuppr.home-operations.com/ (served at the root, so
+# site_url ends "/"). The domain is pinned by the CNAME file build-docs.sh
+# writes into the artifact; the repo's Settings -> Pages custom-domain field
+# must match.
+#
+# The MkDocs + Material toolchain is pinned in pyproject.toml / uv.lock and run
+# via uv (see .mise/config.toml). Material bundles mermaid.js and the admonition
+# styling, so there are no committed preprocessor assets to regenerate.
+site_name: tuppr
+site_description: Kubernetes controller for automated, orchestrated Talos Linux and Kubernetes upgrades.
+site_author: tuppr contributors
+site_url: https://tuppr.home-operations.com/
+
+repo_url: https://github.com/home-operations/tuppr
+repo_name: home-operations/tuppr
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site
+
+# Fail the build on a broken internal link or a nav entry pointing at a missing
+# file. This is our doc lint; build-docs.sh / CI passes --strict.
+validation:
+  links:
+    absolute_links: relative_to_docs
+    not_found: warn
+    anchors: warn
+  nav:
+    omitted_files: warn
+
+theme:
+  name: material
+  language: en
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.indexes
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - content.tabs.link
+
+markdown_extensions:
+  # Admonitions use the pymdownx "blocks" syntax (/// note | Title ... ///),
+  # which survives an oxfmt run (docs/ is excluded, but the blocks form keeps
+  # its body at column 0 either way). Keep a blank line before the closing ///.
+  - pymdownx.blocks.admonition:
+      types:
+        - note
+        - abstract
+        - info
+        - tip
+        - success
+        - question
+        - warning
+        - failure
+        - danger
+        - bug
+        - example
+        - quote
+  - pymdownx.blocks.details
+  - pymdownx.blocks.tab:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+      # GitHub-compatible heading slugs so anchors match how GitHub renders the
+      # same .md files.
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.inlinehilite
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.snippets:
+      # base_path = repo root so docs can pull real files from the tree via
+      # `--8<-- "charts/tuppr/values.yaml"`. check_paths fails on a missing file.
+      base_path:
+        - "."
+      check_paths: true
+
+plugins:
+  - search
+
+nav:
+  - Introduction: index.md
+  - Getting started:
+      - Requirements: requirements.md
+      - Quickstart: quickstart.md
+  - Concepts:
+      - Upgrade coordination: coordination.md
+      - Versioning and safe upgrade paths: versioning.md
+  - User guide:
+      - Talos upgrades: talos-upgrades.md
+      - Kubernetes upgrades: kubernetes-upgrades.md
+      - Notifications: notifications.md
+      - Monitoring: monitoring.md
+      - Operations: operations.md
+      - Helm chart values: configuration.md
+  - Development: development.md

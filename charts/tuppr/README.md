@@ -1,6 +1,8 @@
 # tuppr
 
-![Version: 0.0.0](https://img.shields.io/badge/Version-0.0.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.0.0](https://img.shields.io/badge/AppVersion-0.0.0-informational?style=flat-square)
+![Version](https://img.shields.io/static/v1?label=Version&message=0.4.6&color=informational&style=flat-square) <!-- x-release-please-version -->
+![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square)
+![AppVersion](https://img.shields.io/static/v1?label=AppVersion&message=0.4.6&color=informational&style=flat-square) <!-- x-release-please-version -->
 
 A Helm chart for tuppr - Talos Linux Upgrade Controller
 
@@ -44,6 +46,7 @@ Kubernetes: `>=1.25.0-0`
 | controller.logLevel | string | `"debug"` | Controller log level: info or debug. |
 | controller.metrics.annotations | object | `{}` | Annotations for the metrics Service. |
 | controller.metrics.port | int | `8081` | Operational port: /metrics plus the /healthz and /readyz probes (plain HTTP; always on — restrict with a NetworkPolicy rather than disabling). |
+| deploymentAnnotations | object | `{}` | Annotations added to the Deployment (e.g. for reloader). |
 | env | list | `[]` | Extra environment variables passed to the container. |
 | fullnameOverride | string | `""` | Override the full release name. |
 | image.digest | string | `""` | Pin the image by digest (sha256:…); when set, overrides the tag. |
@@ -79,8 +82,10 @@ Kubernetes: `>=1.25.0-0`
 | nameOverride | string | `""` | Override the chart name used in resource names. |
 | nodeSelector | object | `{}` | Node selector for pod scheduling. |
 | notification.enabled | bool | `false` | Enable upgrade notifications. |
+| notification.messageTemplate | string | `""` | Go template for the notification message; empty uses the built-in default. Same helpers and fields as titleTemplate. |
 | notification.secretKey | string | `"url"` | Key within the Secret holding the notification URL. |
-| notification.secretName | string | `""` | Name of the Secret holding the notification (shoutrrr) URL. |
+| notification.secretName | string | `""` | Name of the Secret holding the notification (apprise) URL. |
+| notification.titleTemplate | string | `""` | Go template for the notification title; empty uses the built-in default. Helpers are the go-sprout/sprout safe set (e.g. `toUpper`); fields are `.Node`, `.CurrentVersion`, `.TargetVersion`, `.Plan`. |
 | podAnnotations | object | `{}` | Annotations added to the pod. |
 | podLabels | object | `{}` | Labels added to the pod. |
 | podSecurityContext | object | `{"fsGroup":65532,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}}` | Pod-level securityContext (runs as non-root uid/gid 65532). |
@@ -97,6 +102,9 @@ Kubernetes: `>=1.25.0-0`
 | serviceAccount.automount | bool | `true` | Automount the API token (on by default: the controller talks to the cluster API). |
 | serviceAccount.create | bool | `true` | Create a ServiceAccount. |
 | serviceAccount.name | string | `""` | ServiceAccount name; generated from the release name if empty. |
+| silences.alertmanager.address | string | `""` | Alertmanager base URL (e.g. http://alertmanager.monitoring.svc:9093). Anything speaking the v2 silences API works (VMAlertmanager, Grafana-managed alerting behind its prefix). |
+| silences.alertmanager.secretName | string | `""` | Name of a Secret whose keys/values are sent as HTTP headers on every Alertmanager request (e.g. Authorization, X-Scope-OrgID). |
+| silences.enabled | bool | `false` | Enable upgrade-run silences. |
 | talosServiceAccount.create | bool | `true` | Create the talos.dev/v1alpha1 ServiceAccount that makes Talos generate the `<name>-talosconfig` Secret the controller mounts. Requires the Talos API-access CRD (a real Talos cluster). Set false on non-Talos clusters (e.g. e2e/kind) and provide that Secret yourself. |
 | tolerations | list | `[{"key":"CriticalAddonsOnly","operator":"Exists"},{"effect":"NoSchedule","key":"node-role.kubernetes.io/control-plane","operator":"Exists"},{"effect":"NoSchedule","key":"node.kubernetes.io/unschedulable","operator":"Exists"}]` | Tolerations for pod scheduling (defaults keep the controller schedulable on control-plane and cordoned nodes so it can uncordon after an upgrade reboot). |
 | volumeMounts | list | `[]` | Additional volume mounts on the container. |

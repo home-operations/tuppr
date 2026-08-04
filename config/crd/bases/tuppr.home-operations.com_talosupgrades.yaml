@@ -4835,9 +4835,75 @@ spec:
                       Multi-Attach error when a fast reboot orphans a mount. No-op on single-node.
                     type: boolean
                 type: object
+              silences:
+                description: |-
+                  Silences are Alertmanager silences held while this upgrade runs, one per
+                  entry. Requires the operator-level Alertmanager connection (Helm
+                  `silences.*`).
+                items:
+                  description: |-
+                    SilenceSpec describes one Alertmanager silence held during an upgrade run.
+                    The silence is a short lease re-extended on every reconcile while the run is
+                    active, so it lapses on its own if the controller stops driving the run.
+                  properties:
+                    matchers:
+                      description: |-
+                        Matchers select the alerts this silence covers. Alertmanager ANDs the
+                        matchers of one silence; use a regex value to cover alternatives, or
+                        additional silences for independent scopes.
+                      items:
+                        description: SilenceMatcher is one Alertmanager silence matcher.
+                        properties:
+                          matchType:
+                            default: =
+                            description: 'MatchType is the match operator: = (equals),
+                              != , =~ (regex), !~.'
+                            enum:
+                            - =
+                            - '!='
+                            - =~
+                            - '!~'
+                            type: string
+                          name:
+                            description: Name of the alert label to match.
+                            minLength: 1
+                            type: string
+                          value:
+                            description: Value the label is matched against.
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        - value
+                        type: object
+                      minItems: 1
+                      type: array
+                    maxDuration:
+                      default: 4h
+                      description: |-
+                        MaxDuration hard-caps how long a continuous silence hold keeps being
+                        extended; a run still holding this silence beyond it alerts again. The
+                        budget re-arms when the hold is released (run parked or finished).
+                      pattern: ^([0-9]+[smh])+$
+                      type: string
+                  required:
+                  - matchers
+                  type: object
+                maxItems: 8
+                minItems: 1
+                type: array
               talos:
                 description: Talos specifies the talos configuration for upgrade operations
                 properties:
+                  prePull:
+                    default: true
+                    description: |-
+                      PrePull pulls each node's resolved installer image at the start of a run,
+                      before the first node is cordoned, so an unreachable registry or a bad
+                      schematic/tag parks the run before any disruption. Nodes running Talos
+                      older than v1.13 (no ImageService API) are skipped. Disable for airgapped
+                      clusters that seed images out of band.
+                    type: boolean
                   version:
                     description: Version is the target Talos version to upgrade to
                       (e.g., "v1.11.0")
@@ -4877,6 +4943,22 @@ spec:
           status:
             description: TalosUpgradeStatus defines the observed state of TalosUpgrade
             properties:
+              alertSilenceIDs:
+                description: |-
+                  AlertSilenceIDs are the Alertmanager silences this run holds open, indexed
+                  like spec.silences (an empty entry is a silence not yet created). Persisted
+                  so the leases are re-adopted across controller restarts and expired when
+                  the run leaves its active phases.
+                items:
+                  type: string
+                type: array
+              alertSilencesSince:
+                description: |-
+                  AlertSilencesSince is when the current silence hold began; each entry's
+                  maxDuration caps extension relative to it. Cleared when the hold is
+                  released, so a resumed run gets a fresh budget.
+                format: date-time
+                type: string
               completedAt:
                 description: CompletedAt is the time the upgrade reached a terminal
                   phase
@@ -4888,6 +4970,12 @@ spec:
                 items:
                   type: string
                 type: array
+              completionCycles:
+                description: |-
+                  CompletionCycles counts Completed→Pending re-entries: a completed run
+                  re-opened because a matching node still needs the target version. Bounds
+                  restart loops; reset by spec changes and the reset annotation.
+                type: integer
               conditions:
                 description: Conditions report the upgrade's "Progressing" and "Ready"
                   status.
@@ -5036,7 +5124,7 @@ spec:
                   - startedAt
                   - toVersion
                   type: object
-                maxItems: 10
+                maxItems: 3
                 type: array
               lastUpdated:
                 description: LastUpdated timestamp of last status update
@@ -5082,6 +5170,81 @@ spec:
                   PreHookIndex is the index of the next pre-hook to run.
                   Equals len(spec.hooks.pre) once all pre-hooks are done.
                 type: integer
+              prePullFailure:
+                description: |-
+                  PrePullFailure tracks the current streak of consecutive failed pre-pull
+                  cycles, so a crash-looping pre-pull stays visible in status instead of
+                  being overwritten by the next cycle's Pre-pulling message. Drives the
+                  retry backoff; cleared once a pass completes without a failure.
+                properties:
+                  attempts:
+                    description: Attempts is the number of consecutive pre-pull cycles
+                      that have failed.
+                    type: integer
+                  lastError:
+                    description: LastError is the failure from the most recent cycle.
+                    type: string
+                required:
+                - attempts
+                - lastError
+                type: object
+              prePulledNodes:
+                description: |-
+                  PrePulledNodes records the installer image pre-pulled on each node
+                  during this run (or noted as skipped because the node's Talos version
+                  predates the ImageService API), so pulls are not repeated on every
+                  reconcile. A record is keyed by the resolved ref and the Node UID: a
+                  node that becomes eligible mid-run, is recreated under the same name,
+                  or whose resolved image changes (annotations, machine config), is
+                  pre-pulled before its next batch.
+                items:
+                  description: PrePulledNode records one node's handled installer
+                    pre-pull for this run.
+                  properties:
+                    image:
+                      description: |-
+                        Image is the installer ref that was resolved for the node when it was
+                        pulled (or skipped as unsupported). A different resolved ref
+                        invalidates the record.
+                      type: string
+                    nodeName:
+                      description: NodeName is the name of the node.
+                      type: string
+                    nodeUID:
+                      description: |-
+                        NodeUID is the UID of the Node object the pull was performed against.
+                        A node recreated under the same name (new UID) invalidates the record:
+                        its image store starts empty.
+                      type: string
+                  required:
+                  - image
+                  - nodeName
+                  - nodeUID
+                  type: object
+                type: array
+              rebootingNodes:
+                description: |-
+                  RebootingNodes tracks nodes whose upgrade job finished but whose
+                  post-reboot readiness has not been verified yet. Persisted in status so
+                  the wait survives upgrade Job garbage collection; a node that never
+                  comes back is marked failed once its deadline passes.
+                items:
+                  description: NodeRebootStatus tracks a node awaiting post-upgrade
+                    reboot verification
+                  properties:
+                    deadline:
+                      description: Deadline is when the reboot wait expires and the
+                        node is marked failed
+                      format: date-time
+                      type: string
+                    nodeName:
+                      description: NodeName is the name of the node
+                      type: string
+                  required:
+                  - deadline
+                  - nodeName
+                  type: object
+                type: array
               startedAt:
                 description: StartedAt is the time the current upgrade run began
                 format: date-time

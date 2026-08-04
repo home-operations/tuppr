@@ -1,23 +1,26 @@
 [tools]
+actionlint = "1.7.12"
 go = "1.26.5"
+"go:golang.org/x/vuln/cmd/govulncheck" = "1.6.0"
 golangci-lint = "2.12.2"
-hcloud = "1.66.0"
 helm = "4.2.3"
-cosign = "3.1.1"
+cosign = "3.1.2"
 helm-docs = "1.14.2"
 jq = "1.8.2"
 kind = "0.32.0"
 kube-controller-tools = "0.21.0"
-kubectl = "1.36.2"
+kubectl = "1.36.3"
 lefthook = "2.1.10"
-opentofu = "1.12.4"
-oxfmt = "0.59.0"
+oxfmt = "0.61.0"
 setup-envtest = "0.24.1"
+shellcheck = "0.11.0"
 stern = "1.34.0"
-talosctl = "1.13.6"
-zizmor = "1.27.0"
+talosctl = "1.14.0-beta.1"
+zizmor = "1.29.0"
 "aqua:dadav/helm-schema" = "0.23.4"
 yq = "4.53.3"
+# Docs site toolchain: MkDocs + Material run via uv (pyproject.toml / uv.lock).
+"aqua:astral-sh/uv" = "0.12.1"
 
 [tasks.manifests]
 description = "Generate CRD, RBAC, and webhook manifests"
@@ -34,6 +37,10 @@ run = "go fmt ./..."
 [tasks.vet]
 description = "Run go vet against code"
 run = "go vet ./..."
+
+[tasks.vulncheck]
+description = "Scan for known vulnerabilities with govulncheck"
+run = "govulncheck ./..."
 
 [tasks.lint]
 description = "Run golangci-lint"
@@ -121,6 +128,14 @@ version="${VERSION:-$(git describe --tags --always 2>/dev/null || echo dev)}"
 commit="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 go run -ldflags "-X main.version=$version -X main.commit=$commit" ./cmd/main.go
 '''
+
+[tasks.docs]
+description = "Build the docs site (MkDocs Material) into site/"
+run = "scripts/build-docs.sh"
+
+[tasks.docs-serve]
+description = "Serve the docs locally with live reload"
+run = "uv run mkdocs serve"
 
 [hooks]
 postinstall = "lefthook install"

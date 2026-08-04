@@ -1,0 +1,25 @@
+# Docs-site Python toolchain for tuppr.
+#
+# tuppr is a Go module; this pyproject exists ONLY to pin the MkDocs + Material
+# toolchain that builds the user docs under docs/. Go tooling ignores it. It is
+# NOT an installable package (tool.uv.package = false) — `uv run mkdocs …` just
+# resolves the pinned tools below from the committed uv.lock.
+#
+# `mise run docs` / `mise run docs-serve` drive this via uv so the versions are
+# reproducible in CI (mise installs uv; uv installs from uv.lock). Bump a tool
+# here, then `uv lock` and commit the refreshed uv.lock.
+[project]
+name = "tuppr-docs"
+version = "0.0.0"
+description = "MkDocs Material toolchain for the tuppr documentation site."
+requires-python = ">=3.11"
+dependencies = [
+    # Material brings mkdocs + a bundled mermaid.js (no separate asset needed).
+    "mkdocs-material>=9.5,<10",
+    # snippets (file includes), superfences (mermaid), blocks admonitions, etc.
+    "pymdown-extensions>=10.7",
+]
+
+[tool.uv]
+# This project is tooling, not a library — don't try to build/install it.
+package = false

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"sync"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -25,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/alerting"
 	"github.com/home-operations/tuppr/internal/controller/jobs"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
@@ -47,17 +49,23 @@ const (
 )
 
 const (
-	appLabelKey          = jobs.AppLabelKey
-	appInstanceLabelKey  = jobs.AppInstanceLabelKey
-	appPartOfLabelKey    = jobs.AppPartOfLabelKey
-	appPartOfTuppr       = jobs.AppPartOfTuppr
-	targetNodeLabelKey   = jobs.TargetNodeLabelKey
-	talosUpgradeAppName  = "talos-upgrade"
-	statusCompletedNodes = "completedNodes"
-	statusFailedNodes    = "failedNodes"
-	statusPreHookFailed  = "preHookFailed"
-	statusPreHookIndex   = "preHookIndex"
-	statusPostHookIndex  = "postHookIndex"
+	appLabelKey              = jobs.AppLabelKey
+	appInstanceLabelKey      = jobs.AppInstanceLabelKey
+	appPartOfLabelKey        = jobs.AppPartOfLabelKey
+	appPartOfTuppr           = jobs.AppPartOfTuppr
+	targetNodeLabelKey       = jobs.TargetNodeLabelKey
+	talosUpgradeAppName      = "talos-upgrade"
+	statusAlertSilenceIDs    = "alertSilenceIDs"
+	statusAlertSilencesSince = "alertSilencesSince"
+	statusCompletedNodes     = "completedNodes"
+	statusFailedNodes        = "failedNodes"
+	statusRebootingNodes     = "rebootingNodes"
+	statusPreHookFailed      = "preHookFailed"
+	statusPreHookIndex       = "preHookIndex"
+	statusPostHookIndex      = "postHookIndex"
+	statusPrePulledNodes     = "prePulledNodes"
+	statusPrePullFailure     = "prePullFailure"
+	statusCompletionCycles   = "completionCycles"
 )
 
 // TalosClient defines the interface for Talos operations
@@ -68,6 +76,7 @@ type TalosClient interface {
 	GetNodeExtensions(ctx context.Context, nodeIP string) (talos.ExtensionInfo, error)
 	GetNodePlatform(ctx context.Context, nodeIP string) (string, error)
 	PatchNodeInstallImage(ctx context.Context, nodeIP, newImage string) error
+	PullImage(ctx context.Context, nodeIP, imageRef string) error
 }
 
 // ImageChecker defines the interface for checking image availability
@@ -110,7 +119,13 @@ type Reconciler struct {
 	Now                 Now
 	ImageChecker        ImageChecker
 	Notifier            notification.Notifier
+	Renderer            *notification.Renderer
+	Silencer            alerting.Silencer
 	Recorder            record.EventRecorder
+
+	// silenceWarnings latches once-per-CR silence Warning events (see
+	// silenceWarnOnce) so steady-state conditions don't spam the apiserver.
+	silenceWarnings sync.Map
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -142,6 +157,18 @@ func (r *Reconciler) cleanup(ctx context.Context, talosUpgrade *tupprv1alpha1.Ta
 	logger.V(1).Info("Cleaning up TalosUpgrade", "name", talosUpgrade.Name)
 
 	r.clearOutdatedTaints(ctx, talosUpgrade)
+
+	// Best-effort: a deleted mid-run CR shouldn't leave its silences open for
+	// the full TTL. On failure the leases lapse on their own.
+	if r.Silencer != nil {
+		amCtx, cancel := context.WithTimeout(ctx, silenceSyncTimeout)
+		for _, id := range talosUpgrade.Status.AlertSilenceIDs {
+			r.expireSilence(amCtx, talosUpgrade, id)
+		}
+		cancel()
+	}
+	r.silenceWarnings.Delete(silenceWarningKey(talosUpgrade, "SilenceMaxDurationReached"))
+	r.silenceWarnings.Delete(silenceWarningKey(talosUpgrade, "SilencesNotConfigured"))
 
 	logger.V(1).Info("Removing finalizer", "name", talosUpgrade.Name, "finalizer", TalosUpgradeFinalizer)
 	controllerutil.RemoveFinalizer(talosUpgrade, TalosUpgradeFinalizer)
@@ -220,7 +247,14 @@ func (r *Reconciler) nodeToTalosUpgrades(ctx context.Context, _ client.Object) [
 
 func (r *Reconciler) updateStatus(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, updates map[string]any) error {
 	statusObj := &tupprv1alpha1.TalosUpgrade{ObjectMeta: metav1.ObjectMeta{Name: talosUpgrade.Name}}
-	return upgradeaudit.PatchStatus(ctx, r.Client, statusObj, talosUpgrade.Generation, updates)
+	if err := upgradeaudit.PatchStatus(ctx, r.Client, statusObj, talosUpgrade.Generation, updates); err != nil {
+		return err
+	}
+	// Carry the bumped resourceVersion onto the in-memory object so a later
+	// full-object Update in the same reconcile (e.g. annotation removal)
+	// doesn't 409 against our own status patch.
+	talosUpgrade.ResourceVersion = statusObj.ResourceVersion
+	return nil
 }
 
 func (r *Reconciler) setPhase(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, phase tupprv1alpha1.JobPhase, message string) error {
@@ -374,6 +408,53 @@ func (r *Reconciler) addFailedNode(ctx context.Context, talosUpgrade *tupprv1alp
 	return r.updateStatus(ctx, talosUpgrade, map[string]any{
 		statusFailedNodes: talosUpgrade.Status.FailedNodes,
 	})
+}
+
+// trackRebootingNodes ensures each named node has a reboot-wait entry with a
+// deadline of now + the per-node upgrade timeout. Existing entries keep their
+// original deadline so requeues don't push the deadline out.
+func (r *Reconciler) trackRebootingNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeNames []string) error {
+	deadline := metav1.NewTime(r.Now.Now().Add(nodeUpgradeTimeout(talosUpgrade)))
+	entries := talosUpgrade.Status.RebootingNodes
+	changed := false
+	for _, nodeName := range nodeNames {
+		if slices.ContainsFunc(entries, func(e tupprv1alpha1.NodeRebootStatus) bool {
+			return e.NodeName == nodeName
+		}) {
+			continue
+		}
+		entries = append(entries, tupprv1alpha1.NodeRebootStatus{NodeName: nodeName, Deadline: deadline})
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	talosUpgrade.Status.RebootingNodes = entries
+	return r.updateStatus(ctx, talosUpgrade, map[string]any{statusRebootingNodes: entries})
+}
+
+// clearRebootTracking drops the reboot-wait entry for the node, if present.
+func (r *Reconciler) clearRebootTracking(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) error {
+	idx := slices.IndexFunc(talosUpgrade.Status.RebootingNodes, func(e tupprv1alpha1.NodeRebootStatus) bool {
+		return e.NodeName == nodeName
+	})
+	if idx < 0 {
+		return nil
+	}
+	entries := slices.Delete(slices.Clone(talosUpgrade.Status.RebootingNodes), idx, idx+1)
+	talosUpgrade.Status.RebootingNodes = entries
+	return r.updateStatus(ctx, talosUpgrade, map[string]any{statusRebootingNodes: entries})
+}
+
+// rebootDeadlineExpired reports whether the node has a tracked reboot deadline
+// in the past.
+func (r *Reconciler) rebootDeadlineExpired(talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) bool {
+	for _, e := range talosUpgrade.Status.RebootingNodes {
+		if e.NodeName == nodeName {
+			return r.Now.Now().After(e.Deadline.Time)
+		}
+	}
+	return false
 }
 
 func (r *Reconciler) getTotalNodeCount(ctx context.Context) (int, error) {

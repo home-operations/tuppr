@@ -1,0 +1,13 @@
+---
+rules:
+  # The e2e-image job in ci.yaml builds a controller image from a cached layer
+  # set, in a job where mise-action has caching on, which the rule reads as a
+  # cached tool feeding a published artifact. It does not apply here on two
+  # counts: the Dockerfile builds FROM the official golang image, so no
+  # mise-managed tool reaches the binary (mise supplies only the version
+  # string), and what it produces only ever reaches the throwaway QEMU clusters
+  # the e2e legs boot -- a runner-local registry, never one outside it and never
+  # a release.
+  cache-poisoning:
+    ignore:
+      - ci.yaml

@@ -132,6 +132,42 @@ func TestApplyPhaseAuditFields_TerminalTransition(t *testing.T) {
 		}
 	})
 
+	t.Run("Completed without startedAt records no history (no-op run)", func(t *testing.T) {
+		status := tupprv1alpha1.KubernetesUpgradeStatus{
+			Phase:          tupprv1alpha1.JobPhasePending,
+			CurrentVersion: toVer,
+			TargetVersion:  toVer,
+		}
+		updates := map[string]any{}
+		applyPhaseAuditFields(&status, updates, tupprv1alpha1.JobPhaseCompleted, now, "done")
+		if _, ok := updates["history"]; ok {
+			t.Fatal("no-op run must not append history")
+		}
+		if got := updates["completedAt"].(metav1.Time); !got.Equal(&now) {
+			t.Fatalf("want completedAt %v, got %v", now, got)
+		}
+	})
+
+	t.Run("Failed without startedAt still records history", func(t *testing.T) {
+		status := tupprv1alpha1.KubernetesUpgradeStatus{
+			Phase:         tupprv1alpha1.JobPhasePending,
+			TargetVersion: toVer,
+			LastError:     "no controller node found",
+		}
+		updates := map[string]any{}
+		applyPhaseAuditFields(&status, updates, tupprv1alpha1.JobPhaseFailed, now, "msg")
+		h, ok := updates["history"].([]tupprv1alpha1.UpgradeHistoryEntry)
+		if !ok || len(h) != 1 || h[0].Phase != tupprv1alpha1.JobPhaseFailed {
+			t.Fatalf("want 1 Failed entry, got %+v", updates["history"])
+		}
+		if !h[0].StartedAt.Equal(&now) {
+			t.Fatalf("want startedAt fallback to now, got %v", h[0].StartedAt)
+		}
+		if h[0].LastError != "no controller node found" {
+			t.Fatalf("want LastError preserved, got %q", h[0].LastError)
+		}
+	})
+
 	t.Run("already-terminal does not append duplicate", func(t *testing.T) {
 		status := tupprv1alpha1.KubernetesUpgradeStatus{
 			Phase:     tupprv1alpha1.JobPhaseCompleted,

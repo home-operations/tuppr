@@ -1,28 +1,40 @@
 package notification
 
 import (
-	"errors"
+	"fmt"
+	"strings"
 	"testing"
 )
 
-func TestNewShoutrrrNotifier_EmptyURLReturnsNil(t *testing.T) {
-	if notifier := NewShoutrrrNotifier(""); notifier != nil {
+func TestNewAppriseNotifier_EmptyURLReturnsNil(t *testing.T) {
+	if notifier := NewAppriseNotifier(""); notifier != nil {
 		t.Fatalf("expected nil notifier for empty URL, got %T", notifier)
 	}
 }
 
-func TestShoutrrrSend_ReturnsSenderErrors(t *testing.T) {
-	n := &ShoutrrrNotifier{senderErr: errors.New("boom")}
+func TestNewAppriseNotifier_InvalidURLSurfacesErrorOnSend(t *testing.T) {
+	n := NewAppriseNotifier("nosuchscheme://example")
+	if n == nil {
+		t.Fatal("expected a notifier for a non-empty URL")
+	}
 
 	if err := n.Send("Tuppr Upgrade Started", "Node a is upgrading"); err == nil {
-		t.Fatal("expected sender errors to be returned")
+		t.Fatal("expected an error for an unsupported target URL")
 	}
 }
 
-func TestShoutrrrSend_NoSenderReturnsNil(t *testing.T) {
-	n := &ShoutrrrNotifier{}
+func TestAppriseSend_RedactsCredentialURL(t *testing.T) {
+	secretURL := "discord://token@webhookid"
+	n := &AppriseNotifier{url: secretURL, addErr: fmt.Errorf("%s: boom", secretURL)}
 
-	if err := n.Send("Tuppr Upgrade Started", "Node a is upgrading"); err != nil {
-		t.Fatalf("expected send to succeed, got %v", err)
+	err := n.Send("Tuppr Upgrade Started", "Node a is upgrading")
+	if err == nil {
+		t.Fatal("expected the stored error to be returned")
+	}
+	if strings.Contains(err.Error(), secretURL) {
+		t.Fatalf("credential URL leaked into error: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "<redacted-url>") {
+		t.Fatalf("expected redaction placeholder, got %q", err.Error())
 	}
 }

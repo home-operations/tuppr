@@ -29,6 +29,13 @@ func applyPhaseAuditFields(status *tupprv1alpha1.KubernetesUpgradeStatus, update
 		}
 		updates["completedAt"] = now
 
+		// A Completed run that never went active (StartedAt unset) did no
+		// work, e.g. a spec re-apply with the cluster already at target;
+		// recording it would fabricate a zero-duration entry for an upgrade
+		// that never happened. Failed runs are always recorded.
+		if nextPhase == tupprv1alpha1.JobPhaseCompleted && status.StartedAt == nil {
+			return
+		}
 		startedAt := now
 		if status.StartedAt != nil {
 			startedAt = *status.StartedAt
@@ -57,19 +64,6 @@ func syncLocalAuditFields(status *tupprv1alpha1.KubernetesUpgradeStatus, updates
 			status.History = h
 		}
 	}
-}
-
-// completionCyclesForVersion counts consecutive newest-first Completed entries
-// for the given target version.
-func completionCyclesForVersion(history []tupprv1alpha1.UpgradeHistoryEntry, version string) int {
-	count := 0
-	for _, e := range history {
-		if e.Phase != tupprv1alpha1.JobPhaseCompleted || e.ToVersion != version {
-			break
-		}
-		count++
-	}
-	return count
 }
 
 func (r *Reconciler) emitPhaseEvent(ku *tupprv1alpha1.KubernetesUpgrade, prev, next tupprv1alpha1.JobPhase, message string) {

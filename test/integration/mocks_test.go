@@ -100,6 +100,10 @@ func (m *mockTalosClient) PatchNodeInstallImage(ctx context.Context, nodeIP, new
 	return nil
 }
 
+func (m *mockTalosClient) PullImage(ctx context.Context, nodeIP, imageRef string) error {
+	return nil
+}
+
 func (m *mockTalosClient) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()

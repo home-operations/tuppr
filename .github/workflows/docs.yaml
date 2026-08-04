@@ -1,0 +1,47 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Docs
+
+on:
+  workflow_call:
+    inputs:
+      deploy:
+        description: Publish the built site to GitHub Pages
+        type: boolean
+        required: true
+
+# No workflow-level permissions: they would apply to publish as well, capping it
+# at contents: read and starving actions/deploy-pages of pages: write and
+# id-token: write. publish inherits the caller's grant instead; build declares
+# its own reduction below, which is valid from either caller.
+
+jobs:
+  build:
+    name: Build docs site
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build docs site
+        uses: home-operations/.github/actions/docs-build@4f44306d499ec70355fae5540103c2033955fc2c # docs-build-v1.0.1
+        with:
+          deploy: ${{ inputs.deploy }}
+
+  publish:
+    name: Publish to GitHub Pages
+    if: ${{ inputs.deploy }}
+    needs:
+      - build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

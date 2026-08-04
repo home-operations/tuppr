@@ -3,6 +3,7 @@ package talosupgrade
 import (
 	"context"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -43,8 +44,12 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 
 	logger.V(1).Info("Starting upgrade processing")
 
-	if suspended, err := r.handleSuspendAnnotation(ctx, talosUpgrade); err != nil || suspended {
-		return ctrl.Result{RequeueAfter: time.Minute * 30}, err
+	suspended, suspendErr := r.handleSuspendAnnotation(ctx, talosUpgrade)
+	// The silence leases ride every reconcile pass: extended while the run is
+	// active, expired when it parks, suspends, or finishes.
+	r.syncAlertSilences(ctx, talosUpgrade, suspended)
+	if suspendErr != nil || suspended {
+		return ctrl.Result{RequeueAfter: time.Minute * 30}, suspendErr
 	}
 
 	if resetRequested, err := r.handleResetAnnotation(ctx, talosUpgrade); err != nil || resetRequested {
@@ -60,7 +65,9 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 			logger.V(1).Info("Talos upgrade in terminal state, skipping", "phase", talosUpgrade.Status.Phase)
 			return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 		}
-		nextNodes, err := r.findNextNodes(ctx, talosUpgrade, 1)
+		// Unreachable nodes are ignored here: a completed upgrade shouldn't
+		// restart (or error) because a node went offline afterwards.
+		nextNodes, _, err := r.findNextNodes(ctx, talosUpgrade, 1)
 		if err != nil {
 			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonFindNextNodes, "re-check nodes for restart", time.Minute*5, err), nil
 		}
@@ -68,7 +75,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 			return ctrl.Result{RequeueAfter: time.Hour}, nil
 		}
 		targetVersion := talosUpgrade.Spec.Talos.Version
-		cycles := completionCyclesForVersion(talosUpgrade.Status.History, targetVersion)
+		cycles := talosUpgrade.Status.CompletionCycles
 		if cycles >= upgradeaudit.MaxCompletionCycles {
 			message := fmt.Sprintf(
 				"Node(s) never converged to %s after %d completion cycles; add the %s annotation or bump the spec to retry",
@@ -83,16 +90,21 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 		}
 		logger.Info("Node detected requiring upgrade after completion, restarting campaign", "node", nextNodes[0], "cycle", cycles+1)
 		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", nil, "New node detected, restarting upgrade", map[string]any{
-			statusCompletedNodes: []string{},
-			statusFailedNodes:    []tupprv1alpha1.NodeUpgradeStatus{},
-			statusPreHookIndex:   0,
-			statusPostHookIndex:  0,
-			statusPreHookFailed:  false,
+			statusCompletedNodes:   []string{},
+			statusFailedNodes:      []tupprv1alpha1.NodeUpgradeStatus{},
+			statusRebootingNodes:   []tupprv1alpha1.NodeRebootStatus{},
+			statusPreHookIndex:     0,
+			statusPostHookIndex:    0,
+			statusPreHookFailed:    false,
+			statusPrePulledNodes:   []tupprv1alpha1.PrePulledNode{},
+			statusPrePullFailure:   nil,
+			statusCompletionCycles: cycles + 1,
 		}); err != nil {
 			logger.Error(err, "Failed to re-enter Pending after completion")
 			return ctrl.Result{RequeueAfter: time.Minute}, err
 		}
-		resetHookProgress(&talosUpgrade.Status)
+		talosUpgrade.Status.CompletionCycles = cycles + 1
+		resetRunProgress(&talosUpgrade.Status)
 		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
 
@@ -138,6 +150,12 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 	} else if len(activeJobs) > 0 {
 		logger.V(1).Info("Found active jobs, handling batch status", "count", len(activeJobs), "nodes", activeNodes)
 		return r.handleBatchJobStatus(ctx, talosUpgrade, activeJobs, activeNodes)
+	}
+
+	// The upgrade Job may have been garbage collected while a node was still
+	// rebooting; resume the reboot wait from status before anything else.
+	if result, done := r.processRebootingNodes(ctx, talosUpgrade); done {
+		return result, nil
 	}
 
 	if len(talosUpgrade.Status.FailedNodes) > 0 {
@@ -281,44 +299,42 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	ctx = context.WithValue(ctx, metrics.ContextKeyUpgradeType, metrics.UpgradeTypeTalos)
 	ctx = context.WithValue(ctx, metrics.ContextKeyUpgradeName, talosUpgrade.Name)
 
-	parallelism := getParallelism(talosUpgrade.Spec)
-	nextNodes, err := r.findNextNodes(ctx, talosUpgrade, parallelism)
+	// All pending nodes are collected (not just this batch's) so the run-start
+	// pre-pull can warm the whole fleet before the first node is cordoned.
+	pendingNodes, unreachableNodes, err := r.findNextNodes(ctx, talosUpgrade, math.MaxInt)
 	if err != nil {
 		return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonFindNextNodes, "find candidate nodes", time.Minute, err), nil
 	}
 
-	if len(nextNodes) == 0 {
+	// An unreachable node pauses the upgrade rather than failing the reconcile:
+	// rebooting more nodes while one is already down risks quorum loss, and a
+	// hard error would log a stack trace on every requeue.
+	if len(unreachableNodes) > 0 {
+		logger.Info("Waiting for unreachable node(s) before continuing upgrade", "nodes", unreachableNodes)
+		message := fmt.Sprintf("Waiting for unreachable node(s): %s", strings.Join(unreachableNodes, ", "))
+		if err := r.setPendingWithReason(ctx, talosUpgrade, upgradeaudit.ReasonNodeUnreachable, message); err != nil {
+			logger.Error(err, "Failed to update phase while waiting for unreachable nodes")
+		}
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
+
+	if len(pendingNodes) == 0 {
 		if err := r.recordOutOfBandCompletedNodes(ctx, talosUpgrade); err != nil {
 			logger.Error(err, "Failed to record out-of-band upgraded nodes")
 		}
 		return r.transitionToFinalize(ctx, talosUpgrade)
 	}
 
-	// Image availability is checked before HealthChecking: a stuck external
-	// registry must not flip the phase on every reconcile.
-	type nodeImage struct {
-		nodeName string
-		image    string
+	if result, done := r.prePullInstallerImages(ctx, talosUpgrade, pendingNodes); done {
+		return result, nil
 	}
-	var batch []nodeImage
 
-	for _, nodeName := range nextNodes {
-		targetImage, err := r.buildTalosUpgradeImage(ctx, talosUpgrade, nodeName)
-		if err != nil {
-			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonBuildTargetImage, fmt.Sprintf("build target image for node %s", nodeName), time.Minute, err), nil
-		}
+	parallelism := getParallelism(talosUpgrade.Spec)
+	nextNodes := pendingNodes[:min(parallelism, len(pendingNodes))]
 
-		logger.V(1).Info("Verifying target image availability", "node", nodeName, "image", targetImage)
-		if err := r.ImageChecker.Check(ctx, targetImage); err != nil {
-			logger.Info("Waiting for target image to become available", "node", nodeName, "image", targetImage, "error", err.Error())
-			message := fmt.Sprintf("Waiting for image availability for node %s: %s", nodeName, err.Error())
-			if err := r.setPendingWithReason(ctx, talosUpgrade, upgradeaudit.ReasonWaitingForImage, message); err != nil {
-				logger.Error(err, "Failed to update phase while waiting for image")
-			}
-			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
-		}
-
-		batch = append(batch, nodeImage{nodeName: nodeName, image: targetImage})
+	batch, result, done := r.buildBatchImages(ctx, talosUpgrade, nextNodes)
+	if done {
+		return result, nil
 	}
 
 	// Skip the inter-batch health check re-run when pre-hooks are configured and
@@ -398,6 +414,96 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 }
 
+type nodeImage struct {
+	nodeName string
+	image    string
+}
+
+// buildBatchImages resolves each batch node's target image and verifies the
+// registry serves it, before HealthChecking: a stuck external registry must
+// not flip the phase on every reconcile. Returns done=true when the caller
+// should return the result.
+func (r *Reconciler) buildBatchImages(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nextNodes []string) ([]nodeImage, ctrl.Result, bool) {
+	logger := log.FromContext(ctx)
+
+	var batch []nodeImage
+	for _, nodeName := range nextNodes {
+		targetImage, err := r.buildTalosUpgradeImage(ctx, talosUpgrade, nodeName)
+		if err != nil {
+			return nil, r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonBuildTargetImage, fmt.Sprintf("build target image for node %s", nodeName), time.Minute, err), true
+		}
+
+		logger.V(1).Info("Verifying target image availability", "node", nodeName, "image", targetImage)
+		if err := r.ImageChecker.Check(ctx, targetImage); err != nil {
+			logger.Info("Waiting for target image to become available", "node", nodeName, "image", targetImage, "error", err.Error())
+			message := fmt.Sprintf("Waiting for image availability for node %s: %s", nodeName, err.Error())
+			if err := r.setPendingWithReason(ctx, talosUpgrade, upgradeaudit.ReasonWaitingForImage, message); err != nil {
+				logger.Error(err, "Failed to update phase while waiting for image")
+			}
+			return nil, ctrl.Result{RequeueAfter: 1 * time.Minute}, true
+		}
+
+		batch = append(batch, nodeImage{nodeName: nodeName, image: targetImage})
+	}
+	return batch, ctrl.Result{}, false
+}
+
+// processRebootingNodes resumes the post-upgrade reboot wait for nodes whose
+// upgrade Job no longer exists (e.g. garbage collected by its TTL while the
+// node was still down). Each tracked node is verified against the Talos API:
+// ready nodes are completed, nodes past their deadline (or failing
+// verification outright) are marked failed, and the rest keep waiting.
+// Returns done=true when the caller should return the result.
+func (r *Reconciler) processRebootingNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, bool) {
+	logger := log.FromContext(ctx)
+
+	var waiting []string
+	for _, entry := range slices.Clone(talosUpgrade.Status.RebootingNodes) {
+		nodeName := entry.NodeName
+
+		// Drop entries already resolved (e.g. a crash between recording the
+		// outcome and clearing the tracking entry).
+		if slices.Contains(talosUpgrade.Status.CompletedNodes, nodeName) ||
+			slices.ContainsFunc(talosUpgrade.Status.FailedNodes, func(fn tupprv1alpha1.NodeUpgradeStatus) bool {
+				return fn.NodeName == nodeName
+			}) {
+			if err := r.clearRebootTracking(ctx, talosUpgrade, nodeName); err != nil {
+				logger.Error(err, "Failed to clear stale reboot tracking", "node", nodeName)
+			}
+			continue
+		}
+
+		isReady, err := r.verifyNodeUpgrade(ctx, talosUpgrade, nodeName)
+		switch {
+		case err != nil:
+			if err := r.processSingleJobFailure(ctx, talosUpgrade, nodeName, err.Error()); err != nil {
+				logger.Error(err, "Failed to record failed node", "node", nodeName)
+			}
+		case isReady:
+			if err := r.completeNodeUpgrade(ctx, talosUpgrade, nodeName); err != nil {
+				logger.Error(err, "Failed to record completed node", "node", nodeName)
+			}
+		case r.rebootDeadlineExpired(talosUpgrade, nodeName):
+			message := fmt.Sprintf("Node did not become ready within %s after upgrade", nodeUpgradeTimeout(talosUpgrade))
+			if err := r.processSingleJobFailure(ctx, talosUpgrade, nodeName, message); err != nil {
+				logger.Error(err, "Failed to record failed node", "node", nodeName)
+			}
+		default:
+			waiting = append(waiting, nodeName)
+		}
+	}
+
+	if len(waiting) == 0 {
+		return ctrl.Result{}, false
+	}
+
+	message := fmt.Sprintf("Waiting for %d node(s) to finish rebooting", len(waiting))
+	if err := r.setPhaseWithNodes(ctx, talosUpgrade, tupprv1alpha1.JobPhaseRebooting, waiting, message); err != nil {
+		logger.Error(err, "Failed to update phase for rebooting")
+	}
+	return ctrl.Result{RequeueAfter: 30 * time.Second}, true
+}
+
 func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) error {
 	logger := log.FromContext(ctx)
 
@@ -422,6 +528,10 @@ func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpg
 
 		needsUpgrade, err := r.nodeNeedsUpgrade(ctx, node, crdTargetVersion)
 		if err != nil {
+			if talos.IsTransientError(err) {
+				logger.V(1).Info("Node unreachable, skipping out-of-band check", "node", node.Name, "error", err.Error())
+				continue
+			}
 			return fmt.Errorf("check node %s: %w", node.Name, err)
 		}
 		if needsUpgrade {
@@ -449,19 +559,22 @@ func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpg
 	})
 }
 
-// findNextNodes returns up to `count` node names that need upgrading, sorted alphabetically.
-func (r *Reconciler) findNextNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, count int) ([]string, error) {
+// findNextNodes returns up to `count` node names that need upgrading, sorted
+// alphabetically, plus the nodes whose version could not be checked because
+// the Talos API is unreachable. Unreachable nodes are an expected condition
+// (e.g. a node stuck mid-reboot), not a reconcile error.
+func (r *Reconciler) findNextNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, count int) ([]string, []string, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Finding next nodes to upgrade", "talosupgrade", talosUpgrade.Name, "count", count)
 
 	nodes, err := r.getSortedNodes(ctx, talosUpgrade.Spec.NodeSelector)
 	if err != nil {
-		logger.Error(err, "Failed to get nodes")
-		return nil, err
+		return nil, nil, err
 	}
 
 	crdTargetVersion := talosUpgrade.Spec.Talos.Version
 	var result []string
+	var unreachable []string
 
 	// Reconcile the outdated taint across the whole selected set; no early break.
 	for i := range nodes {
@@ -482,8 +595,12 @@ func (r *Reconciler) findNextNodes(ctx context.Context, talosUpgrade *tupprv1alp
 
 		needsUpgrade, err := r.nodeNeedsUpgrade(ctx, node, crdTargetVersion)
 		if err != nil {
-			logger.Error(err, "Failed to check if node needs upgrade", "node", node.Name)
-			return nil, fmt.Errorf("failed to check node %s: %w", node.Name, err)
+			if talos.IsTransientError(err) {
+				logger.Info("Node unreachable, cannot check version", "node", node.Name, "error", err.Error())
+				unreachable = append(unreachable, node.Name)
+				continue
+			}
+			return nil, nil, fmt.Errorf("failed to check node %s: %w", node.Name, err)
 		}
 
 		if needsUpgrade {
@@ -499,10 +616,10 @@ func (r *Reconciler) findNextNodes(ctx context.Context, talosUpgrade *tupprv1alp
 		}
 	}
 
-	if len(result) == 0 {
+	if len(result) == 0 && len(unreachable) == 0 {
 		logger.V(1).Info("All nodes are up to date")
 	}
-	return result, nil
+	return result, unreachable, nil
 }
 
 func (r *Reconciler) getSortedNodes(ctx context.Context, nodeSelector *metav1.LabelSelector) ([]corev1.Node, error) {
@@ -685,9 +802,10 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 		if err != nil {
 			return "", fmt.Errorf("failed to read extensions for node %s: %w", nodeName, err)
 		}
-		schematic := ext.Schematic
+		// An explicit schematic annotation overrides the runtime-reported one.
+		schematic := node.Annotations[constants.SchematicAnnotation]
 		if schematic == "" {
-			schematic = node.Annotations[constants.SchematicAnnotation]
+			schematic = ext.Schematic
 		}
 		if schematic == "" {
 			return "", fmt.Errorf(
@@ -741,6 +859,16 @@ func (r *Reconciler) getTargetVersion(node *corev1.Node, crdTargetVersion string
 	return crdTargetVersion
 }
 
+type nodeVersionMismatchError struct {
+	nodeName       string
+	currentVersion string
+	targetVersion  string
+}
+
+func (e *nodeVersionMismatchError) Error() string {
+	return fmt.Sprintf("node %s version mismatch: current=%s, target=%s", e.nodeName, e.currentVersion, e.targetVersion)
+}
+
 func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (bool, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Verifying node upgrade using Talos client", "node", nodeName)
@@ -775,8 +903,11 @@ func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv
 	}
 
 	if currentVersion != targetVersion {
-		return false, fmt.Errorf("node %s version mismatch: current=%s, target=%s",
-			nodeName, currentVersion, targetVersion)
+		return false, &nodeVersionMismatchError{
+			nodeName:       nodeName,
+			currentVersion: currentVersion,
+			targetVersion:  targetVersion,
+		}
 	}
 
 	logger.V(1).Info("Node upgrade verification successful",
