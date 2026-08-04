@@ -66,6 +66,7 @@ type TalosClient interface {
 	CheckNodeReady(ctx context.Context, nodeIP, nodeName string) error
 	GetNodeInstallImage(ctx context.Context, nodeIP string) (string, error)
 	GetNodeExtensions(ctx context.Context, nodeIP string) (talos.ExtensionInfo, error)
+	GetNodePlatform(ctx context.Context, nodeIP string) (string, error)
 	PatchNodeInstallImage(ctx context.Context, nodeIP, newImage string) error
 }
 

@@ -15,10 +15,12 @@ type mockTalosClient struct {
 	nodeVersions     map[string]string
 	installImages    map[string]string
 	extensions       map[string]talos.ExtensionInfo
+	platforms        map[string]string
 	waitReadyErr     error
 	getVersionErr    error
 	getInstallErr    error
 	getExtensionsErr error
+	getPlatformErr   error
 }
 
 func (m *mockTalosClient) GetNodeVersion(ctx context.Context, nodeIP string) (string, error) {
@@ -70,6 +72,19 @@ func (m *mockTalosClient) GetNodeExtensions(ctx context.Context, nodeIP string) 
 		return e, nil
 	}
 	return talos.ExtensionInfo{}, nil
+}
+
+func (m *mockTalosClient) GetNodePlatform(ctx context.Context, nodeIP string) (string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.getPlatformErr != nil {
+		return "", m.getPlatformErr
+	}
+	if platform, ok := m.platforms[nodeIP]; ok {
+		return platform, nil
+	}
+	return "", fmt.Errorf("platform not found for %s", nodeIP)
 }
 
 func (m *mockTalosClient) SetNodeInstallImage(nodeIP, image string) {

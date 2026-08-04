@@ -367,14 +367,14 @@ kubectl annotate node hcloud-01 \
 
 #### Image base resolution
 
-Tuppr derives the upgrade image directly from each node's runtime state and `.machine.install.image`. Identical handling for hcloud / aws / metal — no platform branching.
+Tuppr derives the upgrade image from each node's runtime state and `.machine.install.image`.
 
 Resolution per node:
 
 1. **`tuppr.home-operations.com/factory-url` override** — when set, tuppr builds `<factory-url>/<schematic>:<target-version>`. The schematic comes from the runtime `ExtensionStatus` (the virtual `schematic` extension that Image Factory appends to every model), falling back to `tuppr.home-operations.com/schematic` if the runtime doesn't have one yet (first-time migration off the generic installer).
-2. **Default** — version-swap the node's current `.machine.install.image`. A factory install stays on its factory base + schematic; a private registry path is preserved; a vanilla generic install stays vanilla.
+2. **Default** — version-swap the node's current `.machine.install.image`. When the canonical generic image is paired with a runtime schematic, tuppr uses supported Talos platform metadata to build the matching Factory installer. A factory install stays on its factory base + schematic; a private registry path is preserved; a vanilla generic install stays vanilla.
 3. **Safety net** — refused with a clear error when:
-    - the runtime schematic doesn't appear in the install-image path (install-image and the running system disagree about which extensions are installed), or
+    - the runtime schematic doesn't appear in a non-generic install-image path (install-image and the running system disagree about which extensions are installed), or
     - the install image is the canonical generic Sidero installer (or a `/siderolabs/installer` mirror of it) AND the node has system extensions installed (reinstalling would silently wipe them).
 
     Both error messages point at the `factory-url` annotation as the fix.

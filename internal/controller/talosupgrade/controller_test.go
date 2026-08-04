@@ -63,10 +63,12 @@ type mockTalosClient struct {
 	nodeVersions     map[string]string
 	installImages    map[string]string
 	extensions       map[string]talos.ExtensionInfo
+	platforms        map[string]string
 	checkReadyErr    error
 	getVersionErr    error
 	getInstallErr    error
 	getExtensionsErr error
+	getPlatformErr   error
 	patchCalls       []string
 	patchImageErr    error
 }
@@ -103,6 +105,16 @@ func (m *mockTalosClient) GetNodeExtensions(ctx context.Context, nodeIP string) 
 		return e, nil
 	}
 	return talos.ExtensionInfo{}, nil
+}
+
+func (m *mockTalosClient) GetNodePlatform(ctx context.Context, nodeIP string) (string, error) {
+	if m.getPlatformErr != nil {
+		return "", m.getPlatformErr
+	}
+	if platform, ok := m.platforms[nodeIP]; ok {
+		return platform, nil
+	}
+	return "", fmt.Errorf("platform not found for %s", nodeIP)
 }
 
 func (m *mockTalosClient) PatchNodeInstallImage(ctx context.Context, nodeIP, newImage string) error {
@@ -2984,7 +2996,7 @@ func TestTalosBuildTalosUpgradeImage_AllowsVanillaGenericInstaller(t *testing.T)
 	}
 }
 
-func TestTalosBuildTalosUpgradeImage_RefusesGenericWithSchematic(t *testing.T) {
+func TestTalosBuildTalosUpgradeImage_BuildsFactoryImageFromRuntimeMetadata(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tu.Spec.Talos.Version = fakeTalosVersion
@@ -2994,18 +3006,92 @@ func TestTalosBuildTalosUpgradeImage_RefusesGenericWithSchematic(t *testing.T) {
 	tc := &mockTalosClient{
 		installImages: map[string]string{testNodeIP1: testInstallerV111},
 		extensions:    map[string]talos.ExtensionInfo{testNodeIP1: {Schematic: testabc}},
+		platforms:     map[string]string{testNodeIP1: "hcloud"},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, node).WithStatusSubresource(tu).Build()
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
-	_, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
-	if err == nil {
-		t.Fatal("expected refusal when generic installer paired with a runtime schematic")
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("generic install image should use runtime metadata: %v", err)
 	}
-	if !strings.Contains(err.Error(), constants.FactoryURLAnnotation) {
-		t.Fatalf("error should point user at %s; got: %v", constants.FactoryURLAnnotation, err)
+	expected := "factory.talos.dev/hcloud-installer/abc:" + fakeTalosVersion
+	if image != expected {
+		t.Fatalf("expected %s, got %s", expected, image)
+	}
+}
+
+func TestFactoryInstallerRepo(t *testing.T) {
+	tests := []struct {
+		platform string
+		want     string
+		ok       bool
+	}{
+		{platform: "hcloud", want: "hcloud-installer", ok: true},
+		{platform: "equinixMetal", want: "installer", ok: true},
+		{platform: "container", ok: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.platform, func(t *testing.T) {
+			got, ok := factoryInstallerRepo(tt.platform)
+			if got != tt.want || ok != tt.ok {
+				t.Fatalf("factoryInstallerRepo(%q) = (%q, %t), want (%q, %t)", tt.platform, got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_RefusesUnsafeRuntimeMetadataFallbacks(t *testing.T) {
+	tests := []struct {
+		name           string
+		installImage   string
+		platform       string
+		getPlatformErr error
+	}{
+		{
+			name:         "private mirror",
+			installImage: "registry.home.example.com/siderolabs/installer:v1.11.0",
+			platform:     "hcloud",
+		},
+		{
+			name:         "unsupported platform",
+			installImage: testInstallerV111,
+			platform:     "container",
+		},
+		{
+			name:           "platform metadata unavailable",
+			installImage:   testInstallerV111,
+			getPlatformErr: fmt.Errorf("rpc error: code = Unavailable"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := newTestScheme()
+			tu := newTalosUpgrade(testUpgradeName, withFinalizer)
+			tu.Spec.Talos.Version = fakeTalosVersion
+			node := newNode(fakeNodeA, testNodeIP1)
+			tc := &mockTalosClient{
+				installImages:  map[string]string{testNodeIP1: tt.installImage},
+				extensions:     map[string]talos.ExtensionInfo{testNodeIP1: {Schematic: testabc}},
+				platforms:      map[string]string{testNodeIP1: tt.platform},
+				getPlatformErr: tt.getPlatformErr,
+			}
+			cl := fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(tu, node).WithStatusSubresource(tu).Build()
+			r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+			_, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+			if err == nil {
+				t.Fatal("expected unsafe runtime metadata fallback to be refused")
+			}
+			if !strings.Contains(err.Error(), constants.FactoryURLAnnotation) {
+				t.Fatalf("error should point user at %s; got: %v", constants.FactoryURLAnnotation, err)
+			}
+		})
 	}
 }
 
