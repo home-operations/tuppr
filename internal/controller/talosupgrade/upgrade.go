@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/siderolabs/talos/pkg/machinery/platforms"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8slabel "k8s.io/apimachinery/pkg/labels"
@@ -759,6 +760,23 @@ func looksLikeGenericInstaller(repo string) bool {
 	return repo == constants.GenericInstallerRepo || strings.HasSuffix(repo, "/siderolabs/installer")
 }
 
+func factoryInstallerRepo(platform string) (string, bool) {
+	if platform == platforms.MetalPlatform().Name {
+		return platform + "-installer", true
+	}
+	for _, supported := range platforms.CloudPlatforms() {
+		if platform == supported.Name {
+			// Equinix Metal's platform name is camel-cased, but its Factory
+			// installer uses the generic repository.
+			if platform == "equinixMetal" {
+				return "installer", true
+			}
+			return platform + "-installer", true
+		}
+	}
+	return "", false
+}
+
 func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (string, error) {
 	logger := log.FromContext(ctx)
 
@@ -810,6 +828,15 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 		return "", fmt.Errorf("failed to read extensions for node %s: %w", nodeName, err)
 	}
 	if ext.Schematic != "" && !strings.HasSuffix(repo, "/"+ext.Schematic) {
+		if repo == constants.GenericInstallerRepo {
+			platform, err := r.TalosClient.GetNodePlatform(ctx, nodeIP)
+			installerRepo, ok := factoryInstallerRepo(platform)
+			if err == nil && ok {
+				targetImage := fmt.Sprintf("factory.talos.dev/%s/%s:%s", installerRepo, ext.Schematic, targetVersion)
+				logger.V(1).Info("Built target image from runtime metadata", "node", nodeName, "targetImage", targetImage, "platform", platform, "schematic", ext.Schematic)
+				return targetImage, nil
+			}
+		}
 		return "", fmt.Errorf(
 			"node %s: install image %q does not embed the runtime schematic %s; reinstalling would wipe extensions. Fix .machine.install.image to a factory image, or set annotation %s",
 			nodeName, currentImage, ext.Schematic, constants.FactoryURLAnnotation)

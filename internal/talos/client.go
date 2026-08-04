@@ -220,6 +220,27 @@ func (s *Client) GetNodeExtensions(ctx context.Context, nodeIP string) (Extensio
 	return info, nil
 }
 
+func (s *Client) GetNodePlatform(ctx context.Context, nodeIP string) (string, error) {
+	nodeCtx := client.WithNode(ctx, nodeIP)
+	var r resource.Resource
+
+	err := s.executeWithRetry(ctx, func() error {
+		var err error
+		r, err = s.talos.COSIGet(nodeCtx, talosruntime.NamespaceName, talosruntime.PlatformMetadataType, talosruntime.PlatformMetadataID)
+		return err
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to get platform metadata from node %s: %w", nodeIP, err)
+	}
+
+	platform, ok := r.(*talosruntime.PlatformMetadata)
+	if !ok {
+		return "", fmt.Errorf("unexpected resource type for platform metadata from node %s", nodeIP)
+	}
+
+	return platform.TypedSpec().Platform, nil
+}
+
 func (s *Client) GetNodeInstallImage(ctx context.Context, nodeIP string) (string, error) {
 	raw, err := s.readMachineConfigRaw(ctx, nodeIP)
 	if err != nil {
