@@ -2,6 +2,7 @@ package talosupgrade
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -318,4 +319,68 @@ func TestSyncLocalAuditFields_Talos(t *testing.T) {
 			t.Fatal("want CompletedAt cleared")
 		}
 	})
+}
+
+func TestRunHealthChecks_Talos_EmitsEvents(t *testing.T) {
+	check := tupprv1alpha1.HealthCheckSpec{APIVersion: "v1", Kind: "Node", Expr: "status != null"}
+	tests := []struct {
+		name       string
+		checks     []tupprv1alpha1.HealthCheckSpec
+		checkErr   error
+		wantEvents []string
+	}{
+		{
+			name:       "pass emits started and passed",
+			checks:     []tupprv1alpha1.HealthCheckSpec{check},
+			wantEvents: []string{"HealthChecksStarted", "HealthChecksPassed"},
+		},
+		{
+			name:       "failure emits started and warning",
+			checks:     []tupprv1alpha1.HealthCheckSpec{check},
+			checkErr:   errors.New("nodes not ready"),
+			wantEvents: []string{"HealthChecksStarted", "HealthChecksFailed"},
+		},
+		{
+			name: "no configured checks emits nothing",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
+				tu.Spec.HealthChecks = tt.checks
+			})
+			recorder := record.NewFakeRecorder(4)
+			r := &Reconciler{Recorder: recorder, HealthChecker: &mockHealthChecker{err: tt.checkErr}}
+
+			if err := r.runHealthChecks(context.Background(), tu); !errors.Is(err, tt.checkErr) {
+				t.Fatalf("want checker error %v, got %v", tt.checkErr, err)
+			}
+
+			for _, want := range tt.wantEvents {
+				select {
+				case ev := <-recorder.Events:
+					if !strings.Contains(ev, want) {
+						t.Fatalf("want %s event, got %q", want, ev)
+					}
+				default:
+					t.Fatalf("missing %s event", want)
+				}
+			}
+			select {
+			case ev := <-recorder.Events:
+				t.Fatalf("unexpected extra event %q", ev)
+			default:
+			}
+		})
+	}
+}
+
+func TestRunHealthChecks_Talos_NoRecorderIsSafe(t *testing.T) {
+	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
+		tu.Spec.HealthChecks = []tupprv1alpha1.HealthCheckSpec{{APIVersion: "v1", Kind: "Node", Expr: "status != null"}}
+	})
+	r := &Reconciler{HealthChecker: &mockHealthChecker{}}
+	if err := r.runHealthChecks(context.Background(), tu); err != nil {
+		t.Fatalf("runHealthChecks without recorder must not fail: %v", err)
+	}
 }

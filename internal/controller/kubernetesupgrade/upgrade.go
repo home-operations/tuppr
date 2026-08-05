@@ -136,7 +136,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 
 	logger.Info("Kubernetes upgrade needed", "current", currentVersion, "target", targetVersion)
 
-	checkErr := r.HealthChecker.CheckHealth(ctx, kubernetesUpgrade.Spec.HealthChecks)
+	checkErr := r.runHealthChecks(ctx, kubernetesUpgrade)
 	message := "Running health checks"
 	if checkErr != nil {
 		message = fmt.Sprintf("Waiting for health checks: %s", checkErr.Error())
