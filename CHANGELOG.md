@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.4.7](https://github.com/home-operations/tuppr/compare/0.4.6...0.4.7) (2026-08-05)
+
+
+### Features
+
+* emit health check events on upgrade CRs ([#481](https://github.com/home-operations/tuppr/issues/481)) ([3347d78](https://github.com/home-operations/tuppr/commit/3347d7838cffd4cf4a8d3cea3966e487ce5fd94f))
+
+
+### Bug Fixes
+
+* **container:** update image ghcr.io/siderolabs/installer (v1.13.7 → v1.13.8) ([#476](https://github.com/home-operations/tuppr/issues/476)) ([6d851e0](https://github.com/home-operations/tuppr/commit/6d851e0ea979e46f20e5f50abb0707f27c1447aa))
+* **talosupgrade:** derive factory image from runtime metadata ([#480](https://github.com/home-operations/tuppr/issues/480)) ([3605350](https://github.com/home-operations/tuppr/commit/3605350941cc0cceee4e368acf87cd2d949d5abc))
+* **talosupgrade:** fail off-target jobs before reboot timeout ([#477](https://github.com/home-operations/tuppr/issues/477)) ([6c2f92b](https://github.com/home-operations/tuppr/commit/6c2f92bfa4f7dd65d32c5bb71bdcc238aaae4967))
+
+
+### Documentation
+
+* add AGENTS.md with Go conventions ([#468](https://github.com/home-operations/tuppr/issues/468)) ([f5fb735](https://github.com/home-operations/tuppr/commit/f5fb735cae5a3b5103f14ed9b05bfb94e2e3d435))
+
+
+### Continuous Integration
+
+* **github-action:** Update action docker/login-action (v4.5.2 → v4.6.0) ([#467](https://github.com/home-operations/tuppr/issues/467)) ([6e9c356](https://github.com/home-operations/tuppr/commit/6e9c35695e85525a0aec7c150a9085df0b6897fc))
+* **github-action:** Update action home-operations/.github/actions/workflow-lint (v1.0.2 → v1.0.3) ([#474](https://github.com/home-operations/tuppr/issues/474)) ([64de4a7](https://github.com/home-operations/tuppr/commit/64de4a70716d2a4d01bbd13f86533bcfa3ecf567))
+* update shared actions and use self-repository syntax ([#471](https://github.com/home-operations/tuppr/issues/471)) ([0dc51af](https://github.com/home-operations/tuppr/commit/0dc51af00a39d1c800e1e1b09d6b2707c0f4a627))
+* wire govulncheck into mise and CI ([#473](https://github.com/home-operations/tuppr/issues/473)) ([a6481f7](https://github.com/home-operations/tuppr/commit/a6481f7c7b3bc3cbb6974dd35b3803157bf72f7f))
+
+
+### Miscellaneous Chores
+
+* **mise:** prune lockfile to used platforms ([#472](https://github.com/home-operations/tuppr/issues/472)) ([d6813ca](https://github.com/home-operations/tuppr/commit/d6813caa6693d5ccc2af73d0973bf1e476a0bc98))
+* **mise:** Update tool zizmor (1.28.0 → 1.29.0) ([#470](https://github.com/home-operations/tuppr/issues/470)) ([481314b](https://github.com/home-operations/tuppr/commit/481314b6267e1e28d5336d682a0066cc09d140e9))
+
 ## [0.4.6](https://github.com/home-operations/tuppr/compare/0.4.5...0.4.6) (2026-08-01)
 
 
