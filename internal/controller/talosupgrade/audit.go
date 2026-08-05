@@ -1,6 +1,8 @@
 package talosupgrade
 
 import (
+	"context"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -83,6 +85,28 @@ func syncLocalAuditFields(status *tupprv1alpha1.TalosUpgradeStatus, updates map[
 			status.RebootingNodes = s
 		}
 	}
+}
+
+// runHealthChecks wraps CheckHealth with start/result Events. CheckHealth
+// blocks polling until the checks pass or time out, and the HealthChecking
+// phase is only written after it returns, so the started event is the only
+// signal that a (possibly minutes-long) check attempt is in progress.
+func (r *Reconciler) runHealthChecks(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade) error {
+	emit := r.Recorder != nil && len(tu.Spec.HealthChecks) > 0
+	if emit {
+		r.Recorder.Eventf(tu, corev1.EventTypeNormal, "HealthChecksStarted",
+			"Running %d health check(s)", len(tu.Spec.HealthChecks))
+	}
+	checkErr := r.HealthChecker.CheckHealth(ctx, tu.Spec.HealthChecks)
+	if emit {
+		if checkErr != nil {
+			r.Recorder.Event(tu, corev1.EventTypeWarning, "HealthChecksFailed", checkErr.Error())
+		} else {
+			r.Recorder.Eventf(tu, corev1.EventTypeNormal, "HealthChecksPassed",
+				"All %d health check(s) passed", len(tu.Spec.HealthChecks))
+		}
+	}
+	return checkErr
 }
 
 func (r *Reconciler) emitPhaseEvent(tu *tupprv1alpha1.TalosUpgrade, prev, next tupprv1alpha1.JobPhase, message string) {

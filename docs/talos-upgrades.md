@@ -60,6 +60,11 @@ spec:
       expr: status.ceph.health in ["HEALTH_OK"]
 ```
 
+Each check attempt is emitted as Events on the resource (`HealthChecksStarted`,
+then `HealthChecksPassed` or a `HealthChecksFailed` warning), so a run waiting
+on failing checks is visible in `kubectl describe`. With pre-hooks configured,
+inter-batch checks are [suppressed](#prepost-upgrade-hooks) and emit no Events.
+
 Health checks are also available on [`KubernetesUpgrade`](kubernetes-upgrades.md).
 
 ## Policy

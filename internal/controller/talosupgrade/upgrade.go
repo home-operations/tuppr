@@ -347,7 +347,7 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		len(talosUpgrade.Status.CompletedNodes) > 0
 
 	if !skipHealthCheck {
-		checkErr := r.HealthChecker.CheckHealth(ctx, talosUpgrade.Spec.HealthChecks)
+		checkErr := r.runHealthChecks(ctx, talosUpgrade)
 		message := "Running health checks"
 		if checkErr != nil {
 			message = fmt.Sprintf("Waiting for health checks: %s", checkErr.Error())
