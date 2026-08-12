@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -4642,5 +4643,53 @@ func TestTalosReconcile_StaleRebootTrackingCleared(t *testing.T) {
 	}
 	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
 		t.Fatalf("expected phase Completed, got: %s", updated.Status.Phase)
+	}
+}
+
+func gatherProgressingSeries(t *testing.T, upgradeType, name string) (string, float64, bool) {
+	t.Helper()
+	families, err := ctrlmetrics.Registry.Gather()
+	if err != nil {
+		t.Fatalf("gather metrics: %v", err)
+	}
+	for _, mf := range families {
+		if mf.GetName() != "tuppr_upgrade_progressing" {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			labels := map[string]string{}
+			for _, lp := range m.GetLabel() {
+				labels[lp.GetName()] = lp.GetValue()
+			}
+			if labels["upgrade_type"] == upgradeType && labels["name"] == name {
+				return labels["reason"], m.GetGauge().GetValue(), true
+			}
+		}
+	}
+	return "", 0, false
+}
+
+func TestSyncMetricsFromStatusReemitsProgressing(t *testing.T) {
+	r := &Reconciler{MetricsReporter: metrics.NewReporter()}
+	tu := &tupprv1alpha1.TalosUpgrade{
+		ObjectMeta: metav1.ObjectMeta{Name: "reseed-talos"},
+		Status: tupprv1alpha1.TalosUpgradeStatus{
+			Phase: tupprv1alpha1.JobPhasePending,
+			Conditions: []metav1.Condition{{
+				Type:   tupprv1alpha1.ConditionTypeProgressing,
+				Status: metav1.ConditionFalse,
+				Reason: upgradeaudit.ReasonWaitingForImage,
+			}},
+		},
+	}
+
+	r.syncMetricsFromStatus(tu)
+
+	reason, value, found := gatherProgressingSeries(t, metrics.UpgradeTypeTalos, "reseed-talos")
+	if !found {
+		t.Fatal("expected tuppr_upgrade_progressing series after syncMetricsFromStatus")
+	}
+	if reason != upgradeaudit.ReasonWaitingForImage || value != 0 {
+		t.Fatalf("progressing = {reason: %s, value: %v}, want {%s, 0}", reason, value, upgradeaudit.ReasonWaitingForImage)
 	}
 }
