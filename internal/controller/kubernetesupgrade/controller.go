@@ -287,6 +287,12 @@ func (r *Reconciler) syncMetricsFromStatus(kubernetesUpgrade *tupprv1alpha1.Kube
 
 	r.MetricsReporter.RecordKubernetesUpgradePhase(kubernetesUpgrade.Name, string(phase))
 
+	// Re-emit Progressing so a blocked upgrade keeps its series across operator
+	// restarts; setPhaseWithUpdates skips it when the status hasn't changed.
+	if prog := meta.FindStatusCondition(kubernetesUpgrade.Status.Conditions, tupprv1alpha1.ConditionTypeProgressing); prog != nil {
+		r.MetricsReporter.RecordProgressing(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, prog.Reason, prog.Status == metav1.ConditionTrue)
+	}
+
 	if phase.IsTerminal() && kubernetesUpgrade.Status.CompletedAt != nil {
 		r.MetricsReporter.RecordLastCompletionTimestamp(
 			metrics.UpgradeTypeKubernetes,

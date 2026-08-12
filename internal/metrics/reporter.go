@@ -518,6 +518,14 @@ func (m *Reporter) RecordBuildInfo(version, commit, goVersion string) {
 func (m *Reporter) InitializeAtBoot() {
 	upgradeJobsActive.WithLabelValues(UpgradeTypeTalos).Set(0)
 	upgradeJobsActive.WithLabelValues(UpgradeTypeKubernetes).Set(0)
+	// Counters must exist at zero before their first Inc, otherwise PromQL
+	// increase()/rate() miss the initial increment and absent-family alert
+	// expressions never match.
+	for _, upgradeType := range []string{UpgradeTypeTalos, UpgradeTypeKubernetes} {
+		for _, result := range []string{ResultSuccess, ResultFailure} {
+			upgradesCompletedTotal.WithLabelValues(upgradeType, result).Add(0)
+		}
+	}
 	for _, p := range talosPhases {
 		upgradesByPhase.WithLabelValues(UpgradeTypeTalos, p).Set(0)
 	}

@@ -239,6 +239,24 @@ func TestRecordMaintenanceWindows(t *testing.T) {
 	mr.RecordMaintenanceWindows(nil)
 }
 
+func TestInitializeAtBootSeedsCompletionCounter(t *testing.T) {
+	upgradesCompletedTotal.Reset()
+	mr := NewReporter()
+
+	mr.InitializeAtBoot()
+
+	if got := testutil.CollectAndCount(upgradesCompletedTotal); got != 4 {
+		t.Errorf("upgrades_completed_total series after boot = %d, want 4", got)
+	}
+	for _, upgradeType := range []string{UpgradeTypeTalos, UpgradeTypeKubernetes} {
+		for _, result := range []string{ResultSuccess, ResultFailure} {
+			if got := testutil.ToFloat64(upgradesCompletedTotal.WithLabelValues(upgradeType, result)); got != 0 {
+				t.Errorf("upgrades_completed_total{%s,%s} = %v, want 0", upgradeType, result, got)
+			}
+		}
+	}
+}
+
 func TestRecordProgressing(t *testing.T) {
 	mr := NewReporter()
 

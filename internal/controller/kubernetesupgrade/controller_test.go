@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
@@ -1347,5 +1348,53 @@ func TestK8sReconcile_ReportsReconcileErrorInStatus(t *testing.T) {
 				t.Fatalf("expected message to include the underlying error, got: %s", updated.Status.Message)
 			}
 		})
+	}
+}
+
+func gatherProgressingSeries(t *testing.T, upgradeType, name string) (string, float64, bool) {
+	t.Helper()
+	families, err := ctrlmetrics.Registry.Gather()
+	if err != nil {
+		t.Fatalf("gather metrics: %v", err)
+	}
+	for _, mf := range families {
+		if mf.GetName() != "tuppr_upgrade_progressing" {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			labels := map[string]string{}
+			for _, lp := range m.GetLabel() {
+				labels[lp.GetName()] = lp.GetValue()
+			}
+			if labels["upgrade_type"] == upgradeType && labels["name"] == name {
+				return labels["reason"], m.GetGauge().GetValue(), true
+			}
+		}
+	}
+	return "", 0, false
+}
+
+func TestSyncMetricsFromStatusReemitsProgressing(t *testing.T) {
+	r := &Reconciler{MetricsReporter: metrics.NewReporter()}
+	ku := &tupprv1alpha1.KubernetesUpgrade{
+		ObjectMeta: metav1.ObjectMeta{Name: "reseed-kubernetes"},
+		Status: tupprv1alpha1.KubernetesUpgradeStatus{
+			Phase: tupprv1alpha1.JobPhasePending,
+			Conditions: []metav1.Condition{{
+				Type:   tupprv1alpha1.ConditionTypeProgressing,
+				Status: metav1.ConditionFalse,
+				Reason: upgradeaudit.ReasonSuspended,
+			}},
+		},
+	}
+
+	r.syncMetricsFromStatus(ku)
+
+	reason, value, found := gatherProgressingSeries(t, metrics.UpgradeTypeKubernetes, "reseed-kubernetes")
+	if !found {
+		t.Fatal("expected tuppr_upgrade_progressing series after syncMetricsFromStatus")
+	}
+	if reason != upgradeaudit.ReasonSuspended || value != 0 {
+		t.Fatalf("progressing = {reason: %s, value: %v}, want {%s, 0}", reason, value, upgradeaudit.ReasonSuspended)
 	}
 }

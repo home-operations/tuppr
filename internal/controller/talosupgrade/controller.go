@@ -356,6 +356,12 @@ func (r *Reconciler) syncMetricsFromStatus(talosUpgrade *tupprv1alpha1.TalosUpgr
 	}
 	r.MetricsReporter.RecordTalosUpgradePhase(talosUpgrade.Name, string(phase), currentNode)
 
+	// Re-emit Progressing so a blocked upgrade keeps its series across operator
+	// restarts; setPhaseWithUpdates skips it when the status hasn't changed.
+	if prog := meta.FindStatusCondition(talosUpgrade.Status.Conditions, tupprv1alpha1.ConditionTypeProgressing); prog != nil {
+		r.MetricsReporter.RecordProgressing(metrics.UpgradeTypeTalos, talosUpgrade.Name, prog.Reason, prog.Status == metav1.ConditionTrue)
+	}
+
 	if phase.IsTerminal() {
 		completed := len(talosUpgrade.Status.CompletedNodes)
 		failed := len(talosUpgrade.Status.FailedNodes)
