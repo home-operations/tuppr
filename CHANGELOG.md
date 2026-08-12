@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.5.0](https://github.com/home-operations/tuppr/compare/0.4.7...0.5.0) (2026-08-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **go:** Update module github.com/google/cel-go (v0.30.0 → v0.31.0) ([#489](https://github.com/home-operations/tuppr/issues/489))
+* **go:** Update module github.com/unraid/apprise-go (v0.2.8 → v0.3.0) ([#488](https://github.com/home-operations/tuppr/issues/488))
+
+### Features
+
+* **go:** Update module github.com/google/cel-go (v0.30.0 → v0.31.0) ([#489](https://github.com/home-operations/tuppr/issues/489)) ([0d63149](https://github.com/home-operations/tuppr/commit/0d6314999e61a1b2c4b04393a315913d640e97b7))
+* **go:** Update module github.com/unraid/apprise-go (v0.2.8 → v0.3.0) ([#488](https://github.com/home-operations/tuppr/issues/488)) ([c2c4b4b](https://github.com/home-operations/tuppr/commit/c2c4b4b314b3ebf0d0561346e47271bdada780b6))
+
+
+### Bug Fixes
+
+* **go:** update module github.com/google/go-containerregistry (v0.21.8 → v0.21.9) ([#484](https://github.com/home-operations/tuppr/issues/484)) ([8557567](https://github.com/home-operations/tuppr/commit/8557567eecb1daf87e6c809f565ed1a0d1065c14))
+* **go:** update module github.com/onsi/ginkgo/v2 (v2.32.0 → v2.32.1) ([#495](https://github.com/home-operations/tuppr/issues/495)) ([9606478](https://github.com/home-operations/tuppr/commit/96064784ed43753747da368157d3995f660f846e))
+* **go:** update module google.golang.org/protobuf (f2248ac → 644d026) ([#485](https://github.com/home-operations/tuppr/issues/485)) ([8228038](https://github.com/home-operations/tuppr/commit/8228038d31e06309de9ff5e3ae8eb329d6e96e47))
+* **go:** update module google.golang.org/protobuf (v1.36.12-0.20260806062936-644d0267c26e → v1.36.12) ([#493](https://github.com/home-operations/tuppr/issues/493)) ([d9b0e79](https://github.com/home-operations/tuppr/commit/d9b0e795733d4779fd2336745b95f748bb0b2e42))
+* **metrics:** keep alert-backing metric series alive across restarts ([#496](https://github.com/home-operations/tuppr/issues/496)) ([8cabe0c](https://github.com/home-operations/tuppr/commit/8cabe0cdb36941e4670cd293fc4fb42dd1afcb98))
+
+
+### Continuous Integration
+
+* **github-action:** Update action docker/github-builder (v1.15.0 → v1.16.0) ([#490](https://github.com/home-operations/tuppr/issues/490)) ([08cc9d1](https://github.com/home-operations/tuppr/commit/08cc9d15452b356f8fddf21a18c592e3b3725c09))
+* **github-action:** Update action jdx/mise-action (v4.2.3 → v4.2.4) ([#475](https://github.com/home-operations/tuppr/issues/475)) ([c299b3a](https://github.com/home-operations/tuppr/commit/c299b3a69b98c34c1c70926d5a5f82518a49fd6f))
+
+
+### Miscellaneous Chores
+
+* **mise:** Update mise tools ([#491](https://github.com/home-operations/tuppr/issues/491)) ([5ac3708](https://github.com/home-operations/tuppr/commit/5ac370818717d6ea07ab84eec5f621ddf87a3be8))
+* **mise:** Update tool aqua:astral-sh/uv (0.12.2 → 0.12.3) ([#494](https://github.com/home-operations/tuppr/issues/494)) ([1acd954](https://github.com/home-operations/tuppr/commit/1acd95466a8dea4a88c45b22efba83d31578c5e1))
+* **mise:** Update tool oxfmt (0.61.0 → 0.62.0) ([#487](https://github.com/home-operations/tuppr/issues/487)) ([89a1e2d](https://github.com/home-operations/tuppr/commit/89a1e2d95d9c5cdc628cbb42b8b95e2083b5c806))
+
 ## [0.4.7](https://github.com/home-operations/tuppr/compare/0.4.6...0.4.7) (2026-08-05)
 
 
