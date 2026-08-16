@@ -54,11 +54,12 @@ timeout`), which is what drives release-please's version bumps. Individual
   already says, and don't reference the current change or past behavior in
   a comment: that belongs in the PR description and rots as the code moves
   on.
-- **Go 1.26.** Check `go.mod`'s `go` directive and `.mise/config.toml`'s
-  `tools.go` for the exact pinned versions. Renovate bumps them together
-  in one grouped Go-toolchain PR, patch releases included, so the two
-  should match; a lingering gap means a toolchain PR hasn't merged yet
-  (or something is off) and is worth flagging, not routine drift. When a newer construct is
+- **Go 1.26.** `go.mod`'s `go` directive is pinned to the lowest 1.26
+  release the dependencies allow (1.26.0 unless one forces higher) and
+  Renovate no longer bumps it; `.mise/config.toml`'s `tools.go` is the
+  toolchain that actually builds and tests, so the two are expected to
+  differ. Raise the directive only when the code or a dependency needs a
+  newer Go version. When a newer construct is
   genuinely more idiomatic, use it: Go 1.26 added `errors.AsType[T](err)`, a
   generic type-safe replacement for the `var t *T; errors.As(err, &t)`
   two-step; prefer it in new code. `go fix` (rebuilt in 1.26 as a
