@@ -17,7 +17,7 @@ require (
 	github.com/siderolabs/go-retry v0.3.3
 	github.com/siderolabs/talos/pkg/machinery v1.14.0-beta.1
 	github.com/stretchr/testify v1.11.1
-	github.com/unraid/apprise-go v0.3.1
+	github.com/unraid/apprise-go v0.3.2
 	google.golang.org/grpc v1.83.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
