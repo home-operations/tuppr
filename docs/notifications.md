@@ -84,6 +84,15 @@ sprig-backward aliases are intentionally absent. Check the
 exact names.
 ///
 
+/// warning | regex helpers take the input last
+The regex helpers come from sprout's pipeline-friendly
+[`regex` registry](https://docs.atom.codes/sprout/registries/regex): the input
+string is always the **last** argument, so `regexFindAll`, `regexSplit`,
+`regexReplaceAll`, and `regexReplaceAllLiteral` differ from their sprig
+argument order. Write them pipeline-style, e.g.
+`{{ .TargetVersion | regexReplaceAll "^v" "" }}`.
+///
+
 ## Route through chaski
 
 [chaski](https://github.com/home-operations/chaski) is a small webhook→
