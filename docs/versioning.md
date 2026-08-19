@@ -50,7 +50,7 @@ spec field, so you merge one incremental step at a time:
 spec:
   talos:
     # renovate: datasource=docker depName=ghcr.io/siderolabs/installer
-    version: v1.13.8
+    version: v1.13.9
 ```
 
 The same pattern works for `KubernetesUpgrade` with
