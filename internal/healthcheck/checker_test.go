@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/cel-go/cel"
+	"cel.dev/cel-go/cel"
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/metrics"
 	corev1 "k8s.io/api/core/v1"
