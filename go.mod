@@ -3,10 +3,10 @@ module github.com/home-operations/tuppr
 go 1.26.5
 
 require (
+	cel.dev/cel-go v0.32.0
 	github.com/cosi-project/runtime v1.16.2
 	github.com/go-logr/logr v1.4.4
 	github.com/go-sprout/sprout v1.1.0
-	github.com/google/cel-go v0.31.0
 	github.com/google/go-containerregistry v0.21.9
 	github.com/google/uuid v1.6.0
 	github.com/netresearch/go-cron v0.15.1
