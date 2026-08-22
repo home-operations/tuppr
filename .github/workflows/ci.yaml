@@ -74,7 +74,7 @@ jobs:
         run: echo "go=$(mise config get tools.go)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       # load: true rather than a push: this job owns no registry, and one docker
       # save is what the legs get handed. One writer per scope now, so cache-to
