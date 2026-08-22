@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.5.1](https://github.com/home-operations/tuppr/compare/0.5.0...0.5.1) (2026-08-22)
+
+
+### Features
+
+* **go:** update module github.com/go-sprout/sprout (v1.0.3 → v1.1.0) ([#503](https://github.com/home-operations/tuppr/issues/503)) ([7d83dbb](https://github.com/home-operations/tuppr/commit/7d83dbb31a094fc2a5240202353f7fbc974c2480))
+* **go:** update module github.com/google/cel-go (v0.31.0 → v0.32.0) ([#512](https://github.com/home-operations/tuppr/issues/512)) ([e532fd9](https://github.com/home-operations/tuppr/commit/e532fd9dd21375198aabc08bec45095698cbdee2))
+* **go:** update module github.com/stretchr/testify (v1.11.1 → v1.12.1) ([#509](https://github.com/home-operations/tuppr/issues/509)) ([df4be78](https://github.com/home-operations/tuppr/commit/df4be7827c25fd2a0882e9b650c89935d264bcb6))
+
+
+### Bug Fixes
+
+* **container:** update image ghcr.io/siderolabs/kubelet (v1.36.3 → v1.36.4) ([#514](https://github.com/home-operations/tuppr/issues/514)) ([8b8c587](https://github.com/home-operations/tuppr/commit/8b8c587fe0ff2993d6e8ce78dec29f67a9414054))
+* **container:** update talos group ([#511](https://github.com/home-operations/tuppr/issues/511)) ([756609d](https://github.com/home-operations/tuppr/commit/756609dfc2a1d349448af65e3844ffb35462ac0f))
+* **go:** update kubernetes monorepo (v0.36.3 → v0.36.4) ([#515](https://github.com/home-operations/tuppr/issues/515)) ([dce08fb](https://github.com/home-operations/tuppr/commit/dce08fb10f4ec093891c85f8c34bb0734b872ad3))
+* **go:** update module github.com/go-sprout/sprout (v1.1.0 → v1.1.1) ([#516](https://github.com/home-operations/tuppr/issues/516)) ([f92ef37](https://github.com/home-operations/tuppr/commit/f92ef37893a0931782e73661fa9a8455fd1ac396))
+* **go:** update module github.com/unraid/apprise-go (v0.3.0 → v0.3.1) ([#497](https://github.com/home-operations/tuppr/issues/497)) ([a7218f8](https://github.com/home-operations/tuppr/commit/a7218f874923e8bc51904936947ca4622c976a15))
+* **go:** update module github.com/unraid/apprise-go (v0.3.1 → v0.3.2) ([#502](https://github.com/home-operations/tuppr/issues/502)) ([9cbffb1](https://github.com/home-operations/tuppr/commit/9cbffb15604849534f8314155a0fc64e6c7a05a9))
+* **go:** update module google.golang.org/grpc (v1.83.0 → v1.83.1) ([#510](https://github.com/home-operations/tuppr/issues/510)) ([47a8612](https://github.com/home-operations/tuppr/commit/47a861254917f010bb4f5125b9e35556622af13c))
+
+
+### Documentation
+
+* describe the pinned go directive policy ([#505](https://github.com/home-operations/tuppr/issues/505)) ([cbe8de5](https://github.com/home-operations/tuppr/commit/cbe8de5bee8fff85303f29a1aa1546ea33a6a426))
+
+
+### Miscellaneous Chores
+
+* **github-action:** update action docker/setup-buildx-action (v4.2.0 → v4.3.0) ([#519](https://github.com/home-operations/tuppr/issues/519)) ([0d9914f](https://github.com/home-operations/tuppr/commit/0d9914fc3c6f48947e12c6dd595d331b2946d232))
+* **github-action:** update action jdx/mise-action (v4.2.4 → v4.2.5) ([#504](https://github.com/home-operations/tuppr/issues/504)) ([659fe91](https://github.com/home-operations/tuppr/commit/659fe915d4311f94a4f4e26da1a5d870f1b4bc88))
+* **mise:** update mise tools ([#507](https://github.com/home-operations/tuppr/issues/507)) ([4169c3a](https://github.com/home-operations/tuppr/commit/4169c3a9887ade15383985f89b2a106cb526d77a))
+* **mise:** update tool go (1.26.5 → 1.26.6) ([#508](https://github.com/home-operations/tuppr/issues/508)) ([1fd2959](https://github.com/home-operations/tuppr/commit/1fd2959314347c291764d8002dab56392d064fca))
+* **mise:** update tool go:golang.org/x/vuln/cmd/govulncheck (1.6.0 → v1.7.0) ([#501](https://github.com/home-operations/tuppr/issues/501)) ([7921254](https://github.com/home-operations/tuppr/commit/792125417e699f6555d7e2a768efb0733beea5c3))
+* **mise:** Update tool oxfmt (0.62.0 → 0.63.0) ([#498](https://github.com/home-operations/tuppr/issues/498)) ([47ba776](https://github.com/home-operations/tuppr/commit/47ba7760d2f1894fd9cf041d82219341728d3f70))
+* **mise:** update tool oxfmt (0.63.0 → 0.64.0) ([#517](https://github.com/home-operations/tuppr/issues/517)) ([8cd5dd8](https://github.com/home-operations/tuppr/commit/8cd5dd8b061f371a90005940388fa26c8258359d))
+* **mise:** update tool yq (4.53.3 → 4.53.4) ([#518](https://github.com/home-operations/tuppr/issues/518)) ([e47d8d2](https://github.com/home-operations/tuppr/commit/e47d8d20396b52bf01404960917df1254881c443))
+
 ## [0.5.0](https://github.com/home-operations/tuppr/compare/0.4.7...0.5.0) (2026-08-12)
 
 
