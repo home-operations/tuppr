@@ -9,7 +9,7 @@ require (
 	github.com/go-sprout/sprout v1.1.1
 	github.com/google/go-containerregistry v0.22.0
 	github.com/google/uuid v1.6.0
-	github.com/netresearch/go-cron v0.15.1
+	github.com/netresearch/go-cron v0.16.0
 	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.42.1
 	github.com/open-policy-agent/cert-controller v0.16.0
@@ -18,7 +18,7 @@ require (
 	github.com/siderolabs/talos/pkg/machinery v1.14.0-rc.1
 	github.com/stretchr/testify v1.12.1
 	github.com/unraid/apprise-go v0.3.2
-	google.golang.org/grpc v1.83.1
+	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.36.4
