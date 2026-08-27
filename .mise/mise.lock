@@ -45,23 +45,23 @@ url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/514850968"
 provenance = "github-attestations"
 
 [[tools."aqua:dadav/helm-schema"]]
-version = "0.23.4"
+version = "0.23.5"
 backend = "aqua:dadav/helm-schema"
 
 [tools."aqua:dadav/helm-schema"."platforms.linux-arm64"]
-checksum = "sha256:f45e427aef848a1565a1341e3d2468840c64dc1d2c0f3b276982b852d587abe8"
-url = "https://github.com/dadav/helm-schema/releases/download/0.23.4/helm-schema_0.23.4_Linux_arm64.tar.gz"
-url_api = "https://api.github.com/repos/dadav/helm-schema/releases/assets/437194950"
+checksum = "sha256:9685fb7b11de591aebe0bcd62b84edbeb6ae190876078ca42cbed7116acd9f21"
+url = "https://github.com/dadav/helm-schema/releases/download/0.23.5/helm-schema_0.23.5_Linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/dadav/helm-schema/releases/assets/527236177"
 
 [tools."aqua:dadav/helm-schema"."platforms.linux-x64"]
-checksum = "sha256:02d7aeb3b915b431a007402778f338daf77839d563cea62d9b375896028a72c7"
-url = "https://github.com/dadav/helm-schema/releases/download/0.23.4/helm-schema_0.23.4_Linux_x86_64.tar.gz"
-url_api = "https://api.github.com/repos/dadav/helm-schema/releases/assets/437194947"
+checksum = "sha256:b6e5334de9651a06b5fc7af573a114fda5177ee13d4c3dc59e3b6f21d0695552"
+url = "https://github.com/dadav/helm-schema/releases/download/0.23.5/helm-schema_0.23.5_Linux_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/dadav/helm-schema/releases/assets/527236175"
 
 [tools."aqua:dadav/helm-schema"."platforms.macos-arm64"]
-checksum = "sha256:e0075eab02f304a8d11bf8a94480fa34ec4f2db2460978d656738bf22f1106d4"
-url = "https://github.com/dadav/helm-schema/releases/download/0.23.4/helm-schema_0.23.4_Darwin_arm64.tar.gz"
-url_api = "https://api.github.com/repos/dadav/helm-schema/releases/assets/437194961"
+checksum = "sha256:f64911ec568699772272db58bd1aba047c739933b026f1f1a7235141862ed54e"
+url = "https://github.com/dadav/helm-schema/releases/download/0.23.5/helm-schema_0.23.5_Darwin_arm64.tar.gz"
+url_api = "https://api.github.com/repos/dadav/helm-schema/releases/assets/527236153"
 
 [[tools.cosign]]
 version = "3.1.3"
