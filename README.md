@@ -85,7 +85,7 @@ metadata:
 spec:
   kubernetes:
     # renovate: datasource=docker depName=ghcr.io/siderolabs/kubelet
-    version: v1.36.4
+    version: v1.37.0
 ```
 
 Then `kubectl get talosupgrade -w`. Health checks, parallel batches, hooks,
