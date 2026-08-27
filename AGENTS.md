@@ -54,17 +54,20 @@ timeout`), which is what drives release-please's version bumps. Individual
   already says, and don't reference the current change or past behavior in
   a comment: that belongs in the PR description and rots as the code moves
   on.
-- **Go 1.26.** `go.mod`'s `go` directive is pinned to the lowest 1.26
-  release the dependencies allow (1.26.0 unless one forces higher) and
+- **Go version.** The language version is whatever `go.mod`'s `go`
+  directive says; read it from there rather than assuming or hard-coding
+  one. The directive is pinned to the lowest patch release of its minor
+  that the dependencies allow (`1.N.0` unless one forces higher) and
   Renovate no longer bumps it; `.mise/config.toml`'s `tools.go` is the
   toolchain that actually builds and tests, so the two are expected to
   differ. Raise the directive only when the code or a dependency needs a
-  newer Go version. When a newer construct is
-  genuinely more idiomatic, use it: Go 1.26 added `errors.AsType[T](err)`, a
-  generic type-safe replacement for the `var t *T; errors.As(err, &t)`
-  two-step; prefer it in new code. `go fix` (rebuilt in 1.26 as a
-  modernizer runner on `go vet`'s analysis) surfaces these mechanical
-  migrations; run it after a toolchain bump.
+  newer Go version. Write idiomatic Go for the directive's version: when
+  a newer construct is genuinely more idiomatic, use it (Go 1.26, for
+  example, added `errors.AsType[T](err)`, a generic type-safe replacement
+  for the `var t *T; errors.As(err, &t)` two-step; prefer it in new
+  code). `go fix` (rebuilt in 1.26 as a modernizer runner on `go vet`'s
+  analysis) surfaces these mechanical migrations; run it after a
+  toolchain bump.
 - **Idempotent.** Reconcilers, code generators (`mise run generate`), and
   CLI subcommands must be safe to re-run: identical input yields identical
   output/state, with no accumulating side effects on a second invocation.
