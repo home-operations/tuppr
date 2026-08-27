@@ -35,7 +35,7 @@ func (r *Reconciler) handleJobStatus(ctx context.Context, kubernetesUpgrade *tup
 		"failed", job.Status.Failed,
 		"backoffLimit", *job.Spec.BackoffLimit)
 
-	if job.Status.Succeeded == 0 && (job.Status.Failed == 0 || job.Status.Failed < *job.Spec.BackoffLimit) {
+	if !jobs.IsTerminal(job) {
 		message := fmt.Sprintf("Upgrading Kubernetes to %s (job: %s)", kubernetesUpgrade.Spec.Kubernetes.Version, job.Name)
 		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseUpgrading, "", kubernetesUpgrade.Status.ControllerNode, message, map[string]any{
 			statusFieldJobName: job.Name,
@@ -47,7 +47,7 @@ func (r *Reconciler) handleJobStatus(ctx context.Context, kubernetesUpgrade *tup
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	if job.Status.Succeeded > 0 {
+	if jobs.IsSucceeded(job) {
 		return r.handleJobSuccess(ctx, kubernetesUpgrade, job)
 	}
 

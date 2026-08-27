@@ -184,6 +184,17 @@ func newTestScheme() *runtime.Scheme {
 	return s
 }
 
+// failedJobStatus mimics the job controller declaring the Job Failed.
+func failedJobStatus(failed int32) batchv1.JobStatus {
+	return batchv1.JobStatus{
+		Failed: failed,
+		Conditions: []batchv1.JobCondition{{
+			Type:   batchv1.JobFailed,
+			Status: corev1.ConditionTrue,
+		}},
+	}
+}
+
 func newTalosUpgrade(name string, opts ...func(*tupprv1alpha1.TalosUpgrade)) *tupprv1alpha1.TalosUpgrade {
 	tu := &tupprv1alpha1.TalosUpgrade{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1003,7 +1014,7 @@ func TestTalosReconcile_HandlesJobFailure(t *testing.T) {
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
-		Status: batchv1.JobStatus{Failed: 2},
+		Status: failedJobStatus(2),
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, job).WithStatusSubresource(tu).Build()
@@ -1553,7 +1564,7 @@ func TestTalosReconcile_FailedJobButNodeUpgraded_TreatedAsSuccess(t *testing.T) 
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
-		Status: batchv1.JobStatus{Failed: 2}, // pod evicted by the reboot, backoff exhausted
+		Status: failedJobStatus(2), // pod evicted by the reboot, backoff exhausted
 	}
 	tc := &mockTalosClient{
 		nodeVersions:  map[string]string{testNodeIP1: fakeTalosVersion}, // node DID reach target
@@ -1608,7 +1619,7 @@ func TestTalosReconcile_FailedJobButNodeRebooting_TreatedAsRebooting(t *testing.
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
-		Status: batchv1.JobStatus{Failed: 2},
+		Status: failedJobStatus(2),
 	}
 	// Node is still rebooting: the Talos API is not reachable yet (transient error).
 	tc := &mockTalosClient{
@@ -1652,7 +1663,7 @@ func TestTalosReconcile_FailedOffTargetJobWithOldVersion_FailsImmediately(t *tes
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
-		Status: batchv1.JobStatus{Failed: 2},
+		Status: failedJobStatus(2),
 	}
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -3900,7 +3911,7 @@ func TestTalosReconcile_BatchOneJobFails(t *testing.T) {
 			jobList.Items[i].Status.Succeeded = 1
 			tc.nodeVersions[testNodeIP1] = fakeTalosVersion
 		} else {
-			jobList.Items[i].Status.Failed = *jobList.Items[i].Spec.BackoffLimit
+			jobList.Items[i].Status = failedJobStatus(*jobList.Items[i].Spec.BackoffLimit + 1)
 		}
 		if err := cl.Status().Update(context.Background(), &jobList.Items[i]); err != nil {
 			t.Fatalf("failed to update job status: %v", err)
@@ -4488,7 +4499,7 @@ func TestTalosReconcile_RebootingNodeTimesOut_JobStillPresent(t *testing.T) {
 			},
 		},
 		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
-		Status: batchv1.JobStatus{Failed: 2},
+		Status: failedJobStatus(2),
 	}
 	tc := &mockTalosClient{
 		checkReadyErr: fmt.Errorf("connection refused"),

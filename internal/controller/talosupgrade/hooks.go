@@ -135,7 +135,7 @@ func (r *Reconciler) handleHookJobStatus(ctx context.Context, tu *tupprv1alpha1.
 	idx := hookIndex(tu, phase)
 	hookName := job.Labels[hookNameLabel]
 
-	if job.Status.Succeeded > 0 {
+	if jobs.IsSucceeded(job) {
 		logger.Info("Hook job succeeded", "phase", phase, "hook", hookName, "index", idx, "job", job.Name)
 		r.MetricsReporter.RecordHookExecution(tu.Name, phase, hookName, "success")
 		if err := r.advanceHookIndex(ctx, tu, phase, idx+1); err != nil {

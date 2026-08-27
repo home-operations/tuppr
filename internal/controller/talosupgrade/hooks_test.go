@@ -58,6 +58,7 @@ func markJobSucceeded(t *testing.T, cl client.Client, job batchv1.Job) {
 	}
 }
 
+// markJobFailed mimics the job controller declaring the Job Failed.
 func markJobFailed(t *testing.T, cl client.Client, job batchv1.Job) {
 	t.Helper()
 	if job.Spec.BackoffLimit != nil {
@@ -65,6 +66,10 @@ func markJobFailed(t *testing.T, cl client.Client, job batchv1.Job) {
 	} else {
 		job.Status.Failed = 1
 	}
+	job.Status.Conditions = append(job.Status.Conditions, batchv1.JobCondition{
+		Type:   batchv1.JobFailed,
+		Status: corev1.ConditionTrue,
+	})
 	if err := cl.Status().Update(context.Background(), &job); err != nil {
 		t.Fatalf("mark job failed: %v", err)
 	}
@@ -158,6 +163,53 @@ func TestProcessHookPhase_CreatesJobThenAdvancesOnSuccess(t *testing.T) {
 	}
 	if updated.Status.PreHookFailed {
 		t.Fatal("expected PreHookFailed=false on success path")
+	}
+}
+
+// Regression for #522: a hook with the default backoffLimit=0 must not be
+// judged by Failed >= limit (true at creation); it stays pending until the
+// job controller reports an outcome.
+func TestProcessHookPhase_FreshJobWithZeroBackoffIsNotFailed(t *testing.T) {
+	scheme := newTestScheme()
+
+	tu := newTalosUpgrade("tu",
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhasePreHook),
+		withHooks([]tupprv1alpha1.HookSpec{cephNoutHook("set-noout", "set")}, nil),
+	)
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+
+	// First reconcile creates the hook Job with backoffLimit=0 and an empty status.
+	reconcileTalos(t, r, "tu")
+	jobs := listHookJobs(t, cl, hookPhasePre)
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 pre-hook job, got %d", len(jobs))
+	}
+	if jobs[0].Spec.BackoffLimit == nil || *jobs[0].Spec.BackoffLimit != 0 {
+		t.Fatalf("expected default backoffLimit=0, got %v", jobs[0].Spec.BackoffLimit)
+	}
+
+	// Poll again before the pod has run: the hook must still be in flight.
+	reconcileTalos(t, r, "tu")
+
+	updated := getTalosUpgrade(t, cl, "tu")
+	if updated.Status.PreHookFailed {
+		t.Fatal("expected PreHookFailed=false while the job has no outcome")
+	}
+	if updated.Status.PreHookIndex != 0 {
+		t.Fatalf("expected PreHookIndex=0 while the job has no outcome, got %d", updated.Status.PreHookIndex)
+	}
+	if jobs := listHookJobs(t, cl, hookPhasePre); len(jobs) != 1 {
+		t.Fatalf("expected the pending hook job to survive the poll, got %d jobs", len(jobs))
+	}
+
+	// A real pod failure (job controller sets JobFailed) still fails the hook.
+	markJobFailed(t, cl, jobs[0])
+	reconcileTalos(t, r, "tu")
+	if updated := getTalosUpgrade(t, cl, "tu"); !updated.Status.PreHookFailed {
+		t.Fatal("expected PreHookFailed=true after the job controller marks it Failed")
 	}
 }
 

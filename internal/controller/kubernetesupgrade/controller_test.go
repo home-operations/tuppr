@@ -579,8 +579,14 @@ func TestK8sReconcile_HandlesJobFailure(t *testing.T) {
 				targetNodeLabelKey: fakeCrtl,
 			},
 		},
-		Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
-		Status: batchv1.JobStatus{Failed: 2},
+		Spec: batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
+		Status: batchv1.JobStatus{
+			Failed: 2,
+			Conditions: []batchv1.JobCondition{{
+				Type:   batchv1.JobFailed,
+				Status: corev1.ConditionTrue,
+			}},
+		},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(ku, job).WithStatusSubresource(ku).Build()

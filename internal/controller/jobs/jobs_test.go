@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/home-operations/tuppr/internal/constants"
@@ -268,6 +269,84 @@ func TestDeleteJob(t *testing.T) {
 			remaining, err := ListJobsByLabel(context.Background(), cl, "default", "talos-upgrade")
 			if err != nil || len(remaining) != tt.wantCount {
 				t.Fatalf("got (%v, %v), want %d remaining", remaining, err, tt.wantCount)
+			}
+		})
+	}
+}
+
+func TestIsTerminal(t *testing.T) {
+	tests := []struct {
+		name         string
+		job          *batchv1.Job
+		wantTerminal bool
+		wantFailed   bool
+	}{
+		{
+			// Regression for #522: backoffLimit=0 made Failed >= limit true at creation.
+			name: "fresh job with backoffLimit=0 is not terminal",
+			job: &batchv1.Job{
+				Spec: batchv1.JobSpec{BackoffLimit: ptr.To(int32(0))},
+			},
+		},
+		{
+			name: "pod failure without JobFailed condition is not terminal",
+			job: &batchv1.Job{
+				Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(0))},
+				Status: batchv1.JobStatus{Failed: 1},
+			},
+		},
+		{
+			// The old Failed >= limit check gave up one attempt early.
+			name: "failed count at backoffLimit without condition is still retrying",
+			job: &batchv1.Job{
+				Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2))},
+				Status: batchv1.JobStatus{Failed: 2, Active: 1},
+			},
+		},
+		{
+			name: "succeeded pod is terminal",
+			job: &batchv1.Job{
+				Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(0))},
+				Status: batchv1.JobStatus{Succeeded: 1},
+			},
+			wantTerminal: true,
+		},
+		{
+			name: "JobFailed condition is terminal and failed",
+			job: &batchv1.Job{
+				Spec: batchv1.JobSpec{BackoffLimit: ptr.To(int32(0))},
+				Status: batchv1.JobStatus{
+					Failed: 1,
+					Conditions: []batchv1.JobCondition{{
+						Type:   batchv1.JobFailed,
+						Status: corev1.ConditionTrue,
+					}},
+				},
+			},
+			wantTerminal: true,
+			wantFailed:   true,
+		},
+		{
+			name: "false JobFailed condition is not terminal",
+			job: &batchv1.Job{
+				Spec: batchv1.JobSpec{BackoffLimit: ptr.To(int32(0))},
+				Status: batchv1.JobStatus{
+					Conditions: []batchv1.JobCondition{{
+						Type:   batchv1.JobFailed,
+						Status: corev1.ConditionFalse,
+					}},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsTerminal(tt.job); got != tt.wantTerminal {
+				t.Fatalf("IsTerminal() = %v, want %v", got, tt.wantTerminal)
+			}
+			if got := IsFailed(tt.job); got != tt.wantFailed {
+				t.Fatalf("IsFailed() = %v, want %v", got, tt.wantFailed)
 			}
 		})
 	}
