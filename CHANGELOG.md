@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.5.2](https://github.com/home-operations/tuppr/compare/0.5.1...0.5.2) (2026-08-27)
+
+
+### Features
+
+* **container:** update image ghcr.io/siderolabs/kubelet (v1.36.4 → v1.37.0) ([#531](https://github.com/home-operations/tuppr/issues/531)) ([fe49098](https://github.com/home-operations/tuppr/commit/fe49098b58b6c25be977443c4cb4e45cc5eb5cb0))
+* **go:** update kubernetes monorepo (v0.36.4 → v0.37.0) ([#527](https://github.com/home-operations/tuppr/issues/527)) ([89aa3de](https://github.com/home-operations/tuppr/commit/89aa3de406ec7a3519134c79c0f4c9da7f6e6c41))
+* **go:** update module github.com/google/go-containerregistry (v0.21.9 → v0.22.0) ([#525](https://github.com/home-operations/tuppr/issues/525)) ([223e6ff](https://github.com/home-operations/tuppr/commit/223e6ff3169783ff6338150bca3ead810e7ff845))
+
+
+### Bug Fixes
+
+* **controller:** judge Job outcome by the JobFailed condition, not Failed vs backoffLimit ([#532](https://github.com/home-operations/tuppr/issues/532)) ([7de0439](https://github.com/home-operations/tuppr/commit/7de043980a8e65f991d7933ca1a422bf9f17a2f4))
+
+
+### Documentation
+
+* **agents:** derive Go version from go.mod ([5cd3e98](https://github.com/home-operations/tuppr/commit/5cd3e98c318e9b20f7e587754ce3a62cb7322e54))
+
+
+### Miscellaneous Chores
+
+* **crd:** regenerate manifests for k8s.io/api v0.37.0 ([#533](https://github.com/home-operations/tuppr/issues/533)) ([2f6ccf2](https://github.com/home-operations/tuppr/commit/2f6ccf27e7bb7a46338e075ebc3495b15bd80b7b))
+* **mise:** update tool aqua:dadav/helm-schema (0.23.4 → 0.23.5) ([#529](https://github.com/home-operations/tuppr/issues/529)) ([78a900b](https://github.com/home-operations/tuppr/commit/78a900bb29002bb24af0fbb0157c4c45fcdc574e))
+
 ## [0.5.1](https://github.com/home-operations/tuppr/compare/0.5.0...0.5.1) (2026-08-27)
 
 
