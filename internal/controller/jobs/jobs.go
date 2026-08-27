@@ -214,12 +214,26 @@ func DeleteJob(ctx context.Context, c client.Client, job *batchv1.Job) error {
 	})
 }
 
-func IsTerminal(job *batchv1.Job) bool {
-	if job.Status.Succeeded > 0 {
-		return true
-	}
-	if job.Spec.BackoffLimit != nil && job.Status.Failed >= *job.Spec.BackoffLimit {
-		return true
+// IsSucceeded returns true once at least one pod of the Job has succeeded.
+func IsSucceeded(job *batchv1.Job) bool {
+	return job.Status.Succeeded > 0
+}
+
+// IsFailed returns true once the Job controller has marked the Job Failed
+// (backoffLimit exhausted, activeDeadlineSeconds hit, or podFailurePolicy).
+// Comparing Status.Failed against BackoffLimit locally is wrong: backoffLimit=0
+// satisfies Failed >= limit before the pod has run, and Kubernetes only fails a
+// Job when Failed exceeds (not reaches) the limit.
+func IsFailed(job *batchv1.Job) bool {
+	for _, c := range job.Status.Conditions {
+		if c.Type == batchv1.JobFailed && c.Status == corev1.ConditionTrue {
+			return true
+		}
 	}
 	return false
+}
+
+// IsTerminal returns true when the Job has finished, successfully or not.
+func IsTerminal(job *batchv1.Job) bool {
+	return IsSucceeded(job) || IsFailed(job)
 }

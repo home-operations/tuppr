@@ -93,10 +93,10 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 		// Succeeded and exhausted-backoff Jobs are both terminal; the node's real
 		// state (verified below) decides the outcome, not the Job's exit status.
 		switch {
-		case job.Status.Succeeded > 0:
+		case jobs.IsSucceeded(&job):
 			succeededCount++
 			terminalJobs = append(terminalJobs, job)
-		case job.Status.Failed >= *job.Spec.BackoffLimit:
+		case jobs.IsFailed(&job):
 			failedCount++
 			terminalJobs = append(terminalJobs, job)
 		default:
@@ -144,7 +144,7 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 	for i := range terminalJobs {
 		job := &terminalJobs[i]
 		nodeName := job.Labels[targetNodeLabelKey]
-		jobFailed := job.Status.Failed >= *job.Spec.BackoffLimit
+		jobFailed := jobs.IsFailed(job)
 
 		result, failureMessage, err := r.processTerminalJob(ctx, talosUpgrade, job, nodeName, jobFailed)
 		if err != nil {
