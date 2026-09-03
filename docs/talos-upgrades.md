@@ -15,7 +15,7 @@ metadata:
 spec:
   talos:
     # renovate: datasource=docker depName=ghcr.io/siderolabs/talos
-    version: v1.13.9
+    version: v1.14.0
 ```
 
 Everything below is optional and layers onto that. The full set of fields and
