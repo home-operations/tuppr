@@ -29,8 +29,8 @@ repo one hop at a time if you separate major/minor from minor/patch PRs:
 {
   "packageRules": [
     {
-      "matchDatasources": ["github-releases"],
-      "matchPackageNames": ["siderolabs/talos"],
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["ghcr.io/siderolabs/talos"],
       "separateMajorMinor": true,
       "separateMinorPatch": true
     }
@@ -49,7 +49,7 @@ spec field, so you merge one incremental step at a time:
 ```yaml
 spec:
   talos:
-    # renovate: datasource=github-releases depName=siderolabs/talos
+    # renovate: datasource=docker depName=ghcr.io/siderolabs/talos
     version: v1.13.9
 ```
 

@@ -38,7 +38,7 @@ cr-templates/                           the TalosUpgrade and KubernetesUpgrade u
 
 - KVM (`/dev/kvm`) and `qemu-system-x86_64`
 - Passwordless `sudo`, for the bridge and NAT the provisioner sets up
-- `talosctl` v1.13 or newer, which mise pins
+- `talosctl` v1.14 or newer, which mise pins
 - Docker, to build and push the controller image (skipped if you set
   `CONTROLLER_IMAGE`)
 
@@ -52,7 +52,7 @@ it:
 talosctl cluster create qemu \
     --name tuppr-e2e-1cp-0w \
     --controlplanes 1 --workers 0 \
-    --talos-version v1.13.5 --kubernetes-version 1.34.0 \
+    --talos-version v1.14.0-rc.2 --kubernetes-version 1.34.0 \
     --disks virtio:10GiB \
     --config-patch-controlplanes @patches/talos-api-access.yaml \
     --talosconfig-destination /tmp/tuppr-e2e/talosconfig
@@ -126,9 +126,10 @@ The versions a leg **boots** on are in its document, as `spec.qemu.talos-version
 and `spec.kubernetes-version`. The versions tuppr **upgrades it to** are in
 `common.sh`, as `TALOS_UPGRADE_VERSION` and `K8S_UPGRADE_VERSION`, and both have to
 stay ahead of the documents or the run proves nothing. Talos itself has a floor:
-the action needs `talosctl` v1.13 or newer, so a leg cannot boot anything older
-than v1.13 to upgrade from. Everything else about a shape, including the memory
-ceiling that bounds how many VMs fit on a runner, lives in the document.
+the action targets Talos 1.14 and refuses an older `talosctl` or `talos-version`,
+so a leg cannot boot anything older than v1.14 to upgrade from. Everything else
+about a shape, including the memory ceiling that bounds how many VMs fit on a
+runner, lives in the document.
 
 Keep `metadata.name` short: it appears twice in the QEMU monitor socket path, and
 QEMU refuses to start when a UNIX socket path exceeds 108 bytes. The action checks

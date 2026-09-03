@@ -1,8 +1,7 @@
 ---
-# The Kubernetes-upgrade leg: boots current Talos through the current action (no
-# Talos upgrade happens here, so the beta.0 grant gap does not apply) and rolls
-# Kubernetes itself. Split from 1cp-1w.yaml because the Talos legs boot the
-# previous minor, which the current action's floor check refuses.
+# The Kubernetes-upgrade leg: rolls Kubernetes itself, so it boots the Talos
+# release rather than the release candidate the Talos legs upgrade from. Split
+# from 1cp-1w.yaml for that version alone.
 # yaml-language-server: $schema=https://raw.githubusercontent.com/home-operations/talosctl-cluster-action/main/schema/talos-cluster.json
 # One of each, so a drained workload has somewhere else to land.
 apiVersion: v1alpha1
@@ -17,7 +16,7 @@ spec:
   workers:
     count: 1
   qemu:
-    talos-version: v1.14.0-beta.1
+    talos-version: v1.14.0
     disks:
       - virtio:10GiB
   config-patches:

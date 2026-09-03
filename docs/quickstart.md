@@ -26,7 +26,7 @@ metadata:
   name: cluster
 spec:
   talos:
-    # renovate: datasource=github-releases depName=siderolabs/talos
+    # renovate: datasource=docker depName=ghcr.io/siderolabs/talos
     version: v1.13.9
 ```
 
