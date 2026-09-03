@@ -204,23 +204,23 @@ url = "https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-da
 url_api = "https://api.github.com/repos/kubernetes-sigs/kind/releases/assets/531396417"
 
 [[tools.kube-controller-tools]]
-version = "0.21.0"
+version = "0.22.0"
 backend = "github:kubernetes-sigs/controller-tools"
 
 [tools.kube-controller-tools."platforms.linux-arm64"]
-checksum = "sha256:1af64bb144658c61f1b61c6392e17d56dd4f7364497625613ff435d7e468f60b"
-url = "https://github.com/kubernetes-sigs/controller-tools/releases/download/v0.21.0/controller-gen-linux-arm64"
-url_api = "https://api.github.com/repos/kubernetes-sigs/controller-tools/releases/assets/413514955"
+checksum = "sha256:c5151f30c3a51ddc8d722c18c263b495dae994ca246e9fa8994b1d4c95f3253a"
+url = "https://github.com/kubernetes-sigs/controller-tools/releases/download/v0.22.0/controller-gen-linux-arm64"
+url_api = "https://api.github.com/repos/kubernetes-sigs/controller-tools/releases/assets/541008620"
 
 [tools.kube-controller-tools."platforms.linux-x64"]
-checksum = "sha256:3ec7994b7a41515a7ad8aef8e517429c0a78060df59d5587ac8662db6a8b035f"
-url = "https://github.com/kubernetes-sigs/controller-tools/releases/download/v0.21.0/controller-gen-linux-amd64"
-url_api = "https://api.github.com/repos/kubernetes-sigs/controller-tools/releases/assets/413514957"
+checksum = "sha256:a7d671f0e0da07a67b3a1618a6cab50353dffea5625cd2d8a8b3e18bacb497e6"
+url = "https://github.com/kubernetes-sigs/controller-tools/releases/download/v0.22.0/controller-gen-linux-amd64"
+url_api = "https://api.github.com/repos/kubernetes-sigs/controller-tools/releases/assets/541008622"
 
 [tools.kube-controller-tools."platforms.macos-arm64"]
-checksum = "sha256:13ac7abcd90dd2129da972024bea7da5be7df2c5404c8f715010490996f4ab43"
-url = "https://github.com/kubernetes-sigs/controller-tools/releases/download/v0.21.0/controller-gen-darwin-arm64"
-url_api = "https://api.github.com/repos/kubernetes-sigs/controller-tools/releases/assets/413514954"
+checksum = "sha256:5e0d7c16ed9cc0ae887c02ebf5244a2739495c93eeaa7b20ccdd3abb20a53846"
+url = "https://github.com/kubernetes-sigs/controller-tools/releases/download/v0.22.0/controller-gen-darwin-arm64"
+url_api = "https://api.github.com/repos/kubernetes-sigs/controller-tools/releases/assets/541008621"
 
 [[tools.kubectl]]
 version = "1.37.0"
