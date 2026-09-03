@@ -354,9 +354,10 @@ tuppr derives the image from each node's runtime state and
    node's runtime `ExtensionStatus`.
 2. **Default** → version-swaps the node's current install image. A factory
    install stays on its factory base + schematic, and a private-registry path is
-   preserved. A vanilla install on `ghcr.io/siderolabs/installer`, which Talos
-   1.14 stopped publishing, moves to the Image Factory installer for the node's
-   platform with the default (empty) schematic.
+   preserved. A vanilla install on `ghcr.io/siderolabs/installer` stays vanilla
+   up to v1.13; from v1.14, which Talos stopped publishing that image for, it
+   moves to the Image Factory installer for the node's platform with the default
+   (empty) schematic.
 3. **Safety net** → refuses with a clear error (pointing at `factory-url`) when
    the runtime schematic isn't in the install-image path, or when reinstalling
    the canonical generic installer would silently wipe installed system

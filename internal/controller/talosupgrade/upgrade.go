@@ -858,7 +858,7 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 			"node %s: install image %q has no schematic but the node has extensions=%v; reinstalling would wipe them. Set annotation %s with %s to upgrade to a factory image",
 			nodeName, currentImage, ext.Extensions, constants.FactoryURLAnnotation, constants.SchematicAnnotation)
 	}
-	if repo == constants.GenericInstallerRepo {
+	if repo == constants.GenericInstallerRepo && parseTalosctlVersion(targetVersion).AtLeast(1, 14) {
 		targetImage, err := r.factoryImage(ctx, nodeIP, constants.DefaultSchematic, targetVersion)
 		if err != nil {
 			return "", fmt.Errorf("node %s: cannot move the generic installer to the Image Factory: %w", nodeName, err)

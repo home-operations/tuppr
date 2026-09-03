@@ -62,6 +62,7 @@ const (
 	testInstallerABC        = "factory.talos.dev/installer/abc:v1.10.0"
 	testPlatformHcloud      = "hcloud"
 	testPlatformContainer   = "container"
+	testV114Talos           = "v1.14.0"
 )
 
 type mockTalosClient struct {
@@ -3152,7 +3153,7 @@ func TestTalosBuildTalosUpgradeImage_VersionSwapsPrivateRegistry(t *testing.T) {
 func TestTalosBuildTalosUpgradeImage_MovesVanillaGenericInstallerToFactory(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
-	tu.Spec.Talos.Version = fakeTalosVersion
+	tu.Spec.Talos.Version = testV114Talos
 
 	node := newNode(fakeNodeA, testNodeIP1)
 
@@ -3170,7 +3171,33 @@ func TestTalosBuildTalosUpgradeImage_MovesVanillaGenericInstallerToFactory(t *te
 	if err != nil {
 		t.Fatalf("vanilla generic installer should move to the factory: %v", err)
 	}
-	expected := "factory.talos.dev/metal-installer/" + constants.DefaultSchematic + ":" + fakeTalosVersion
+	expected := "factory.talos.dev/metal-installer/" + constants.DefaultSchematic + ":" + testV114Talos
+	if image != expected {
+		t.Fatalf("expected %s, got %s", expected, image)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_KeepsVanillaGenericInstallerBelow114(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
+	tu.Spec.Talos.Version = "v1.13.9"
+
+	node := newNode(fakeNodeA, testNodeIP1)
+
+	tc := &mockTalosClient{
+		installImages: map[string]string{testNodeIP1: testInstallerV111},
+		extensions:    map[string]talos.ExtensionInfo{testNodeIP1: {}},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("generic installer should stay vanilla below 1.14: %v", err)
+	}
+	expected := constants.GenericInstallerRepo + ":v1.13.9"
 	if image != expected {
 		t.Fatalf("expected %s, got %s", expected, image)
 	}
@@ -3190,7 +3217,7 @@ func TestTalosBuildTalosUpgradeImage_VanillaGenericInstallerNeedsPlatform(t *tes
 		t.Run(tt.name, func(t *testing.T) {
 			scheme := newTestScheme()
 			tu := newTalosUpgrade(testUpgradeName, withFinalizer)
-			tu.Spec.Talos.Version = fakeTalosVersion
+			tu.Spec.Talos.Version = testV114Talos
 			node := newNode(fakeNodeA, testNodeIP1)
 			tc := &mockTalosClient{
 				installImages:  map[string]string{testNodeIP1: testInstallerV111},
