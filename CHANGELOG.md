@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.5.3](https://github.com/home-operations/tuppr/compare/0.5.2...0.5.3) (2026-09-03)
+
+
+### Features
+
+* **container:** update image ghcr.io/siderolabs/talos (v1.13.9 → v1.14.0) ([#551](https://github.com/home-operations/tuppr/issues/551)) ([38e0518](https://github.com/home-operations/tuppr/commit/38e051872d941c4901c7c452ee5589aae636192d))
+* **go:** update module github.com/onsi/gomega (v1.42.1 → v1.43.0) ([#536](https://github.com/home-operations/tuppr/issues/536)) ([ff51018](https://github.com/home-operations/tuppr/commit/ff510183483184aec06b714b5ab8601a3fdddbb6))
+
+
+### Bug Fixes
+
+* **go:** update module github.com/cosi-project/runtime (v1.16.2 → v1.16.3) ([#543](https://github.com/home-operations/tuppr/issues/543)) ([aa712db](https://github.com/home-operations/tuppr/commit/aa712dbdcab3ff5d2cfbb3513bd74ec09ea511ff))
+* **go:** update module github.com/unraid/apprise-go (v0.3.2 → v0.3.3) ([#545](https://github.com/home-operations/tuppr/issues/545)) ([31c283d](https://github.com/home-operations/tuppr/commit/31c283d48b0737f197928b2f74d9cd300a80e6c8))
+* **talos:** move the generic installer to the Image Factory for 1.14 ([#549](https://github.com/home-operations/tuppr/issues/549)) ([f25d2b5](https://github.com/home-operations/tuppr/commit/f25d2b546a3ce2cf79c7c0c28446608ea0eaa263))
+* use siderolabs/talos image for renovate bumps examples ([#547](https://github.com/home-operations/tuppr/issues/547)) ([002ab09](https://github.com/home-operations/tuppr/commit/002ab09e3335981dc745344400c088579dbceb66))
+
+
+### Continuous Integration
+
+* **e2e:** drop the legacy action leg now that Talos 1.14 is released ([#548](https://github.com/home-operations/tuppr/issues/548)) ([882d8a9](https://github.com/home-operations/tuppr/commit/882d8a9cb80f13d47613b7edf753db107f0a2cdb))
+
+
+### Miscellaneous Chores
+
+* **github-action:** update action jdx/mise-action (v4.2.5 → v4.3.0) ([#537](https://github.com/home-operations/tuppr/issues/537)) ([cedb96f](https://github.com/home-operations/tuppr/commit/cedb96f2990b46cbab838abb70568004a7541f43))
+* **mise:** update mise tools ([#541](https://github.com/home-operations/tuppr/issues/541)) ([74b457e](https://github.com/home-operations/tuppr/commit/74b457e6f66ecabb6a886c3da21b010331c15655))
+* **mise:** update tool aqua:astral-sh/uv (0.12.5 → 0.12.6) ([#538](https://github.com/home-operations/tuppr/issues/538)) ([3b23089](https://github.com/home-operations/tuppr/commit/3b23089a00551344e7fe9d9a8aab58a780e54345))
+* **mise:** update tool kind (0.32.0 → 0.33.0) ([#540](https://github.com/home-operations/tuppr/issues/540)) ([47ebd2c](https://github.com/home-operations/tuppr/commit/47ebd2c6233a7c90fb05d85a6e63c4bdfcdc78cf))
+* **mise:** update tool kubectl (1.36.4 → 1.37.0) ([#539](https://github.com/home-operations/tuppr/issues/539)) ([49a290b](https://github.com/home-operations/tuppr/commit/49a290b98799197d5a04e5d32d09e1127d7f79ff))
+* **mise:** update tool lefthook (2.1.11 → 2.1.12) ([#542](https://github.com/home-operations/tuppr/issues/542)) ([c5520a2](https://github.com/home-operations/tuppr/commit/c5520a2f8cdac714ce31078fe634c62cf222547c))
+* **mise:** update tool oxfmt (0.64.0 → 0.65.0) ([#534](https://github.com/home-operations/tuppr/issues/534)) ([9a10e67](https://github.com/home-operations/tuppr/commit/9a10e67f200b274fe7dc7176a8428a7cefc4feb0))
+* **mise:** update tool zizmor (1.29.0 → 1.30.0) ([#546](https://github.com/home-operations/tuppr/issues/546)) ([d73cff9](https://github.com/home-operations/tuppr/commit/d73cff92e1c0e2b0eb12ca224fd170cfe7e5f796))
+
 ## [0.5.2](https://github.com/home-operations/tuppr/compare/0.5.1...0.5.2) (2026-08-27)
 
 
