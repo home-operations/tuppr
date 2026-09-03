@@ -3,8 +3,8 @@ package talos
 // Raw, version-agnostic machine config handling.
 //
 // A node's machine config can carry document kinds newer than any machinery this
-// binary links (a 1.13 tuppr meeting 1.14's DiscoveryIdentityConfig, or a beta
-// node's BGPPeerConfig), and machinery's decoder hard-errors on unknown kinds.
+// binary links (a 1.13 tuppr meeting 1.14's DiscoveryIdentityConfig or
+// BGPPeerConfig), and machinery's decoder hard-errors on unknown kinds.
 // Reading and patching the install image therefore never decodes the whole
 // config: documents are split textually, only the two kinds that can carry an
 // install image are parsed, and every other document passes through byte for

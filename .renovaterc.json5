@@ -5,8 +5,8 @@
     {
       groupName: "Talos Group",
       matchPackageNames: [
-        "ghcr.io/siderolabs/installer",
         "github.com/siderolabs/talos/pkg/machinery",
+        "ghcr.io/siderolabs/talos",
         "talosctl",
       ],
       minimumGroupSize: 3,

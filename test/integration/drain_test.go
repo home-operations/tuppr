@@ -87,7 +87,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 
 		// Set up mock data for the test node
 		mockTalos.SetNodeVersion("10.0.0.20", "v1.10.0") // Old version to trigger upgrade
-		mockTalos.SetNodeInstallImage("10.0.0.20", "ghcr.io/siderolabs/installer:v1.10.0")
+		mockTalos.SetNodeInstallImage("10.0.0.20", "factory.talos.dev/metal-installer/abc:v1.10.0")
 
 		cleanup = func() {
 			_ = k8sClient.Delete(ctx, testPod)

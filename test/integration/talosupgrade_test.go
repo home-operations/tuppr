@@ -36,7 +36,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 
 		// Set up mock data for the test node
 		mockTalos.SetNodeVersion("10.0.0.10", "v1.10.0") // Old version to trigger upgrade
-		mockTalos.SetNodeInstallImage("10.0.0.10", "ghcr.io/siderolabs/installer:v1.10.0")
+		mockTalos.SetNodeInstallImage("10.0.0.10", "factory.talos.dev/metal-installer/abc:v1.10.0")
 
 		// Ensure mocks are ready (prevents unused variable warnings)
 		_ = mockHealth
@@ -162,7 +162,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 			Expect(k8sClient.Create(ctx, testNode2)).To(Succeed())
 
 			mockTalos.SetNodeVersion("10.0.0.11", "v1.10.0")
-			mockTalos.SetNodeInstallImage("10.0.0.11", "ghcr.io/siderolabs/installer:v1.10.0")
+			mockTalos.SetNodeInstallImage("10.0.0.11", "factory.talos.dev/metal-installer/abc:v1.10.0")
 		})
 
 		AfterEach(func() {

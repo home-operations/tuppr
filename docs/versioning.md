@@ -30,7 +30,7 @@ repo one hop at a time if you separate major/minor from minor/patch PRs:
   "packageRules": [
     {
       "matchDatasources": ["docker"],
-      "matchPackageNames": ["ghcr.io/siderolabs/installer"],
+      "matchPackageNames": ["ghcr.io/siderolabs/talos"],
       "separateMajorMinor": true,
       "separateMinorPatch": true
     }

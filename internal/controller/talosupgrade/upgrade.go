@@ -777,6 +777,21 @@ func factoryInstallerRepo(platform string) (string, bool) {
 	return "", false
 }
 
+// factoryImage builds the Image Factory installer ref for the node's platform.
+// ghcr.io/siderolabs/installer stopped publishing at Talos 1.14, so a node still
+// on it can only move forward through the Factory.
+func (r *Reconciler) factoryImage(ctx context.Context, nodeIP, schematic, version string) (string, error) {
+	platform, err := r.TalosClient.GetNodePlatform(ctx, nodeIP)
+	if err != nil {
+		return "", fmt.Errorf("failed to read platform: %w", err)
+	}
+	installerRepo, ok := factoryInstallerRepo(platform)
+	if !ok {
+		return "", fmt.Errorf("platform %q has no Image Factory installer", platform)
+	}
+	return fmt.Sprintf("factory.talos.dev/%s/%s:%s", installerRepo, schematic, version), nil
+}
+
 func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName string) (string, error) {
 	logger := log.FromContext(ctx)
 
@@ -829,11 +844,8 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 	}
 	if ext.Schematic != "" && !strings.HasSuffix(repo, "/"+ext.Schematic) {
 		if repo == constants.GenericInstallerRepo {
-			platform, err := r.TalosClient.GetNodePlatform(ctx, nodeIP)
-			installerRepo, ok := factoryInstallerRepo(platform)
-			if err == nil && ok {
-				targetImage := fmt.Sprintf("factory.talos.dev/%s/%s:%s", installerRepo, ext.Schematic, targetVersion)
-				logger.V(1).Info("Built target image from runtime metadata", "node", nodeName, "targetImage", targetImage, "platform", platform, "schematic", ext.Schematic)
+			if targetImage, err := r.factoryImage(ctx, nodeIP, ext.Schematic, targetVersion); err == nil {
+				logger.V(1).Info("Built target image from runtime metadata", "node", nodeName, "targetImage", targetImage, "schematic", ext.Schematic)
 				return targetImage, nil
 			}
 		}
@@ -845,6 +857,14 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 		return "", fmt.Errorf(
 			"node %s: install image %q has no schematic but the node has extensions=%v; reinstalling would wipe them. Set annotation %s with %s to upgrade to a factory image",
 			nodeName, currentImage, ext.Extensions, constants.FactoryURLAnnotation, constants.SchematicAnnotation)
+	}
+	if repo == constants.GenericInstallerRepo && parseTalosctlVersion(targetVersion).AtLeast(1, 14) {
+		targetImage, err := r.factoryImage(ctx, nodeIP, constants.DefaultSchematic, targetVersion)
+		if err != nil {
+			return "", fmt.Errorf("node %s: cannot move the generic installer to the Image Factory: %w", nodeName, err)
+		}
+		logger.V(1).Info("Built target image from the default schematic", "node", nodeName, "targetImage", targetImage)
+		return targetImage, nil
 	}
 
 	targetImage := fmt.Sprintf("%s:%s", repo, targetVersion)
