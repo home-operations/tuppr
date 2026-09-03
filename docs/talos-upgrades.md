@@ -14,7 +14,7 @@ metadata:
   name: cluster
 spec:
   talos:
-    # renovate: datasource=docker depName=ghcr.io/siderolabs/installer
+    # renovate: datasource=github-releases depName=siderolabs/talos
     version: v1.13.9
 ```
 
@@ -352,9 +352,11 @@ tuppr derives the image from each node's runtime state and
 1. **`factory-url` override** → builds `<factory-url>/<schematic>:<version>`. The
    schematic comes from the `schematic` annotation if set, otherwise from the
    node's runtime `ExtensionStatus`.
-2. **Default** → version-swaps the node's current `.machine.install.image`. A
-   factory install stays on its factory base + schematic; a private-registry path
-   is preserved; a vanilla generic install stays vanilla.
+2. **Default** → version-swaps the node's current install image. A factory
+   install stays on its factory base + schematic, and a private-registry path is
+   preserved. A vanilla install on `ghcr.io/siderolabs/installer`, which Talos
+   1.14 stopped publishing, moves to the Image Factory installer for the node's
+   platform with the default (empty) schematic.
 3. **Safety net** → refuses with a clear error (pointing at `factory-url`) when
    the runtime schematic isn't in the install-image path, or when reinstalling
    the canonical generic installer would silently wipe installed system

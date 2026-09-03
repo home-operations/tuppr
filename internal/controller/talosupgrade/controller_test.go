@@ -61,6 +61,7 @@ const (
 	testNameStr             = "test"
 	testInstallerABC        = "factory.talos.dev/installer/abc:v1.10.0"
 	testPlatformHcloud      = "hcloud"
+	testPlatformContainer   = "container"
 )
 
 type mockTalosClient struct {
@@ -3148,7 +3149,7 @@ func TestTalosBuildTalosUpgradeImage_VersionSwapsPrivateRegistry(t *testing.T) {
 	}
 }
 
-func TestTalosBuildTalosUpgradeImage_AllowsVanillaGenericInstaller(t *testing.T) {
+func TestTalosBuildTalosUpgradeImage_MovesVanillaGenericInstallerToFactory(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
 	tu.Spec.Talos.Version = fakeTalosVersion
@@ -3158,6 +3159,7 @@ func TestTalosBuildTalosUpgradeImage_AllowsVanillaGenericInstaller(t *testing.T)
 	tc := &mockTalosClient{
 		installImages: map[string]string{testNodeIP1: testInstallerV111},
 		extensions:    map[string]talos.ExtensionInfo{testNodeIP1: {}},
+		platforms:     map[string]string{testNodeIP1: "metal"},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -3166,11 +3168,45 @@ func TestTalosBuildTalosUpgradeImage_AllowsVanillaGenericInstaller(t *testing.T)
 
 	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
 	if err != nil {
-		t.Fatalf("vanilla generic installer should be allowed: %v", err)
+		t.Fatalf("vanilla generic installer should move to the factory: %v", err)
 	}
-	expected := constants.GenericInstallerRepo + ":" + fakeTalosVersion
+	expected := "factory.talos.dev/metal-installer/" + constants.DefaultSchematic + ":" + fakeTalosVersion
 	if image != expected {
 		t.Fatalf("expected %s, got %s", expected, image)
+	}
+}
+
+func TestTalosBuildTalosUpgradeImage_VanillaGenericInstallerNeedsPlatform(t *testing.T) {
+	tests := []struct {
+		name           string
+		platform       string
+		getPlatformErr error
+	}{
+		{name: "unsupported platform", platform: testPlatformContainer},
+		{name: "platform metadata unavailable", getPlatformErr: fmt.Errorf("rpc error: code = Unavailable")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := newTestScheme()
+			tu := newTalosUpgrade(testUpgradeName, withFinalizer)
+			tu.Spec.Talos.Version = fakeTalosVersion
+			node := newNode(fakeNodeA, testNodeIP1)
+			tc := &mockTalosClient{
+				installImages:  map[string]string{testNodeIP1: testInstallerV111},
+				extensions:     map[string]talos.ExtensionInfo{testNodeIP1: {}},
+				platforms:      map[string]string{testNodeIP1: tt.platform},
+				getPlatformErr: tt.getPlatformErr,
+			}
+			cl := fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(tu, node).WithStatusSubresource(tu).Build()
+			r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+			_, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+			if err == nil {
+				t.Fatal("expected the generic installer to be refused without a factory platform")
+			}
+		})
 	}
 }
 
@@ -3209,7 +3245,7 @@ func TestFactoryInstallerRepo(t *testing.T) {
 	}{
 		{platform: testPlatformHcloud, want: "hcloud-installer", ok: true},
 		{platform: "equinixMetal", want: "installer", ok: true},
-		{platform: "container", ok: false},
+		{platform: testPlatformContainer, ok: false},
 	}
 
 	for _, tt := range tests {
