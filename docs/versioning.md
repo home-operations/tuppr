@@ -49,7 +49,7 @@ spec field, so you merge one incremental step at a time:
 ```yaml
 spec:
   talos:
-    # renovate: datasource=docker depName=ghcr.io/siderolabs/installer
+    # renovate: datasource=docker depName=ghcr.io/siderolabs/talos
     version: v1.13.9
 ```
 
