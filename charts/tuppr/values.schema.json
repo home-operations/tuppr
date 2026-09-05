@@ -509,18 +509,17 @@
       "title": "replicaCount",
       "type": "integer"
     },
-    "revisionHistoryLimit": {
-      "default": 10,
-      "description": "Number of old ReplicaSets to retain for rollback.",
-      "minimum": 0,
-      "title": "revisionHistoryLimit",
-      "type": "integer"
-    },
     "resources": {
       "description": "Pod resource requests/limits.",
       "required": [],
       "title": "resources",
       "type": "object"
+    },
+    "revisionHistoryLimit": {
+      "default": 10,
+      "description": "Number of old ReplicaSets to retain for rollback.",
+      "title": "revisionHistoryLimit",
+      "type": "integer"
     },
     "securityContext": {
       "description": "Container securityContext (no privilege escalation, read-only root filesystem, drops ALL capabilities).",
