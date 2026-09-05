@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.4](https://github.com/home-operations/tuppr/compare/0.5.3...0.5.4) (2026-09-05)
+
+
+### Features
+
+* **go:** update module sigs.k8s.io/controller-runtime (v0.24.1 → v0.25.0) ([#552](https://github.com/home-operations/tuppr/issues/552)) ([6a07227](https://github.com/home-operations/tuppr/commit/6a07227ce8d13b7e7b519570a268f5eb1a426f52))
+
+
+### Bug Fixes
+
+* **go:** update module github.com/google/go-containerregistry (v0.22.0 → v0.22.1) ([#555](https://github.com/home-operations/tuppr/issues/555)) ([df17262](https://github.com/home-operations/tuppr/commit/df17262b91d946502275cda39a8311eea3950d0d))
+
+
+### Miscellaneous Chores
+
+* **github-action:** update action actions/deploy-pages (v5.0.0 → v5.0.1) ([#557](https://github.com/home-operations/tuppr/issues/557)) ([edebc03](https://github.com/home-operations/tuppr/commit/edebc03a01fda4e06f21a1ac58679ad43215af51))
+* **mise:** update tool aqua:astral-sh/uv (0.12.7 → 0.12.8) ([#553](https://github.com/home-operations/tuppr/issues/553)) ([5f78fb8](https://github.com/home-operations/tuppr/commit/5f78fb8f66c41dcbc2c000cf27db92961d017b00))
+* **mise:** update tool aqua:astral-sh/uv (0.12.8 → 0.12.9) ([#559](https://github.com/home-operations/tuppr/issues/559)) ([d20a87b](https://github.com/home-operations/tuppr/commit/d20a87b2d59615829e5d0f0feafb3bec8c04dafb))
+* **mise:** update tool go (1.26.6 → 1.27.1) ([#558](https://github.com/home-operations/tuppr/issues/558)) ([2b3aea6](https://github.com/home-operations/tuppr/commit/2b3aea675792409d16b4b3287827e19949560f47))
+* **mise:** update tool oxfmt (0.65.0 → 0.66.0) ([#556](https://github.com/home-operations/tuppr/issues/556)) ([97f4c7f](https://github.com/home-operations/tuppr/commit/97f4c7f463e0002fc45d25203c7b92cf6e5aa9f1))
+
 ## [0.5.3](https://github.com/home-operations/tuppr/compare/0.5.2...0.5.3) (2026-09-03)
 
 
