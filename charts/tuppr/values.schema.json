@@ -509,6 +509,13 @@
       "title": "replicaCount",
       "type": "integer"
     },
+    "revisionHistoryLimit": {
+      "default": 10,
+      "description": "Number of old ReplicaSets to retain for rollback.",
+      "minimum": 0,
+      "title": "revisionHistoryLimit",
+      "type": "integer"
+    },
     "resources": {
       "description": "Pod resource requests/limits.",
       "required": [],

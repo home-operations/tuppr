@@ -94,6 +94,7 @@ Kubernetes: `>=1.25.0-0`
 | rbac.create | bool | `true` | Create the ClusterRole + ClusterRoleBinding the controller needs to manage nodes and jobs. |
 | readinessProbe | object | `{"httpGet":{"path":"/readyz","port":"metrics"},"initialDelaySeconds":5,"periodSeconds":10}` | Readiness probe. |
 | replicaCount | int | `1` | Number of controller replicas (only one is active at a time via leader election). |
+| revisionHistoryLimit | int | `10` | Number of old ReplicaSets to retain for rollback. |
 | resources | object | `{}` | Pod resource requests/limits. |
 | securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsNonRoot":true,"runAsUser":65532}` | Container securityContext (no privilege escalation, read-only root filesystem, drops ALL capabilities). |
 | service.port | int | `8080` | Service port for general access. |
