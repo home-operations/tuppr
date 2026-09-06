@@ -4,6 +4,9 @@
 # -- Number of controller replicas (only one is active at a time via leader election).
 replicaCount: 1
 
+# -- Number of old ReplicaSets to retain for rollback.
+revisionHistoryLimit: 10
+
 image:
   # -- Image repository.
   repository: ghcr.io/home-operations/tuppr

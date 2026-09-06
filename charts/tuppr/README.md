@@ -95,6 +95,7 @@ Kubernetes: `>=1.25.0-0`
 | readinessProbe | object | `{"httpGet":{"path":"/readyz","port":"metrics"},"initialDelaySeconds":5,"periodSeconds":10}` | Readiness probe. |
 | replicaCount | int | `1` | Number of controller replicas (only one is active at a time via leader election). |
 | resources | object | `{}` | Pod resource requests/limits. |
+| revisionHistoryLimit | int | `10` | Number of old ReplicaSets to retain for rollback. |
 | securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsNonRoot":true,"runAsUser":65532}` | Container securityContext (no privilege escalation, read-only root filesystem, drops ALL capabilities). |
 | service.port | int | `8080` | Service port for general access. |
 | service.type | string | `"ClusterIP"` | Service type. |

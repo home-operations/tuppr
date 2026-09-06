@@ -54,6 +54,14 @@ tests:
           path: spec.replicas
           value: 3
 
+  - it: should set the revision history limit from values
+    set:
+      revisionHistoryLimit: 5
+    asserts:
+      - equal:
+          path: spec.revisionHistoryLimit
+          value: 5
+
   - it: should set security context
     asserts:
       - equal:

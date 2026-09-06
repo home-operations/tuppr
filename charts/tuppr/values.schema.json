@@ -515,6 +515,12 @@
       "title": "resources",
       "type": "object"
     },
+    "revisionHistoryLimit": {
+      "default": 10,
+      "description": "Number of old ReplicaSets to retain for rollback.",
+      "title": "revisionHistoryLimit",
+      "type": "integer"
+    },
     "securityContext": {
       "description": "Container securityContext (no privilege escalation, read-only root filesystem, drops ALL capabilities).",
       "properties": {
