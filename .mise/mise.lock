@@ -265,23 +265,23 @@ version = "0.66.0"
 backend = "npm:oxfmt"
 
 [[tools.setup-envtest]]
-version = "0.24.1"
+version = "0.25.0"
 backend = "aqua:kubernetes-sigs/controller-runtime/setup-envtest"
 
 [tools.setup-envtest."platforms.linux-arm64"]
-checksum = "sha256:c5d8968ec3f2a120b66bc13bd36f80fe4150c34aae7cc491bf9624c8680296c7"
-url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.24.1/setup-envtest-linux-arm64"
-url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/418514276"
+checksum = "sha256:a8e297b7cf36f6551fd2da8a6f3917e25decbd804007c08b9f6ae1ed308ee572"
+url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.25.0/setup-envtest-linux-arm64"
+url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/542938370"
 
 [tools.setup-envtest."platforms.linux-x64"]
-checksum = "sha256:a9a78fadfc338a38188332f36863c76877f1c86df1a83d2241d2bfc3935297d2"
-url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.24.1/setup-envtest-linux-amd64"
-url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/418514280"
+checksum = "sha256:c20be44bade1c38a8ead39f191acc35bbb50f2f2d796ba4f45c18c77e76029c7"
+url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.25.0/setup-envtest-linux-amd64"
+url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/542938364"
 
 [tools.setup-envtest."platforms.macos-arm64"]
-checksum = "sha256:7e59a0d526f6946aa2f114d34b2e309639c811f3a4f83d56f37b6e3197c6fdfb"
-url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.24.1/setup-envtest-darwin-arm64"
-url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/418514281"
+checksum = "sha256:5a9f3e5601a12a1c7ba429e1ba35ce5c54fef83c2551fe17b4121cb57f762a7d"
+url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.25.0/setup-envtest-darwin-arm64"
+url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/542938367"
 
 [[tools.shellcheck]]
 version = "0.11.0"
