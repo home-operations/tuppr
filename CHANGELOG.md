@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.5](https://github.com/home-operations/tuppr/compare/0.5.4...0.5.5) (2026-09-12)
+
+
+### Bug Fixes
+
+* **go:** update module github.com/onsi/ginkgo/v2 (v2.32.1 → v2.32.2) ([#565](https://github.com/home-operations/tuppr/issues/565)) ([d11a61c](https://github.com/home-operations/tuppr/commit/d11a61cc5c293c7d4555da8d9de3ccbc69b49f07))
+
+
+### Miscellaneous Chores
+
+* **mise:** update mise tools ([#567](https://github.com/home-operations/tuppr/issues/567)) ([2121455](https://github.com/home-operations/tuppr/commit/2121455053c20d677326f1f87798ded3f2d9f73e))
+* **mise:** update tool aqua:astral-sh/uv (0.12.9 → 0.12.10) ([#563](https://github.com/home-operations/tuppr/issues/563)) ([33fa14a](https://github.com/home-operations/tuppr/commit/33fa14a13eff6db2407101b7ce10d311014a0ed3))
+* **mise:** update tool go:golang.org/x/vuln/cmd/govulncheck (1.7.0 → v1.8.0) ([#564](https://github.com/home-operations/tuppr/issues/564)) ([a852d87](https://github.com/home-operations/tuppr/commit/a852d87d7c7a970bb4e1da0ee20e537201ca3098))
+* **mise:** update tool oxfmt (0.66.0 → 0.67.0) ([#566](https://github.com/home-operations/tuppr/issues/566)) ([2dec1b7](https://github.com/home-operations/tuppr/commit/2dec1b7349f51d9b6353f00f24a0e5f592f8ed6c))
+* **mise:** update tool setup-envtest (0.24.1 → 0.25.0) ([#561](https://github.com/home-operations/tuppr/issues/561)) ([25bef1a](https://github.com/home-operations/tuppr/commit/25bef1aeb471255ca3bf537fbf75df73ea795cc9))
+
 ## [0.5.4](https://github.com/home-operations/tuppr/compare/0.5.3...0.5.4) (2026-09-06)
 
 
