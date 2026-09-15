@@ -131,8 +131,8 @@ jobs:
         # one picks a single control plane node and runs one job there, so it
         # gets one leg rather than a shape sweep of its own.
         include:
-          # Every Talos leg boots the last 1.14 release candidate and upgrades
-          # it to the release: the same-minor step clusters take repeatedly.
+          # Every Talos leg boots the previous 1.14 patch release and upgrades
+          # it to the latest: the same-minor step clusters take repeatedly.
           # The action's floor is Talos 1.14, so nothing older can boot to
           # upgrade from.
           #
