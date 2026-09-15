@@ -179,6 +179,13 @@ controller:
   # both emit only errors.
   logLevel: info
 
+  # @schema
+  # type: string
+  # enum: [logfmt, json]
+  # @schema
+  # -- Controller log output format.
+  logFormat: logfmt
+
   leaderElection:
     # -- Enable leader election (recommended; only one controller is active at a time).
     enabled: true

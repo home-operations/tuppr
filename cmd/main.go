@@ -70,7 +70,7 @@ func main() {
 	var enableLeaderElection bool
 	var enableHTTP2 bool
 	var talosConfigSecret string
-	var logLevel string
+	var logLevel, logFormat string
 	var tlsOpts []func(*tls.Config)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8081", "The address the metrics endpoint binds to "+
@@ -93,6 +93,8 @@ func main() {
 		"The name of the Secret to store webhook certificates")
 	flag.StringVar(&logLevel, "log-level", "info",
 		"Log level for the controller (debug, info, warn, error)")
+	flag.StringVar(&logFormat, "log-format", "logfmt",
+		"Log output format (logfmt, json)")
 
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
@@ -102,12 +104,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	if err := applyLogFormat(&opts, logFormat); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
-	// Console (logfmt-style) output at every level; RFC3339 is what the
-	// flag-driven encoders would otherwise default to.
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts), zap.ConsoleEncoder(func(ec *zapcore.EncoderConfig) {
-		ec.EncodeTime = zapcore.RFC3339TimeEncoder
-	})))
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	// Get controller namespace from environment
 	controllerNamespace := os.Getenv("CONTROLLER_NAMESPACE")
@@ -168,6 +170,7 @@ func main() {
 		"version", version,
 		"commit", commit,
 		"logLevel", strings.ToLower(logLevel),
+		"logFormat", strings.ToLower(logFormat),
 		"namespace", controllerNamespace,
 		"talosConfigSecret", talosConfigSecret,
 		"leaderElection", enableLeaderElection,
@@ -399,5 +402,23 @@ func applyLogLevel(opts *zap.Options, level string) error {
 		return fmt.Errorf("invalid --log-level %q: must be one of debug, info, warn, error", level)
 	}
 	opts.Level = uberzap.NewAtomicLevelAt(lvl)
+	return nil
+}
+
+// applyLogFormat picks the encoder for --log-format. Setting Encoder directly
+// bypasses the flag-driven time encoder default, so RFC3339 is applied here.
+// --log-format takes precedence over --zap-encoder.
+func applyLogFormat(opts *zap.Options, format string) error {
+	rfc3339 := func(ec *zapcore.EncoderConfig) {
+		ec.EncodeTime = zapcore.RFC3339TimeEncoder
+	}
+	switch strings.ToLower(format) {
+	case "logfmt":
+		zap.ConsoleEncoder(rfc3339)(opts)
+	case "json":
+		zap.JSONEncoder(rfc3339)(opts)
+	default:
+		return fmt.Errorf("invalid --log-format %q: must be one of logfmt, json", format)
+	}
 	return nil
 }

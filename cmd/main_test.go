@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"go.uber.org/zap/zapcore"
@@ -45,6 +46,44 @@ func TestApplyLogLevel(t *testing.T) {
 			}
 			if opts.Level.Enabled(tt.wantMuted) {
 				t.Errorf("level %v should be muted", tt.wantMuted)
+			}
+		})
+	}
+}
+
+func TestApplyLogFormat(t *testing.T) {
+	tests := []struct {
+		name     string
+		format   string
+		wantErr  bool
+		wantJSON bool
+	}{
+		{name: "logfmt", format: "logfmt"},
+		{name: "json", format: "json", wantJSON: true},
+		{name: "case insensitive", format: "JSON", wantJSON: true},
+		{name: "unknown", format: "console", wantErr: true},
+		{name: "empty", format: "", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var opts zap.Options
+			err := applyLogFormat(&opts, tt.format)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("applyLogFormat(%q) = nil, want error", tt.format)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("applyLogFormat(%q) = %v", tt.format, err)
+			}
+			buf, err := opts.Encoder.EncodeEntry(zapcore.Entry{Level: zapcore.InfoLevel, Message: "hello"}, nil)
+			if err != nil {
+				t.Fatalf("EncodeEntry: %v", err)
+			}
+			line := buf.String()
+			if got := strings.HasPrefix(line, "{"); got != tt.wantJSON {
+				t.Fatalf("json output = %v, want %v: %q", got, tt.wantJSON, line)
 			}
 		})
 	}

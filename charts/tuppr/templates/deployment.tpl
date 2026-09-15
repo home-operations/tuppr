@@ -55,6 +55,7 @@ spec:
             - /manager
           args:
             - --log-level={{ .Values.controller.logLevel }}
+            - --log-format={{ .Values.controller.logFormat }}
             - --leader-elect={{ .Values.controller.leaderElection.enabled }}
             - --metrics-bind-address=:{{ .Values.controller.metrics.port }}
             - --talosconfig-secret={{ include "tuppr.serviceAccountName" . }}-talosconfig
