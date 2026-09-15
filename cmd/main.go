@@ -103,7 +103,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	// Console (logfmt-style) output at every level; RFC3339 is what the
+	// flag-driven encoders would otherwise default to.
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts), zap.ConsoleEncoder(func(ec *zapcore.EncoderConfig) {
+		ec.EncodeTime = zapcore.RFC3339TimeEncoder
+	})))
 
 	// Get controller namespace from environment
 	controllerNamespace := os.Getenv("CONTROLLER_NAMESPACE")
@@ -371,10 +375,9 @@ func main() {
 	}
 }
 
-// applyLogLevel maps the --log-level flag onto the zap options. "debug" keeps
-// the development preset (console encoder, stack traces from warn) rather than
-// only lowering the level, so its output format matches what the chart default
-// produces. --log-level takes precedence over --zap-log-level.
+// applyLogLevel maps the --log-level flag onto the zap options. "debug" also
+// enables the development preset (verbose object encoding, stack traces from
+// warn, no sampling). --log-level takes precedence over --zap-log-level.
 func applyLogLevel(opts *zap.Options, level string) error {
 	var lvl zapcore.Level
 	switch strings.ToLower(level) {
