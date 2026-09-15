@@ -60,11 +60,11 @@ func (r *Reconciler) prePullInstallerImages(ctx context.Context, talosUpgrade *t
 	for _, nodeName := range pendingNodes {
 		node := &corev1.Node{}
 		if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
-			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonPrePullFailed, fmt.Sprintf("get node %s for pre-pull", nodeName), time.Minute, err), true
+			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonPrePullFailed, "get node for pre-pull", time.Minute, err, "node", nodeName), true
 		}
 		targetImage, err := r.buildTalosUpgradeImage(ctx, talosUpgrade, nodeName)
 		if err != nil {
-			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonBuildTargetImage, fmt.Sprintf("build target image for node %s", nodeName), time.Minute, err), true
+			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonBuildTargetImage, "build target image", time.Minute, err, "node", nodeName), true
 		}
 		entry := tupprv1alpha1.PrePulledNode{NodeName: nodeName, NodeUID: node.UID, Image: targetImage}
 		if slices.Contains(talosUpgrade.Status.PrePulledNodes, entry) {
@@ -72,7 +72,7 @@ func (r *Reconciler) prePullInstallerImages(ctx context.Context, talosUpgrade *t
 		}
 		nodeIP, err := nodeutil.GetNodeIP(node)
 		if err != nil {
-			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonPrePullFailed, fmt.Sprintf("get node IP for %s", nodeName), time.Minute, err), true
+			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonPrePullFailed, "get node IP", time.Minute, err, "node", nodeName), true
 		}
 		toPull = append(toPull, prePullWork{entry: entry, nodeIP: nodeIP})
 	}
@@ -88,7 +88,7 @@ func (r *Reconciler) prePullInstallerImages(ctx context.Context, talosUpgrade *t
 	if f := talosUpgrade.Status.PrePullFailure; f != nil {
 		message = fmt.Sprintf("%s (attempt %d; last error: %s)", message, f.Attempts+1, f.LastError)
 	}
-	logger.Info("Starting installer image pre-pull", "count", len(toPull))
+	logger.Info("Starting installer image pre-pull", "nodeCount", len(toPull))
 	if err := r.setPendingWithReason(ctx, talosUpgrade, upgradeaudit.ReasonPrePulling, message); err != nil {
 		logger.Error(err, "Failed to update status for pre-pull")
 	}
@@ -97,14 +97,14 @@ func (r *Reconciler) prePullInstallerImages(ctx context.Context, talosUpgrade *t
 	for _, work := range toPull {
 		entry := work.entry
 
-		logger.V(1).Info("Pre-pulling installer image", "node", entry.NodeName, "image", entry.Image)
+		logger.V(1).Info("Pre-pulling installer image", "node", entry.NodeName, "targetImage", entry.Image)
 		pullCtx, cancel := context.WithTimeout(ctx, prePullTimeout)
 		err := r.TalosClient.PullImage(pullCtx, work.nodeIP, entry.Image)
 		cancel()
 
 		switch {
 		case err == nil:
-			logger.V(1).Info("Pre-pulled installer image", "node", entry.NodeName, "image", entry.Image)
+			logger.V(1).Info("Pre-pulled installer image", "node", entry.NodeName, "targetImage", entry.Image)
 			records = upsertPrePulledNode(records, entry)
 		case talos.IsUnimplementedError(err):
 			// Talos < v1.13 has no ImageService; the node upgrades as before,
@@ -117,7 +117,7 @@ func (r *Reconciler) prePullInstallerImages(ctx context.Context, talosUpgrade *t
 			}
 			records = upsertPrePulledNode(records, entry)
 		default:
-			logger.Error(err, "Failed to pre-pull installer image", "node", entry.NodeName, "image", entry.Image)
+			logger.Error(err, "Failed to pre-pull installer image", "node", entry.NodeName, "targetImage", entry.Image)
 			if r.Recorder != nil {
 				r.Recorder.Eventf(talosUpgrade, corev1.EventTypeWarning, "PrePullFailed",
 					"Failed to pre-pull image %s on node %s: %v", entry.Image, entry.NodeName, err)
@@ -141,7 +141,7 @@ func (r *Reconciler) prePullInstallerImages(ctx context.Context, talosUpgrade *t
 
 	r.recordPrePulledNodes(ctx, talosUpgrade, records)
 	r.clearPrePullFailure(ctx, talosUpgrade)
-	logger.Info("Installer image pre-pull complete", "count", len(toPull))
+	logger.Info("Installer image pre-pull complete", "nodeCount", len(toPull))
 	return ctrl.Result{}, false
 }
 

@@ -130,7 +130,7 @@ type Reconciler struct {
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Starting reconciliation", "talosupgrade", req.Name)
+	logger.V(1).Info("Starting reconciliation")
 
 	var talosUpgrade tupprv1alpha1.TalosUpgrade
 	if err := r.Get(ctx, client.ObjectKey{Name: req.Name}, &talosUpgrade); err != nil {
@@ -154,7 +154,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 func (r *Reconciler) cleanup(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Cleaning up TalosUpgrade", "name", talosUpgrade.Name)
+	logger.V(1).Info("Cleaning up TalosUpgrade")
 
 	r.clearOutdatedTaints(ctx, talosUpgrade)
 
@@ -170,16 +170,15 @@ func (r *Reconciler) cleanup(ctx context.Context, talosUpgrade *tupprv1alpha1.Ta
 	r.silenceWarnings.Delete(silenceWarningKey(talosUpgrade, "SilenceMaxDurationReached"))
 	r.silenceWarnings.Delete(silenceWarningKey(talosUpgrade, "SilencesNotConfigured"))
 
-	logger.V(1).Info("Removing finalizer", "name", talosUpgrade.Name, "finalizer", TalosUpgradeFinalizer)
+	logger.Info("Removing finalizer", "finalizer", TalosUpgradeFinalizer)
 	controllerutil.RemoveFinalizer(talosUpgrade, TalosUpgradeFinalizer)
 
 	if err := r.Update(ctx, talosUpgrade); err != nil {
-		logger.Error(err, "Failed to remove finalizer", "name", talosUpgrade.Name)
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("remove finalizer: %w", err)
 	}
 
 	r.MetricsReporter.CleanupUpgradeMetrics(metrics.UpgradeTypeTalos, talosUpgrade.Name)
-	logger.V(1).Info("Successfully cleaned up TalosUpgrade", "name", talosUpgrade.Name)
+	logger.V(1).Info("Successfully cleaned up TalosUpgrade")
 	return ctrl.Result{}, nil
 }
 
@@ -272,10 +271,11 @@ func (r *Reconciler) setPendingWithReason(ctx context.Context, talosUpgrade *tup
 
 // reportReconcileError logs the failure, writes a Pending status with the
 // given reason, and returns the requeue. The caller should `return result, nil`.
-// op is the failed operation (e.g. "find next nodes") for the log and message.
-func (r *Reconciler) reportReconcileError(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, reason, op string, requeue time.Duration, err error) ctrl.Result {
+// op is the failed operation (e.g. "find next nodes") for the log and message;
+// identifiers such as the node go in keysAndValues rather than in op.
+func (r *Reconciler) reportReconcileError(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, reason, op string, requeue time.Duration, err error, keysAndValues ...any) ctrl.Result {
 	logger := log.FromContext(ctx)
-	logger.Error(err, "Failed to "+op, "reason", reason)
+	logger.Error(err, "Failed to "+op, append([]any{"reason", reason}, keysAndValues...)...)
 	if setErr := r.setPendingWithReason(ctx, talosUpgrade, reason, fmt.Sprintf("Cannot %s: %s", op, err.Error())); setErr != nil {
 		logger.Error(setErr, "Failed to update status", "op", op)
 	}
@@ -326,6 +326,13 @@ func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, talosUpgrade *tupp
 	talosUpgrade.Status.CurrentNodes = currentNodes
 	talosUpgrade.Status.Message = message
 	talosUpgrade.Status.Conditions = conditions
+	if prevPhase != phase {
+		keysAndValues := []any{"from", prevPhase, "to", phase, "reason", reason, "message", message}
+		if currentNode != "" {
+			keysAndValues = append(keysAndValues, "node", currentNode)
+		}
+		log.FromContext(ctx).Info("Phase changed", keysAndValues...)
+	}
 	syncLocalAuditFields(&talosUpgrade.Status, updates)
 	r.recordPhaseTransition(talosUpgrade, prevPhase, phase)
 	r.emitPhaseEvent(talosUpgrade, prevPhase, phase, message)

@@ -6,14 +6,12 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/webhook/validation"
 )
-
-var kuberneteslog = logf.Log.WithName("kubernetes-resource")
 
 type Validator struct {
 	Client            client.Client
@@ -27,15 +25,17 @@ var _ admission.Validator[*tupprv1alpha1.KubernetesUpgrade] = &Validator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type
 func (v *Validator) ValidateCreate(ctx context.Context, k *tupprv1alpha1.KubernetesUpgrade) (admission.Warnings, error) {
-	kuberneteslog.Info("validate create", "name", k.Name, "namespace", k.Namespace, "version", k.Spec.Kubernetes.Version)
+	log.FromContext(ctx).V(1).Info("Validating create", "targetVersion", k.Spec.Kubernetes.Version)
 	return v.validate(ctx, k)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type
 func (v *Validator) ValidateUpdate(ctx context.Context, old, k *tupprv1alpha1.KubernetesUpgrade) (admission.Warnings, error) {
-	kuberneteslog.Info("validate update", "name", k.Name)
+	logger := log.FromContext(ctx)
+	logger.V(1).Info("Validating update", "targetVersion", k.Spec.Kubernetes.Version)
 
 	if err := validation.ValidateUpdateInProgress(old.Status.Conditions, old.Status.Phase, old.Spec, k.Spec); err != nil {
+		logger.Info("Rejected KubernetesUpgrade", "targetVersion", k.Spec.Kubernetes.Version, "reason", err.Error())
 		return nil, err
 	}
 	return v.validate(ctx, k)
@@ -51,8 +51,17 @@ func (v *Validator) ValidateDelete(ctx context.Context, k *tupprv1alpha1.Kuberne
 	return nil, nil
 }
 
-func (v *Validator) validate(ctx context.Context, k *tupprv1alpha1.KubernetesUpgrade) (admission.Warnings, error) {
-	var warnings admission.Warnings
+// validate logs the admission outcome itself: the apiserver only relays a
+// rejection to the caller, so it is the one decision worth an Info line.
+func (v *Validator) validate(ctx context.Context, k *tupprv1alpha1.KubernetesUpgrade) (warnings admission.Warnings, err error) {
+	logger := log.FromContext(ctx)
+	defer func() {
+		if err != nil {
+			logger.Info("Rejected KubernetesUpgrade", "targetVersion", k.Spec.Kubernetes.Version, "reason", err.Error())
+			return
+		}
+		logger.V(1).Info("KubernetesUpgrade validation successful", "targetVersion", k.Spec.Kubernetes.Version, "warningCount", len(warnings))
+	}()
 
 	list := &tupprv1alpha1.KubernetesUpgradeList{}
 	if err := validation.ValidateSingleton(ctx, v.Client, "KubernetesUpgrade", k.Name, list); err != nil {
@@ -89,7 +98,6 @@ func (v *Validator) validate(ctx context.Context, k *tupprv1alpha1.KubernetesUpg
 		k.Spec.Talosctl.Image.Tag,
 	)...)
 
-	kuberneteslog.Info("kubernetes upgrade validation successful", "name", k.Name, "version", k.Spec.Kubernetes.Version)
 	return warnings, nil
 }
 

@@ -10,14 +10,12 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/webhook/validation"
 )
-
-var taloslog = logf.Log.WithName("talos-resource")
 
 const rebootModeDefault = "default"
 
@@ -39,15 +37,17 @@ var _ admission.Validator[*tupprv1alpha1.TalosUpgrade] = &Validator{}
 
 // ValidateCreate implements admission.Validator so a webhook will be registered for the type
 func (v *Validator) ValidateCreate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
-	taloslog.Info("validate create", "name", t.Name, "version", t.Spec.Talos.Version, "talosConfigSecret", v.TalosConfigSecret)
+	log.FromContext(ctx).V(1).Info("Validating create", "targetVersion", t.Spec.Talos.Version)
 	return v.validate(ctx, t)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type
 func (v *Validator) ValidateUpdate(ctx context.Context, old, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
-	taloslog.Info("validate update", "name", t.Name)
+	logger := log.FromContext(ctx)
+	logger.V(1).Info("Validating update", "targetVersion", t.Spec.Talos.Version)
 
 	if err := validation.ValidateUpdateInProgress(old.Status.Conditions, old.Status.Phase, old.Spec, t.Spec); err != nil {
+		logger.Info("Rejected TalosUpgrade", "targetVersion", t.Spec.Talos.Version, "reason", err.Error())
 		return nil, err
 	}
 	return v.validate(ctx, t)
@@ -62,13 +62,22 @@ func (v *Validator) ValidateDelete(ctx context.Context, t *tupprv1alpha1.TalosUp
 	return nil, nil
 }
 
-func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
-	var warnings admission.Warnings
+// validate logs the admission outcome itself: the apiserver only relays a
+// rejection to the caller, so it is the one decision worth an Info line.
+func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (warnings admission.Warnings, err error) {
+	logger := log.FromContext(ctx)
+	defer func() {
+		if err != nil {
+			logger.Info("Rejected TalosUpgrade", "targetVersion", t.Spec.Talos.Version, "reason", err.Error())
+			return
+		}
+		logger.V(1).Info("TalosUpgrade validation successful", "targetVersion", t.Spec.Talos.Version, "warningCount", len(warnings))
+	}()
 
 	overlapWarnings, err := v.validateOverlaps(ctx, t)
 	if err != nil {
 		// We fail open if we can't check overlaps (e.g. API error), but log it
-		taloslog.Error(err, "failed to check for overlaps")
+		logger.Error(err, "Failed to check for overlaps")
 	} else {
 		warnings = append(warnings, overlapWarnings...)
 	}
@@ -137,7 +146,6 @@ func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade)
 		return warnings, err
 	}
 
-	taloslog.Info("talos plan validation successful", "name", t.Name, "version", t.Spec.Talos.Version)
 	return warnings, nil
 }
 
@@ -239,7 +247,7 @@ func (v *Validator) validateParallelism(ctx context.Context, t *tupprv1alpha1.Ta
 	matchingNodes, err := v.getMatchingNodes(ctx, t.Spec.NodeSelector)
 	if err != nil {
 		// Fail open if we can't count nodes
-		taloslog.Error(err, "failed to count matching nodes for parallelism validation")
+		log.FromContext(ctx).Error(err, "Failed to count matching nodes for parallelism validation")
 		return nil, nil
 	}
 

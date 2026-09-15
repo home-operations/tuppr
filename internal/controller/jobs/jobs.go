@@ -207,11 +207,12 @@ func FindActiveJobByLabel(ctx context.Context, c client.Client, namespace, appNa
 	return &jobs[0], nil
 }
 
-// DeleteJob deletes a Job with foreground propagation.
+// DeleteJob deletes a Job with foreground propagation. A Job already gone
+// (TTL or garbage collection) is not an error.
 func DeleteJob(ctx context.Context, c client.Client, job *batchv1.Job) error {
-	return c.Delete(ctx, job, &client.DeleteOptions{
+	return client.IgnoreNotFound(c.Delete(ctx, job, &client.DeleteOptions{
 		PropagationPolicy: ptr.To(metav1.DeletePropagationForeground),
-	})
+	}))
 }
 
 // IsSucceeded returns true once at least one pod of the Job has succeeded.

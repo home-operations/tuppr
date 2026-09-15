@@ -120,7 +120,7 @@ func (r *Reconciler) syncAlertSilences(ctx context.Context, talosUpgrade *tupprv
 		)
 		switch {
 		case err != nil:
-			logger.V(1).Info("Failed to ensure Alertmanager silence", "index", i, "silenceID", id, "error", err)
+			logger.Error(err, "Failed to ensure Alertmanager silence", "index", i, "silenceID", id)
 			r.silenceEvent(talosUpgrade, corev1.EventTypeWarning, "SilenceEnsureFailed",
 				"Failed to create or extend Alertmanager silence for silences[%d]: %s", i, err)
 		case newID == "":
@@ -128,12 +128,14 @@ func (r *Reconciler) syncAlertSilences(ctx context.Context, talosUpgrade *tupprv
 			// silenceID. Keep the old ID so the expire path can still reach it.
 			logger.V(1).Info("Alertmanager returned no silence ID; keeping the previous one", "index", i, "silenceID", id)
 		case id == "":
+			logger.Info("Created Alertmanager silence", "index", i, "silenceID", newID)
 			r.silenceEvent(talosUpgrade, corev1.EventTypeNormal, "SilenceCreated",
 				"Alertmanager silence %s created for silences[%d]", newID, i)
 			newIDs[i] = newID
 		case newID != id:
 			// Alertmanager replaced the silence (expired, deleted, or matchers
 			// changed); surface the ID move so status stays auditable.
+			logger.Info("Recreated Alertmanager silence", "index", i, "silenceID", newID, "previousSilenceID", id)
 			r.silenceEvent(talosUpgrade, corev1.EventTypeNormal, "SilenceRecreated",
 				"Alertmanager silence %s replaced %s for silences[%d]", newID, id, i)
 			newIDs[i] = newID
@@ -168,10 +170,11 @@ func (r *Reconciler) expireSilence(ctx context.Context, talosUpgrade *tupprv1alp
 		return
 	}
 	if err := r.Silencer.Expire(ctx, id, silenceTail); err != nil {
-		log.FromContext(ctx).V(1).Info("Failed to expire Alertmanager silence; it lapses at its TTL", "silenceID", id, "error", err)
+		log.FromContext(ctx).Error(err, "Failed to expire Alertmanager silence; it lapses at its TTL", "silenceID", id)
 		r.silenceEvent(talosUpgrade, corev1.EventTypeWarning, "SilenceExpireFailed",
 			"Failed to expire Alertmanager silence %s (it lapses at its TTL): %s", id, err)
 	} else {
+		log.FromContext(ctx).Info("Expiring Alertmanager silence", "silenceID", id, "tail", silenceTail)
 		r.silenceEvent(talosUpgrade, corev1.EventTypeNormal, "SilenceExpired",
 			"Alertmanager silence %s expiring in %s", id, silenceTail)
 	}
@@ -203,7 +206,7 @@ func (r *Reconciler) patchSilenceIDs(ctx context.Context, talosUpgrade *tupprv1a
 		r.silenceWarnings.Delete(silenceWarningKey(talosUpgrade, "SilenceMaxDurationReached"))
 	}
 	if err := r.updateStatus(ctx, talosUpgrade, updates); err != nil {
-		log.FromContext(ctx).V(1).Info("Failed to persist Alertmanager silence IDs", "silenceIDs", ids, "error", err)
+		log.FromContext(ctx).Error(err, "Failed to persist Alertmanager silence IDs", "silenceIDs", ids)
 		return
 	}
 	talosUpgrade.Status.AlertSilenceIDs = ids

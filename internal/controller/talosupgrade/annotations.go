@@ -23,19 +23,13 @@ func (r *Reconciler) handleSuspendAnnotation(ctx context.Context, talosUpgrade *
 	}
 
 	logger := log.FromContext(ctx)
-	logger.Info("Suspend annotation found, controller is suspended",
-		"suspendValue", suspendValue,
-		"talosupgrade", talosUpgrade.Name)
+	logger.V(1).Info("Suspend annotation found, controller is suspended",
+		"suspendValue", suspendValue)
 
 	message := fmt.Sprintf("Controller suspended via annotation (value: %s) - remove annotation to resume", suspendValue)
 	if err := r.setPendingWithReason(ctx, talosUpgrade, upgradeaudit.ReasonSuspended, message); err != nil {
-		logger.Error(err, "Failed to update phase for suspension")
-		return true, err
+		return true, fmt.Errorf("update phase for suspension: %w", err)
 	}
-
-	logger.V(1).Info("Controller suspended, no further processing will occur",
-		"talosupgrade", talosUpgrade.Name,
-		"suspendValue", suspendValue)
 
 	return true, nil
 }
@@ -60,8 +54,7 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, talosUpgrade *tu
 
 	talosUpgrade.Annotations = newAnnotations
 	if err := r.Update(ctx, talosUpgrade); err != nil {
-		logger.Error(err, "Failed to remove reset annotation")
-		return false, err
+		return false, fmt.Errorf("remove reset annotation: %w", err)
 	}
 
 	if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", nil, "Reset requested via annotation", map[string]any{
@@ -75,8 +68,7 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, talosUpgrade *tu
 		statusPrePullFailure:   nil,
 		statusCompletionCycles: 0,
 	}); err != nil {
-		logger.Error(err, "Failed to reset status after annotation")
-		return false, err
+		return false, fmt.Errorf("reset status after annotation: %w", err)
 	}
 	talosUpgrade.Status.CompletionCycles = 0
 	resetRunProgress(&talosUpgrade.Status)

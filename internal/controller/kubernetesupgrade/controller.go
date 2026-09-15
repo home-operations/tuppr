@@ -106,7 +106,7 @@ type Reconciler struct {
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Starting KubernetesUpgrade reconciliation", "kubernetesupgrade", req.Name)
+	logger.V(1).Info("Starting reconciliation")
 
 	var kubernetesUpgrade tupprv1alpha1.KubernetesUpgrade
 	if err := r.Get(ctx, client.ObjectKey{Name: req.Name}, &kubernetesUpgrade); err != nil {
@@ -130,18 +130,17 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 func (r *Reconciler) cleanup(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Cleaning up KubernetesUpgrade", "name", kubernetesUpgrade.Name)
+	logger.V(1).Info("Cleaning up KubernetesUpgrade")
 
-	logger.V(1).Info("Removing finalizer", "name", kubernetesUpgrade.Name, "finalizer", KubernetesUpgradeFinalizer)
+	logger.V(1).Info("Removing finalizer", "finalizer", KubernetesUpgradeFinalizer)
 	controllerutil.RemoveFinalizer(kubernetesUpgrade, KubernetesUpgradeFinalizer)
 
 	if err := r.Update(ctx, kubernetesUpgrade); err != nil {
-		logger.Error(err, "Failed to remove finalizer", "name", kubernetesUpgrade.Name)
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("remove finalizer: %w", err)
 	}
 
 	r.MetricsReporter.CleanupUpgradeMetrics(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name)
-	logger.V(1).Info("Successfully cleaned up KubernetesUpgrade", "name", kubernetesUpgrade.Name)
+	logger.V(1).Info("Successfully cleaned up KubernetesUpgrade")
 	return ctrl.Result{}, nil
 }
 
@@ -198,6 +197,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *Reconciler) nodeToKubernetesUpgrades(ctx context.Context, _ client.Object) []reconcile.Request {
 	var list tupprv1alpha1.KubernetesUpgradeList
 	if err := r.List(ctx, &list); err != nil {
+		log.FromContext(ctx).Error(err, "Failed to list KubernetesUpgrades for node event")
 		return nil
 	}
 	requests := make([]reconcile.Request, 0, len(list.Items))
@@ -271,6 +271,13 @@ func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, kubernetesUpgrade 
 	kubernetesUpgrade.Status.Message = message
 	kubernetesUpgrade.Status.Conditions = conditions
 	syncLocalAuditFields(&kubernetesUpgrade.Status, updates)
+	if prevPhase != phase {
+		kv := []any{"from", prevPhase, "to", phase, "reason", reason, "message", message}
+		if controllerNode != "" {
+			kv = append(kv, "node", controllerNode)
+		}
+		log.FromContext(ctx).Info("Phase changed", kv...)
+	}
 	r.recordPhaseTransition(kubernetesUpgrade, prevPhase, phase)
 	r.emitPhaseEvent(kubernetesUpgrade, prevPhase, phase, message)
 	if prog := meta.FindStatusCondition(conditions, tupprv1alpha1.ConditionTypeProgressing); prog != nil {

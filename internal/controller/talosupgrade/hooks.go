@@ -2,6 +2,7 @@ package talosupgrade
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -62,7 +63,7 @@ func (r *Reconciler) processHookPhase(ctx context.Context, tu *tupprv1alpha1.Tal
 
 	job, err := r.findActiveHookJob(ctx, tu, phase)
 	if err != nil {
-		logger.Error(err, "Failed to look up active hook job", "phase", phase)
+		logger.Error(err, "Failed to look up active hook job", "hookPhase", phase)
 		return ctrl.Result{RequeueAfter: time.Minute}, false, nil
 	}
 
@@ -113,7 +114,7 @@ func (r *Reconciler) startHookJob(ctx context.Context, tu *tupprv1alpha1.TalosUp
 	if err := r.Create(ctx, job); err != nil {
 		return ctrl.Result{}, false, fmt.Errorf("create hook job %s: %w", job.Name, err)
 	}
-	logger.Info("Started hook job", "phase", phase, "hook", hook.Name, "index", idx, "job", job.Name)
+	logger.Info("Started hook job", "hookPhase", phase, "hook", hook.Name, "index", idx, "job", job.Name)
 
 	parentPhase := tupprv1alpha1.JobPhasePreHook
 	if phase == hookPhasePost {
@@ -136,13 +137,17 @@ func (r *Reconciler) handleHookJobStatus(ctx context.Context, tu *tupprv1alpha1.
 	hookName := job.Labels[hookNameLabel]
 
 	if jobs.IsSucceeded(job) {
-		logger.Info("Hook job succeeded", "phase", phase, "hook", hookName, "index", idx, "job", job.Name)
+		logger.Info("Hook job succeeded", "hookPhase", phase, "hook", hookName, "index", idx, "job", job.Name)
 		r.MetricsReporter.RecordHookExecution(tu.Name, phase, hookName, "success")
 		if err := r.advanceHookIndex(ctx, tu, phase, idx+1); err != nil {
 			return ctrl.Result{}, false, err
 		}
 	} else {
-		logger.Info("Hook job failed", "phase", phase, "hook", hookName, "index", idx, "job", job.Name)
+		if phase == hookPhasePre {
+			logger.Error(errors.New("hook job failed"), "Hook job failed", "hookPhase", phase, "hook", hookName, "index", idx, "job", job.Name)
+		} else {
+			logger.Info("Hook job failed", "hookPhase", phase, "hook", hookName, "index", idx, "job", job.Name)
+		}
 		r.MetricsReporter.RecordHookExecution(tu.Name, phase, hookName, "failure")
 		if phase == hookPhasePre {
 			// Skip remaining pre-hooks; processHookPhase will report done so the

@@ -94,9 +94,11 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 		// state (verified below) decides the outcome, not the Job's exit status.
 		switch {
 		case jobs.IsSucceeded(&job):
+			logger.Info("Upgrade job succeeded", "job", job.Name, "node", nodeName)
 			succeededCount++
 			terminalJobs = append(terminalJobs, job)
 		case jobs.IsFailed(&job):
+			logger.Info("Upgrade job failed", "job", job.Name, "node", nodeName)
 			failedCount++
 			terminalJobs = append(terminalJobs, job)
 		default:
@@ -127,8 +129,7 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 		}
 
 		if err := r.setPhaseWithNodes(ctx, talosUpgrade, phase, activeNodes, message); err != nil {
-			logger.Error(err, "Failed to update phase for active batch")
-			return ctrl.Result{RequeueAfter: time.Second * 30}, err
+			return ctrl.Result{}, fmt.Errorf("update phase for active batch: %w", err)
 		}
 
 		r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeTalos, len(stillRunning))
@@ -148,7 +149,7 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 
 		result, failureMessage, err := r.processTerminalJob(ctx, talosUpgrade, job, nodeName, jobFailed)
 		if err != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{}, fmt.Errorf("process terminal job %s for node %s: %w", job.Name, nodeName, err)
 		}
 		switch result {
 		case jobResultRebooting:
@@ -201,8 +202,7 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 		message := fmt.Sprintf("Batch upgrade stopped: %d nodes failed - stopping", failedCount)
 
 		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseFailed, message); err != nil {
-			logger.Error(err, "Failed to update phase for batch failure")
-			return ctrl.Result{}, err
+			return ctrl.Result{}, fmt.Errorf("update phase for batch failure: %w", err)
 		}
 
 		r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeTalos, 0)
@@ -214,8 +214,7 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 	message := fmt.Sprintf("Batch completed successfully (%d total completed)", completedCount)
 
 	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, message); err != nil {
-		logger.Error(err, "Failed to update phase after batch completion")
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("update phase after batch completion: %w", err)
 	}
 
 	r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeTalos, 0)
@@ -269,7 +268,7 @@ func (r *Reconciler) processTerminalJob(
 		// apid returns PermissionDenied), and the node's true state only settles
 		// once it is back. Treat it as rebooting; the reboot deadline bounds the
 		// wait and fails the node with a clear message if it never returns.
-		logger.Info("Could not verify node yet, waiting for it to settle",
+		logger.V(1).Info("Could not verify node yet, waiting for it to settle",
 			"node", nodeName, "error", err.Error())
 		return jobResultRebooting, "", nil
 	}
@@ -336,8 +335,7 @@ func (r *Reconciler) completeNodeUpgrade(ctx context.Context, talosUpgrade *tupp
 	// entry is cleaned up as already-resolved on the next pass, but a node
 	// missing from both lists would vanish from durable status.
 	if err := r.addCompletedNode(ctx, talosUpgrade, nodeName); err != nil {
-		logger.Error(err, "Failed to add completed node", "node", nodeName)
-		return err
+		return fmt.Errorf("add completed node %s: %w", nodeName, err)
 	}
 
 	if err := r.clearRebootTracking(ctx, talosUpgrade, nodeName); err != nil {
@@ -380,7 +378,7 @@ func (r *Reconciler) ensureNodeUncordoned(ctx context.Context, talosUpgrade *tup
 // processSingleJobFailure handles a single failed job: cleanup labels, record failure.
 func (r *Reconciler) processSingleJobFailure(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, nodeName, lastError string) error {
 	logger := log.FromContext(ctx)
-	logger.Info("Node upgrade failed", "node", nodeName, "error", lastError)
+	logger.Error(errors.New(lastError), "Node upgrade failed", "node", nodeName)
 
 	if err := r.removeNodeUpgradingLabel(ctx, nodeName); err != nil {
 		logger.Error(err, "Failed to remove upgrading label from node", "node", nodeName)
@@ -392,8 +390,7 @@ func (r *Reconciler) processSingleJobFailure(ctx context.Context, talosUpgrade *
 	}
 
 	if err := r.addFailedNode(ctx, talosUpgrade, nodeStatus); err != nil {
-		logger.Error(err, "Failed to add failed node", "node", nodeName)
-		return err
+		return fmt.Errorf("add failed node %s: %w", nodeName, err)
 	}
 
 	if err := r.clearRebootTracking(ctx, talosUpgrade, nodeName); err != nil {
@@ -439,43 +436,38 @@ func (r *Reconciler) createJob(ctx context.Context, talosUpgrade *tupprv1alpha1.
 
 	targetNode := &corev1.Node{}
 	if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, targetNode); err != nil {
-		logger.Error(err, "Failed to get target node", "node", nodeName)
-		return nil, err
+		return nil, fmt.Errorf("get node %s: %w", nodeName, err)
 	}
 
 	nodeIP, err := nodeutil.GetNodeIP(targetNode)
 	if err != nil {
-		logger.Error(err, "Failed to get InternalIP or ExternalIP", "node", nodeName)
-		return nil, err
+		return nil, fmt.Errorf("get IP for node %s: %w", nodeName, err)
 	}
 
 	endpointIP := r.pickEndpointIP(ctx, targetNode, nodeIP)
 
 	job := r.buildJob(ctx, talosUpgrade, nodeName, nodeIP, endpointIP, targetImage)
 	if err := controllerutil.SetControllerReference(talosUpgrade, job, r.Scheme); err != nil {
-		logger.Error(err, "Failed to set controller reference", "job", job.Name)
-		return nil, err
+		return nil, fmt.Errorf("set controller reference on job %s: %w", job.Name, err)
 	}
 
 	if err := r.Create(ctx, job); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			existingJob := &batchv1.Job{}
 			if getErr := r.Get(ctx, types.NamespacedName{Name: job.Name, Namespace: job.Namespace}, existingJob); getErr != nil {
-				logger.Error(getErr, "Failed to get existing job", "job", job.Name)
-				return nil, getErr
+				return nil, fmt.Errorf("get existing job %s: %w", job.Name, getErr)
 			}
 			logger.V(1).Info("Job already exists, reusing", "job", job.Name)
 			return existingJob, nil
 		}
-		logger.Error(err, "Failed to create job", "job", job.Name, "node", nodeName)
-		return nil, err
+		return nil, fmt.Errorf("create job %s for node %s: %w", job.Name, nodeName, err)
 	}
 
 	logger.Info("Successfully created upgrade job", "job", job.Name, "node", nodeName)
 	if r.Notifier != nil {
 		currentVersion, err := r.TalosClient.GetNodeVersion(ctx, nodeIP)
 		if err != nil {
-			logger.V(1).Info("Failed to determine current Talos version for notification", "error", err, "job", job.Name, "node", nodeName)
+			logger.Error(err, "Failed to determine current Talos version for notification", "job", job.Name, "node", nodeName)
 			currentVersion = ""
 		}
 		title, message, err := r.Renderer.Render(notification.EventData{
@@ -485,9 +477,9 @@ func (r *Reconciler) createJob(ctx context.Context, talosUpgrade *tupprv1alpha1.
 			Plan:           talosUpgrade.Name,
 		})
 		if err != nil {
-			logger.V(1).Info("Failed to render notification", "error", err, "job", job.Name, "node", nodeName)
+			logger.Error(err, "Failed to render notification", "job", job.Name, "node", nodeName)
 		} else if err := r.Notifier.Send(title, message); err != nil {
-			logger.V(1).Info("Failed to send start notification", "error", err, "job", job.Name, "node", nodeName)
+			logger.Error(err, "Failed to send start notification", "job", job.Name, "node", nodeName)
 		}
 	}
 	r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeTalos, 1)
@@ -565,7 +557,7 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 		} else {
 			talosctlTag = talosUpgrade.Spec.Talos.Version
 			logger.V(1).Info("Could not detect current version, using target version for talosctl",
-				"node", nodeName, "version", talosctlTag)
+				"node", nodeName, "targetVersion", talosctlTag)
 		}
 	}
 
@@ -711,7 +703,7 @@ func (r *Reconciler) pickEndpointIP(ctx context.Context, targetNode *corev1.Node
 	logger := log.FromContext(ctx)
 	cpNodes := &corev1.NodeList{}
 	if err := r.List(ctx, cpNodes, client.MatchingLabels{controlPlaneLabel: ""}); err != nil {
-		logger.V(1).Info("Failed to list control-plane nodes; omitting --endpoints", "error", err)
+		logger.Error(err, "Failed to list control-plane nodes; omitting --endpoints")
 		return ""
 	}
 

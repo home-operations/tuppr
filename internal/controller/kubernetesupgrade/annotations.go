@@ -22,20 +22,12 @@ func (r *Reconciler) handleSuspendAnnotation(ctx context.Context, kubernetesUpgr
 		return false, nil
 	}
 
-	logger := log.FromContext(ctx)
-	logger.Info("Suspend annotation found, controller is suspended",
-		"suspendValue", suspendValue,
-		"kubernetesupgrade", kubernetesUpgrade.Name)
+	log.FromContext(ctx).V(1).Info("Suspend annotation found, controller is suspended", "suspendValue", suspendValue)
 
 	message := fmt.Sprintf("Controller suspended via annotation (value: %s) - remove annotation to resume", suspendValue)
 	if err := r.setPendingWithReason(ctx, kubernetesUpgrade, upgradeaudit.ReasonSuspended, message); err != nil {
-		logger.Error(err, "Failed to update phase for suspension")
-		return true, err
+		return true, fmt.Errorf("set suspended phase: %w", err)
 	}
-
-	logger.V(1).Info("Controller suspended, no further processing will occur",
-		"kubernetesupgrade", kubernetesUpgrade.Name,
-		"suspendValue", suspendValue)
 
 	return true, nil
 }
@@ -60,8 +52,7 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, kubernetesUpgrad
 
 	kubernetesUpgrade.Annotations = newAnnotations
 	if err := r.Update(ctx, kubernetesUpgrade); err != nil {
-		logger.Error(err, "Failed to remove reset annotation")
-		return false, err
+		return false, fmt.Errorf("remove reset annotation: %w", err)
 	}
 
 	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "", "Reset requested via annotation", map[string]any{
@@ -70,8 +61,7 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, kubernetesUpgrad
 		statusFieldLastError:        "",
 		statusFieldCompletionCycles: 0,
 	}); err != nil {
-		logger.Error(err, "Failed to reset status after annotation")
-		return false, err
+		return false, fmt.Errorf("reset status after annotation: %w", err)
 	}
 	kubernetesUpgrade.Status.CompletionCycles = 0
 
@@ -87,7 +77,7 @@ func (r *Reconciler) handleGenerationChange(ctx context.Context, kubernetesUpgra
 	logger.Info("Spec generation changed, resetting Kubernetes upgrade process",
 		"generation", kubernetesUpgrade.Generation,
 		"observed", kubernetesUpgrade.Status.ObservedGeneration,
-		"newVersion", kubernetesUpgrade.Spec.Kubernetes.Version)
+		"targetVersion", kubernetesUpgrade.Spec.Kubernetes.Version)
 
 	message := fmt.Sprintf("Spec updated to %s, restarting upgrade process", kubernetesUpgrade.Spec.Kubernetes.Version)
 	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "", message, map[string]any{
