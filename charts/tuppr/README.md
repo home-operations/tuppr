@@ -43,7 +43,7 @@ Kubernetes: `>=1.25.0-0`
 |-----|------|---------|-------------|
 | affinity | object | `{}` | Affinity rules for pod scheduling. |
 | controller.leaderElection.enabled | bool | `true` | Enable leader election (recommended; only one controller is active at a time). |
-| controller.logLevel | string | `"debug"` | Controller log level: info or debug. |
+| controller.logLevel | string | `"debug"` | Controller log level. `debug` also switches to console-formatted output. tuppr never logs at warn, so `warn` and `error` both emit only errors. |
 | controller.metrics.annotations | object | `{}` | Annotations for the metrics Service. |
 | controller.metrics.port | int | `8081` | Operational port: /metrics plus the /healthz and /readyz probes (plain HTTP; always on — restrict with a NetworkPolicy rather than disabling). |
 | deploymentAnnotations | object | `{}` | Annotations added to the Deployment (e.g. for reloader). |

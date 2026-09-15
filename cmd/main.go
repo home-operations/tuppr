@@ -18,6 +18,8 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"github.com/open-policy-agent/cert-controller/pkg/rotator"
+	uberzap "go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -90,17 +92,15 @@ func main() {
 	flag.StringVar(&webhookSecretName, "webhook-secret-name", "",
 		"The name of the Secret to store webhook certificates")
 	flag.StringVar(&logLevel, "log-level", "info",
-		"Log level for the controller (debug, info)")
+		"Log level for the controller (debug, info, warn, error)")
 
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	switch strings.ToLower(logLevel) {
-	case "debug":
-		opts.Development = true
-	default:
-		opts.Development = false
+	if err := applyLogLevel(&opts, logLevel); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
@@ -369,4 +369,27 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+// applyLogLevel maps the --log-level flag onto the zap options. "debug" keeps
+// the development preset (console encoder, stack traces from warn) rather than
+// only lowering the level, so its output format matches what the chart default
+// produces. --log-level takes precedence over --zap-log-level.
+func applyLogLevel(opts *zap.Options, level string) error {
+	var lvl zapcore.Level
+	switch strings.ToLower(level) {
+	case "debug":
+		opts.Development = true
+		lvl = zapcore.DebugLevel
+	case "info":
+		lvl = zapcore.InfoLevel
+	case "warn":
+		lvl = zapcore.WarnLevel
+	case "error":
+		lvl = zapcore.ErrorLevel
+	default:
+		return fmt.Errorf("invalid --log-level %q: must be one of debug, info, warn, error", level)
+	}
+	opts.Level = uberzap.NewAtomicLevelAt(lvl)
+	return nil
 }
