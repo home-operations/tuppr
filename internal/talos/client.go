@@ -112,7 +112,6 @@ func NewClient(ctx context.Context, opts ...ClientOption) (*Client, error) {
 
 	talosClient, err := c.newClientFunc(ctx)
 	if err != nil {
-		logger.Error(err, "Failed to create Talos client")
 		return nil, fmt.Errorf("failed to create talos client: %w", err)
 	}
 	c.talos = talosClient
@@ -472,6 +471,7 @@ func (s *Client) executeWithRetry(ctx context.Context, operation func() error) e
 		if !IsTransientError(err) {
 			return err
 		}
+		log.FromContext(ctx).V(1).Info("Retrying Talos API call after transient error", "error", err)
 		if refreshErr := s.refreshTalosClient(ctx); refreshErr != nil {
 			return retry.ExpectedError(refreshErr)
 		}
@@ -545,7 +545,7 @@ func (s *Client) checkNodeReady(ctx context.Context, nodeIP string) error {
 
 	if _, err := s.talos.Version(checkCtx); err != nil {
 		if refreshErr := s.refreshTalosClient(ctx); refreshErr != nil {
-			return fmt.Errorf("API check failed and client refresh failed: %w", err)
+			return fmt.Errorf("API check failed (%v) and client refresh failed: %w", err, refreshErr)
 		}
 		return fmt.Errorf("API not ready: %w", err)
 	}

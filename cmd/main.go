@@ -18,6 +18,8 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"github.com/open-policy-agent/cert-controller/pkg/rotator"
+	uberzap "go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -68,7 +70,7 @@ func main() {
 	var enableLeaderElection bool
 	var enableHTTP2 bool
 	var talosConfigSecret string
-	var logLevel string
+	var logLevel, logFormat string
 	var tlsOpts []func(*tls.Config)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8081", "The address the metrics endpoint binds to "+
@@ -90,17 +92,21 @@ func main() {
 	flag.StringVar(&webhookSecretName, "webhook-secret-name", "",
 		"The name of the Secret to store webhook certificates")
 	flag.StringVar(&logLevel, "log-level", "info",
-		"Log level for the controller (debug, info)")
+		"Log level for the controller (debug, info, warn, error)")
+	flag.StringVar(&logFormat, "log-format", "logfmt",
+		"Log output format (logfmt, json)")
 
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	switch strings.ToLower(logLevel) {
-	case "debug":
-		opts.Development = true
-	default:
-		opts.Development = false
+	if err := applyLogLevel(&opts, logLevel); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := applyLogFormat(&opts, logFormat); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
@@ -128,8 +134,11 @@ func main() {
 	reporter.RecordBuildInfo(version, commit, goruntime.Version())
 	reporter.InitializeAtBoot()
 
-	notificationURL := os.Getenv("NOTIFICATION_URL")
-	notifier := notification.NewAppriseNotifier(notificationURL)
+	notifier, err := notification.NewAppriseNotifier(os.Getenv("NOTIFICATION_URL"))
+	if err != nil {
+		setupLog.Error(err, "invalid notification URL")
+		os.Exit(1)
+	}
 	notificationsEnabled := notifier != nil
 
 	notificationRenderer, err := notification.NewRenderer(
@@ -158,13 +167,16 @@ func main() {
 	}
 
 	setupLog.Info("Starting tuppr controller manager",
-		"talosconfig-secret", talosConfigSecret,
-		"controller-namespace", controllerNamespace)
-	if notificationsEnabled {
-		setupLog.Info("Notification configuration loaded",
-			"notifications_enabled", true,
-		)
-	}
+		"version", version,
+		"commit", commit,
+		"logLevel", strings.ToLower(logLevel),
+		"logFormat", strings.ToLower(logFormat),
+		"namespace", controllerNamespace,
+		"talosConfigSecret", talosConfigSecret,
+		"leaderElection", enableLeaderElection,
+		"http2", enableHTTP2,
+		"notifications", notificationsEnabled,
+		"alertmanager", silencer != nil)
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -173,7 +185,7 @@ func main() {
 	// - https://github.com/advisories/GHSA-qppj-fm5r-hxr3
 	// - https://github.com/advisories/GHSA-4374-p667-p6c8
 	disableHTTP2 := func(c *tls.Config) {
-		setupLog.Info("disabling http/2")
+		setupLog.V(1).Info("disabling http/2")
 		c.NextProtos = []string{"http/1.1"}
 	}
 
@@ -241,8 +253,8 @@ func main() {
 	certSetupFinished := make(chan struct{})
 	dnsName := fmt.Sprintf("%s.%s.svc", webhookServiceName, controllerNamespace)
 	setupLog.Info("setting up cert rotation",
-		"webhook-config", webhookConfigName,
-		"dns-name", dnsName,
+		"webhookConfig", webhookConfigName,
+		"dnsName", dnsName,
 		"secret", webhookSecretName,
 	)
 	if err := rotator.AddRotator(mgr, &rotator.CertRotator{
@@ -362,11 +374,51 @@ func main() {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
-	setupLog.Info("serving health and readiness probes on the metrics listener", "bind-address", metricsAddr)
+	setupLog.Info("serving health and readiness probes on the metrics listener", "bindAddress", metricsAddr)
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+// applyLogLevel maps the --log-level flag onto the zap options. "debug" also
+// enables the development preset (verbose object encoding, stack traces from
+// warn, no sampling). --log-level takes precedence over --zap-log-level.
+func applyLogLevel(opts *zap.Options, level string) error {
+	var lvl zapcore.Level
+	switch strings.ToLower(level) {
+	case "debug":
+		opts.Development = true
+		lvl = zapcore.DebugLevel
+	case "info":
+		lvl = zapcore.InfoLevel
+	case "warn":
+		lvl = zapcore.WarnLevel
+	case "error":
+		lvl = zapcore.ErrorLevel
+	default:
+		return fmt.Errorf("invalid --log-level %q: must be one of debug, info, warn, error", level)
+	}
+	opts.Level = uberzap.NewAtomicLevelAt(lvl)
+	return nil
+}
+
+// applyLogFormat picks the encoder for --log-format. Setting Encoder directly
+// bypasses the flag-driven time encoder default, so RFC3339 is applied here.
+// --log-format takes precedence over --zap-encoder.
+func applyLogFormat(opts *zap.Options, format string) error {
+	rfc3339 := func(ec *zapcore.EncoderConfig) {
+		ec.EncodeTime = zapcore.RFC3339TimeEncoder
+	}
+	switch strings.ToLower(format) {
+	case "logfmt":
+		zap.ConsoleEncoder(rfc3339)(opts)
+	case "json":
+		zap.JSONEncoder(rfc3339)(opts)
+	default:
+		return fmt.Errorf("invalid --log-format %q: must be one of logfmt, json", format)
+	}
+	return nil
 }

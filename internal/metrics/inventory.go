@@ -40,6 +40,7 @@ func (r *InventoryRefresher) Start(ctx context.Context) error {
 	// Block until the informer cache is ready; otherwise the first List races
 	// the sync and silently zeroes the inventory metrics.
 	if r.Cache != nil && !r.Cache.WaitForCacheSync(ctx) {
+		logger.Info("Informer cache did not sync; inventory metrics will not be reported")
 		return nil
 	}
 

@@ -2,7 +2,9 @@ package kubernetesupgrade
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -40,8 +42,7 @@ func (r *Reconciler) handleJobStatus(ctx context.Context, kubernetesUpgrade *tup
 		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseUpgrading, "", kubernetesUpgrade.Status.ControllerNode, message, map[string]any{
 			statusFieldJobName: job.Name,
 		}); err != nil {
-			logger.Error(err, "Failed to update phase for active job", "job", job.Name)
-			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+			return ctrl.Result{}, fmt.Errorf("set Upgrading phase for active job %s: %w", job.Name, err)
 		}
 		logger.V(1).Info("Kubernetes upgrade job is still active", "job", job.Name)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
@@ -68,15 +69,14 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tu
 	}
 
 	if allUpgraded {
-		logger.Info("All control plane nodes at target version", "version", targetVersion)
+		logger.Info("All control plane nodes at target version", "targetVersion", targetVersion)
 		r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, nodeName, "success")
 		r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeKubernetes, 0)
 		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseCompleted, "", "", fmt.Sprintf("Cluster successfully upgraded to %s", targetVersion), map[string]any{
 			statusFieldCurrentVersion: targetVersion,
 			statusFieldTargetVersion:  targetVersion,
 		}); err != nil {
-			logger.Error(err, "Failed to update completion phase")
-			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
+			return ctrl.Result{}, fmt.Errorf("set Completed phase: %w", err)
 		}
 		return ctrl.Result{RequeueAfter: time.Hour}, nil
 	}
@@ -85,13 +85,12 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tu
 		logger.Error(err, "Failed to cleanup job, but continuing", "job", job.Name)
 	}
 
-	logger.Info("Node upgraded, continuing to next control plane node", "version", targetVersion)
+	logger.Info("Node upgraded, continuing to next control plane node", "node", nodeName, "targetVersion", targetVersion)
 	message := fmt.Sprintf("Upgrading Kubernetes to %s, continuing to next node", targetVersion)
 	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseUpgrading, "", "", message, map[string]any{
 		statusFieldJobName: "",
 	}); err != nil {
-		logger.Error(err, "Failed to update status after partial upgrade")
-		return ctrl.Result{RequeueAfter: time.Minute * 5}, err
+		return ctrl.Result{}, fmt.Errorf("set Upgrading phase after node %s: %w", nodeName, err)
 	}
 	r.MetricsReporter.EndJobTiming(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, nodeName, "success")
 	r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeKubernetes, 0)
@@ -101,15 +100,15 @@ func (r *Reconciler) handleJobSuccess(ctx context.Context, kubernetesUpgrade *tu
 
 func (r *Reconciler) handleJobFailure(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade, job *batchv1.Job) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Kubernetes upgrade job failed", "job", job.Name)
-
 	nodeName := job.Labels[targetNodeLabelKey]
+	logger.Error(errors.New("job failed permanently"), "Kubernetes upgrade job failed",
+		"job", job.Name, "node", nodeName, "targetVersion", kubernetesUpgrade.Spec.Kubernetes.Version)
+
 	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseFailed, "", kubernetesUpgrade.Status.ControllerNode, "Kubernetes upgrade job failed permanently", map[string]any{
 		statusFieldLastError: "Job failed permanently",
 		statusFieldJobName:   job.Name,
 	}); err != nil {
-		logger.Error(err, "Failed to update failure status")
-		return ctrl.Result{RequeueAfter: time.Minute * 5}, err
+		return ctrl.Result{}, fmt.Errorf("set Failed phase for job %s: %w", job.Name, err)
 	}
 
 	if err := r.cleanupJob(ctx, job); err != nil {
@@ -138,7 +137,7 @@ func (r *Reconciler) createJob(ctx context.Context, kubernetesUpgrade *tupprv1al
 		return nil, fmt.Errorf("failed to set controller reference: %w", err)
 	}
 
-	logger.V(1).Info("Creating Kubernetes upgrade job", "job", job.Name, "controllerNode", controllerNode)
+	logger.V(1).Info("Creating Kubernetes upgrade job", "job", job.Name, "node", controllerNode)
 
 	if err := r.Create(ctx, job); err != nil {
 		return nil, fmt.Errorf("failed to create job: %w", err)
@@ -203,11 +202,15 @@ func (r *Reconciler) buildJob(ctx context.Context, kubernetesUpgrade *tupprv1alp
 		pullPolicy = kubernetesUpgrade.Spec.Talosctl.Image.PullPolicy
 	}
 
+	loggedEndpoint := endpoint
+	if u, err := url.Parse(endpoint); err == nil {
+		loggedEndpoint = u.Redacted()
+	}
 	logger.V(1).Info("Building Kubernetes upgrade job specification",
-		"controllerNode", controllerNode,
+		"node", controllerNode,
 		"talosctlImage", talosctlImage,
 		"pullPolicy", pullPolicy,
-		"args", args)
+		"endpoint", loggedEndpoint)
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{

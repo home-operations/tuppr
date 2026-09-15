@@ -2,6 +2,8 @@ package notification
 
 import (
 	"errors"
+	"fmt"
+	"net/url"
 	"strings"
 
 	apprise "github.com/unraid/apprise-go"
@@ -11,29 +13,25 @@ import (
 type AppriseNotifier struct {
 	url    string
 	sender *apprise.Apprise
-	addErr error
 }
 
-// NewAppriseNotifier constructs a notifier or returns nil when notifications are disabled.
-func NewAppriseNotifier(notificationURL string) Notifier {
+// NewAppriseNotifier constructs a notifier, or returns nil when notifications
+// are disabled. The URL is trimmed first: apprise-go trims it internally and
+// echoes the trimmed form in errors, which the redaction has to match.
+func NewAppriseNotifier(notificationURL string) (Notifier, error) {
+	notificationURL = strings.TrimSpace(notificationURL)
 	if notificationURL == "" {
-		return nil
+		return nil, nil
 	}
 
-	sender := apprise.New()
-
-	return &AppriseNotifier{
-		url:    notificationURL,
-		sender: sender,
-		addErr: sender.Add(notificationURL),
+	n := &AppriseNotifier{url: notificationURL, sender: apprise.New()}
+	if err := n.sender.Add(notificationURL); err != nil {
+		return nil, n.redact(err)
 	}
+	return n, nil
 }
 
 func (a *AppriseNotifier) Send(title, message string) error {
-	if a.addErr != nil {
-		return a.redact(a.addErr)
-	}
-
 	var opts []apprise.Option
 	if title != "" {
 		opts = append(opts, apprise.WithTitle(title))
@@ -45,11 +43,15 @@ func (a *AppriseNotifier) Send(title, message string) error {
 	return nil
 }
 
-// redact strips the credential-bearing target URL that apprise-go echoes in its
-// error text, so it can't reach logs.
+// redact strips credentials from apprise-go errors: the target error echoes the
+// configured URL, and a transport failure is a *url.Error carrying the resolved
+// API endpoint, which for most services embeds the token in its path.
 func (a *AppriseNotifier) redact(err error) error {
-	if a.url == "" {
-		return err
+	if target, ok := errors.AsType[*apprise.TargetError](err); ok {
+		err = target.Err
+	}
+	if urlErr, ok := errors.AsType[*url.Error](err); ok {
+		err = fmt.Errorf("%s request failed: %w", urlErr.Op, urlErr.Err)
 	}
 	return errors.New(strings.ReplaceAll(err.Error(), a.url, "<redacted-url>"))
 }

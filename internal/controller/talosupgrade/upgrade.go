@@ -37,10 +37,8 @@ const (
 )
 
 func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {
-	logger := log.FromContext(ctx).WithValues(
-		"talosupgrade", talosUpgrade.Name,
-		"generation", talosUpgrade.Generation,
-	)
+	logger := log.FromContext(ctx).WithValues("generation", talosUpgrade.Generation)
+	ctx = log.IntoContext(ctx, logger)
 
 	logger.V(1).Info("Starting upgrade processing")
 
@@ -81,10 +79,9 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 				"Node(s) never converged to %s after %d completion cycles; add the %s annotation or bump the spec to retry",
 				targetVersion, cycles, constants.ResetAnnotation,
 			)
-			logger.Info("Completion cycles exhausted, marking upgrade Failed", "target", targetVersion, "cycles", cycles)
+			logger.Info("Completion cycles exhausted, marking upgrade Failed", "targetVersion", targetVersion, "cycles", cycles)
 			if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseFailed, message); err != nil {
-				logger.Error(err, "Failed to set Failed phase after exhausting completion cycles")
-				return ctrl.Result{RequeueAfter: time.Minute}, err
+				return ctrl.Result{}, fmt.Errorf("set Failed phase after exhausting completion cycles: %w", err)
 			}
 			return ctrl.Result{RequeueAfter: time.Hour}, nil
 		}
@@ -100,8 +97,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 			statusPrePullFailure:   nil,
 			statusCompletionCycles: cycles + 1,
 		}); err != nil {
-			logger.Error(err, "Failed to re-enter Pending after completion")
-			return ctrl.Result{RequeueAfter: time.Minute}, err
+			return ctrl.Result{}, fmt.Errorf("re-enter Pending after completion: %w", err)
 		}
 		talosUpgrade.Status.CompletionCycles = cycles + 1
 		resetRunProgress(&talosUpgrade.Status)
@@ -137,8 +133,8 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 	}
 
 	if !talosUpgrade.Status.Phase.IsActive() {
-		if result, done, err := r.checkMaintenanceWindow(ctx, talosUpgrade); done {
-			return result, err
+		if result, done := r.checkMaintenanceWindow(ctx, talosUpgrade); done {
+			return result, nil
 		}
 		if result, done := r.checkCoordination(ctx, talosUpgrade); done {
 			return result, nil
@@ -148,7 +144,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 	if activeJobs, activeNodes, err := r.findActiveJobs(ctx, talosUpgrade); err != nil {
 		return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonFindActiveJobs, "list active upgrade jobs", time.Minute, err), nil
 	} else if len(activeJobs) > 0 {
-		logger.V(1).Info("Found active jobs, handling batch status", "count", len(activeJobs), "nodes", activeNodes)
+		logger.V(1).Info("Found active jobs, handling batch status", "nodeCount", len(activeJobs), "nodes", activeNodes)
 		return r.handleBatchJobStatus(ctx, talosUpgrade, activeJobs, activeNodes)
 	}
 
@@ -160,7 +156,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 
 	if len(talosUpgrade.Status.FailedNodes) > 0 {
 		logger.Info("Upgrade stopped due to failed nodes",
-			"failedNodes", len(talosUpgrade.Status.FailedNodes))
+			"failed", len(talosUpgrade.Status.FailedNodes))
 		return r.transitionToFinalize(ctx, talosUpgrade)
 	}
 
@@ -177,8 +173,7 @@ func (r *Reconciler) maybeEnterPreHook(ctx context.Context, talosUpgrade *tupprv
 		return ctrl.Result{}, false, nil
 	}
 	if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePreHook, "Running pre-upgrade hooks"); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to enter PreHook phase")
-		return ctrl.Result{RequeueAfter: time.Minute}, true, err
+		return ctrl.Result{}, true, fmt.Errorf("enter PreHook phase: %w", err)
 	}
 	return ctrl.Result{RequeueAfter: time.Second * 5}, true, nil
 }
@@ -186,11 +181,9 @@ func (r *Reconciler) maybeEnterPreHook(ctx context.Context, talosUpgrade *tupprv
 // transitionToFinalize routes to PostHook (if configured and not yet run) or
 // directly to the terminal phase via completeUpgrade.
 func (r *Reconciler) transitionToFinalize(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
 	if hasPostHooks(talosUpgrade) && talosUpgrade.Status.PostHookIndex < len(talosUpgrade.Spec.Hooks.Post) {
 		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePostHook, "Running post-hooks"); err != nil {
-			logger.Error(err, "Failed to transition to PostHook")
-			return ctrl.Result{RequeueAfter: time.Second * 30}, err
+			return ctrl.Result{}, fmt.Errorf("transition to PostHook: %w", err)
 		}
 		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
@@ -205,12 +198,12 @@ func hasPostHooks(tu *tupprv1alpha1.TalosUpgrade) bool {
 	return tu.Spec.Hooks != nil && len(tu.Spec.Hooks.Post) > 0
 }
 
-func (r *Reconciler) checkMaintenanceWindow(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, bool, error) {
+func (r *Reconciler) checkMaintenanceWindow(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, bool) {
 	logger := log.FromContext(ctx)
 
 	maintenanceRes, err := maintenance.CheckWindow(talosUpgrade.Spec.Maintenance, r.Now.Now())
 	if err != nil {
-		return ctrl.Result{RequeueAfter: time.Second * 30}, true, err
+		return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonCheckMaintenanceWindow, "evaluate maintenance window", 30*time.Second, err), true
 	}
 	if !maintenanceRes.Allowed {
 		requeueAfter := maintenanceRes.RequeueAfter(r.Now.Now())
@@ -222,10 +215,10 @@ func (r *Reconciler) checkMaintenanceWindow(ctx context.Context, talosUpgrade *t
 		}); err != nil {
 			logger.Error(err, "Failed to update status for maintenance window")
 		}
-		return ctrl.Result{RequeueAfter: requeueAfter}, true, nil
+		return ctrl.Result{RequeueAfter: requeueAfter}, true
 	}
 	r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, true, nil)
-	return ctrl.Result{}, false, nil
+	return ctrl.Result{}, false
 }
 
 func (r *Reconciler) checkCoordination(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, bool) {
@@ -236,7 +229,7 @@ func (r *Reconciler) checkCoordination(ctx context.Context, talosUpgrade *tupprv
 		return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonCheckCoordination, "check for other active upgrades", time.Minute, err), true
 	}
 	if blocked {
-		logger.Info("Waiting for another upgrade to complete", "reason", message)
+		logger.V(1).Info("Waiting for another upgrade to complete", "reason", message)
 		if err := r.setPendingWithReason(ctx, talosUpgrade, upgradeaudit.ReasonWaitingForOtherUpgrade, message); err != nil {
 			logger.Error(err, "Failed to update phase for coordination wait")
 		}
@@ -246,8 +239,6 @@ func (r *Reconciler) checkCoordination(ctx context.Context, talosUpgrade *tupprv
 }
 
 func (r *Reconciler) completeUpgrade(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
 	completedCount := len(talosUpgrade.Status.CompletedNodes)
 	failedCount := len(talosUpgrade.Status.FailedNodes)
 
@@ -257,20 +248,16 @@ func (r *Reconciler) completeUpgrade(ctx context.Context, talosUpgrade *tupprv1a
 	case talosUpgrade.Status.PreHookFailed:
 		phase = tupprv1alpha1.JobPhaseFailed
 		message = "Pre-upgrade hook failed; upgrade did not run"
-		logger.Info("Upgrade marked failed due to pre-hook failure")
 	case failedCount > 0:
 		phase = tupprv1alpha1.JobPhaseFailed
 		message = fmt.Sprintf("Completed with failures: %d successful, %d failed", completedCount, failedCount)
-		logger.Info("Upgrade completed with failures", "completed", completedCount, "failed", failedCount)
 	default:
 		phase = tupprv1alpha1.JobPhaseCompleted
 		message = fmt.Sprintf("Successfully upgraded %d nodes", completedCount)
-		logger.Info("Upgrade completed successfully", "nodes", completedCount)
 	}
 
 	if err := r.setPhase(ctx, talosUpgrade, phase, message); err != nil {
-		logger.Error(err, "Failed to update completion phase")
-		return ctrl.Result{RequeueAfter: time.Minute * 5}, err
+		return ctrl.Result{}, fmt.Errorf("update completion phase: %w", err)
 	}
 	return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 }
@@ -280,7 +267,7 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 
 	maintenanceRes, err := maintenance.CheckWindow(talosUpgrade.Spec.Maintenance, r.Now.Now())
 	if err != nil {
-		return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonCheckMaintenanceWindow, "evaluate maintenance window", 30*time.Second, err), err
+		return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonCheckMaintenanceWindow, "evaluate maintenance window", 30*time.Second, err), nil
 	}
 	if !maintenanceRes.Allowed {
 		requeueAfter := maintenanceRes.RequeueAfter(r.Now.Now())
@@ -356,7 +343,7 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 			logger.Error(err, "Failed to update phase for health check")
 		}
 		if checkErr != nil {
-			logger.Info("Waiting for health checks to pass", "error", checkErr.Error())
+			logger.V(1).Info("Waiting for health checks to pass", "error", checkErr.Error())
 			return ctrl.Result{RequeueAfter: time.Minute}, nil
 		}
 	}
@@ -370,8 +357,7 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	// Drain all nodes in batch before creating any jobs
 	if r.tupprOwnsDrain(ctx, talosUpgrade) {
 		if err := r.setPhaseWithNodes(ctx, talosUpgrade, tupprv1alpha1.JobPhaseDraining, nextNodes, fmt.Sprintf("Draining %d nodes", len(nextNodes))); err != nil {
-			logger.Error(err, "Failed to update phase for draining")
-			return ctrl.Result{RequeueAfter: time.Second * 30}, err
+			return ctrl.Result{}, fmt.Errorf("update phase for draining: %w", err)
 		}
 		var drainedNodes []string
 		for _, ni := range batch {
@@ -399,7 +385,7 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	// Create jobs for all nodes in batch
 	for _, ni := range batch {
 		if _, err := r.createJob(ctx, talosUpgrade, ni.nodeName, ni.image); err != nil {
-			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonCreateJob, fmt.Sprintf("create upgrade job for node %s", ni.nodeName), time.Minute, err), nil
+			return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonCreateJob, "create upgrade job", time.Minute, err, "node", ni.nodeName), nil
 		}
 
 		if err := r.addNodeUpgradingLabel(ctx, ni.nodeName); err != nil {
@@ -408,8 +394,7 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	}
 
 	if err := r.setPhaseWithNodes(ctx, talosUpgrade, tupprv1alpha1.JobPhaseUpgrading, nextNodes, fmt.Sprintf("Upgrading %d nodes", len(nextNodes))); err != nil {
-		logger.Error(err, "Failed to update phase for batch upgrade")
-		return ctrl.Result{RequeueAfter: time.Second * 30}, err
+		return ctrl.Result{}, fmt.Errorf("update phase for batch upgrade: %w", err)
 	}
 	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 }
@@ -430,12 +415,12 @@ func (r *Reconciler) buildBatchImages(ctx context.Context, talosUpgrade *tupprv1
 	for _, nodeName := range nextNodes {
 		targetImage, err := r.buildTalosUpgradeImage(ctx, talosUpgrade, nodeName)
 		if err != nil {
-			return nil, r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonBuildTargetImage, fmt.Sprintf("build target image for node %s", nodeName), time.Minute, err), true
+			return nil, r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonBuildTargetImage, "build target image", time.Minute, err, "node", nodeName), true
 		}
 
-		logger.V(1).Info("Verifying target image availability", "node", nodeName, "image", targetImage)
+		logger.V(1).Info("Verifying target image availability", "node", nodeName, "targetImage", targetImage)
 		if err := r.ImageChecker.Check(ctx, targetImage); err != nil {
-			logger.Info("Waiting for target image to become available", "node", nodeName, "image", targetImage, "error", err.Error())
+			logger.V(1).Info("Waiting for target image to become available", "node", nodeName, "targetImage", targetImage, "error", err.Error())
 			message := fmt.Sprintf("Waiting for image availability for node %s: %s", nodeName, err.Error())
 			if err := r.setPendingWithReason(ctx, talosUpgrade, upgradeaudit.ReasonWaitingForImage, message); err != nil {
 				logger.Error(err, "Failed to update phase while waiting for image")
@@ -565,7 +550,7 @@ func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpg
 // (e.g. a node stuck mid-reboot), not a reconcile error.
 func (r *Reconciler) findNextNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, count int) ([]string, []string, error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Finding next nodes to upgrade", "talosupgrade", talosUpgrade.Name, "count", count)
+	logger.V(1).Info("Finding next nodes to upgrade", "count", count)
 
 	nodes, err := r.getSortedNodes(ctx, talosUpgrade.Spec.NodeSelector)
 	if err != nil {
@@ -596,7 +581,7 @@ func (r *Reconciler) findNextNodes(ctx context.Context, talosUpgrade *tupprv1alp
 		needsUpgrade, err := r.nodeNeedsUpgrade(ctx, node, crdTargetVersion)
 		if err != nil {
 			if talos.IsTransientError(err) {
-				logger.Info("Node unreachable, cannot check version", "node", node.Name, "error", err.Error())
+				logger.V(1).Info("Node unreachable, cannot check version", "node", node.Name, "error", err.Error())
 				unreachable = append(unreachable, node.Name)
 				continue
 			}
@@ -676,8 +661,8 @@ func (r *Reconciler) nodeNeedsUpgrade(ctx context.Context, node *corev1.Node, cr
 	if currentVersion != targetVersion {
 		logger.V(1).Info("Node version mismatch detected",
 			"node", node.Name,
-			"current", currentVersion,
-			"target", targetVersion)
+			"currentVersion", currentVersion,
+			"targetVersion", targetVersion)
 		return true, nil
 	}
 
@@ -690,7 +675,7 @@ func (r *Reconciler) nodeNeedsUpgrade(ctx context.Context, node *corev1.Node, cr
 func (r *Reconciler) isSelfHostedUpgrade(ctx context.Context) bool {
 	count, err := r.getTotalNodeCount(ctx)
 	if err != nil {
-		log.FromContext(ctx).V(1).Info("Failed to count nodes; assuming multi-node", "error", err)
+		log.FromContext(ctx).Error(err, "Failed to count nodes; assuming multi-node")
 		return false
 	}
 	return count == 1
@@ -748,7 +733,7 @@ func (r *Reconciler) drainNode(ctx context.Context, nodeName string, drainSpec *
 		logger.Info("Waiting for volumes to detach before reboot", "node", nodeName, "count", len(volumePVs))
 		if err := drainer.WaitForVolumeDetach(ctx, nodeName, volumePVs, volumeDetachTimeout, volumeDetachPollInterval); err != nil {
 			// Best-effort: a slow detach shouldn't block the upgrade indefinitely.
-			logger.Error(err, "Volumes did not detach before timeout, proceeding with upgrade", "node", nodeName)
+			logger.Info("Volumes did not detach before timeout, proceeding with upgrade", "node", nodeName, "error", err.Error())
 		}
 	}
 
@@ -868,7 +853,7 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 	}
 
 	targetImage := fmt.Sprintf("%s:%s", repo, targetVersion)
-	logger.V(1).Info("Built target image", "node", nodeName, "targetImage", targetImage, "version", targetVersion)
+	logger.V(1).Info("Built target image", "node", nodeName, "targetImage", targetImage, "targetVersion", targetVersion)
 	return targetImage, nil
 }
 
@@ -932,7 +917,7 @@ func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv
 
 	logger.V(1).Info("Node upgrade verification successful",
 		"node", nodeName,
-		"version", currentVersion)
+		"currentVersion", currentVersion)
 	return true, nil
 }
 

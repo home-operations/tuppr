@@ -23,9 +23,25 @@
           "title": "leaderElection",
           "type": "object"
         },
+        "logFormat": {
+          "default": "logfmt",
+          "description": "Controller log output format.",
+          "enum": [
+            "logfmt",
+            "json"
+          ],
+          "title": "logFormat",
+          "type": "string"
+        },
         "logLevel": {
-          "default": "debug",
-          "description": "Controller log level: info or debug.",
+          "default": "info",
+          "description": "Controller log level. tuppr never logs at warn, so `warn` and `error`\nboth emit only errors.",
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ],
           "title": "logLevel",
           "type": "string"
         },

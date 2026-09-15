@@ -106,9 +106,13 @@ func (hc *Checker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
+	var lastErrors []error
 	for {
 		select {
 		case <-timeoutCtx.Done():
+			if len(lastErrors) > 0 {
+				return fmt.Errorf("health checks failed: exceeded maximum timeout of %v: %w", maxTimeout, errors.Join(lastErrors...))
+			}
 			return fmt.Errorf("health checks failed: exceeded maximum timeout of %v", maxTimeout)
 
 		case <-ticker.C:
@@ -118,6 +122,12 @@ func (hc *Checker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1
 			for i, check := range healthChecks {
 				passed, err := hc.evaluateExpression(timeoutCtx, check, programs[i])
 				if err != nil {
+					logger.V(1).Info("Health check evaluation failed",
+						"index", i,
+						"description", check.Description,
+						"apiVersion", check.APIVersion,
+						"kind", check.Kind,
+						"error", err)
 					checkErrors = append(checkErrors, fmt.Errorf("check %d evaluation error: %w", i, err))
 					allPassed = false
 
@@ -150,8 +160,9 @@ func (hc *Checker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1
 				}
 			}
 
+			lastErrors = checkErrors
 			if len(checkErrors) > 0 {
-				logger.V(1).Info("Some health checks had evaluation errors (will retry)", "errors", len(checkErrors))
+				logger.V(1).Info("Some health checks had evaluation errors (will retry)", "errorCount", len(checkErrors))
 				continue
 			}
 

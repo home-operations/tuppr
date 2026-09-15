@@ -22,23 +22,33 @@ import (
 )
 
 func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade) (ctrl.Result, error) {
-	logger := log.FromContext(ctx).WithValues(
-		"kubernetesupgrade", kubernetesUpgrade.Name,
-		"generation", kubernetesUpgrade.Generation,
-	)
+	logger := log.FromContext(ctx).WithValues("generation", kubernetesUpgrade.Generation)
+	ctx = log.IntoContext(ctx, logger)
 
-	logger.V(1).Info("Starting Kubernetes upgrade processing")
+	logger.V(1).Info("Starting upgrade processing")
 
-	if suspended, err := r.handleSuspendAnnotation(ctx, kubernetesUpgrade); err != nil || suspended {
-		return ctrl.Result{RequeueAfter: time.Minute * 30}, err
+	suspended, err := r.handleSuspendAnnotation(ctx, kubernetesUpgrade)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if suspended {
+		return ctrl.Result{RequeueAfter: time.Minute * 30}, nil
 	}
 
-	if resetRequested, err := r.handleResetAnnotation(ctx, kubernetesUpgrade); err != nil || resetRequested {
-		return ctrl.Result{RequeueAfter: time.Second * 30}, err
+	resetRequested, err := r.handleResetAnnotation(ctx, kubernetesUpgrade)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if resetRequested {
+		return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 	}
 
-	if reset, err := r.handleGenerationChange(ctx, kubernetesUpgrade); err != nil || reset {
-		return ctrl.Result{RequeueAfter: time.Second * 30}, err
+	reset, err := r.handleGenerationChange(ctx, kubernetesUpgrade)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if reset {
+		return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 	}
 
 	if kubernetesUpgrade.Status.Phase.IsTerminal() {
@@ -60,19 +70,17 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 				"Some nodes never converged to %s after %d completion cycles; add the %s annotation or bump the spec to retry",
 				targetVersion, cycles, constants.ResetAnnotation,
 			)
-			logger.Info("Completion cycles exhausted, marking upgrade Failed", "target", targetVersion, "cycles", cycles)
+			logger.Info("Completion cycles exhausted, marking upgrade Failed", "targetVersion", targetVersion, "cycles", cycles)
 			if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseFailed, "", message); err != nil {
-				logger.Error(err, "Failed to set Failed phase after exhausting completion cycles")
-				return ctrl.Result{RequeueAfter: time.Minute}, err
+				return ctrl.Result{}, fmt.Errorf("set Failed phase after exhausting completion cycles: %w", err)
 			}
 			return ctrl.Result{RequeueAfter: time.Hour}, nil
 		}
-		logger.Info("Node lagging target version, restarting campaign", "target", targetVersion, "cycle", cycles+1)
+		logger.Info("Node lagging target version, restarting campaign", "targetVersion", targetVersion, "cycle", cycles+1)
 		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "", "Node lagging target version, restarting upgrade", map[string]any{
 			statusFieldCompletionCycles: cycles + 1,
 		}); err != nil {
-			logger.Error(err, "Failed to re-enter Pending after completion")
-			return ctrl.Result{RequeueAfter: time.Minute}, err
+			return ctrl.Result{}, fmt.Errorf("re-enter Pending after completion: %w", err)
 		}
 		kubernetesUpgrade.Status.CompletionCycles = cycles + 1
 		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
@@ -96,13 +104,13 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 	targetVersion := kubernetesUpgrade.Spec.Kubernetes.Version
 
 	currentVersion, err := r.VersionGetter.GetCurrentKubernetesVersion(ctx)
-	if err == nil {
-		if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-			statusFieldCurrentVersion: currentVersion,
-			statusFieldTargetVersion:  targetVersion,
-		}); err != nil {
-			logger.Error(err, "Failed to update version status")
-		}
+	if err != nil {
+		logger.Error(err, "Failed to determine current Kubernetes version")
+	} else if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
+		statusFieldCurrentVersion: currentVersion,
+		statusFieldTargetVersion:  targetVersion,
+	}); err != nil {
+		logger.Error(err, "Failed to update version status")
 	}
 
 	allUpgraded, err := r.areAllNodesUpgraded(ctx, targetVersion)
@@ -111,7 +119,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 	}
 
 	if allUpgraded {
-		logger.V(1).Info("All nodes verified at target version", "version", targetVersion)
+		logger.V(1).Info("All nodes verified at target version", "targetVersion", targetVersion)
 
 		if !strings.HasPrefix(currentVersion, "v") {
 			currentVersion = "v" + currentVersion
@@ -125,8 +133,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 			statusFieldCurrentVersion: targetVersion,
 			statusFieldTargetVersion:  targetVersion,
 		}); err != nil {
-			logger.Error(err, "Failed to update completion phase")
-			return ctrl.Result{RequeueAfter: time.Minute * 5}, err
+			return ctrl.Result{}, fmt.Errorf("set Completed phase: %w", err)
 		}
 		return ctrl.Result{RequeueAfter: time.Hour}, nil
 	}
@@ -134,7 +141,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 	ctx = context.WithValue(ctx, metrics.ContextKeyUpgradeType, metrics.UpgradeTypeKubernetes)
 	ctx = context.WithValue(ctx, metrics.ContextKeyUpgradeName, kubernetesUpgrade.Name)
 
-	logger.Info("Kubernetes upgrade needed", "current", currentVersion, "target", targetVersion)
+	logger.V(1).Info("Kubernetes upgrade needed", "currentVersion", currentVersion, "targetVersion", targetVersion)
 
 	checkErr := r.runHealthChecks(ctx, kubernetesUpgrade)
 	message := "Running health checks"
@@ -145,7 +152,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 		logger.Error(err, "Failed to update phase for health check")
 	}
 	if checkErr != nil {
-		logger.Info("Waiting for health checks to pass", "error", checkErr.Error())
+		logger.V(1).Info("Waiting for health checks to pass", "error", checkErr.Error())
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
@@ -183,7 +190,7 @@ func (r *Reconciler) checkCoordination(ctx context.Context, kubernetesUpgrade *t
 		return r.reportReconcileError(ctx, kubernetesUpgrade, upgradeaudit.ReasonCheckCoordination, "check for other active upgrades", time.Minute, err), true
 	}
 	if blocked {
-		logger.Info("Waiting for another upgrade to complete", "reason", message)
+		logger.V(1).Info("Waiting for another upgrade to complete", "reason", message)
 		if err := r.setPendingWithReason(ctx, kubernetesUpgrade, upgradeaudit.ReasonWaitingForOtherUpgrade, message); err != nil {
 			logger.Error(err, "Failed to update phase for coordination wait")
 		}
@@ -198,32 +205,31 @@ func (r *Reconciler) startUpgrade(ctx context.Context, kubernetesUpgrade *tupprv
 	targetVersion := kubernetesUpgrade.Spec.Kubernetes.Version
 	controllerNode, controllerIP, err := r.findControllerNode(ctx, targetVersion)
 	if err != nil {
-		logger.Error(err, "Failed to find controller node")
+		logger.Error(err, "Failed to find controller node", "targetVersion", targetVersion)
 		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseFailed, "", fmt.Sprintf("Failed to find controller node: %s", err.Error())); err != nil {
 			logger.Error(err, "Failed to update phase for controller node failure")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
 
-	logger.Info("Starting Kubernetes upgrade", "controllerNode", controllerNode, "controllerIP", controllerIP)
+	logger.Info("Starting Kubernetes upgrade", "node", controllerNode, "controllerIP", controllerIP)
 
 	job, err := r.createJob(ctx, kubernetesUpgrade, controllerNode, controllerIP)
 	if err != nil {
-		logger.Error(err, "Failed to create Kubernetes upgrade job")
+		logger.Error(err, "Failed to create Kubernetes upgrade job", "node", controllerNode, "targetVersion", targetVersion)
 		if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseFailed, controllerNode, fmt.Sprintf("Failed to create job: %s", err.Error())); err != nil {
 			logger.Error(err, "Failed to update phase for job creation failure")
 		}
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
-	logger.Info("Successfully created Kubernetes upgrade job", "job", job.Name, "controllerNode", controllerNode)
+	logger.Info("Successfully created Kubernetes upgrade job", "job", job.Name, "node", controllerNode)
 
 	message := fmt.Sprintf("Upgrading Kubernetes to %s on controller node %s", kubernetesUpgrade.Spec.Kubernetes.Version, controllerNode)
 	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseUpgrading, "", controllerNode, message, map[string]any{
 		statusFieldJobName: job.Name,
 	}); err != nil {
-		logger.Error(err, "Failed to update status for job creation")
-		return ctrl.Result{RequeueAfter: time.Second * 30}, err
+		return ctrl.Result{}, fmt.Errorf("set Upgrading phase for job %s: %w", job.Name, err)
 	}
 
 	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
@@ -242,6 +248,7 @@ func (r *Reconciler) findControllerNode(ctx context.Context, targetVersion strin
 		}
 		nodeIP, err := nodeutil.GetNodeIP(&node)
 		if err != nil {
+			log.FromContext(ctx).V(1).Info("Skipping control plane node without an IP", "node", node.Name)
 			continue
 		}
 		if node.Status.NodeInfo.KubeletVersion != targetVersion {
@@ -277,8 +284,8 @@ func (r *Reconciler) areAllControlPlaneNodesUpgraded(ctx context.Context, target
 		if node.Status.NodeInfo.KubeletVersion != targetVersion {
 			log.FromContext(ctx).V(1).Info("Control plane node not yet upgraded",
 				"node", node.Name,
-				"current", node.Status.NodeInfo.KubeletVersion,
-				"target", targetVersion)
+				"currentVersion", node.Status.NodeInfo.KubeletVersion,
+				"targetVersion", targetVersion)
 			return false, nil
 		}
 	}
@@ -306,8 +313,8 @@ func (r *Reconciler) areAllNodesUpgraded(ctx context.Context, targetVersion stri
 		if current != targetVersion {
 			log.FromContext(ctx).V(1).Info("Node not yet upgraded",
 				"node", node.Name,
-				"current", current,
-				"target", targetVersion)
+				"currentVersion", current,
+				"targetVersion", targetVersion)
 			return false, nil
 		}
 	}

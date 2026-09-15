@@ -171,8 +171,20 @@ affinity: {}
 
 # Controller runtime configuration.
 controller:
-  # -- Controller log level: info or debug.
-  logLevel: debug # TODO: switch to info once there is a stable release
+  # @schema
+  # type: string
+  # enum: [debug, info, warn, error]
+  # @schema
+  # -- Controller log level. tuppr never logs at warn, so `warn` and `error`
+  # both emit only errors.
+  logLevel: info
+
+  # @schema
+  # type: string
+  # enum: [logfmt, json]
+  # @schema
+  # -- Controller log output format.
+  logFormat: logfmt
 
   leaderElection:
     # -- Enable leader election (recommended; only one controller is active at a time).
