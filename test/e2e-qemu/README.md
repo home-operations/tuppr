@@ -52,7 +52,7 @@ it:
 talosctl cluster create qemu \
     --name tuppr-e2e-1cp-0w \
     --controlplanes 1 --workers 0 \
-    --talos-version v1.14.0-rc.2 --kubernetes-version 1.34.0 \
+    --talos-version v1.14.0 --kubernetes-version 1.34.0 \
     --disks virtio:10GiB \
     --config-patch-controlplanes @patches/talos-api-access.yaml \
     --talosconfig-destination /tmp/tuppr-e2e/talosconfig

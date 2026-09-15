@@ -1,6 +1,6 @@
 ---
-# The Kubernetes-upgrade leg: rolls Kubernetes itself, so it boots the Talos
-# release rather than the release candidate the Talos legs upgrade from. Split
+# The Kubernetes-upgrade leg: rolls Kubernetes itself, so it boots the latest
+# Talos release rather than the prior one the Talos legs upgrade from. Split
 # from 1cp-1w.yaml for that version alone.
 # yaml-language-server: $schema=https://raw.githubusercontent.com/home-operations/talosctl-cluster-action/main/schema/talos-cluster.json
 # One of each, so a drained workload has somewhere else to land.
@@ -16,7 +16,7 @@ spec:
   workers:
     count: 1
   qemu:
-    talos-version: v1.14.0
+    talos-version: v1.14.1
     disks:
       - virtio:10GiB
   config-patches:
