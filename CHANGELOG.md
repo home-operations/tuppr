@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.6](https://github.com/home-operations/tuppr/compare/0.5.5...0.5.6) (2026-09-15)
+
+
+### Bug Fixes
+
+* **container:** update talos group (v1.14.0 → v1.14.1) ([#574](https://github.com/home-operations/tuppr/issues/574)) ([5941f66](https://github.com/home-operations/tuppr/commit/5941f665ad59882c7cf79c3f756866abf0b1b9d0))
+
+
+### Continuous Integration
+
+* **e2e:** boot Talos 1.14.0 and upgrade to 1.14.1 ([#572](https://github.com/home-operations/tuppr/issues/572)) ([3defbf4](https://github.com/home-operations/tuppr/commit/3defbf45028e69fd050e3432c22ae5dce6511794))
+
 ## [0.5.5](https://github.com/home-operations/tuppr/compare/0.5.4...0.5.5) (2026-09-15)
 
 
