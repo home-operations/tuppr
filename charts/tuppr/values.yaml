@@ -177,7 +177,7 @@ controller:
   # @schema
   # -- Controller log level. `debug` also switches to console-formatted output.
   # tuppr never logs at warn, so `warn` and `error` both emit only errors.
-  logLevel: debug # TODO: switch to info once there is a stable release
+  logLevel: info
 
   leaderElection:
     # -- Enable leader election (recommended; only one controller is active at a time).

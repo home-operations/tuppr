@@ -24,7 +24,7 @@
           "type": "object"
         },
         "logLevel": {
-          "default": "debug",
+          "default": "info",
           "description": "Controller log level. `debug` also switches to console-formatted output.\ntuppr never logs at warn, so `warn` and `error` both emit only errors.",
           "enum": [
             "debug",
