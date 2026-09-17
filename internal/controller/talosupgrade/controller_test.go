@@ -3177,6 +3177,32 @@ func TestTalosBuildTalosUpgradeImage_MovesVanillaGenericInstallerToFactory(t *te
 	}
 }
 
+func TestTalosBuildTalosUpgradeImage_DefaultSchematicTakesRuntimeSchematic(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer)
+	tu.Spec.Talos.Version = testV114Talos
+
+	node := newNode(fakeNodeA, testNodeIP1)
+
+	tc := &mockTalosClient{
+		installImages: map[string]string{testNodeIP1: "factory.example.com/metal-installer/" + constants.DefaultSchematic + ":v1.14.0"},
+		extensions:    map[string]talos.ExtensionInfo{testNodeIP1: {Schematic: testCustomSchematic}},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	image, err := r.buildTalosUpgradeImage(context.Background(), tu, fakeNodeA)
+	if err != nil {
+		t.Fatalf("default schematic install image should take the runtime schematic: %v", err)
+	}
+	expected := "factory.example.com/metal-installer/" + testCustomSchematic + ":" + testV114Talos
+	if image != expected {
+		t.Fatalf("expected %s, got %s", expected, image)
+	}
+}
+
 func TestTalosBuildTalosUpgradeImage_KeepsVanillaGenericInstallerBelow114(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade(testUpgradeName, withFinalizer)

@@ -836,6 +836,13 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 				return targetImage, nil
 			}
 		}
+		// Talos 1.14+ fills an unset install image with the empty schematic,
+		// which carries no extensions and so says nothing about the node.
+		if base, ok := strings.CutSuffix(repo, "/"+constants.DefaultSchematic); ok {
+			targetImage := fmt.Sprintf("%s/%s:%s", base, ext.Schematic, targetVersion)
+			logger.V(1).Info("Built target image from runtime metadata", "node", nodeName, "targetImage", targetImage, "schematic", ext.Schematic)
+			return targetImage, nil
+		}
 		return "", fmt.Errorf(
 			"node %s: install image %q does not embed the runtime schematic %s; reinstalling would wipe extensions. Fix .machine.install.image to a factory image, or set annotation %s",
 			nodeName, currentImage, ext.Schematic, constants.FactoryURLAnnotation)
