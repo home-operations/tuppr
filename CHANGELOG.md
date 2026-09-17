@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.6](https://github.com/home-operations/tuppr/compare/0.5.5...0.5.6) (2026-09-17)
+
+
+### Bug Fixes
+
+* **container:** update talos group (v1.14.0 → v1.14.1) ([#574](https://github.com/home-operations/tuppr/issues/574)) ([5941f66](https://github.com/home-operations/tuppr/commit/5941f665ad59882c7cf79c3f756866abf0b1b9d0))
+* **drain:** wait for evicted pods to terminate before upgrading ([#582](https://github.com/home-operations/tuppr/issues/582)) ([c40af30](https://github.com/home-operations/tuppr/commit/c40af3087f4337303cd14d6379d4b739e0eee81d))
+* **go:** update module github.com/go-sprout/sprout (v1.1.1 → v1.1.2) ([#578](https://github.com/home-operations/tuppr/issues/578)) ([646dc5b](https://github.com/home-operations/tuppr/commit/646dc5b443e43588ea70d24d7012c683d5d18190))
+* **image:** authenticate the registry availability check ([#583](https://github.com/home-operations/tuppr/issues/583)) ([fb99a52](https://github.com/home-operations/tuppr/commit/fb99a527af52506451875d0cc8ca01f500c65878))
+
+
+### Continuous Integration
+
+* **e2e:** boot Talos 1.14.0 and upgrade to 1.14.1 ([#572](https://github.com/home-operations/tuppr/issues/572)) ([3defbf4](https://github.com/home-operations/tuppr/commit/3defbf45028e69fd050e3432c22ae5dce6511794))
+
+
+### Miscellaneous Chores
+
+* **mise:** update tool lefthook (2.1.12 → 2.1.14) ([#580](https://github.com/home-operations/tuppr/issues/580)) ([416231a](https://github.com/home-operations/tuppr/commit/416231ab572253d7f18f5af03711045796c4b80e))
+* **mise:** update tool setup-envtest (0.25.0 → 0.25.1) ([#579](https://github.com/home-operations/tuppr/issues/579)) ([ad3cfda](https://github.com/home-operations/tuppr/commit/ad3cfdaf6c41579dfec3d0aa33ca08fc4336f198))
+
 ## [0.5.5](https://github.com/home-operations/tuppr/compare/0.5.4...0.5.5) (2026-09-15)
 
 
