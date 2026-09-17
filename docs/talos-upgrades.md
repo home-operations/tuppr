@@ -365,6 +365,34 @@ tuppr derives the image from each node's runtime state and
    the canonical generic installer would silently wipe installed system
    extensions.
 
+### Private registries
+
+Before each batch, the controller checks that the registry serves the node's
+target image. The node pulls the image with the registry credentials from its
+machine config, but that check runs in the controller pod, which can't read
+them. For a registry that rejects anonymous pulls, give the controller its own
+credentials: create a `kubernetes.io/dockerconfigjson` Secret in tuppr's
+namespace and mount it as a Docker config through the chart values. Without
+it, the upgrade stays `Pending` with reason `WaitingForImage` and an
+`UNAUTHORIZED` error.
+
+```yaml
+env:
+  - name: DOCKER_CONFIG
+    value: /var/run/secrets/registry
+volumes:
+  - name: registry-auth
+    secret:
+      secretName: my-registry-secret
+      items:
+        - key: .dockerconfigjson
+          path: config.json
+volumeMounts:
+  - name: registry-auth
+    mountPath: /var/run/secrets/registry
+    readOnly: true
+```
+
 ## talosctl image
 
 The upgrade Job's `talosctl` version is auto-detected. Pin it if needed:
