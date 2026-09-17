@@ -75,6 +75,10 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 			},
 			Spec: corev1.PodSpec{
 				NodeName: testDrainTestNode,
+				// envtest has no kubelet to finish a graceful deletion, so the
+				// pod must be deleted immediately on eviction or the drain's
+				// wait for it to terminate never completes.
+				TerminationGracePeriodSeconds: ptr.To(int64(0)),
 				Containers: []corev1.Container{
 					{
 						Name:  "test",

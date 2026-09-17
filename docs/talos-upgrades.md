@@ -171,9 +171,11 @@ spec:
     # disableEviction: false  # force delete instead of evicting
 ```
 
-tuppr cordons and drains a node before its reboot and uncordons it after a
-verified upgrade. Draining is skipped on single-node clusters (there is nowhere
-to drain to, and evicting the upgrade pod would strand the node).
+tuppr cordons the node, evicts its pods, and waits for them to terminate before
+the reboot, then uncordons the node after a verified upgrade. This also applies
+to a single-node cluster, where `talosctl`'s own drain is disabled: evicted pods
+stay Pending until the node is uncordoned. `policy.waitForVolumeDetach` on its
+own never drains a single node.
 
 ## Pre/post-upgrade hooks
 
