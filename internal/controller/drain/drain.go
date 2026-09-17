@@ -37,6 +37,10 @@ import (
 
 const daemonSetKind = "DaemonSet"
 
+// drainPollInterval is how often DrainNode re-checks the node for pods that
+// are still terminating after eviction.
+const drainPollInterval = 2 * time.Second
+
 // Drainer handles node drain operations
 type Drainer struct {
 	client  client.Client
@@ -105,24 +109,47 @@ type DrainOptions struct {
 	GracePeriod *int64
 }
 
-// DrainNode evicts all pods from a node
+// DrainNode evicts the node's evictable pods and waits until they, and any pod
+// that was already terminating, have left the node. Eviction only marks a pod
+// for deletion; without the wait a reboot could cut pods off mid-termination.
 func (d *Drainer) DrainNode(ctx context.Context, nodeName string, opts DrainOptions) error {
-	pods, err := d.getEvictablePods(ctx, nodeName)
+	ctx, cancel := context.WithTimeout(ctx, opts.Timeout)
+	defer cancel()
+
+	pods, err := d.nodePods(ctx, nodeName, isDrainManaged)
 	if err != nil {
 		return fmt.Errorf("failed to list pods: %w", err)
 	}
 
-	if len(pods) == 0 {
-		return nil
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, opts.Timeout)
-	defer cancel()
-
 	for _, pod := range pods {
+		if pod.DeletionTimestamp != nil {
+			continue
+		}
 		if err := d.evictPod(ctx, &pod, opts); err != nil {
 			return fmt.Errorf("failed to evict pod %s/%s: %w", pod.Namespace, pod.Name, err)
 		}
+	}
+
+	// Only the pods seen above are waited for, so a pod that lands on the
+	// cordoned node afterwards (a DaemonSet aside, only by bypassing the
+	// scheduler) can't hold the drain open.
+	pending := make(map[types.UID]struct{}, len(pods))
+	for _, pod := range pods {
+		pending[pod.UID] = struct{}{}
+	}
+	if err := wait.PollUntilContextCancel(ctx, drainPollInterval, true, func(ctx context.Context) (bool, error) {
+		remaining, err := d.nodePods(ctx, nodeName, isDrainManaged)
+		if err != nil {
+			return false, err
+		}
+		for _, pod := range remaining {
+			if _, ok := pending[pod.UID]; ok {
+				return false, nil
+			}
+		}
+		return true, nil
+	}); err != nil {
+		return fmt.Errorf("failed waiting for pods to terminate: %w", err)
 	}
 
 	return nil
@@ -130,6 +157,11 @@ func (d *Drainer) DrainNode(ctx context.Context, nodeName string, opts DrainOpti
 
 // getEvictablePods returns pods that should be evicted from the node
 func (d *Drainer) getEvictablePods(ctx context.Context, nodeName string) ([]corev1.Pod, error) {
+	return d.nodePods(ctx, nodeName, shouldEvictPod)
+}
+
+// nodePods returns the node's pods that pass keep, excluding the controller's own pod.
+func (d *Drainer) nodePods(ctx context.Context, nodeName string, keep func(*corev1.Pod) bool) ([]corev1.Pod, error) {
 	var podList corev1.PodList
 	if err := d.client.List(ctx, &podList, &client.ListOptions{
 		FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": nodeName}),
@@ -137,17 +169,17 @@ func (d *Drainer) getEvictablePods(ctx context.Context, nodeName string) ([]core
 		return nil, err
 	}
 
-	var evictable []corev1.Pod
+	var pods []corev1.Pod
 	for _, pod := range podList.Items {
 		if d.skipPod != nil && pod.Namespace == d.skipPod.Namespace && pod.Name == d.skipPod.Name {
 			continue
 		}
-		if shouldEvictPod(&pod) {
-			evictable = append(evictable, pod)
+		if keep(&pod) {
+			pods = append(pods, pod)
 		}
 	}
 
-	return evictable, nil
+	return pods, nil
 }
 
 // shouldEvictPod determines if a pod should be evicted
@@ -157,6 +189,12 @@ func shouldEvictPod(pod *corev1.Pod) bool {
 		return false
 	}
 
+	return isDrainManaged(pod)
+}
+
+// isDrainManaged reports whether drain is responsible for getting the pod off
+// the node. Terminating pods still count: they haven't left yet.
+func isDrainManaged(pod *corev1.Pod) bool {
 	// Skip completed/failed pods
 	if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
 		return false

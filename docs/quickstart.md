@@ -44,9 +44,10 @@ per-node overrides: [Talos upgrades](talos-upgrades.md).
 
 /// note | Single-node clusters
 With one node, the upgrade pod runs on the node being rebooted. tuppr handles
-this automatically (issues the upgrade with `--wait=false`, skips the drain, and
-tracks completion by polling node readiness over the Talos API), then uncordons
-the node once the upgrade is verified.
+this automatically (issues the upgrade with `--wait=false`, disables `talosctl`'s
+own drain, and tracks completion by polling node readiness over the Talos API),
+then uncordons the node once the upgrade is verified. Set `spec.drain.enabled`
+if you want the node's pods evicted and fully terminated before the reboot.
 ///
 
 ## Upgrade Kubernetes

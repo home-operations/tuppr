@@ -10,9 +10,11 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 const testDsName = "test-ds"
@@ -76,6 +78,7 @@ func newPod(name, namespace, nodeName string, phase corev1.PodPhase, ownerRefs [
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
 			Namespace:       namespace,
+			UID:             types.UID(namespace + "/" + name),
 			OwnerReferences: ownerRefs,
 			Annotations:     annotations,
 		},
@@ -427,6 +430,121 @@ func TestIsDrained(t *testing.T) {
 				t.Fatalf("IsDrained() = %v, want %v", result, tt.expected)
 			}
 		})
+	}
+}
+
+// terminatingPod carries a finalizer so the fake client keeps it around with a
+// DeletionTimestamp after eviction, like a real pod still shutting down.
+func terminatingPod(name, nodeName string) *corev1.Pod {
+	p := newPod(name, "default", nodeName, corev1.PodRunning, nil, nil)
+	p.Finalizers = []string{"test/keep"}
+	return p
+}
+
+func TestDrainNode(t *testing.T) {
+	scheme := newTestScheme()
+
+	tests := []struct {
+		name    string
+		pods    []*corev1.Pod
+		wantErr bool
+	}{
+		{
+			name: "no pods",
+		},
+		{
+			name: "evicts pods and returns once they are gone",
+			pods: []*corev1.Pod{
+				newPod("a", "default", "test-node", corev1.PodRunning, nil, nil),
+				newPod("b", "default", "test-node", corev1.PodRunning, nil, nil),
+			},
+		},
+		{
+			name: "daemonset pod is left alone",
+			pods: []*corev1.Pod{
+				newPod("ds-pod", "default", "test-node", corev1.PodRunning, []metav1.OwnerReference{
+					{Kind: daemonSetKind, Name: testDsName},
+				}, nil),
+			},
+		},
+		{
+			name:    "times out while a pod is still terminating",
+			pods:    []*corev1.Pod{terminatingPod("stuck", "test-node")},
+			wantErr: true,
+		},
+		{
+			name: "waits for a pod that was already terminating before the drain",
+			pods: func() []*corev1.Pod {
+				p := terminatingPod("stuck", "test-node")
+				p.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+				return []*corev1.Pod{p}
+			}(),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			objs := []client.Object{newNode("test-node", false)}
+			for _, p := range tt.pods {
+				objs = append(objs, p)
+			}
+			cl := nodeNameIndex(fake.NewClientBuilder().WithScheme(scheme)).WithObjects(objs...).Build()
+			drainer := NewDrainer(cl)
+
+			err := drainer.DrainNode(context.Background(), "test-node", DrainOptions{
+				RespectPDBs: true,
+				Timeout:     100 * time.Millisecond,
+			})
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("DrainNode() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+
+			var podList corev1.PodList
+			if err := cl.List(context.Background(), &podList); err != nil {
+				t.Fatalf("list pods: %v", err)
+			}
+			for _, pod := range podList.Items {
+				if !isDaemonSetPod(&pod) {
+					t.Fatalf("pod %s should have been evicted", pod.Name)
+				}
+			}
+		})
+	}
+}
+
+// A pod that lands on the node after eviction (a test recreating a fixture, or
+// anything pinned by nodeName) must not keep DrainNode waiting.
+func TestDrainNode_IgnoresPodArrivingAfterEviction(t *testing.T) {
+	scheme := newTestScheme()
+	late := newPod("late", "default", "test-node", corev1.PodRunning, nil, nil)
+
+	cl := nodeNameIndex(fake.NewClientBuilder().WithScheme(scheme)).
+		WithObjects(newNode("test-node", false), newPod("a", "default", "test-node", corev1.PodRunning, nil, nil)).
+		WithInterceptorFuncs(interceptor.Funcs{
+			SubResourceCreate: func(ctx context.Context, c client.Client, subResourceName string, obj client.Object, subResource client.Object, opts ...client.SubResourceCreateOption) error {
+				if err := c.SubResource(subResourceName).Create(ctx, obj, subResource, opts...); err != nil {
+					return err
+				}
+				return c.Create(ctx, late)
+			},
+		}).
+		Build()
+
+	err := NewDrainer(cl).DrainNode(context.Background(), "test-node", DrainOptions{
+		RespectPDBs: true,
+		Timeout:     100 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("DrainNode() error = %v", err)
+	}
+
+	var got corev1.Pod
+	if err := cl.Get(context.Background(), types.NamespacedName{Namespace: "default", Name: "late"}, &got); err != nil {
+		t.Fatalf("late pod should still exist: %v", err)
 	}
 }
 

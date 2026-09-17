@@ -684,7 +684,9 @@ func (r *Reconciler) isSelfHostedUpgrade(ctx context.Context) bool {
 // tupprOwnsDrain reports whether tuppr should drain the node itself before the
 // upgrade job (rather than delegating to Talos). True when the deprecated Drain
 // spec is enabled, or when Policy.WaitForVolumeDetach is set on a multi-node
-// cluster. Single-node clusters never drain (pods have nowhere to go).
+// cluster. WaitForVolumeDetach alone never drains a single node (pods have
+// nowhere to go); the Drain spec does, and evicted pods stay Pending until the
+// node is uncordoned after the upgrade.
 func (r *Reconciler) tupprOwnsDrain(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) bool {
 	if talosUpgrade.Spec.DrainEnabled() {
 		return true
