@@ -19,7 +19,7 @@ concurrency:
 jobs:
   versions:
     name: Versions
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     outputs:
@@ -77,7 +77,7 @@ jobs:
     name: Helm
     needs: release
     if: ${{ github.event_name == 'release' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       id-token: write
