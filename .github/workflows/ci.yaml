@@ -52,7 +52,7 @@ jobs:
       && !(startsWith(github.head_ref, 'release-please--')
       && github.event.pull_request.head.repo.full_name == github.repository) }}
     name: E2E Image
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     timeout-minutes: 20
@@ -74,13 +74,13 @@ jobs:
         run: echo "go=$(mise config get tools.go)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # load: true rather than a push: this job owns no registry, and one docker
       # save is what the legs get handed. One writer per scope now, so cache-to
       # is unconditional.
       - name: Build controller image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           load: true
@@ -112,7 +112,7 @@ jobs:
       && github.event.pull_request.head.repo.full_name == github.repository) }}
     name: Go E2E (${{ matrix.upgrade }} ${{ matrix.leg }})
     needs: e2e-image
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     timeout-minutes: 45
@@ -240,7 +240,7 @@ jobs:
       ${{ !(startsWith(github.head_ref, 'release-please--')
       && github.event.pull_request.head.repo.full_name == github.repository) }}
     name: Go Lint
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -285,7 +285,7 @@ jobs:
       ${{ !(startsWith(github.head_ref, 'release-please--')
       && github.event.pull_request.head.repo.full_name == github.repository) }}
     name: Go Test
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -325,7 +325,7 @@ jobs:
       ${{ !(startsWith(github.head_ref, 'release-please--')
       && github.event.pull_request.head.repo.full_name == github.repository) }}
     name: Go Vulncheck
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -348,7 +348,7 @@ jobs:
       ${{ !(startsWith(github.head_ref, 'release-please--')
       && github.event.pull_request.head.repo.full_name == github.repository) }}
     name: Helm Lint
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -371,7 +371,7 @@ jobs:
       ${{ !(startsWith(github.head_ref, 'release-please--')
       && github.event.pull_request.head.repo.full_name == github.repository) }}
     name: Helm Unittest
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -399,7 +399,7 @@ jobs:
       ${{ !(startsWith(github.head_ref, 'release-please--')
       && github.event.pull_request.head.repo.full_name == github.repository) }}
     name: Workflow Lint
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -420,7 +420,7 @@ jobs:
           echo "zizmor=$(mise config get tools.zizmor)" >> "$GITHUB_OUTPUT"
 
       - name: Lint workflows
-        uses: home-operations/.github/actions/workflow-lint@69cad1e407df8070dd9cfc3314551e473544014e # workflow-lint-v1.0.3
+        uses: home-operations/.github/actions/workflow-lint@1d6eebfd2066f2aa84939e573e56f60d8d2ed85f # workflow-lint-v1.0.4
         with:
           actionlint-version: ${{ steps.tools.outputs.actionlint }}
           zizmor-version: ${{ steps.tools.outputs.zizmor }}
@@ -438,7 +438,7 @@ jobs:
       - helm-lint
       - helm-unittest
       - workflow-lint
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions: {}
     steps:
       # cancelled counts as failed: !cancelled() above still runs this job when
