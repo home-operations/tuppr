@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.5.7](https://github.com/home-operations/tuppr/compare/0.5.6...0.5.7) (2026-09-20)
+
+
+### Features
+
+* **go:** update module github.com/onsi/ginkgo/v2 (v2.32.2 → v2.33.0) ([#588](https://github.com/home-operations/tuppr/issues/588)) ([21aab12](https://github.com/home-operations/tuppr/commit/21aab1253c04896b7f24c29aa04742eeb389e330))
+* **go:** update module google.golang.org/grpc (v1.83.2 → v1.84.0) ([#589](https://github.com/home-operations/tuppr/issues/589)) ([8200e63](https://github.com/home-operations/tuppr/commit/8200e63fd91cc200e318690a8609dd0f9a8b0a30))
+* **talos:** add policy.drainTimeout and stop double-draining with the Drain spec ([#595](https://github.com/home-operations/tuppr/issues/595)) ([d904a50](https://github.com/home-operations/tuppr/commit/d904a5071da1ccf59ff36a5fc4c7c15056b51576))
+
+
+### Bug Fixes
+
+* **go:** update module github.com/onsi/gomega (v1.43.0 → v1.43.1) ([#587](https://github.com/home-operations/tuppr/issues/587)) ([d12dbc1](https://github.com/home-operations/tuppr/commit/d12dbc179f1e6442d42d16780c42966397c10c5d))
+* **talos:** derive the upgrade image from the runtime schematic on the default installer ([#584](https://github.com/home-operations/tuppr/issues/584)) ([bc6db8b](https://github.com/home-operations/tuppr/commit/bc6db8b10fb07a4d4ba21d45be7e93ccaf0e34bd))
+
+
+### Continuous Integration
+
+* **github-action:** Update github-actions ([#593](https://github.com/home-operations/tuppr/issues/593)) ([58a6619](https://github.com/home-operations/tuppr/commit/58a6619080d564304cdf718795ddbfadacf3a505))
+
+
+### Miscellaneous Chores
+
+* **github-action:** update action docker/setup-buildx-action (v4.4.0 → v4.4.1) ([#594](https://github.com/home-operations/tuppr/issues/594)) ([951695c](https://github.com/home-operations/tuppr/commit/951695ce7facf35f5fe994e6c2363c3bcb275c9f))
+* **github-action:** update action ubuntu (24.04 → 26.04) ([#592](https://github.com/home-operations/tuppr/issues/592)) ([5974401](https://github.com/home-operations/tuppr/commit/597440192a8c39cb7e77b84244e29b9a98984ac0))
+* **github-action:** update github-actions ([#591](https://github.com/home-operations/tuppr/issues/591)) ([fcc0746](https://github.com/home-operations/tuppr/commit/fcc0746dea6eb0a06de2905d784ac750d68238af))
+* **mise:** update mise tools ([#590](https://github.com/home-operations/tuppr/issues/590)) ([ff7ac32](https://github.com/home-operations/tuppr/commit/ff7ac32da5f7ea28c40b2a444623448693262b8d))
+* **mise:** update tool oxfmt (0.67.0 → 0.68.0) ([#586](https://github.com/home-operations/tuppr/issues/586)) ([38718af](https://github.com/home-operations/tuppr/commit/38718afdd9ae2198d90f5961bbc59263d8fdbfb8))
+
 ## [0.5.6](https://github.com/home-operations/tuppr/compare/0.5.5...0.5.6) (2026-09-17)
 
 
