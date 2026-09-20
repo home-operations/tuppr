@@ -5016,6 +5016,13 @@ spec:
                     default: true
                     description: Debug enables debug mode for the upgrade
                     type: boolean
+                  drainTimeout:
+                    description: |-
+                      DrainTimeout bounds talosctl's own node drain (talosctl 1.13+); the upgrade
+                      fails without rebooting when the drain exceeds it. Unset keeps talosctl's
+                      default. Ignored when talosctl's drain is disabled.
+                    pattern: ^([0-9]+[smh])+$
+                    type: string
                   force:
                     default: false
                     description: Force the upgrade (skip checks on etcd health and

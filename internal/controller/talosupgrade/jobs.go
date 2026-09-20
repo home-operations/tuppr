@@ -589,13 +589,16 @@ func (r *Reconciler) buildJob(ctx context.Context, talosUpgrade *tupprv1alpha1.T
 		logger.V(1).Info("Debug upgrade enabled", "node", nodeName)
 	}
 
-	// Disable Talos's own drain when tuppr owns it (WaitForVolumeDetach), so the
-	// node isn't drained twice and tuppr's volume-detach wait gates the reboot.
+	// Disable Talos's own drain when tuppr owns it (Drain spec or
+	// WaitForVolumeDetach), so the node isn't drained twice and tuppr's
+	// volume-detach wait gates the reboot.
 	// --drain was added in talosctl v1.13; older versions have no built-in drain.
 	ver := parseTalosctlVersion(talosctlTag)
-	if (selfHosted || talosUpgrade.Spec.Policy.NoDrain || talosUpgrade.Spec.Policy.WaitForVolumeDetach) && ver.AtLeast(1, 13) {
+	if (selfHosted || talosUpgrade.Spec.Policy.NoDrain || talosUpgrade.Spec.DrainEnabled() || talosUpgrade.Spec.Policy.WaitForVolumeDetach) && ver.AtLeast(1, 13) {
 		args = append(args, "--drain=false")
 		logger.V(1).Info("Upgrade drain disabled", "node", nodeName)
+	} else if talosUpgrade.Spec.Policy.DrainTimeout != nil && ver.AtLeast(1, 13) {
+		args = append(args, "--drain-timeout="+talosUpgrade.Spec.Policy.DrainTimeout.Duration.String())
 	}
 
 	if talosUpgrade.Spec.Policy.Force {
