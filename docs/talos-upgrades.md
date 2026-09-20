@@ -79,6 +79,7 @@ Health checks are also available on [`KubernetesUpgrade`](kubernetes-upgrades.md
 | `rebootMode`          | `default` | `default`, or `powercycle` for nodes that don't reboot cleanly.                    |
 | `stage`               | `false`   | Stage the upgrade and apply it on the next reboot (two reboots total).             |
 | `waitForVolumeDetach` | `false`   | Drain and wait for CSI volumes to detach before the reboot (see below).            |
+| `drainTimeout`        | unset     | Timeout for `talosctl`'s own node drain (talosctl 1.13+, default 5m). If the drain exceeds it the upgrade fails without rebooting; raise it for nodes hosting several PDB-gated workloads. Keep it below `timeout`. |
 | `timeout`             | `30m`     | Per-node upgrade timeout, including how long a node may take to become ready after its reboot before being marked failed. |
 
 /// tip | waitForVolumeDetach
@@ -171,8 +172,17 @@ spec:
     # disableEviction: false  # force delete instead of evicting
 ```
 
+/// warning | Deprecated
+`spec.drain` is deprecated. `talosctl` 1.13+ drains the node itself as part of
+the upgrade (disable with `policy.nodrain`), and `policy.waitForVolumeDetach`
+covers the CSI detach case. Note that `disableEviction: true` deletes pods that
+a PodDisruptionBudget would protect, which can stall operators that expect an
+orderly eviction (e.g. a CloudNativePG primary switchover).
+///
+
 tuppr cordons the node, evicts its pods, and waits for them to terminate before
-the reboot, then uncordons the node after a verified upgrade. This also applies
+the reboot, then uncordons the node after a verified upgrade. While it is set,
+`talosctl`'s own drain is disabled so the node isn't drained twice. This also applies
 to a single-node cluster, where `talosctl`'s own drain is disabled: evicted pods
 stay Pending until the node is uncordoned. `policy.waitForVolumeDetach` on its
 own never drains a single node.

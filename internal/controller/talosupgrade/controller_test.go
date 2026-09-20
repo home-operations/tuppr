@@ -1765,6 +1765,27 @@ func TestTalosBuildJob_WaitFlagDependsOnClusterSize(t *testing.T) {
 		t.Fatalf("did not expect --drain=false on multi-node cluster, got: %v", multiArgs)
 	}
 
+	// The Drain spec makes tuppr drain the node itself, so talosctl must not drain again.
+	tuDrain := newTalosUpgrade(testUpgradeName, withFinalizer)
+	tuDrain.Spec.Drain = &tupprv1alpha1.DrainSpec{Enabled: true}
+	drainJob := rMulti.buildJob(context.Background(), tuDrain, fakeNodeA, testNodeIP1, testNodeIP1, targetImage)
+	drainArgs := drainJob.Spec.Template.Spec.Containers[0].Args
+	if !slices.Contains(drainArgs, "--drain=false") {
+		t.Fatalf("expected --drain=false when the Drain spec is enabled, got: %v", drainArgs)
+	}
+
+	// DrainTimeout passes through only while talosctl's drain is active.
+	tuDrain.Spec.Policy.DrainTimeout = &metav1.Duration{Duration: 15 * time.Minute}
+	drainArgs = rMulti.buildJob(context.Background(), tuDrain, fakeNodeA, testNodeIP1, testNodeIP1, targetImage).Spec.Template.Spec.Containers[0].Args
+	if slices.Contains(drainArgs, "--drain-timeout=15m0s") {
+		t.Fatalf("did not expect --drain-timeout with talosctl's drain disabled, got: %v", drainArgs)
+	}
+	tuDrain.Spec.Drain = nil
+	drainArgs = rMulti.buildJob(context.Background(), tuDrain, fakeNodeA, testNodeIP1, testNodeIP1, targetImage).Spec.Template.Spec.Containers[0].Args
+	if !slices.Contains(drainArgs, "--drain-timeout=15m0s") {
+		t.Fatalf("expected --drain-timeout=15m0s, got: %v", drainArgs)
+	}
+
 	singleCl := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(tu, newNode(fakeNodeA, testNodeIP1)).
 		WithStatusSubresource(tu).Build()

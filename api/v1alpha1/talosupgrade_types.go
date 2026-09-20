@@ -40,6 +40,14 @@ type PolicySpec struct {
 	// +optional
 	NoDrain bool `json:"nodrain,omitempty"`
 
+	// DrainTimeout bounds talosctl's own node drain (talosctl 1.13+); the upgrade
+	// fails without rebooting when the drain exceeds it. Unset keeps talosctl's
+	// default. Ignored when talosctl's drain is disabled.
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern=`^([0-9]+[smh])+$`
+	// +optional
+	DrainTimeout *metav1.Duration `json:"drainTimeout,omitempty"`
+
 	// WaitForVolumeDetach makes tuppr drain the node and wait for its CSI volumes to
 	// detach before the Talos reboot (upgrading with Talos drain disabled), avoiding a
 	// Multi-Attach error when a fast reboot orphans a mount. No-op on single-node.
