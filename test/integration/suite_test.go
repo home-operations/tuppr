@@ -11,6 +11,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -71,6 +72,17 @@ func getMockHealthChecker() *mockHealthChecker {
 
 func getMockVersionGetter() *mockVersionGetter {
 	return sharedMockVersion
+}
+
+// deleteAndWait blocks until the reconciler has cleared obj's finalizer. A
+// still-terminating upgrade is treated as in-progress by the coordinator, and
+// the resulting requeue outlives the next spec's Eventually window.
+func deleteAndWait(obj client.Object) {
+	GinkgoHelper()
+	Expect(k8sClient.Delete(ctx, obj)).To(Succeed())
+	Eventually(func() error {
+		return k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), obj)
+	}, 15*time.Second, 250*time.Millisecond).Should(MatchError(apierrors.IsNotFound, "IsNotFound"))
 }
 
 func TestIntegration(t *testing.T) {

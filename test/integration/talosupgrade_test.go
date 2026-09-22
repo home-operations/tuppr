@@ -90,7 +90,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 			}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
 
 			By("cleaning up")
-			Expect(k8sClient.Delete(ctx, talosUpgrade)).To(Succeed())
+			deleteAndWait(talosUpgrade)
 		})
 	})
 
@@ -117,7 +117,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 			}, 10*time.Second, 500*time.Millisecond).Should(Succeed())
 
 			By("cleaning up")
-			Expect(k8sClient.Delete(ctx, talosUpgrade)).To(Succeed())
+			deleteAndWait(talosUpgrade)
 		})
 	})
 
@@ -143,7 +143,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 			}, 10*time.Second, 500*time.Millisecond).Should(Succeed())
 
 			By("cleaning up")
-			Expect(k8sClient.Delete(ctx, talosUpgrade)).To(Succeed())
+			deleteAndWait(talosUpgrade)
 
 			By("verifying resource is eventually deleted")
 			Eventually(func() bool {
@@ -254,7 +254,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 			By("cleaning up")
-			Expect(k8sClient.Delete(ctx, talosUpgrade)).To(Succeed())
+			deleteAndWait(talosUpgrade)
 		})
 	})
 
@@ -291,7 +291,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 			}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
 
 			By("cleaning up")
-			Expect(k8sClient.Delete(ctx, talosUpgrade)).To(Succeed())
+			deleteAndWait(talosUpgrade)
 		})
 
 		It("should remove upgrading label when job succeeds", func() {
@@ -347,7 +347,7 @@ var _ = Describe("TalosUpgrade Integration", func() {
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 			By("cleaning up")
-			Expect(k8sClient.Delete(ctx, talosUpgrade)).To(Succeed())
+			deleteAndWait(talosUpgrade)
 		})
 	})
 })

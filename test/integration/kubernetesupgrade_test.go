@@ -91,7 +91,7 @@ var _ = Describe("KubernetesUpgrade Integration", func() {
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 			By("cleaning up")
-			Expect(k8sClient.Delete(ctx, k8sUpgrade)).To(Succeed())
+			deleteAndWait(k8sUpgrade)
 		})
 
 		It("should set phase to Failed when talosctl version detection fails", func() {
@@ -119,7 +119,7 @@ var _ = Describe("KubernetesUpgrade Integration", func() {
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 			By("cleaning up")
-			Expect(k8sClient.Delete(ctx, k8sUpgrade)).To(Succeed())
+			deleteAndWait(k8sUpgrade)
 		})
 	})
 
@@ -145,7 +145,7 @@ var _ = Describe("KubernetesUpgrade Integration", func() {
 			}, 10*time.Second, 500*time.Millisecond).Should(Succeed())
 
 			By("cleaning up")
-			Expect(k8sClient.Delete(ctx, k8sUpgrade)).To(Succeed())
+			deleteAndWait(k8sUpgrade)
 
 			By("verifying resource is eventually deleted")
 			Eventually(func() bool {
@@ -177,7 +177,7 @@ var _ = Describe("KubernetesUpgrade Integration", func() {
 			}, 10*time.Second, 500*time.Millisecond).Should(Succeed())
 
 			By("cleaning up")
-			Expect(k8sClient.Delete(ctx, k8sUpgrade)).To(Succeed())
+			deleteAndWait(k8sUpgrade)
 		})
 	})
 
@@ -207,7 +207,7 @@ var _ = Describe("KubernetesUpgrade Integration", func() {
 			}, 15*time.Second, 500*time.Millisecond).Should(Succeed())
 
 			By("cleaning up")
-			Expect(k8sClient.Delete(ctx, k8sUpgrade)).To(Succeed())
+			deleteAndWait(k8sUpgrade)
 		})
 	})
 })
