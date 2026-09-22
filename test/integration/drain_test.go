@@ -175,7 +175,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 			By("cleaning up")
-			Expect(k8sClient.Delete(ctx, talosUpgrade)).To(Succeed())
+			deleteAndWait(talosUpgrade)
 		})
 
 		It("should cordon and uncordon node during upgrade", func() {
@@ -240,7 +240,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 			By("cleaning up")
-			Expect(k8sClient.Delete(ctx, talosUpgrade)).To(Succeed())
+			deleteAndWait(talosUpgrade)
 		})
 
 		It("should respect disableEviction setting", func() {
@@ -277,7 +277,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 			By("cleaning up")
-			Expect(k8sClient.Delete(ctx, talosUpgrade)).To(Succeed())
+			deleteAndWait(talosUpgrade)
 		})
 	})
 
@@ -321,7 +321,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 			Expect(node.Spec.Unschedulable).To(BeFalse())
 
 			By("cleaning up")
-			Expect(k8sClient.Delete(ctx, talosUpgrade)).To(Succeed())
+			deleteAndWait(talosUpgrade)
 		})
 	})
 
@@ -386,7 +386,7 @@ var _ = Describe("TalosUpgrade Drain Integration", func() {
 
 			By("cleaning up")
 			_ = k8sClient.Delete(ctx, daemonSetPod)
-			Expect(k8sClient.Delete(ctx, talosUpgrade)).To(Succeed())
+			deleteAndWait(talosUpgrade)
 		})
 	})
 })
