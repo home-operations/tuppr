@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.5.8](https://github.com/home-operations/tuppr/compare/0.5.7...0.5.8) (2026-09-26)
+
+
+### Features
+
+* **go:** update module github.com/onsi/gomega (v1.43.1 → v1.44.0) ([#605](https://github.com/home-operations/tuppr/issues/605)) ([d8b4bf9](https://github.com/home-operations/tuppr/commit/d8b4bf917bcdedb066031c18aeb84856e45a72fb))
+
+
+### Bug Fixes
+
+* **container:** update image ghcr.io/siderolabs/kubelet (v1.37.0 → v1.37.1) ([#602](https://github.com/home-operations/tuppr/issues/602)) ([25196da](https://github.com/home-operations/tuppr/commit/25196da141b623acec7a422005e57a7c9312d174))
+* **go:** update kubernetes monorepo (v0.37.0 → v0.37.1) ([#601](https://github.com/home-operations/tuppr/issues/601)) ([71a0d9b](https://github.com/home-operations/tuppr/commit/71a0d9b7648809fc77b08c6da3cb92ded5765c21))
+* **go:** update module github.com/netresearch/go-cron (v0.16.0 → v0.16.1) ([#599](https://github.com/home-operations/tuppr/issues/599)) ([85fd7e6](https://github.com/home-operations/tuppr/commit/85fd7e650477f73af89b189ad7d25c6987eefd26))
+
+
+### Tests
+
+* **integration:** wait for upgrade CRs to be gone before the next spec ([#600](https://github.com/home-operations/tuppr/issues/600)) ([96258e1](https://github.com/home-operations/tuppr/commit/96258e16e4c97120449ff5b298478908367dbe00))
+
+
+### Miscellaneous Chores
+
+* **mise:** update tool aqua:astral-sh/uv (0.12.15 → 0.12.16) ([#596](https://github.com/home-operations/tuppr/issues/596)) ([e48e64b](https://github.com/home-operations/tuppr/commit/e48e64b3da106a1691f1389f48092b8664466a23))
+* **mise:** update tool aqua:astral-sh/uv (0.12.16 → 0.12.17) ([#598](https://github.com/home-operations/tuppr/issues/598)) ([9098bfd](https://github.com/home-operations/tuppr/commit/9098bfd239afafd0994c5bc9c1502b9407af17bb))
+* **mise:** update tool aqua:astral-sh/uv (0.12.17 → 0.12.18) ([#606](https://github.com/home-operations/tuppr/issues/606)) ([cfda587](https://github.com/home-operations/tuppr/commit/cfda5877a81280ce838551a527b546744ed0da54))
+* **mise:** update tool kubectl (1.37.0 → 1.37.1) ([#607](https://github.com/home-operations/tuppr/issues/607)) ([082aeb0](https://github.com/home-operations/tuppr/commit/082aeb08d33f013aa776a51c7a753d23924c206b))
+* **mise:** update tool oxfmt (0.68.0 → 0.69.0) ([#603](https://github.com/home-operations/tuppr/issues/603)) ([bc968c7](https://github.com/home-operations/tuppr/commit/bc968c7a356aa221383b767b8ef463e7c02fbca2))
+* **mise:** update tool oxfmt (0.69.0 → 0.70.0) ([#604](https://github.com/home-operations/tuppr/issues/604)) ([29cb6ad](https://github.com/home-operations/tuppr/commit/29cb6ad1518e1b110da1637d074b6ec7b7784987))
+
 ## [0.5.7](https://github.com/home-operations/tuppr/compare/0.5.6...0.5.7) (2026-09-20)
 
 
