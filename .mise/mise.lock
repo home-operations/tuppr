@@ -106,25 +106,25 @@ version = "1.8.0"
 backend = "go:golang.org/x/vuln/cmd/govulncheck"
 
 [[tools.golangci-lint]]
-version = "2.13.2"
+version = "2.14.0"
 backend = "aqua:golangci/golangci-lint"
 
 [tools.golangci-lint."platforms.linux-arm64"]
-checksum = "sha256:a2a4e0065aa41be71f7c5ac90f271b61751331e5d04314e62afe4027855f0893"
-url = "https://github.com/golangci/golangci-lint/releases/download/v2.13.2/golangci-lint-2.13.2-linux-arm64.tar.gz"
-url_api = "https://api.github.com/repos/golangci/golangci-lint/releases/assets/532995442"
+checksum = "sha256:ee7ec5f3453d15ddf106fae5a4d6c71737712348a979d1fe9cd52ec7ea299bae"
+url = "https://github.com/golangci/golangci-lint/releases/download/v2.14.0/golangci-lint-2.14.0-linux-arm64.tar.gz"
+url_api = "https://api.github.com/repos/golangci/golangci-lint/releases/assets/585813674"
 provenance = "github-attestations"
 
 [tools.golangci-lint."platforms.linux-x64"]
-checksum = "sha256:2277d43b98ec0054280f2ac26b53268bae97682444678a59a657dd565da021d6"
-url = "https://github.com/golangci/golangci-lint/releases/download/v2.13.2/golangci-lint-2.13.2-linux-amd64.tar.gz"
-url_api = "https://api.github.com/repos/golangci/golangci-lint/releases/assets/532995333"
+checksum = "sha256:ab90aeb7b066f92a33415b638a50fe5344bbb75a0d32ad30cc248d88f81032ab"
+url = "https://github.com/golangci/golangci-lint/releases/download/v2.14.0/golangci-lint-2.14.0-linux-amd64.tar.gz"
+url_api = "https://api.github.com/repos/golangci/golangci-lint/releases/assets/585813815"
 provenance = "github-attestations"
 
 [tools.golangci-lint."platforms.macos-arm64"]
-checksum = "sha256:f4bf83f0b64f055c42b28fc9a38861839f69c096e61c788e72dfaae412011789"
-url = "https://github.com/golangci/golangci-lint/releases/download/v2.13.2/golangci-lint-2.13.2-darwin-arm64.tar.gz"
-url_api = "https://api.github.com/repos/golangci/golangci-lint/releases/assets/532995398"
+checksum = "sha256:5ef5f36a7147e91dc58ef9ef4d11bb7bad5ead0c76eb6c01327a73c641d1dcc3"
+url = "https://github.com/golangci/golangci-lint/releases/download/v2.14.0/golangci-lint-2.14.0-darwin-arm64.tar.gz"
+url_api = "https://api.github.com/repos/golangci/golangci-lint/releases/assets/585813591"
 provenance = "github-attestations"
 
 [[tools.helm]]
