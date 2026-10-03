@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.5.8](https://github.com/home-operations/tuppr/compare/0.5.7...0.5.8) (2026-10-03)
+
+
+### Features
+
+* **go:** update module github.com/onsi/gomega (v1.43.1 → v1.44.0) ([#605](https://github.com/home-operations/tuppr/issues/605)) ([d8b4bf9](https://github.com/home-operations/tuppr/commit/d8b4bf917bcdedb066031c18aeb84856e45a72fb))
+
+
+### Bug Fixes
+
+* **container:** update image ghcr.io/siderolabs/kubelet (v1.37.0 → v1.37.1) ([#602](https://github.com/home-operations/tuppr/issues/602)) ([25196da](https://github.com/home-operations/tuppr/commit/25196da141b623acec7a422005e57a7c9312d174))
+* **container:** update image ghcr.io/siderolabs/talos (v1.14.1 → v1.14.2) ([#610](https://github.com/home-operations/tuppr/issues/610)) ([bd0f18d](https://github.com/home-operations/tuppr/commit/bd0f18de151c6d11bb239bf2f95015f11c65d017))
+* **go:** update kubernetes monorepo (v0.37.0 → v0.37.1) ([#601](https://github.com/home-operations/tuppr/issues/601)) ([71a0d9b](https://github.com/home-operations/tuppr/commit/71a0d9b7648809fc77b08c6da3cb92ded5765c21))
+* **go:** update module github.com/netresearch/go-cron (v0.16.0 → v0.16.1) ([#599](https://github.com/home-operations/tuppr/issues/599)) ([85fd7e6](https://github.com/home-operations/tuppr/commit/85fd7e650477f73af89b189ad7d25c6987eefd26))
+
+
+### Documentation
+
+* **agents:** point to the org AI Usage Policy instead of restating it ([5c3988e](https://github.com/home-operations/tuppr/commit/5c3988e3f864429a0b7501726739ada167fb06c9))
+* **agents:** update AI usage policy summary ([e4ecd11](https://github.com/home-operations/tuppr/commit/e4ecd1171153b302bdc84066f7ac9434f9ae3b22))
+
+
+### Tests
+
+* **integration:** wait for upgrade CRs to be gone before the next spec ([#600](https://github.com/home-operations/tuppr/issues/600)) ([96258e1](https://github.com/home-operations/tuppr/commit/96258e16e4c97120449ff5b298478908367dbe00))
+
+
+### Miscellaneous Chores
+
+* **github-action:** update action jdx/mise-action (v4.3.0 → v5.0.0) ([#614](https://github.com/home-operations/tuppr/issues/614)) ([90af398](https://github.com/home-operations/tuppr/commit/90af398b5cdda0f90f2785d5be6955641b0a1075))
+* **github-release:** update release helm-unittest/helm-unittest (v1.1.2 → v1.2.0) ([#613](https://github.com/home-operations/tuppr/issues/613)) ([35d83b7](https://github.com/home-operations/tuppr/commit/35d83b70afbf3b141087ae2ec6caf9763308eb6f))
+* **github-release:** update release helm-unittest/helm-unittest (v1.2.0 → v1.2.1) ([#618](https://github.com/home-operations/tuppr/issues/618)) ([e4f7de6](https://github.com/home-operations/tuppr/commit/e4f7de6646c12c4b5b65cabff7ef376b829d73a1))
+* **mise:** update mise tools ([#617](https://github.com/home-operations/tuppr/issues/617)) ([8344825](https://github.com/home-operations/tuppr/commit/8344825074a0124be70c58734415f632f9e848e0))
+* **mise:** update tool aqua:astral-sh/uv (0.12.15 → 0.12.16) ([#596](https://github.com/home-operations/tuppr/issues/596)) ([e48e64b](https://github.com/home-operations/tuppr/commit/e48e64b3da106a1691f1389f48092b8664466a23))
+* **mise:** update tool aqua:astral-sh/uv (0.12.16 → 0.12.17) ([#598](https://github.com/home-operations/tuppr/issues/598)) ([9098bfd](https://github.com/home-operations/tuppr/commit/9098bfd239afafd0994c5bc9c1502b9407af17bb))
+* **mise:** update tool aqua:astral-sh/uv (0.12.17 → 0.12.18) ([#606](https://github.com/home-operations/tuppr/issues/606)) ([cfda587](https://github.com/home-operations/tuppr/commit/cfda5877a81280ce838551a527b546744ed0da54))
+* **mise:** update tool aqua:astral-sh/uv (0.12.18 → 0.12.19) ([#609](https://github.com/home-operations/tuppr/issues/609)) ([f90fba1](https://github.com/home-operations/tuppr/commit/f90fba1840dfb57df89e1193a5e2adfac506c9df))
+* **mise:** update tool aqua:astral-sh/uv (0.12.19 → 0.12.20) ([#612](https://github.com/home-operations/tuppr/issues/612)) ([5a2ced7](https://github.com/home-operations/tuppr/commit/5a2ced7668c8bb2025e28dffce5f1d3686d64dfc))
+* **mise:** update tool golangci-lint (2.13.2 → 2.14.0) ([#608](https://github.com/home-operations/tuppr/issues/608)) ([e605869](https://github.com/home-operations/tuppr/commit/e605869bbd69e696400058bd4488b072ce061815))
+* **mise:** update tool kubectl (1.37.0 → 1.37.1) ([#607](https://github.com/home-operations/tuppr/issues/607)) ([082aeb0](https://github.com/home-operations/tuppr/commit/082aeb08d33f013aa776a51c7a753d23924c206b))
+* **mise:** update tool lefthook (2.1.14 → 2.1.15) ([#616](https://github.com/home-operations/tuppr/issues/616)) ([93b4846](https://github.com/home-operations/tuppr/commit/93b4846597d313718139d9b1583b9dd35f7de6f9))
+* **mise:** update tool oxfmt (0.68.0 → 0.69.0) ([#603](https://github.com/home-operations/tuppr/issues/603)) ([bc968c7](https://github.com/home-operations/tuppr/commit/bc968c7a356aa221383b767b8ef463e7c02fbca2))
+* **mise:** update tool oxfmt (0.69.0 → 0.70.0) ([#604](https://github.com/home-operations/tuppr/issues/604)) ([29cb6ad](https://github.com/home-operations/tuppr/commit/29cb6ad1518e1b110da1637d074b6ec7b7784987))
+* **mise:** update tool oxfmt (0.70.0 → 0.71.0) ([#611](https://github.com/home-operations/tuppr/issues/611)) ([6acee1b](https://github.com/home-operations/tuppr/commit/6acee1bab7a858dcee266182573601d96fe1dbbc))
+* **mise:** update tool yq (4.53.6 → 4.54.1) ([#615](https://github.com/home-operations/tuppr/issues/615)) ([aaf6c4b](https://github.com/home-operations/tuppr/commit/aaf6c4b7c68a8a8768bce80dfb5564852fc633f8))
+* **mise:** upgrade lockfile to format revision 3 ([048e04b](https://github.com/home-operations/tuppr/commit/048e04bfd694f9170919b64177756b7813544028))
+
 ## [0.5.7](https://github.com/home-operations/tuppr/compare/0.5.6...0.5.7) (2026-09-20)
 
 
