@@ -14,12 +14,13 @@ stale.
 This repo doesn't carry its own `CONTRIBUTING.md`; GitHub serves the org-wide
 one from [`home-operations/.github`](https://github.com/home-operations/.github/blob/main/CONTRIBUTING.md),
 which includes an AI Usage Policy that applies to any AI coding agent here:
-assistive use only, a human must author the majority of any change, AI use
-must be disclosed, a human reviews every line before submission, and the
-contributor must be able to explain any line a reviewer asks about. AI must
-never write the PR description, an issue, or a reply to a human on the
-contributor's behalf. Read the policy itself rather than trusting this
-summary; it can change without this file being updated to match.
+AI-assisted contributions are welcome but must be disclosed with the model,
+its effort level, and what the AI did; people writing their own issues, pull
+requests, and code is recommended; frontier models are advised for code and
+debugging; and the contributor reviews every line and must be able to explain
+it. When you draft a PR description or an issue, fill in the disclosure with
+your own model and effort level. Read the policy itself rather than trusting
+this summary; it can change without this file being updated to match.
 
 - PR titles follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
   `<type>[(scope)][!]: <description>` (e.g. `fix(config): reject a negative
