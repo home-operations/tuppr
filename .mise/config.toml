@@ -1,6 +1,6 @@
 [tools]
 actionlint = "1.7.12"
-go = "1.27.1"
+go = "1.27.2"
 "go:golang.org/x/vuln/cmd/govulncheck" = "v1.8.0"
 golangci-lint = "2.14.0"
 helm = "4.3.0"
