@@ -26,26 +26,26 @@ url_api = "https://api.github.com/repos/rhysd/actionlint/releases/assets/3849248
 provenance = "github-attestations"
 
 [[tools."aqua:astral-sh/uv"]]
-version = "0.12.21"
+version = "0.12.23"
 backend = "aqua:astral-sh/uv"
-specifiers = ["0.12.21"]
+specifiers = ["0.12.23"]
 
 [tools."aqua:astral-sh/uv"."platforms.linux-arm64"]
-checksum = "sha256:030b69227b40af8c1981b7301793dc66e71ed3c796ea8688209dd268bd91ec51"
-url = "https://github.com/astral-sh/uv/releases/download/0.12.21/uv-aarch64-unknown-linux-gnu.tar.gz"
-url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/599237845"
+checksum = "sha256:6524bd338177ed50d035d39354e12545e993bbeba2ecbddf0480c5b3a81d313f"
+url = "https://github.com/astral-sh/uv/releases/download/0.12.23/uv-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/608232491"
 provenance = "github-attestations"
 
 [tools."aqua:astral-sh/uv"."platforms.linux-x64"]
-checksum = "sha256:23f02075b652bb1df64178cfae41b5caf160822e720e2663568f3f5d63bc52c0"
-url = "https://github.com/astral-sh/uv/releases/download/0.12.21/uv-x86_64-unknown-linux-gnu.tar.gz"
-url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/599238020"
+checksum = "sha256:9167d72b3319674b6303c4cbe071854bba13ebdf3d76b1a7cbdc175471fb66d6"
+url = "https://github.com/astral-sh/uv/releases/download/0.12.23/uv-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/608232628"
 provenance = "github-attestations"
 
 [tools."aqua:astral-sh/uv"."platforms.macos-arm64"]
-checksum = "sha256:b88bda573e566ef9bced66b155fe0408626fbbc053aee1c30ba686f0728c9447"
-url = "https://github.com/astral-sh/uv/releases/download/0.12.21/uv-aarch64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/599237829"
+checksum = "sha256:50487ae565ccd96e499056b4674d438f4c53170202617b4c759defe0c6a1b544"
+url = "https://github.com/astral-sh/uv/releases/download/0.12.23/uv-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/608232483"
 provenance = "github-attestations"
 
 [[tools."aqua:dadav/helm-schema"]]
@@ -254,26 +254,26 @@ checksum = "sha256:fd65982c97ddad3106754b69ffa196d0e543aa591930ae52aed1adfb92f8c
 url = "https://dl.k8s.io/v1.37.1/bin/darwin/arm64/kubectl"
 
 [[tools.lefthook]]
-version = "2.1.15"
+version = "2.1.17"
 backend = "aqua:evilmartians/lefthook"
-specifiers = ["2.1.15"]
+specifiers = ["2.1.17"]
 
 [tools.lefthook."platforms.linux-arm64"]
-checksum = "sha256:883bd1d697eb926b4f4c4fb08ff000fda0306432368199923e415f8e9a4c22d4"
-url = "https://github.com/evilmartians/lefthook/releases/download/v2.1.15/lefthook_2.1.15_Linux_aarch64.gz"
-url_api = "https://api.github.com/repos/evilmartians/lefthook/releases/assets/598600348"
+checksum = "sha256:079cca03c2e719a804692fe819bd3786fcdc494af30491a9fd369a382ee6bc84"
+url = "https://github.com/evilmartians/lefthook/releases/download/v2.1.17/lefthook_2.1.17_Linux_aarch64.gz"
+url_api = "https://api.github.com/repos/evilmartians/lefthook/releases/assets/611880089"
 provenance = "github-attestations"
 
 [tools.lefthook."platforms.linux-x64"]
-checksum = "sha256:b3ed1e83389d0a98b5f243a8a1afcb0fdfad527834f87170f2a2ff9ddfe0f836"
-url = "https://github.com/evilmartians/lefthook/releases/download/v2.1.15/lefthook_2.1.15_Linux_x86_64.gz"
-url_api = "https://api.github.com/repos/evilmartians/lefthook/releases/assets/598600261"
+checksum = "sha256:e3c6e271b6a77a8fac527d7cc21c1036f7605afcb6653aabe4b166913322f900"
+url = "https://github.com/evilmartians/lefthook/releases/download/v2.1.17/lefthook_2.1.17_Linux_x86_64.gz"
+url_api = "https://api.github.com/repos/evilmartians/lefthook/releases/assets/611880017"
 provenance = "github-attestations"
 
 [tools.lefthook."platforms.macos-arm64"]
-checksum = "sha256:8b40280a2bae6a21a546e42c1f02cb190cfe9888ff541eb500a0b05bd38db17f"
-url = "https://github.com/evilmartians/lefthook/releases/download/v2.1.15/lefthook_2.1.15_MacOS_arm64.gz"
-url_api = "https://api.github.com/repos/evilmartians/lefthook/releases/assets/598600263"
+checksum = "sha256:aabf434ea7049af9854eb5205520bc16fc52d3d55459c2332a3711cdd6743d34"
+url = "https://github.com/evilmartians/lefthook/releases/download/v2.1.17/lefthook_2.1.17_MacOS_arm64.gz"
+url_api = "https://api.github.com/repos/evilmartians/lefthook/releases/assets/611879927"
 provenance = "github-attestations"
 
 [[tools.oxfmt]]
@@ -283,24 +283,24 @@ backend = "npm:oxfmt"
 specifiers = ["0.71.0"]
 
 [[tools.setup-envtest]]
-version = "0.25.1"
+version = "0.25.2"
 backend = "aqua:kubernetes-sigs/controller-runtime/setup-envtest"
-specifiers = ["0.25.1"]
+specifiers = ["0.25.2"]
 
 [tools.setup-envtest."platforms.linux-arm64"]
-checksum = "sha256:91df5abb84e60b8e20fe9d40e86beaabb49b176a1ed77a13e6caa06d7b0acf6c"
-url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.25.1/setup-envtest-linux-arm64"
-url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/562315193"
+checksum = "sha256:694c6f9d830b8efa1a211cdc98859121edbb5ea523300d18c21ce89ce7feeb8e"
+url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.25.2/setup-envtest-linux-arm64"
+url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/603348941"
 
 [tools.setup-envtest."platforms.linux-x64"]
-checksum = "sha256:531726d9a1d9e4c5661e22ab90186e186f5dbebbc109b13333fa7e237068f06d"
-url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.25.1/setup-envtest-linux-amd64"
-url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/562315190"
+checksum = "sha256:94534f83896f3b09934d9570b213fbda04aa5c17457942270928cdca0317bf9b"
+url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.25.2/setup-envtest-linux-amd64"
+url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/603348940"
 
 [tools.setup-envtest."platforms.macos-arm64"]
-checksum = "sha256:6110a436b854b205eb3771c72622fcbec17ffffea6c3fca64f8c2ebb2e780053"
-url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.25.1/setup-envtest-darwin-arm64"
-url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/562315192"
+checksum = "sha256:7c95d67911e157d2caa02f599bcf9321b4e759d2f008749b4d03ed9d3e6a8c69"
+url = "https://github.com/kubernetes-sigs/controller-runtime/releases/download/v0.25.2/setup-envtest-darwin-arm64"
+url_api = "https://api.github.com/repos/kubernetes-sigs/controller-runtime/releases/assets/603348936"
 
 [[tools.shellcheck]]
 version = "0.11.0"
