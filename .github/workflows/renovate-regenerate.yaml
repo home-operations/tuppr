@@ -1,0 +1,56 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Renovate Regenerate
+
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # The Mend Renovate app cannot run postUpgradeTasks, so generated files are
+  # rebuilt here and pushed back to the Renovate branch as sticky-gecko.
+  regenerate:
+    if: >-
+      ${{ github.event.pull_request.user.login == 'renovate[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository }}
+    name: Regenerate
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.regenerate.outputs.changed }}
+    steps:
+      - name: Regenerate
+        id: regenerate
+        uses: home-operations/.github/actions/renovate-regenerate@9df53e30ac6e4f6d8a9890fb3e3b3b29fc5005bf # renovate-regenerate-v1.0.0
+        with:
+          task: helm-docs
+          paths: |
+            charts/tuppr/README.md
+            charts/tuppr/values.schema.json
+
+  push:
+    if: ${{ needs.regenerate.outputs.changed == 'true' }}
+    name: Push
+    needs:
+      - regenerate
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - name: Push
+        uses: home-operations/.github/actions/renovate-regenerate/push@9df53e30ac6e4f6d8a9890fb3e3b3b29fc5005bf # renovate-regenerate-v1.0.0
+        with:
+          client-id: ${{ secrets.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          paths: |
+            charts/tuppr/README.md
+            charts/tuppr/values.schema.json
