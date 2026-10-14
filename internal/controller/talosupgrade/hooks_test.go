@@ -517,8 +517,11 @@ func TestAfterPreHooks_AllChecksSkipped_StartsBatch(t *testing.T) {
 	if hc.calls != 0 {
 		t.Fatalf("expected no health check run when every check is skipped, got %d", hc.calls)
 	}
-	got := getTalosUpgrade(t, cl, "tu").Status.Phase
-	if got == tupprv1alpha1.JobPhaseHealthChecking || got == tupprv1alpha1.JobPhasePending {
-		t.Fatalf("expected the batch to start without a health check, got %s", got)
+	if got := getTalosUpgrade(t, cl, "tu").Status.Phase; got != tupprv1alpha1.JobPhaseUpgrading {
+		t.Fatalf("expected Upgrading once every check is skipped, got %s", got)
+	}
+	jobs := listJobs(t, cl)
+	if len(jobs) != 1 || jobs[0].Labels[targetNodeLabelKey] != fakeNodeA {
+		t.Fatalf("expected one upgrade job for %s, got %d jobs", fakeNodeA, len(jobs))
 	}
 }
