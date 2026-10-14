@@ -62,8 +62,10 @@ spec:
 
 Each check attempt is emitted as Events on the resource (`HealthChecksStarted`,
 then `HealthChecksPassed` or a `HealthChecksFailed` warning), so a run waiting
-on failing checks is visible in `kubectl describe`. With pre-hooks configured,
-inter-batch checks are [suppressed](#prepost-upgrade-hooks) and emit no Events.
+on failing checks is visible in `kubectl describe`. A check with
+`skipAfterPreHooks: true` is left out of every run once
+[pre-hooks](#prepost-upgrade-hooks) have completed; a run with no checks left
+emits no Events.
 
 Health checks are also available on [`KubernetesUpgrade`](kubernetes-upgrades.md).
 
@@ -213,6 +215,14 @@ spec:
         envFrom:
           - secretRef:
               name: rook-ceph-mon
+  healthChecks:
+    # noout puts Ceph in HEALTH_WARN, so this check only gates the initial run
+    - apiVersion: ceph.rook.io/v1
+      kind: CephCluster
+      name: rook-ceph
+      namespace: rook-ceph
+      expr: status.ceph.health in ["HEALTH_OK"]
+      skipAfterPreHooks: true
 ```
 
 - **Pre-hooks** run sequentially after the initial health check, before any node
@@ -221,8 +231,12 @@ spec:
 - **Post-hooks** run sequentially once the upgrade reaches a terminal state
   (success or failure), if any pre-hook was attempted. Their failures are logged
   and recorded but don't change the upgrade outcome.
-- While pre-hooks are configured, **inter-batch health checks are suppressed** -
-  the contract is that pre-hooks own cluster state for the upgrade window.
+- Health checks still run before every batch after the pre-hooks. A check the
+  pre-hooks invalidate for the upgrade window (Ceph is `HEALTH_WARN` while
+  `noout` is set) must set `skipAfterPreHooks: true`: it then gates only the
+  initial check before the hooks, otherwise every later run fails and the
+  upgrade stalls before its first batch. Other checks keep gating each batch,
+  so a pre-hook that pauses CI runners doesn't switch off the Ceph check.
 - Each hook is a Job in the controller namespace with the same non-root,
   capabilities-dropped posture as the upgrade Job. Mount credentials via
   `volumes` / `envFrom`, and set `serviceAccountName` if you need cluster-API

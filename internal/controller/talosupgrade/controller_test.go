@@ -149,10 +149,14 @@ func (m *mockTalosClient) PullImage(ctx context.Context, nodeIP, imageRef string
 }
 
 type mockHealthChecker struct {
-	err error
+	err   error
+	calls int
+	got   []tupprv1alpha1.HealthCheckSpec
 }
 
 func (m *mockHealthChecker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1.HealthCheckSpec) error {
+	m.calls++
+	m.got = healthChecks
 	return m.err
 }
 

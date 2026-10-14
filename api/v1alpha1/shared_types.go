@@ -42,6 +42,15 @@ type HealthCheckSpec struct {
 	// Description of what this check validates (for status/logging)
 	// +optional
 	Description string `json:"description,omitempty"`
+
+	// SkipAfterPreHooks excludes this check from every health check run after
+	// the pre-hooks have completed, before the first batch and between batches.
+	// Set it on checks the pre-hooks themselves invalidate for the upgrade
+	// window (for example a Ceph HEALTH_OK check while a pre-hook holds
+	// `noout`). The initial check before the pre-hooks always runs. Only
+	// TalosUpgrade has hooks, so this has no effect on a KubernetesUpgrade.
+	// +optional
+	SkipAfterPreHooks bool `json:"skipAfterPreHooks,omitempty"`
 }
 
 // SilenceSpec describes one Alertmanager silence held during an upgrade run.

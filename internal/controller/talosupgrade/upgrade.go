@@ -194,6 +194,26 @@ func hasPreHooks(tu *tupprv1alpha1.TalosUpgrade) bool {
 	return tu.Spec.Hooks != nil && len(tu.Spec.Hooks.Pre) > 0
 }
 
+// interBatchHealthChecks returns the health checks to run before the next
+// batch. Once the pre-hooks have run (the run comes back through here before
+// its first batch, not only between batches), checks marked skipAfterPreHooks
+// are dropped: a pre-hook can invalidate them for the rest of the upgrade
+// window (e.g. Ceph reports HEALTH_WARN while `noout` is set), so re-checking
+// would stall the run. skip reports that nothing is left to run, which also
+// covers a hooked run with no health checks at all.
+func interBatchHealthChecks(tu *tupprv1alpha1.TalosUpgrade) (checks []tupprv1alpha1.HealthCheckSpec, skip bool) {
+	afterPreHooks := hasPreHooks(tu) && tu.Status.PreHookIndex >= len(tu.Spec.Hooks.Pre)
+	if !afterPreHooks {
+		return tu.Spec.HealthChecks, false
+	}
+	for _, hc := range tu.Spec.HealthChecks {
+		if !hc.SkipAfterPreHooks {
+			checks = append(checks, hc)
+		}
+	}
+	return checks, len(checks) == 0
+}
+
 func hasPostHooks(tu *tupprv1alpha1.TalosUpgrade) bool {
 	return tu.Spec.Hooks != nil && len(tu.Spec.Hooks.Post) > 0
 }
@@ -324,17 +344,10 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		return result, nil
 	}
 
-	// Skip the inter-batch health check re-run when pre-hooks are configured and
-	// have already run: pre-hooks own cluster state for the rest of the upgrade
-	// window, so re-checking would fail (e.g. Ceph reports HEALTH_WARN while
-	// `noout` is set). The initial check (first batch, no completed nodes yet)
-	// still runs.
-	skipHealthCheck := hasPreHooks(talosUpgrade) &&
-		talosUpgrade.Status.PreHookIndex >= len(talosUpgrade.Spec.Hooks.Pre) &&
-		len(talosUpgrade.Status.CompletedNodes) > 0
+	checks, skipHealthCheck := interBatchHealthChecks(talosUpgrade)
 
 	if !skipHealthCheck {
-		checkErr := r.runHealthChecks(ctx, talosUpgrade)
+		checkErr := r.runHealthChecks(ctx, talosUpgrade, checks)
 		message := "Running health checks"
 		if checkErr != nil {
 			message = fmt.Sprintf("Waiting for health checks: %s", checkErr.Error())
