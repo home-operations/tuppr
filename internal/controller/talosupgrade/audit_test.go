@@ -352,7 +352,7 @@ func TestRunHealthChecks_Talos_EmitsEvents(t *testing.T) {
 			recorder := record.NewFakeRecorder(4)
 			r := &Reconciler{Recorder: recorder, HealthChecker: &mockHealthChecker{err: tt.checkErr}}
 
-			if err := r.runHealthChecks(context.Background(), tu); !errors.Is(err, tt.checkErr) {
+			if err := r.runHealthChecks(context.Background(), tu, tu.Spec.HealthChecks); !errors.Is(err, tt.checkErr) {
 				t.Fatalf("want checker error %v, got %v", tt.checkErr, err)
 			}
 
@@ -375,12 +375,35 @@ func TestRunHealthChecks_Talos_EmitsEvents(t *testing.T) {
 	}
 }
 
+func TestRunHealthChecks_Talos_CountsOnlyRunChecks(t *testing.T) {
+	check := nodeCheck()
+	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
+		tu.Spec.HealthChecks = []tupprv1alpha1.HealthCheckSpec{check, check}
+	})
+	recorder := record.NewFakeRecorder(4)
+	r := &Reconciler{Recorder: recorder, HealthChecker: &mockHealthChecker{}}
+
+	if err := r.runHealthChecks(context.Background(), tu, tu.Spec.HealthChecks[:1]); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{"Running 1 health check(s)", "All 1 health check(s) passed"} {
+		select {
+		case ev := <-recorder.Events:
+			if !strings.Contains(ev, want) {
+				t.Fatalf("want %q in event, got %q", want, ev)
+			}
+		default:
+			t.Fatalf("missing event containing %q", want)
+		}
+	}
+}
+
 func TestRunHealthChecks_Talos_NoRecorderIsSafe(t *testing.T) {
 	tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
 		tu.Spec.HealthChecks = []tupprv1alpha1.HealthCheckSpec{{APIVersion: "v1", Kind: "Node", Expr: "status != null"}}
 	})
 	r := &Reconciler{HealthChecker: &mockHealthChecker{}}
-	if err := r.runHealthChecks(context.Background(), tu); err != nil {
+	if err := r.runHealthChecks(context.Background(), tu, tu.Spec.HealthChecks); err != nil {
 		t.Fatalf("runHealthChecks without recorder must not fail: %v", err)
 	}
 }
