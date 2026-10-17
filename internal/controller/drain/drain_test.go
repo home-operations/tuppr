@@ -2,14 +2,17 @@ package drain
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -172,6 +175,54 @@ func TestUncordonNode(t *testing.T) {
 				t.Fatal("expected node to be schedulable")
 			}
 		})
+	}
+}
+
+func TestUncordonNodeRetriesConflict(t *testing.T) {
+	const nodeName = "test-node"
+
+	scheme := newTestScheme()
+	updateCalls := 0
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(newNode(nodeName, true)).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+				updateCalls++
+				if updateCalls == 1 {
+					var concurrentUpdate corev1.Node
+					if err := c.Get(ctx, client.ObjectKey{Name: nodeName}, &concurrentUpdate); err != nil {
+						return err
+					}
+					concurrentUpdate.Annotations = map[string]string{"concurrent-update": "preserved"}
+					if err := c.Update(ctx, &concurrentUpdate); err != nil {
+						return err
+					}
+					return apierrors.NewConflict(
+						schema.GroupResource{Resource: "nodes"},
+						obj.GetName(),
+						errors.New("resource version conflict"),
+					)
+				}
+				return c.Update(ctx, obj, opts...)
+			},
+		}).Build()
+
+	err := NewDrainer(cl).UncordonNode(context.Background(), nodeName)
+	if err != nil {
+		t.Fatalf("UncordonNode() error = %v", err)
+	}
+	if updateCalls != 2 {
+		t.Fatalf("UncordonNode() made %d update calls, want 2", updateCalls)
+	}
+
+	var updated corev1.Node
+	if err := cl.Get(context.Background(), client.ObjectKey{Name: nodeName}, &updated); err != nil {
+		t.Fatalf("failed to get node: %v", err)
+	}
+	if updated.Spec.Unschedulable {
+		t.Fatal("expected node to be schedulable")
+	}
+	if got := updated.Annotations["concurrent-update"]; got != "preserved" {
+		t.Fatalf("concurrent annotation = %q, want preserved", got)
 	}
 }
 
