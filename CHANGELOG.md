@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.9](https://github.com/home-operations/tuppr/compare/0.5.8...0.5.9) (2026-10-18)
+
+
+### Bug Fixes
+
+* **container:** update talos group ([#634](https://github.com/home-operations/tuppr/issues/634)) ([8dd95dc](https://github.com/home-operations/tuppr/commit/8dd95dcc738f8ef029cc76da00d69fdf326e5022))
+* **drain:** retry node uncordon conflicts ([#637](https://github.com/home-operations/tuppr/issues/637)) ([d5f6aaa](https://github.com/home-operations/tuppr/commit/d5f6aaa63feebfe75a64a23ac415efa71b17317b))
+
+
+### Miscellaneous Chores
+
+* **github-action:** update github-actions ([#640](https://github.com/home-operations/tuppr/issues/640)) ([743ad0c](https://github.com/home-operations/tuppr/commit/743ad0cf5f5d69731ab777bad64efacf8a933311))
+* **mise:** update mise tools ([#641](https://github.com/home-operations/tuppr/issues/641)) ([6bc7521](https://github.com/home-operations/tuppr/commit/6bc7521b1d6f7c515bae7f7c5692682114f20146))
+* **mise:** update tool lefthook (2.2.1 → 2.2.2) ([#638](https://github.com/home-operations/tuppr/issues/638)) ([6ac039f](https://github.com/home-operations/tuppr/commit/6ac039f946674fe075b1e701732817bc625489d0))
+
 ## [0.5.8](https://github.com/home-operations/tuppr/compare/0.5.7...0.5.8) (2026-10-14)
 
 
