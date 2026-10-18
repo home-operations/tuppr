@@ -178,51 +178,72 @@ func TestUncordonNode(t *testing.T) {
 	}
 }
 
-func TestUncordonNodeRetriesConflict(t *testing.T) {
+func TestCordonUncordonRetriesConflict(t *testing.T) {
 	const nodeName = "test-node"
 
-	scheme := newTestScheme()
-	updateCalls := 0
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(newNode(nodeName, true)).
-		WithInterceptorFuncs(interceptor.Funcs{
-			Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
-				updateCalls++
-				if updateCalls == 1 {
-					var concurrentUpdate corev1.Node
-					if err := c.Get(ctx, client.ObjectKey{Name: nodeName}, &concurrentUpdate); err != nil {
-						return err
-					}
-					concurrentUpdate.Annotations = map[string]string{"concurrent-update": "preserved"}
-					if err := c.Update(ctx, &concurrentUpdate); err != nil {
-						return err
-					}
-					return apierrors.NewConflict(
-						schema.GroupResource{Resource: "nodes"},
-						obj.GetName(),
-						errors.New("resource version conflict"),
-					)
-				}
-				return c.Update(ctx, obj, opts...)
-			},
-		}).Build()
-
-	err := NewDrainer(cl).UncordonNode(context.Background(), nodeName)
-	if err != nil {
-		t.Fatalf("UncordonNode() error = %v", err)
-	}
-	if updateCalls != 2 {
-		t.Fatalf("UncordonNode() made %d update calls, want 2", updateCalls)
+	tests := []struct {
+		name          string
+		unschedulable bool
+		op            func(*Drainer, context.Context, string) error
+	}{
+		{
+			name:          "cordon",
+			unschedulable: false,
+			op:            (*Drainer).CordonNode,
+		},
+		{
+			name:          "uncordon",
+			unschedulable: true,
+			op:            (*Drainer).UncordonNode,
+		},
 	}
 
-	var updated corev1.Node
-	if err := cl.Get(context.Background(), client.ObjectKey{Name: nodeName}, &updated); err != nil {
-		t.Fatalf("failed to get node: %v", err)
-	}
-	if updated.Spec.Unschedulable {
-		t.Fatal("expected node to be schedulable")
-	}
-	if got := updated.Annotations["concurrent-update"]; got != "preserved" {
-		t.Fatalf("concurrent annotation = %q, want preserved", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			updateCalls := 0
+			cl := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(newNode(nodeName, tt.unschedulable)).
+				WithInterceptorFuncs(interceptor.Funcs{
+					// The first Update simulates a concurrent writer landing between
+					// our Get and Update: it changes the node, then reports a conflict.
+					Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+						updateCalls++
+						if updateCalls == 1 {
+							var concurrentUpdate corev1.Node
+							if err := c.Get(ctx, client.ObjectKey{Name: nodeName}, &concurrentUpdate); err != nil {
+								return err
+							}
+							concurrentUpdate.Annotations = map[string]string{"concurrent-update": "preserved"}
+							if err := c.Update(ctx, &concurrentUpdate); err != nil {
+								return err
+							}
+							return apierrors.NewConflict(
+								schema.GroupResource{Resource: "nodes"},
+								obj.GetName(),
+								errors.New("resource version conflict"),
+							)
+						}
+						return c.Update(ctx, obj, opts...)
+					},
+				}).Build()
+
+			if err := tt.op(NewDrainer(cl), context.Background(), nodeName); err != nil {
+				t.Fatalf("%s error = %v", tt.name, err)
+			}
+			if updateCalls != 2 {
+				t.Fatalf("%s made %d update calls, want 2", tt.name, updateCalls)
+			}
+
+			var updated corev1.Node
+			if err := cl.Get(context.Background(), client.ObjectKey{Name: nodeName}, &updated); err != nil {
+				t.Fatalf("failed to get node: %v", err)
+			}
+			if updated.Spec.Unschedulable == tt.unschedulable {
+				t.Fatalf("node unschedulable = %v, want %v", updated.Spec.Unschedulable, !tt.unschedulable)
+			}
+			if got := updated.Annotations["concurrent-update"]; got != "preserved" {
+				t.Fatalf("concurrent annotation = %q, want preserved", got)
+			}
+		})
 	}
 }
 
