@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -63,40 +64,37 @@ func (d *Drainer) SkipPod(namespace, name string) *Drainer {
 
 // CordonNode marks a node as unschedulable
 func (d *Drainer) CordonNode(ctx context.Context, nodeName string) error {
-	var node corev1.Node
-	if err := d.client.Get(ctx, types.NamespacedName{Name: nodeName}, &node); err != nil {
-		return fmt.Errorf("failed to get node: %w", err)
-	}
-
-	if node.Spec.Unschedulable {
-		return nil
-	}
-
-	node.Spec.Unschedulable = true
-	if err := d.client.Update(ctx, &node); err != nil {
+	if err := d.setUnschedulable(ctx, nodeName, true); err != nil {
 		return fmt.Errorf("failed to cordon node: %w", err)
 	}
-
 	return nil
 }
 
 // UncordonNode marks a node as schedulable
 func (d *Drainer) UncordonNode(ctx context.Context, nodeName string) error {
-	var node corev1.Node
-	if err := d.client.Get(ctx, types.NamespacedName{Name: nodeName}, &node); err != nil {
-		return fmt.Errorf("failed to get node: %w", err)
-	}
-
-	if !node.Spec.Unschedulable {
-		return nil
-	}
-
-	node.Spec.Unschedulable = false
-	if err := d.client.Update(ctx, &node); err != nil {
+	if err := d.setUnschedulable(ctx, nodeName, false); err != nil {
 		return fmt.Errorf("failed to uncordon node: %w", err)
 	}
-
 	return nil
+}
+
+// setUnschedulable re-reads the node on every attempt so a concurrent write by
+// the kubelet or node controller (status heartbeats, taints) can't make the
+// cordon or uncordon fail with a resource version conflict.
+func (d *Drainer) setUnschedulable(ctx context.Context, nodeName string, unschedulable bool) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var node corev1.Node
+		if err := d.client.Get(ctx, types.NamespacedName{Name: nodeName}, &node); err != nil {
+			return err
+		}
+
+		if node.Spec.Unschedulable == unschedulable {
+			return nil
+		}
+
+		node.Spec.Unschedulable = unschedulable
+		return d.client.Update(ctx, &node)
+	})
 }
 
 // DrainOptions configures drain behavior
