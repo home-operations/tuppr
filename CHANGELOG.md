@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.10](https://github.com/home-operations/tuppr/compare/0.5.9...0.5.10) (2026-10-21)
+
+
+### Features
+
+* **go:** update module github.com/prometheus/client_golang (v1.24.1 → v1.25.0) ([#647](https://github.com/home-operations/tuppr/issues/647)) ([ebb7408](https://github.com/home-operations/tuppr/commit/ebb74087d5f3c67ddef36d0a32e8822eb1d4daca))
+
+
+### Miscellaneous Chores
+
+* **github-action:** update action jdx/mise-action (v5.1.2 → v5.2.0) ([#645](https://github.com/home-operations/tuppr/issues/645)) ([cace062](https://github.com/home-operations/tuppr/commit/cace062c8e00d585f6f11247b9c860d688c28440))
+* **mise:** update mise tools ([#642](https://github.com/home-operations/tuppr/issues/642)) ([4508685](https://github.com/home-operations/tuppr/commit/4508685fbc6772598e55516d72386798cdff9a32))
+* **mise:** update mise tools ([#646](https://github.com/home-operations/tuppr/issues/646)) ([f7f13e4](https://github.com/home-operations/tuppr/commit/f7f13e40ccd419ca2b55eb7a1ab2dfe99838b104))
+* **mise:** update tool aqua:dadav/helm-schema (0.23.5 → 0.24.0) ([#649](https://github.com/home-operations/tuppr/issues/649)) ([a181ce2](https://github.com/home-operations/tuppr/commit/a181ce2ae9b49a88fb79e1c9056f0c09515e872f))
+* **mise:** update tool go (1.27.2 → 1.27.3) ([#648](https://github.com/home-operations/tuppr/issues/648)) ([2cae3b2](https://github.com/home-operations/tuppr/commit/2cae3b24d47356b2da68663c61e65ae399fb40d7))
+* **mise:** update tool kube-controller-tools (0.22.0 → v0.23.0) ([#643](https://github.com/home-operations/tuppr/issues/643)) ([6594d6f](https://github.com/home-operations/tuppr/commit/6594d6ff8f203a13e4a460b20a05768faf864e7a))
+
 ## [0.5.9](https://github.com/home-operations/tuppr/compare/0.5.8...0.5.9) (2026-10-18)
 
 
