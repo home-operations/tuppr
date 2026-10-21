@@ -17,7 +17,7 @@ shellcheck = "0.11.0"
 stern = "1.34.0"
 talosctl = "1.14.4"
 zizmor = "1.31.1"
-"aqua:dadav/helm-schema" = "0.23.5"
+"aqua:dadav/helm-schema" = "0.24.0"
 yq = "4.54.1"
 # Docs site toolchain: MkDocs + Material run via uv (pyproject.toml / uv.lock).
 "aqua:astral-sh/uv" = "0.13.1"
