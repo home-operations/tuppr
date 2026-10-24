@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.11](https://github.com/home-operations/tuppr/compare/0.5.10...0.5.11) (2026-10-24)
+
+
+### Miscellaneous Chores
+
+* **github-action:** update action jdx/mise-action (v5.2.1 → v5.2.2) ([#657](https://github.com/home-operations/tuppr/issues/657)) ([422f696](https://github.com/home-operations/tuppr/commit/422f696cf7421f6bf8296485d4a5a327a8dbd1de))
+* **github-action:** update github-actions ([#650](https://github.com/home-operations/tuppr/issues/650)) ([d7bf85d](https://github.com/home-operations/tuppr/commit/d7bf85d96099f48d87f5f432765aa4a40272319f))
+* **mise:** update tool aqua:astral-sh/uv (0.13.1 → 0.13.2) ([#653](https://github.com/home-operations/tuppr/issues/653)) ([d228225](https://github.com/home-operations/tuppr/commit/d2282250477984afd426893e0ffb669afb76a67a))
+* **mise:** update tool aqua:astral-sh/uv (0.13.2 → 0.13.3) ([#654](https://github.com/home-operations/tuppr/issues/654)) ([0dacee2](https://github.com/home-operations/tuppr/commit/0dacee240ce22cfe110ad5d35fd35290e9141599))
+* **mise:** update tool aqua:astral-sh/uv (0.13.3 → 0.13.4) ([#655](https://github.com/home-operations/tuppr/issues/655)) ([01c266a](https://github.com/home-operations/tuppr/commit/01c266afbc4b19e9f89abd88255041a00ab937df))
+* **mise:** update tool cosign (3.1.3 → 3.1.4) ([#656](https://github.com/home-operations/tuppr/issues/656)) ([39823e0](https://github.com/home-operations/tuppr/commit/39823e09e945099c95a70366c95fe37626b2ba50))
+* **mise:** update tool oxfmt (0.73.0 → 0.74.0) ([#651](https://github.com/home-operations/tuppr/issues/651)) ([dc30bcd](https://github.com/home-operations/tuppr/commit/dc30bcdf99cfb8f3ed3a2c4796832db3db1dabc4))
+
 ## [0.5.10](https://github.com/home-operations/tuppr/compare/0.5.9...0.5.10) (2026-10-21)
 
 
