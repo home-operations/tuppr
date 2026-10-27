@@ -1,4 +1,6 @@
-# Development
+---
+title: Development
+---
 
 Planned work lives in the
 [issue tracker](https://github.com/home-operations/tuppr/issues).
@@ -17,10 +19,9 @@ mise run helm-test         # helm-unittest against the chart
 mise run docs-serve        # this docs site, live-reloading
 ```
 
-The docs site is MkDocs Material: pages live under `docs/`, the nav lives in
-`mkdocs.yml`, and `mise run docs` builds the deployable site with `--strict`
-link checking (CI runs it on every PR). The MkDocs toolchain is pinned in
-`pyproject.toml` / `uv.lock` and run through `uv`.
+The docs site is Astro Starlight: pages live under `docs/src/content/docs/`,
+the sidebar lives in `docs/astro.config.mjs`, and `mise run docs` builds the
+site, failing on a broken internal link. CI runs the same build on every PR.
 
 Contributions are welcome via
 [issues and pull requests](https://github.com/home-operations/tuppr/issues).

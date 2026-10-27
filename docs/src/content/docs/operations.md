@@ -1,4 +1,6 @@
-# Operations
+---
+title: Operations
+---
 
 Day-to-day commands for watching and steering upgrades. The controller runs in
 the `system-upgrade` namespace in these examples.
@@ -50,12 +52,12 @@ kubectl edit talosupgrade cluster
 kubectl delete talosupgrade cluster && kubectl apply -f talos-upgrade.yaml
 ```
 
-/// warning | Node never converges
+:::caution[Node never converges]
 If a run keeps reaching `Completed` but a node never catches up to the target
 version, tuppr marks it `Failed` after 5 completion cycles
 (_"Node(s) never converged to … after 5 completion cycles"_). Investigate the
 lagging node before retrying.
-///
+:::
 
 ## Troubleshoot
 

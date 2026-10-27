@@ -1,4 +1,6 @@
-# Monitoring
+---
+title: Monitoring
+---
 
 tuppr exposes Prometheus metrics under the `tuppr_` prefix. Hit `/metrics` on
 the controller pod for the authoritative list (keeping a copy here would drift):
@@ -19,9 +21,9 @@ The chart wires up the standard observability stack on demand:
   true` with `matchLabels` to also render a `GrafanaDashboard` CR for
   grafana-operator.
 
-All three are off by default. See the [Helm chart values](configuration.md) for
+All three are off by default. See the [Helm chart values](/configuration/) for
 the full set.
 
-To silence *your own* alerts (Ceph, node-down, scrape failures) during upgrade
+To silence _your own_ alerts (Ceph, node-down, scrape failures) during upgrade
 windows, see [Alertmanager
-silences](talos-upgrades.md#alertmanager-silences).
+silences](/talos-upgrades/#alertmanager-silences).

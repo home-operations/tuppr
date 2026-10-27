@@ -1,4 +1,6 @@
-# Kubernetes upgrades
+---
+title: Kubernetes upgrades
+---
 
 A `KubernetesUpgrade` sets the target Kubernetes version for the cluster. Unlike
 a Talos upgrade it does not reboot nodes, and there is **exactly one** of these
@@ -29,9 +31,9 @@ spec:
   # Optional maintenance windows and talosctl image, identical to TalosUpgrade.
 ```
 
-The optional fields - [health checks](talos-upgrades.md#health-checks),
-[maintenance windows](talos-upgrades.md#maintenance-windows), and the
-[`talosctl` image](talos-upgrades.md#talosctl-image) - work exactly as they do
+The optional fields - [health checks](/talos-upgrades/#health-checks),
+[maintenance windows](/talos-upgrades/#maintenance-windows), and the
+[`talosctl` image](/talos-upgrades/#talosctl-image) - work exactly as they do
 for a Talos upgrade.
 
 ## One per cluster
@@ -56,4 +58,4 @@ kubectl describe kubernetesupgrade kubernetes
 ```
 
 A `KubernetesUpgrade` never runs at the same time as a `TalosUpgrade`; see
-[Upgrade coordination](coordination.md).
+[Upgrade coordination](/coordination/).

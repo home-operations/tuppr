@@ -1,4 +1,6 @@
-# Requirements
+---
+title: Requirements
+---
 
 ## Cluster
 
@@ -22,22 +24,22 @@ machine:
         - system-upgrade # the namespace tuppr is installed into
 ```
 
-/// warning | Namespace must match
+:::caution[Namespace must match]
 `allowedKubernetesNamespaces` must list the exact namespace tuppr runs in. If it
 does not, upgrade jobs cannot authenticate to the Talos API and every upgrade
 fails at the first node.
-///
+:::
 
 ## Versions
 
 - tuppr upgrades Talos to exactly the version you set in a
-  [`TalosUpgrade`](talos-upgrades.md); it does **not** enforce Talos's supported
+  [`TalosUpgrade`](/talos-upgrades/); it does **not** enforce Talos's supported
   upgrade path. Step through minor versions yourself - see
-  [Versioning and safe upgrade paths](versioning.md).
+  [Versioning and safe upgrade paths](/versioning/).
 - The upgrade Job uses `talosctl`; its version is auto-detected but can be
   pinned per resource (`spec.talosctl.image`).
 
 ## Next
 
 Install the chart and run your first upgrade in the
-[Quickstart](quickstart.md).
+[Quickstart](/quickstart/).

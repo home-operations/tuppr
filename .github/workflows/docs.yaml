@@ -27,10 +27,26 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Build docs site
-        uses: home-operations/.github/actions/docs-build@497a09d6c938860e9330aeb7537f2b3362834ba9 # docs-build-v1.0.2
+      # withastro/action otherwise builds with its own default Node and the
+      # newest pnpm; mise's pins are the versions `mise run docs` uses locally.
+      - name: Setup Mise
+        uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
-          deploy: ${{ inputs.deploy }}
+          install: false
+
+      - name: Resolve toolchain versions
+        id: tools
+        run: |
+          echo "node=$(mise config get tools.node)" >> "$GITHUB_OUTPUT"
+          echo "pnpm=$(mise config get tools.pnpm)" >> "$GITHUB_OUTPUT"
+
+      # Uploads the Pages artifact on every run; only publish deploys it.
+      - name: Build docs site
+        uses: withastro/action@a8b97df764791eb61fbf3338ef713b0e61ae05c5 # v6.1.4
+        with:
+          path: ./docs
+          node-version: ${{ steps.tools.outputs.node }}
+          package-manager: pnpm@${{ steps.tools.outputs.pnpm }}
 
   publish:
     name: Publish to GitHub Pages

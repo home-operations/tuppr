@@ -27,7 +27,3 @@ go.work
 .idea
 .private
 .vscode
-
-# MkDocs build output and uv-managed venv (docs toolchain)
-site/
-.venv/

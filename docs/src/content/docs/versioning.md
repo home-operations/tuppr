@@ -1,4 +1,6 @@
-# Versioning and safe upgrade paths
+---
+title: Versioning and safe upgrade paths
+---
 
 tuppr upgrades to **exactly** the version you put in a `TalosUpgrade` - it does
 not validate that the jump is a supported one. Choosing a safe target is your
@@ -15,10 +17,10 @@ For example, going from v1.0 to v1.2.4 means:
 2. v1.0.6 → latest patch of v1.1 (e.g. v1.1.2)
 3. v1.1.2 → v1.2.4
 
-/// danger | tuppr does not enforce this
+:::danger[tuppr does not enforce this]
 Set `spec.talos.version` to a version that is a valid next step from your
 current one. tuppr will happily attempt whatever you specify.
-///
+:::
 
 ## Let Renovate propose safe steps
 
