@@ -15,7 +15,7 @@ require (
 	github.com/open-policy-agent/cert-controller v0.16.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/siderolabs/go-retry v0.3.3
-	github.com/siderolabs/talos/pkg/machinery v1.14.2
+	github.com/siderolabs/talos/pkg/machinery v1.14.4
 	github.com/stretchr/testify v1.12.1
 	github.com/unraid/apprise-go v0.3.3
 	go.uber.org/zap v1.28.0
