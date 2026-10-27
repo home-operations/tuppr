@@ -1,4 +1,8 @@
-# tuppr
+---
+title: tuppr
+sidebar:
+  label: Introduction
+---
 
 A Kubernetes controller for automated, orchestrated upgrades of **Talos Linux**
 and **Kubernetes**. You declare a target version in a custom resource; tuppr
@@ -10,15 +14,15 @@ it is running on.
 tuppr manages two kinds of upgrade, each its own custom resource in the
 `tuppr.home-operations.com/v1alpha1` API group:
 
-| Resource            | Upgrades              | Reboot | Per cluster                    |
-| ------------------- | --------------------- | ------ | ------------------------------ |
-| `TalosUpgrade`      | Talos Linux on nodes  | Yes    | Many (queued), node-selectable |
-| `KubernetesUpgrade` | The Kubernetes version | No    | Exactly one                    |
+| Resource            | Upgrades               | Reboot | Per cluster                    |
+| ------------------- | ---------------------- | ------ | ------------------------------ |
+| `TalosUpgrade`      | Talos Linux on nodes   | Yes    | Many (queued), node-selectable |
+| `KubernetesUpgrade` | The Kubernetes version | No     | Exactly one                    |
 
 Only one upgrade ever runs at a time across the cluster: multiple `TalosUpgrade`
 plans queue and execute one-by-one, and a `TalosUpgrade` and a
 `KubernetesUpgrade` never run concurrently. See
-[Upgrade coordination](coordination.md).
+[Upgrade coordination](/coordination/).
 
 ```mermaid
 flowchart LR
@@ -41,26 +45,26 @@ flowchart LR
 - You need tuppr to pick a _safe_ version for you. It upgrades to exactly the
   version you specify and does not enforce Talos's sequential upgrade path -
   that is your responsibility (see
-  [Versioning and safe upgrade paths](versioning.md)).
+  [Versioning and safe upgrade paths](/versioning/)).
 - You are not on Talos. tuppr drives upgrades over the Talos API; it is not a
   general-purpose node OS upgrader.
 
 ## Where to next
 
-- **[Requirements](requirements.md)**: Talos API access, namespace, supported
+- **[Requirements](/requirements/)**: Talos API access, namespace, supported
   versions.
-- **[Quickstart](quickstart.md)**: install the chart and run your first Talos
+- **[Quickstart](/quickstart/)**: install the chart and run your first Talos
   and Kubernetes upgrades.
-- **[Upgrade coordination](coordination.md)**: how plans queue and why the two
+- **[Upgrade coordination](/coordination/)**: how plans queue and why the two
   upgrade kinds never overlap.
-- **[Talos upgrades](talos-upgrades.md)**: policies, parallelism, installer
+- **[Talos upgrades](/talos-upgrades/)**: policies, parallelism, installer
   pre-pull, hooks, maintenance windows, per-node overrides, and health checks.
-- **[Kubernetes upgrades](kubernetes-upgrades.md)**: the single-resource model
+- **[Kubernetes upgrades](/kubernetes-upgrades/)**: the single-resource model
   and its history.
-- **[Notifications](notifications.md)**: send upgrade notifications through
+- **[Notifications](/notifications/)**: send upgrade notifications through
   Apprise, customize them with templates, and route them through
   [chaski](https://github.com/home-operations/chaski).
-- **[Monitoring](monitoring.md)**: metrics, alerts, and the Grafana dashboard.
-- **[Operations](operations.md)**: watching, suspending, retrying, and
+- **[Monitoring](/monitoring/)**: metrics, alerts, and the Grafana dashboard.
+- **[Operations](/operations/)**: watching, suspending, retrying, and
   troubleshooting upgrades.
-- **[Helm chart values](configuration.md)**: every chart knob.
+- **[Helm chart values](/configuration/)**: every chart knob.

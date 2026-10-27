@@ -1,3 +1,5 @@
 # More info: https://docs.docker.com/engine/reference/builder/#dockerignore-file
 # Ignore build and test binaries.
 bin/
+# The docs site, including its node_modules; the Go build reads none of it.
+docs/

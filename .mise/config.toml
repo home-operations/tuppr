@@ -11,7 +11,9 @@ kind = "0.33.0"
 kube-controller-tools = "v0.23.0"
 kubectl = "1.37.1"
 lefthook = "2.2.2"
+node = "26.12.1"
 oxfmt = "0.74.0"
+pnpm = "12.15.0"
 setup-envtest = "0.25.2"
 shellcheck = "0.11.0"
 stern = "1.35.0"
@@ -19,8 +21,6 @@ talosctl = "1.14.4"
 zizmor = "1.31.1"
 "aqua:dadav/helm-schema" = "0.24.0"
 yq = "4.54.1"
-# Docs site toolchain: MkDocs + Material run via uv (pyproject.toml / uv.lock).
-"aqua:astral-sh/uv" = "0.13.5"
 
 [tasks.manifests]
 description = "Generate CRD, RBAC, and webhook manifests"
@@ -130,12 +130,14 @@ go run -ldflags "-X main.version=$version -X main.commit=$commit" ./cmd/main.go
 '''
 
 [tasks.docs]
-description = "Build the docs site (MkDocs Material) into site/"
-run = "scripts/build-docs.sh"
+description = "Build the docs site (Astro Starlight) into docs/dist/, failing on a broken internal link"
+dir = "docs"
+run = ["pnpm install --frozen-lockfile", "pnpm run build"]
 
 [tasks.docs-serve]
 description = "Serve the docs locally with live reload"
-run = "uv run mkdocs serve"
+dir = "docs"
+run = ["pnpm install --frozen-lockfile", "pnpm run dev"]
 
 [hooks]
 postinstall = "lefthook install"

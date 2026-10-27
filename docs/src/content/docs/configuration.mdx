@@ -1,4 +1,9 @@
-# Helm chart values
+---
+title: Helm chart values
+---
+
+import { Code } from "@astrojs/starlight/components";
+import values from "../../../../charts/tuppr/values.yaml?raw";
 
 The **tuppr** chart is documented value-by-value in the generated
 [chart README](https://github.com/home-operations/tuppr/blob/main/charts/tuppr/README.md)
@@ -14,18 +19,16 @@ their behavior is explained - followed by the full `values.yaml` for reference.
   `podSecurityContext`, `nodeSelector`, `priorityClassName`, extra `env`): the
   deployment itself.
 - **`notification`** (`enabled`, `secretName`, `secretKey`, `titleTemplate`,
-  `messageTemplate`): upgrade notifications - see [Notifications](notifications.md).
+  `messageTemplate`): upgrade notifications - see [Notifications](/notifications/).
 - **`silences`** (`enabled`, `alertmanager.address`, `alertmanager.secretName`):
   the operator-level Alertmanager connection for upgrade-run silences
   (`spec.silences` on a TalosUpgrade) - see
-  [Alertmanager silences](talos-upgrades.md#alertmanager-silences).
+  [Alertmanager silences](/talos-upgrades/#alertmanager-silences).
 - **`monitoring`** (`serviceMonitor`, `prometheusRule`, `dashboards`): see
-  [Monitoring](monitoring.md).
+  [Monitoring](/monitoring/).
 - **`rbac`** and **`webhook`** (`certManager`): the ClusterRole the controller
   needs and the admission webhook's certificate wiring.
 
 ## values.yaml
 
-```yaml
---8<-- "charts/tuppr/values.yaml"
-```
+<Code code={values} lang="yaml" title="charts/tuppr/values.yaml" />

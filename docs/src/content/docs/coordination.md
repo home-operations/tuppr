@@ -1,24 +1,26 @@
-# Upgrade coordination
+---
+title: Upgrade coordination
+---
 
 tuppr runs **one upgrade at a time across the whole cluster**. This is the
 safety property that lets you apply many upgrade resources at once and trust
 that they won't fight each other.
 
-|                    | `TalosUpgrade`                                  | `KubernetesUpgrade`      |
-| ------------------ | ----------------------------------------------- | ------------------------ |
-| Scope              | Talos on selected nodes                         | Kubernetes cluster-wide  |
-| Resources allowed  | Many (queued, first-come-first-served)          | Exactly one              |
-| Within a plan      | Sequential, or parallel via `spec.parallelism`  | Single controller node   |
-| Reboot             | Yes                                             | No                       |
-| Health checks      | Before each node/batch                          | Before the upgrade       |
-| Blocked by         | Any other in-progress upgrade                   | Any other in-progress upgrade |
+|                   | `TalosUpgrade`                                 | `KubernetesUpgrade`           |
+| ----------------- | ---------------------------------------------- | ----------------------------- |
+| Scope             | Talos on selected nodes                        | Kubernetes cluster-wide       |
+| Resources allowed | Many (queued, first-come-first-served)         | Exactly one                   |
+| Within a plan     | Sequential, or parallel via `spec.parallelism` | Single controller node        |
+| Reboot            | Yes                                            | No                            |
+| Health checks     | Before each node/batch                         | Before the upgrade            |
+| Blocked by        | Any other in-progress upgrade                  | Any other in-progress upgrade |
 
 ## Multiple TalosUpgrade plans queue
 
 You may create several `TalosUpgrade` resources targeting different node groups
 (for example one per zone). Only **one plan executes at a time**, first-come,
 first-served; the rest stay `Pending` until the active plan finishes. Within a
-single plan, use [`spec.parallelism`](talos-upgrades.md#parallel-upgrades) to
+single plan, use [`spec.parallelism`](/talos-upgrades/#parallel-upgrades) to
 upgrade several nodes concurrently.
 
 ```yaml
@@ -45,11 +47,11 @@ spec:
       topology.kubernetes.io/zone: east
 ```
 
-/// warning | Overlapping node selectors
+:::caution[Overlapping node selectors]
 If two plans select the same node, the admission webhook issues a warning at
 creation. It is allowed but discouraged: alternating plans can repeatedly
 upgrade the same node.
-///
+:::
 
 ## Only one KubernetesUpgrade
 

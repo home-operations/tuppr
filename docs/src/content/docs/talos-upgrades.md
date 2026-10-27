@@ -1,4 +1,6 @@
-# Talos upgrades
+---
+title: Talos upgrades
+---
 
 A `TalosUpgrade` declares a target Talos version for a set of nodes. tuppr
 health-checks the cluster, then rolls the version out node-by-node (or in
@@ -67,29 +69,29 @@ on failing checks is visible in `kubectl describe`. A check with
 [pre-hooks](#prepost-upgrade-hooks) have completed; a run with no checks left
 emits no Events.
 
-Health checks are also available on [`KubernetesUpgrade`](kubernetes-upgrades.md).
+Health checks are also available on [`KubernetesUpgrade`](/kubernetes-upgrades/).
 
 ## Policy
 
 `spec.policy` tunes how the upgrade runs:
 
-| Field                 | Default   | Effect                                                                             |
-| --------------------- | --------- | ---------------------------------------------------------------------------------- |
-| `debug`               | `false`   | Verbose upgrade logging.                                                            |
-| `force`               | `false`   | Skip etcd health checks. Dangerous - can break quorum.                             |
-| `placement`           | `hard`    | How strictly the upgrade Job avoids the target node (`hard` or `soft`).            |
-| `rebootMode`          | `default` | `default`, or `powercycle` for nodes that don't reboot cleanly.                    |
-| `stage`               | `false`   | Stage the upgrade and apply it on the next reboot (two reboots total).             |
-| `waitForVolumeDetach` | `false`   | Drain and wait for CSI volumes to detach before the reboot (see below).            |
+| Field                 | Default   | Effect                                                                                                                                                                                                              |
+| --------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `debug`               | `false`   | Verbose upgrade logging.                                                                                                                                                                                            |
+| `force`               | `false`   | Skip etcd health checks. Dangerous - can break quorum.                                                                                                                                                              |
+| `placement`           | `hard`    | How strictly the upgrade Job avoids the target node (`hard` or `soft`).                                                                                                                                             |
+| `rebootMode`          | `default` | `default`, or `powercycle` for nodes that don't reboot cleanly.                                                                                                                                                     |
+| `stage`               | `false`   | Stage the upgrade and apply it on the next reboot (two reboots total).                                                                                                                                              |
+| `waitForVolumeDetach` | `false`   | Drain and wait for CSI volumes to detach before the reboot (see below).                                                                                                                                             |
 | `drainTimeout`        | unset     | Timeout for `talosctl`'s own node drain (talosctl 1.13+, default 5m). If the drain exceeds it the upgrade fails without rebooting; raise it for nodes hosting several PDB-gated workloads. Keep it below `timeout`. |
-| `timeout`             | `30m`     | Per-node upgrade timeout, including how long a node may take to become ready after its reboot before being marked failed. |
+| `timeout`             | `30m`     | Per-node upgrade timeout, including how long a node may take to become ready after its reboot before being marked failed.                                                                                           |
 
-/// tip | waitForVolumeDetach
+:::tip[waitForVolumeDetach]
 Set this when a fast reboot could orphan a mount and pin a volume to the node -
 which surfaces as a `Multi-Attach` error when the pod reschedules. tuppr drains
 the node and waits for its CSI volumes to detach before rebooting. No effect on
 single-node clusters.
-///
+:::
 
 ## Node selection
 
@@ -106,7 +108,7 @@ spec:
 ```
 
 Multiple plans with different selectors queue; see [Upgrade
-coordination](coordination.md).
+coordination](/coordination/).
 
 ## Parallel upgrades
 
@@ -174,13 +176,13 @@ spec:
     # disableEviction: false  # force delete instead of evicting
 ```
 
-/// warning | Deprecated
+:::caution[Deprecated]
 `spec.drain` is deprecated. `talosctl` 1.13+ drains the node itself as part of
 the upgrade (disable with `policy.nodrain`), and `policy.waitForVolumeDetach`
 covers the CSI detach case. Note that `disableEviction: true` deletes pods that
 a PodDisruptionBudget would protect, which can stall operators that expect an
 orderly eviction (e.g. a CloudNativePG primary switchover).
-///
+:::
 
 tuppr cordons the node, evicts its pods, and waits for them to terminate before
 the reboot, then uncordons the node after a verified upgrade. While it is set,
@@ -275,7 +277,7 @@ when that window starts and ends, so it can hold an Alertmanager silence open
 for the run.
 
 The connection is operator-level (credentials stay out of CRs - see the
-[chart values](configuration.md)); which alerts get silenced is per-resource
+[chart values](/configuration/)); which alerts get silenced is per-resource
 and user-authored, same philosophy as `healthChecks`:
 
 ```yaml
@@ -300,12 +302,12 @@ spec:
 
 Each list entry is one Alertmanager silence, held for the whole run.
 
-/// warning | Matchers within one silence are ANDed
+:::caution[Matchers within one silence are ANDed]
 Alertmanager semantics: a silence matches an alert only when **all** its
 matchers do. To cover alternatives, use a regex value (as above); to silence
 independent scopes - say Ceph alerts only in `namespace=rook-ceph` plus a
 cluster-wide `TargetDown` - use separate `silences` entries, one per scope.
-///
+:::
 
 Anything speaking the Alertmanager v2 silences API works: Prometheus
 Alertmanager, VMAlertmanager, or Grafana-managed alerting behind its prefix.
@@ -342,23 +344,23 @@ The silence IDs are visible in `.status.alertSilenceIDs` (indexed like
 operator-level Alertmanager connection warns at apply time (admission webhook)
 and as a `SilencesNotConfigured` event.
 
-/// tip | Alternative: Alertmanager inhibition
+:::tip[Alternative: Alertmanager inhibition]
 If you'd rather keep alert routing entirely in Alertmanager, you can wire an
 inhibition rule keyed on tuppr's `tuppr_talos_upgrade_phase` metric (via an
 always-firing "upgrade in progress" alert) instead - zero tuppr configuration,
 at the cost of maintaining the alert + `inhibit_rules` by hand.
-///
+:::
 
 ## Per-node overrides
 
 Annotations on a **Node** override the plan for that node - handy for a canary
 version or a different installer flavor.
 
-| Annotation                            | Purpose                                                                     | Example                           |
-| ------------------------------------- | --------------------------------------------------------------------------- | --------------------------------- |
-| `tuppr.home-operations.com/version`   | Target Talos version for this node.                                         | `v1.12.1`                         |
-| `tuppr.home-operations.com/factory-url` | Switch the node's installer flavor on the next upgrade.                   | `factory.talos.dev/aws-installer` |
-| `tuppr.home-operations.com/schematic` | Companion to `factory-url`; the schematic to build the image with.          | `b55fbf...`                       |
+| Annotation                              | Purpose                                                            | Example                           |
+| --------------------------------------- | ------------------------------------------------------------------ | --------------------------------- |
+| `tuppr.home-operations.com/version`     | Target Talos version for this node.                                | `v1.12.1`                         |
+| `tuppr.home-operations.com/factory-url` | Switch the node's installer flavor on the next upgrade.            | `factory.talos.dev/aws-installer` |
+| `tuppr.home-operations.com/schematic`   | Companion to `factory-url`; the schematic to build the image with. | `b55fbf...`                       |
 
 ```bash
 # Pin one node to a different version
