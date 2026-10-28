@@ -475,7 +475,7 @@ func (s *Client) CheckMachineReady(ctx context.Context, nodeIP string) error {
 }
 
 // CheckEtcdHealthy reports whether etcd can safely lose a member to the next
-// upgrade: the member list, read through quorum from the first node, holds
+// upgrade: the member list, a quorum read served by the first node, holds
 // exactly one voting member per control-plane node, and every node reports a
 // leader and no errors. A just-upgraded node rejoins as a learner first, so
 // this also waits out its promotion. No nodes means no etcd to check.

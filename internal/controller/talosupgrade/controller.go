@@ -128,6 +128,9 @@ type Reconciler struct {
 	// silenceWarnings latches once-per-CR silence Warning events (see
 	// silenceWarnOnce) so steady-state conditions don't spam the apiserver.
 	silenceWarnings sync.Map
+
+	// clusterHealthTimeout overrides defaultClusterHealthTimeout when > 0.
+	clusterHealthTimeout time.Duration
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {

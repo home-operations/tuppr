@@ -66,25 +66,27 @@ const (
 )
 
 type mockTalosClient struct {
-	nodeVersions     map[string]string
-	nodeVersionErrs  map[string]error
-	installImages    map[string]string
-	extensions       map[string]talos.ExtensionInfo
-	platforms        map[string]string
-	checkReadyErr    error
-	getVersionErr    error
-	getInstallErr    error
-	getExtensionsErr error
-	getPlatformErr   error
-	patchCalls       []string
-	patchImageErr    error
-	pullCalls        []string
-	pullImageRefs    map[string]string
-	pullErrs         map[string]error
-	pullErr          error
-	machineReadyErrs map[string]error
-	etcdErr          error
-	etcdCalls        [][]string
+	nodeVersions      map[string]string
+	nodeVersionErrs   map[string]error
+	installImages     map[string]string
+	extensions        map[string]talos.ExtensionInfo
+	platforms         map[string]string
+	checkReadyErr     error
+	getVersionErr     error
+	getInstallErr     error
+	getExtensionsErr  error
+	getPlatformErr    error
+	patchCalls        []string
+	patchImageErr     error
+	pullCalls         []string
+	pullImageRefs     map[string]string
+	pullErrs          map[string]error
+	pullErr           error
+	machineReadyErrs  map[string]error
+	machineReadyCalls []string
+	etcdErr           error
+	etcdBlock         bool
+	etcdCalls         [][]string
 }
 
 func (m *mockTalosClient) GetNodeVersion(ctx context.Context, nodeIP string) (string, error) {
@@ -152,11 +154,16 @@ func (m *mockTalosClient) PullImage(ctx context.Context, nodeIP, imageRef string
 }
 
 func (m *mockTalosClient) CheckMachineReady(ctx context.Context, nodeIP string) error {
+	m.machineReadyCalls = append(m.machineReadyCalls, nodeIP)
 	return m.machineReadyErrs[nodeIP]
 }
 
 func (m *mockTalosClient) CheckEtcdHealthy(ctx context.Context, controlPlaneIPs []string) error {
 	m.etcdCalls = append(m.etcdCalls, controlPlaneIPs)
+	if m.etcdBlock {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	return m.etcdErr
 }
 
