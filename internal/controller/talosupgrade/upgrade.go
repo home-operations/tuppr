@@ -344,6 +344,15 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		return result, nil
 	}
 
+	if err := r.checkClusterHealth(ctx); err != nil {
+		logger.V(1).Info("Waiting for cluster health", "error", err.Error())
+		message := fmt.Sprintf("Waiting for cluster health: %s", err.Error())
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, message); err != nil {
+			logger.Error(err, "Failed to update phase for cluster health")
+		}
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
 	checks, skipHealthCheck := interBatchHealthChecks(talosUpgrade)
 
 	if !skipHealthCheck {

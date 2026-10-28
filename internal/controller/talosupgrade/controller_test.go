@@ -82,6 +82,9 @@ type mockTalosClient struct {
 	pullImageRefs    map[string]string
 	pullErrs         map[string]error
 	pullErr          error
+	machineReadyErrs map[string]error
+	etcdErr          error
+	etcdCalls        [][]string
 }
 
 func (m *mockTalosClient) GetNodeVersion(ctx context.Context, nodeIP string) (string, error) {
@@ -146,6 +149,15 @@ func (m *mockTalosClient) PullImage(ctx context.Context, nodeIP, imageRef string
 		return err
 	}
 	return m.pullErr
+}
+
+func (m *mockTalosClient) CheckMachineReady(ctx context.Context, nodeIP string) error {
+	return m.machineReadyErrs[nodeIP]
+}
+
+func (m *mockTalosClient) CheckEtcdHealthy(ctx context.Context, controlPlaneIPs []string) error {
+	m.etcdCalls = append(m.etcdCalls, controlPlaneIPs)
+	return m.etcdErr
 }
 
 type mockHealthChecker struct {
@@ -289,6 +301,9 @@ func newNode(name, ip string) *corev1.Node {
 		Status: corev1.NodeStatus{
 			Addresses: []corev1.NodeAddress{
 				{Type: corev1.NodeInternalIP, Address: ip},
+			},
+			Conditions: []corev1.NodeCondition{
+				{Type: corev1.NodeReady, Status: corev1.ConditionTrue},
 			},
 		},
 	}
