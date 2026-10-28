@@ -326,8 +326,19 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	}
 
 	if len(pendingNodes) == 0 {
+		// Read before recordOutOfBandCompletedNodes, which also lists nodes
+		// this run never touched.
+		upgradedNodes := len(talosUpgrade.Status.CompletedNodes) > 0
 		if err := r.recordOutOfBandCompletedNodes(ctx, talosUpgrade); err != nil {
 			logger.Error(err, "Failed to record out-of-band upgraded nodes")
+		}
+		// The last batch has no next batch to hold it back; without this the
+		// run completes (unblocking a queued KubernetesUpgrade and running
+		// post-hooks) while that batch is still rejoining.
+		if upgradedNodes {
+			if result, done := r.waitForClusterHealth(ctx, talosUpgrade); done {
+				return result, nil
+			}
 		}
 		return r.transitionToFinalize(ctx, talosUpgrade)
 	}
@@ -344,13 +355,8 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		return result, nil
 	}
 
-	if err := r.checkClusterHealth(ctx); err != nil {
-		logger.V(1).Info("Waiting for cluster health", "error", err.Error())
-		message := fmt.Sprintf("Waiting for cluster health: %s", err.Error())
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, message); err != nil {
-			logger.Error(err, "Failed to update phase for cluster health")
-		}
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	if result, done := r.waitForClusterHealth(ctx, talosUpgrade); done {
+		return result, nil
 	}
 
 	checks, skipHealthCheck := interBatchHealthChecks(talosUpgrade)
