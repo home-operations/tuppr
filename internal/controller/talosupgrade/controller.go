@@ -77,6 +77,8 @@ type TalosClient interface {
 	GetNodePlatform(ctx context.Context, nodeIP string) (string, error)
 	PatchNodeInstallImage(ctx context.Context, nodeIP, newImage string) error
 	PullImage(ctx context.Context, nodeIP, imageRef string) error
+	CheckMachineReady(ctx context.Context, nodeIP string) error
+	CheckEtcdHealthy(ctx context.Context, controlPlaneIPs []string) error
 }
 
 // ImageChecker defines the interface for checking image availability

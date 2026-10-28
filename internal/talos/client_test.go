@@ -13,10 +13,12 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/api/common"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
 	configpb "github.com/siderolabs/talos/pkg/machinery/api/resource/config"
+	talosruntime "github.com/siderolabs/talos/pkg/machinery/resources/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
@@ -43,6 +45,10 @@ type mockTalosClient struct {
 	imagePullErr    error
 	pullStreamErr   error
 	pullStreamFunc  func(ctx context.Context) grpc.ServerStreamingClient[machine.ImageServicePullResponse]
+	etcdMembers     *machine.EtcdMemberListResponse
+	etcdMembersErr  error
+	etcdStatus      map[string]*machine.EtcdStatusResponse
+	etcdStatusErr   error
 }
 
 func (m *mockTalosClient) Version(_ context.Context, _ ...grpc.CallOption) (*machine.VersionResponse, error) {
@@ -171,6 +177,22 @@ func pullProgressMsg(layer string, st machine.ImageServicePullLayerProgress_Stat
 			},
 		},
 	}
+}
+
+func (m *mockTalosClient) EtcdMemberList(_ context.Context, _ *machine.EtcdMemberListRequest, _ ...grpc.CallOption) (*machine.EtcdMemberListResponse, error) {
+	return m.etcdMembers, m.etcdMembersErr
+}
+
+func (m *mockTalosClient) EtcdStatus(ctx context.Context, _ ...grpc.CallOption) (*machine.EtcdStatusResponse, error) {
+	if m.etcdStatusErr != nil {
+		return nil, m.etcdStatusErr
+	}
+	md, _ := metadata.FromOutgoingContext(ctx)
+	nodes := md.Get("node")
+	if len(nodes) == 0 {
+		return nil, errors.New("no node in context")
+	}
+	return m.etcdStatus[nodes[0]], nil
 }
 
 func (m *mockTalosClient) Close() error {
@@ -845,4 +867,159 @@ func TestIsUnimplementedError(t *testing.T) {
 	assert.False(t, IsUnimplementedError(status.Error(codes.Unavailable, "down")))
 	assert.True(t, IsUnimplementedError(status.Error(codes.Unimplemented, "nope")))
 	assert.True(t, IsUnimplementedError(fmt.Errorf("wrapped: %w", status.Error(codes.Unimplemented, "nope"))))
+}
+
+func newMachineStatus(stage talosruntime.MachineStage, ready bool, unmet ...talosruntime.UnmetCondition) *talosruntime.MachineStatus {
+	ms := talosruntime.NewMachineStatus()
+	ms.TypedSpec().Stage = stage
+	ms.TypedSpec().Status.Ready = ready
+	ms.TypedSpec().Status.UnmetConditions = unmet
+	return ms
+}
+
+func TestClient_CheckMachineReady(t *testing.T) {
+	tests := []struct {
+		name    string
+		res     resource.Resource
+		wantErr string
+	}{
+		{
+			name: "running and ready",
+			res:  newMachineStatus(talosruntime.MachineStageRunning, true),
+		},
+		{
+			name:    "not in running stage",
+			res:     newMachineStatus(talosruntime.MachineStageBooting, false),
+			wantErr: "node 10.0.0.1 is in stage booting",
+		},
+		{
+			name: "unmet conditions are reported",
+			res: newMachineStatus(talosruntime.MachineStageRunning, false,
+				talosruntime.UnmetCondition{Name: "services", Reason: "etcd not healthy"},
+				talosruntime.UnmetCondition{Name: "nodeReady", Reason: "node not ready"},
+			),
+			wantErr: "node 10.0.0.1 not ready: services: etcd not healthy; nodeReady: node not ready",
+		},
+		{
+			name:    "wrong resource type",
+			res:     talosruntime.NewPlatformMetadataSpec(talosruntime.NamespaceName, talosruntime.PlatformMetadataID),
+			wantErr: "unexpected resource type for machine status from node 10.0.0.1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &mockTalosClient{cosiResource: tt.res}
+			c := &Client{talos: mock, newClientFunc: func(context.Context) (talosClient, error) { return mock, nil }}
+
+			err := c.CheckMachineReady(context.Background(), "10.0.0.1")
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.EqualError(t, err, tt.wantErr)
+		})
+	}
+}
+
+func etcdStatusFor(leader uint64, learner bool, errs ...string) *machine.EtcdStatusResponse {
+	return &machine.EtcdStatusResponse{Messages: []*machine.EtcdStatus{{
+		MemberStatus: &machine.EtcdMemberStatus{Leader: leader, IsLearner: learner, Errors: errs},
+	}}}
+}
+
+func TestClient_CheckEtcdHealthy(t *testing.T) {
+	const (
+		ip1, ip2 = "10.0.0.1", "10.0.0.2"
+		cp1, cp2 = "cp-1", "cp-2"
+	)
+	twoMembers := &machine.EtcdMemberListResponse{Messages: []*machine.EtcdMembers{{
+		Members: []*machine.EtcdMember{{Id: 1, Hostname: cp1}, {Id: 2, Hostname: cp2}},
+	}}}
+	healthy := map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, false), ip2: etcdStatusFor(1, false)}
+
+	tests := []struct {
+		name    string
+		ips     []string
+		members *machine.EtcdMemberListResponse
+		status  map[string]*machine.EtcdStatusResponse
+		wantErr string
+	}{
+		{
+			name: "no control-plane nodes",
+		},
+		{
+			name:    "all members healthy",
+			ips:     []string{ip1, ip2},
+			members: twoMembers,
+			status:  healthy,
+		},
+		{
+			name: "member count does not match control-plane nodes",
+			ips:  []string{ip1, ip2},
+			members: &machine.EtcdMemberListResponse{Messages: []*machine.EtcdMembers{{
+				Members: []*machine.EtcdMember{{Id: 1, Hostname: cp1}},
+			}}},
+			wantErr: "etcd has 1 member(s), expected 2 (one per control-plane node)",
+		},
+		{
+			name: "rejoined member still a learner",
+			ips:  []string{ip1, ip2},
+			members: &machine.EtcdMemberListResponse{Messages: []*machine.EtcdMembers{{
+				Members: []*machine.EtcdMember{{Id: 1, Hostname: cp1}, {Id: 2, Hostname: cp2, IsLearner: true}},
+			}}},
+			wantErr: "etcd member cp-2 is still a learner",
+		},
+		{
+			name:    "member without a leader",
+			ips:     []string{ip1, ip2},
+			members: twoMembers,
+			status:  map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, false), ip2: etcdStatusFor(0, false)},
+			wantErr: "etcd on 10.0.0.2 has no leader",
+		},
+		{
+			name:    "member status still a learner",
+			ips:     []string{ip1, ip2},
+			members: twoMembers,
+			status:  map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, false), ip2: etcdStatusFor(1, true)},
+			wantErr: "etcd on 10.0.0.2 is still a learner",
+		},
+		{
+			name:    "member reporting errors",
+			ips:     []string{ip1, ip2},
+			members: twoMembers,
+			status:  map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, false, "NOSPACE"), ip2: etcdStatusFor(1, false)},
+			wantErr: "etcd on 10.0.0.1 reports errors: NOSPACE",
+		},
+		{
+			name:    "member returns no status",
+			ips:     []string{ip1, ip2},
+			members: twoMembers,
+			status:  map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, false), ip2: {}},
+			wantErr: "no etcd status from 10.0.0.2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &mockTalosClient{etcdMembers: tt.members, etcdStatus: tt.status}
+			c := &Client{talos: mock, newClientFunc: func(context.Context) (talosClient, error) { return mock, nil }}
+
+			err := c.CheckEtcdHealthy(context.Background(), tt.ips)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.EqualError(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestClient_CheckEtcdHealthy_MemberListError(t *testing.T) {
+	mock := &mockTalosClient{etcdMembersErr: status.Error(codes.PermissionDenied, "denied")}
+	c := &Client{talos: mock, newClientFunc: func(context.Context) (talosClient, error) { return mock, nil }}
+
+	err := c.CheckEtcdHealthy(context.Background(), []string{"10.0.0.1"})
+	require.ErrorContains(t, err, "failed to list etcd members from 10.0.0.1")
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
 }
