@@ -48,9 +48,10 @@ func (e *unhealthyError) Unwrap() error { return e.err }
 // and in its Talos MachineStatus, and etcd must have a healthy voting member
 // on each control-plane node. Nodes outside both sets are left alone so a
 // stale or foreign Node cannot block the run. MachineStatus only sees the
-// local node, hence the separate etcd membership check. Talos re-checks etcd
-// itself when it receives an upgrade, but its refusal fails the Job and stops
-// the run, so wait here instead.
+// local node, hence the separate etcd membership check. Talos 1.13+ upgrades
+// through LifecycleService, which checks neither etcd health nor upgrades in
+// flight on other nodes (only the legacy MachineService.Upgrade did), so
+// nothing else stops a control-plane reboot while etcd is degraded.
 func (r *Reconciler) checkClusterHealth(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) error {
 	timeout := r.clusterHealthTimeout
 	if timeout <= 0 {
