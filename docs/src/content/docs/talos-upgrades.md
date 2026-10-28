@@ -88,7 +88,10 @@ Nodes outside the selection that are not control-plane nodes are not checked,
 so a powered-off node still registered in another pool does not block the run.
 
 A node that just upgraded reports its new version as soon as the Talos API is
-back, before it has rejoined etcd or Kubernetes; this gate holds the next batch,
+back, before it has rejoined etcd or Kubernetes. Talos 1.13 and newer accept an
+upgrade without checking etcd (only the legacy upgrade API used before 1.13 did),
+so nothing else stops the next control-plane reboot while etcd is still
+degraded. This gate holds the next batch,
 and the run's completion (which would unblock a queued `KubernetesUpgrade` and
 start post-hooks), until it has. While it waits, the run stays in
 `HealthChecking` with the failing condition in its message; the controller log
@@ -99,9 +102,9 @@ rather than upgrading the next node.
 
 Control-plane nodes are found by the `node-role.kubernetes.io/control-plane`
 label; if no node carries it, the etcd membership check is skipped. A cluster
-with exactly two control-plane nodes passes the gate, but Talos itself refuses
-to upgrade a control-plane node while etcd has only two members, so the upgrade
-Job fails.
+with exactly two control-plane nodes passes the gate, but rebooting either of
+them loses etcd quorum until it is back: Talos older than 1.13 refuses that
+upgrade, 1.13 and newer do not. Run three or more control-plane nodes.
 
 ## Policy
 
