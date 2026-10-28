@@ -6,14 +6,14 @@ tuppr runs **one upgrade at a time across the whole cluster**. This is the
 safety property that lets you apply many upgrade resources at once and trust
 that they won't fight each other.
 
-|                   | `TalosUpgrade`                                 | `KubernetesUpgrade`           |
-| ----------------- | ---------------------------------------------- | ----------------------------- |
-| Scope             | Talos on selected nodes                        | Kubernetes cluster-wide       |
-| Resources allowed | Many (queued, first-come-first-served)         | Exactly one                   |
-| Within a plan     | Sequential, or parallel via `spec.parallelism` | Single controller node        |
-| Reboot            | Yes                                            | No                            |
-| Health checks     | Before each node/batch                         | Before the upgrade            |
-| Blocked by        | Any other in-progress upgrade                  | Any other in-progress upgrade |
+|                   | `TalosUpgrade`                                         | `KubernetesUpgrade`           |
+| ----------------- | ------------------------------------------------------ | ----------------------------- |
+| Scope             | Talos on selected nodes                                | Kubernetes cluster-wide       |
+| Resources allowed | Many (queued, first-come-first-served)                 | Exactly one                   |
+| Within a plan     | Sequential, or parallel workers via `spec.parallelism` | Single controller node        |
+| Reboot            | Yes                                                    | No                            |
+| Health checks     | Before each node/batch                                 | Before the upgrade            |
+| Blocked by        | Any other in-progress upgrade                          | Any other in-progress upgrade |
 
 ## Multiple TalosUpgrade plans queue
 
@@ -21,7 +21,14 @@ You may create several `TalosUpgrade` resources targeting different node groups
 (for example one per zone). Only **one plan executes at a time**, first-come,
 first-served; the rest stay `Pending` until the active plan finishes. Within a
 single plan, use [`spec.parallelism`](/talos-upgrades/#parallel-upgrades) to
-upgrade several nodes concurrently.
+upgrade several worker nodes concurrently.
+
+Plans queue through their phases, and a running plan shows `Pending` for a
+moment between batches and while it retries an error, so another plan can start
+in that gap. Control-plane nodes have a guard that does not depend on phases:
+tuppr never starts a control-plane upgrade while another control-plane node's
+upgrade is in flight, from any plan (see
+[Parallel upgrades](/talos-upgrades/#parallel-upgrades)).
 
 ```yaml
 apiVersion: tuppr.home-operations.com/v1alpha1
