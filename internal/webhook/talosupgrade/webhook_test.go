@@ -800,6 +800,9 @@ func TestTalosUpgrade_ValidateCreate_ParallelismValid(t *testing.T) {
 	if !containsWarning(warnings, "Parallelism set to 2") {
 		t.Errorf("expected warning about parallelism, got: %v", warnings)
 	}
+	if !containsWarning(warnings, "control-plane nodes are always upgraded one at a time") {
+		t.Errorf("expected parallelism warning to mention control-plane serialization, got: %v", warnings)
+	}
 }
 
 func TestTalosUpgrade_ValidateCreate_ParallelismExceedsNodes(t *testing.T) {
@@ -972,5 +975,117 @@ func TestTalosUpgrade_ValidateCreate_ParallelismWithNodeSelector(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "exceeds number of matching nodes (2)") {
 		t.Errorf("expected error about 2 matching nodes, got: %v", err)
+	}
+}
+
+func cpNode(name string) *corev1.Node {
+	return &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: map[string]string{controlPlaneLabel: ""}}}
+}
+
+func workerNode(name string) *corev1.Node {
+	return &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: name}}
+}
+
+func TestTalosUpgrade_Warnings_LegacyOnlyPolicies(t *testing.T) {
+	tests := []struct {
+		name string
+		opt  func(*tupprv1alpha1.TalosUpgrade)
+		want string
+	}{
+		{
+			name: "force",
+			opt:  withForce(true),
+			want: "Force upgrade enabled: it only takes effect on nodes older than Talos 1.13",
+		},
+		{
+			name: "stage",
+			opt:  func(tu *tupprv1alpha1.TalosUpgrade) { tu.Spec.Policy.Stage = true },
+			want: "Stage upgrade enabled: it only takes effect on nodes older than Talos 1.13",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
+			warnings, err := v.ValidateCreate(context.Background(), newTalosUpgrade("test", tt.opt))
+			if err != nil {
+				t.Fatalf("expected no error, got: %v", err)
+			}
+			if !containsWarning(warnings, tt.want) {
+				t.Errorf("expected warning %q, got: %v", tt.want, warnings)
+			}
+		})
+	}
+}
+
+func TestTalosUpgrade_Warnings_ControlPlaneCount(t *testing.T) {
+	const want = "exactly two control-plane nodes"
+	tests := []struct {
+		name  string
+		nodes []runtime.Object
+		warn  bool
+	}{
+		{name: "two control-plane nodes", nodes: []runtime.Object{cpNode(testNode1), cpNode(testNode2), workerNode(testNode3)}, warn: true},
+		{name: "three control-plane nodes", nodes: []runtime.Object{cpNode(testNode1), cpNode(testNode2), cpNode(testNode3)}},
+		{name: "one control-plane node", nodes: []runtime.Object{cpNode(testNode1), workerNode(testNode2)}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			objs := append([]runtime.Object{talosConfigSecretWithKey(testNamespace, validTalosConfig())}, tt.nodes...)
+			v := newTalosValidator(objs...)
+			warnings, err := v.ValidateCreate(context.Background(), newTalosUpgrade("test"))
+			if err != nil {
+				t.Fatalf("expected no error, got: %v", err)
+			}
+			if got := containsWarning(warnings, want); got != tt.warn {
+				t.Errorf("expected two-control-plane warning=%v, got warnings: %v", tt.warn, warnings)
+			}
+		})
+	}
+}
+
+func TestTalosUpgrade_Warnings_ParallelismExceedsWorkers(t *testing.T) {
+	const want = "exceeds the"
+	tests := []struct {
+		name        string
+		nodes       []runtime.Object
+		parallelism int32
+		warn        string
+	}{
+		{
+			name:        "more parallelism than workers",
+			nodes:       []runtime.Object{cpNode(testNode1), cpNode(testNode2), workerNode(testNode3)},
+			parallelism: 3,
+			warn:        "spec.parallelism (3) exceeds the 1 selected worker node(s); batches never hold more than 1 node(s).",
+		},
+		{
+			name:        "no workers at all",
+			nodes:       []runtime.Object{cpNode(testNode1), cpNode(testNode2), cpNode(testNode3)},
+			parallelism: 2,
+			warn:        "spec.parallelism (2) exceeds the 0 selected worker node(s); batches never hold more than 1 node(s).",
+		},
+		{
+			name:        "enough workers",
+			nodes:       []runtime.Object{cpNode(testNode1), workerNode(testNode2), workerNode(testNode3)},
+			parallelism: 2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			objs := append([]runtime.Object{talosConfigSecretWithKey(testNamespace, validTalosConfig())}, tt.nodes...)
+			v := newTalosValidator(objs...)
+			warnings, err := v.ValidateCreate(context.Background(), newTalosUpgrade("test", withParallelism(tt.parallelism)))
+			if err != nil {
+				t.Fatalf("expected no error, got: %v", err)
+			}
+			if tt.warn == "" {
+				if containsWarning(warnings, want) {
+					t.Errorf("expected no worker-count warning, got: %v", warnings)
+				}
+				return
+			}
+			if !containsWarning(warnings, tt.warn) {
+				t.Errorf("expected warning %q, got: %v", tt.warn, warnings)
+			}
+		})
 	}
 }

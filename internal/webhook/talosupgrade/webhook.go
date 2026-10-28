@@ -17,7 +17,10 @@ import (
 	"github.com/home-operations/tuppr/internal/webhook/validation"
 )
 
-const rebootModeDefault = "default"
+const (
+	rebootModeDefault = "default"
+	controlPlaneLabel = "node-role.kubernetes.io/control-plane"
+)
 
 // Validator validates Talos resources
 type Validator struct {
@@ -113,8 +116,12 @@ func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade)
 	)...)
 
 	if t.Spec.Policy.Force {
-		warnings = append(warnings, "Force upgrade enabled.")
+		warnings = append(warnings, "Force upgrade enabled: it only takes effect on nodes older than Talos 1.13 (legacy upgrade API), where it skips Talos's etcd health and membership checks; talosctl ignores it on newer nodes. tuppr still waits for etcd health and upgrades control-plane nodes one at a time.")
 	}
+	if t.Spec.Policy.Stage {
+		warnings = append(warnings, "Stage upgrade enabled: it only takes effect on nodes older than Talos 1.13 (legacy upgrade API); talosctl ignores it on newer nodes.")
+	}
+	warnings = append(warnings, v.controlPlaneWarnings(ctx)...)
 	if t.Spec.Policy.RebootMode == "powercycle" {
 		warnings = append(warnings, "Powercycle reboot mode selected.")
 	}
@@ -256,13 +263,64 @@ func (v *Validator) validateParallelism(ctx context.Context, t *tupprv1alpha1.Ta
 		return nil, fmt.Errorf("spec.parallelism (%d) exceeds number of matching nodes (%d)", p, nodeCount)
 	}
 
-	if p > 1 {
-		return admission.Warnings{
-			fmt.Sprintf("Parallelism set to %d: up to %d nodes will be upgraded concurrently per batch.", p, p),
-		}, nil
+	if p <= 1 {
+		return nil, nil
 	}
+	warnings := admission.Warnings{
+		fmt.Sprintf("Parallelism set to %d: up to %d worker nodes will be upgraded concurrently per batch; control-plane nodes are always upgraded one at a time.", p, p),
+	}
+	workers, err := v.countSelectedWorkers(ctx, t.Spec.NodeSelector)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to count selected worker nodes for parallelism validation")
+		return warnings, nil
+	}
+	if p > workers {
+		warnings = append(warnings, fmt.Sprintf(
+			"spec.parallelism (%d) exceeds the %d selected worker node(s); batches never hold more than %d node(s).",
+			p, workers, max(workers, 1)))
+	}
+	return warnings, nil
+}
 
-	return nil, nil
+// countSelectedWorkers counts the nodes the selector matches that are not
+// control-plane nodes; only those can share a batch.
+func (v *Validator) countSelectedWorkers(ctx context.Context, labelSelector *metav1.LabelSelector) (int32, error) {
+	selector := labels.Everything()
+	if labelSelector != nil {
+		var err error
+		if selector, err = metav1.LabelSelectorAsSelector(labelSelector); err != nil {
+			return 0, fmt.Errorf("invalid nodeSelector: %w", err)
+		}
+	}
+	nodeList := &corev1.NodeList{}
+	if err := v.Client.List(ctx, nodeList, &client.ListOptions{LabelSelector: selector}); err != nil {
+		return 0, fmt.Errorf("failed to list nodes: %w", err)
+	}
+	var workers int32
+	for i := range nodeList.Items {
+		if _, isCP := nodeList.Items[i].Labels[controlPlaneLabel]; !isCP {
+			workers++
+		}
+	}
+	return workers, nil
+}
+
+// controlPlaneWarnings warns about a cluster with exactly two control-plane
+// nodes: etcd needs both for quorum, so rebooting either loses it until the
+// node is back. Talos older than 1.13 refuses that upgrade; newer Talos does
+// not. Fails open: a listing error only skips the warning.
+func (v *Validator) controlPlaneWarnings(ctx context.Context) admission.Warnings {
+	nodeList := &corev1.NodeList{}
+	if err := v.Client.List(ctx, nodeList, client.HasLabels{controlPlaneLabel}); err != nil {
+		log.FromContext(ctx).Error(err, "Failed to count control-plane nodes")
+		return nil
+	}
+	if len(nodeList.Items) != 2 {
+		return nil
+	}
+	return admission.Warnings{
+		"The cluster has exactly two control-plane nodes: etcd loses quorum while either one reboots, so the API is unavailable during each control-plane upgrade. Talos 1.13 and newer do not refuse it. Run three or more control-plane nodes.",
+	}
 }
 
 // validateHooks rejects empty images and duplicate names within each hook list.

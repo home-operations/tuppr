@@ -30,7 +30,8 @@ type PolicySpec struct {
 	// +optional
 	Debug bool `json:"debug,omitempty"`
 
-	// Force the upgrade (skip checks on etcd health and members)
+	// Force the upgrade (skip checks on etcd health and members).
+	// Only takes effect on nodes older than Talos 1.13 (legacy upgrade API); newer Talos runs no such checks.
 	// +kubebuilder:default=false
 	// +optional
 	Force bool `json:"force,omitempty"`
@@ -69,7 +70,8 @@ type PolicySpec struct {
 	// +optional
 	RebootMode string `json:"rebootMode,omitempty"`
 
-	// Stage the upgrade to perform it after a reboot
+	// Stage the upgrade to perform it after a reboot.
+	// Only takes effect on nodes older than Talos 1.13 (legacy upgrade API); talosctl ignores it on newer nodes.
 	// +kubebuilder:default=false
 	// +optional
 	Stage bool `json:"stage,omitempty"`
@@ -207,7 +209,8 @@ type TalosUpgradeSpec struct {
 	// +optional
 	Drain *DrainSpec `json:"drain,omitempty"`
 
-	// Parallelism is the number of nodes to upgrade concurrently in each batch.
+	// Parallelism is the number of worker nodes to upgrade concurrently in each batch.
+	// Control-plane nodes are always upgraded one at a time, in a batch of their own.
 	// Defaults to 1 (sequential upgrades). Must be >= 1 and <= the number of matching nodes.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:default=1
