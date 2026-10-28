@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/constants"
 )
 
 const testPoolLabel = "pool"
@@ -253,11 +254,17 @@ func TestTalosReconcile_ClusterHealthGatesCompletion(t *testing.T) {
 	tests := []struct {
 		name      string
 		completed []string
+		upgrading bool
 		wantPhase tupprv1alpha1.JobPhase
 	}{
 		{
 			name:      "run that upgraded a node waits before completing",
 			completed: []string{fakeNodeA},
+			wantPhase: tupprv1alpha1.JobPhaseHealthChecking,
+		},
+		{
+			name:      "upgrade whose Job was garbage collected unobserved still waits",
+			upgrading: true,
 			wantPhase: tupprv1alpha1.JobPhaseHealthChecking,
 		},
 		{
@@ -275,6 +282,9 @@ func TestTalosReconcile_ClusterHealthGatesCompletion(t *testing.T) {
 				withCompletedNodes(tt.completed...),
 			)
 			node := newControlPlaneNode(fakeNodeA, testNodeIP1)
+			if tt.upgrading {
+				node.Labels[constants.NodeUpgradingLabel] = upgradingLabelValue
+			}
 			tc := &mockTalosClient{
 				nodeVersions: map[string]string{testNodeIP1: fakeTalosVersion},
 				etcdErr:      errors.New("etcd member node-a is still a learner"),
@@ -292,6 +302,18 @@ func TestTalosReconcile_ClusterHealthGatesCompletion(t *testing.T) {
 			if tt.wantPhase == tupprv1alpha1.JobPhaseHealthChecking &&
 				!strings.Contains(updated.Status.Message, "etcd not healthy") {
 				t.Fatalf("expected etcd wait message, got: %s", updated.Status.Message)
+			}
+			if tt.upgrading {
+				if !slices.Contains(updated.Status.CompletedNodes, fakeNodeA) {
+					t.Fatalf("expected %s recorded as completed, got %v", fakeNodeA, updated.Status.CompletedNodes)
+				}
+				got := &corev1.Node{}
+				if err := cl.Get(context.Background(), client.ObjectKey{Name: fakeNodeA}, got); err != nil {
+					t.Fatalf("get node: %v", err)
+				}
+				if _, ok := got.Labels[constants.NodeUpgradingLabel]; ok {
+					t.Fatalf("expected the stale upgrading label to be removed")
+				}
 			}
 		})
 	}
