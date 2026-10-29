@@ -449,8 +449,11 @@ func (r *Reconciler) buildBatchImages(ctx context.Context, talosUpgrade *tupprv1
 // processRebootingNodes resumes the post-upgrade reboot wait for nodes whose
 // upgrade Job no longer exists (e.g. garbage collected by its TTL while the
 // node was still down). Each tracked node is verified against the Talos API:
-// ready nodes are completed, nodes past their deadline (or failing
-// verification outright) are marked failed, and the rest keep waiting.
+// ready nodes are completed, nodes past their deadline are marked failed, and
+// the rest keep waiting. A verification error only counts against the
+// deadline, as in processTerminalJob: mid-reboot the Talos API answers with
+// errors that are not transient by gRPC code (1.14's install flow has a window
+// where apid returns PermissionDenied) and with the pre-upgrade version.
 // Returns done=true when the caller should return the result.
 func (r *Reconciler) processRebootingNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, bool) {
 	logger := log.FromContext(ctx)
@@ -471,18 +474,21 @@ func (r *Reconciler) processRebootingNodes(ctx context.Context, talosUpgrade *tu
 			continue
 		}
 
-		isReady, err := r.verifyNodeUpgrade(ctx, talosUpgrade, nodeName)
+		isReady, verifyErr := r.verifyNodeUpgrade(ctx, talosUpgrade, nodeName)
+		if verifyErr != nil {
+			logger.V(1).Info("Could not verify node yet, waiting for it to settle",
+				"node", nodeName, "error", verifyErr.Error())
+		}
 		switch {
-		case err != nil:
-			if err := r.processSingleJobFailure(ctx, talosUpgrade, nodeName, err.Error()); err != nil {
-				logger.Error(err, "Failed to record failed node", "node", nodeName)
-			}
 		case isReady:
 			if err := r.completeNodeUpgrade(ctx, talosUpgrade, nodeName); err != nil {
 				logger.Error(err, "Failed to record completed node", "node", nodeName)
 			}
 		case r.rebootDeadlineExpired(talosUpgrade, nodeName):
 			message := fmt.Sprintf("Node did not become ready within %s after upgrade", nodeUpgradeTimeout(talosUpgrade))
+			if verifyErr != nil {
+				message += ": " + verifyErr.Error()
+			}
 			if err := r.processSingleJobFailure(ctx, talosUpgrade, nodeName, message); err != nil {
 				logger.Error(err, "Failed to record failed node", "node", nodeName)
 			}
