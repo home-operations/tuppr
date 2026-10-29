@@ -669,7 +669,7 @@ func (r *Reconciler) nodeNeedsUpgrade(ctx context.Context, node *corev1.Node, cr
 		return false, fmt.Errorf("failed to get current version for node %s (%s): %w", node.Name, nodeIP, err)
 	}
 
-	targetVersion := r.getTargetVersion(node, crdTargetVersion)
+	targetVersion := nodeutil.TargetTalosVersion(node, crdTargetVersion)
 
 	if currentVersion != targetVersion {
 		logger.V(1).Info("Node version mismatch detected",
@@ -810,7 +810,7 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 		return "", fmt.Errorf("failed to get install image from Talos client for %s: %w", nodeName, err)
 	}
 
-	targetVersion := r.getTargetVersion(node, talosUpgrade.Spec.Talos.Version)
+	targetVersion := nodeutil.TargetTalosVersion(node, talosUpgrade.Spec.Talos.Version)
 
 	if base := node.Annotations[constants.FactoryURLAnnotation]; base != "" {
 		ext, err := r.TalosClient.GetNodeExtensions(ctx, nodeIP)
@@ -879,13 +879,6 @@ func (r *Reconciler) buildTalosUpgradeImage(ctx context.Context, talosUpgrade *t
 	return targetImage, nil
 }
 
-func (r *Reconciler) getTargetVersion(node *corev1.Node, crdTargetVersion string) string {
-	if v, ok := node.Annotations[constants.VersionAnnotation]; ok && v != "" {
-		return v
-	}
-	return crdTargetVersion
-}
-
 type nodeVersionMismatchError struct {
 	nodeName       string
 	currentVersion string
@@ -910,7 +903,7 @@ func (r *Reconciler) verifyNodeUpgrade(ctx context.Context, talosUpgrade *tupprv
 		return false, fmt.Errorf("failed to get node IP for %s: %w", nodeName, err)
 	}
 
-	targetVersion := r.getTargetVersion(node, talosUpgrade.Spec.Talos.Version)
+	targetVersion := nodeutil.TargetTalosVersion(node, talosUpgrade.Spec.Talos.Version)
 
 	if err := r.TalosClient.CheckNodeReady(ctx, nodeIP, nodeName); err != nil {
 		if talos.IsTransientError(err) {
