@@ -15,6 +15,8 @@ import (
 	"github.com/home-operations/tuppr/internal/metrics"
 	"github.com/home-operations/tuppr/internal/notification"
 	"github.com/home-operations/tuppr/internal/talos"
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -4702,6 +4704,135 @@ func TestTalosReconcile_RebootingNodeAfterJobGC_TimesOut(t *testing.T) {
 	}
 	if len(updated.Status.RebootingNodes) != 0 {
 		t.Fatalf("expected reboot tracking cleared, got: %v", updated.Status.RebootingNodes)
+	}
+}
+
+// A verification error must not fail a rebooting node before its deadline,
+// whether or not its Job still exists: mid-reboot Talos answers with
+// non-transient errors and with the pre-upgrade version. Past the deadline the
+// last error is the failure's cause.
+func TestTalosReconcile_RebootingNodeVerifyErrors(t *testing.T) {
+	const previousVersion = "v1.11.0"
+	permissionDenied := grpcstatus.Error(codes.PermissionDenied, "not authorized")
+
+	tests := []struct {
+		name           string
+		deadlineOffset time.Duration
+		withJob        bool
+		withoutNode    bool
+		talos          *mockTalosClient
+		wantFailed     string
+	}{
+		{
+			name:           "PermissionDenied before the deadline keeps waiting",
+			deadlineOffset: 10 * time.Minute,
+			talos:          &mockTalosClient{checkReadyErr: permissionDenied},
+		},
+		{
+			name:           "pre-upgrade version before the deadline keeps waiting",
+			deadlineOffset: 10 * time.Minute,
+			talos:          &mockTalosClient{nodeVersions: map[string]string{testNodeIP1: previousVersion}},
+		},
+		{
+			name:           "missing Node object before the deadline keeps waiting",
+			deadlineOffset: 10 * time.Minute,
+			withoutNode:    true,
+			talos:          &mockTalosClient{},
+		},
+		{
+			name:           "pre-upgrade version past the deadline fails with the cause",
+			deadlineOffset: -time.Minute,
+			talos:          &mockTalosClient{nodeVersions: map[string]string{testNodeIP1: previousVersion}},
+			wantFailed:     "current=" + previousVersion,
+		},
+		{
+			name:           "PermissionDenied past the deadline fails with the cause",
+			deadlineOffset: -time.Minute,
+			talos:          &mockTalosClient{checkReadyErr: permissionDenied},
+			wantFailed:     "not authorized",
+		},
+		{
+			name:           "Job still present: PermissionDenied before the deadline keeps waiting",
+			deadlineOffset: 10 * time.Minute,
+			withJob:        true,
+			talos:          &mockTalosClient{checkReadyErr: permissionDenied},
+		},
+		{
+			name:           "Job still present: PermissionDenied past the deadline fails with the cause",
+			deadlineOffset: -time.Minute,
+			withJob:        true,
+			talos:          &mockTalosClient{checkReadyErr: permissionDenied},
+			wantFailed:     "not authorized",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := newTestScheme()
+			tu := newTalosUpgrade(testUpgradeName,
+				withFinalizer,
+				withPhase(tupprv1alpha1.JobPhaseRebooting),
+				withRebootingNodes(time.Now().Add(tt.deadlineOffset), fakeNodeA),
+			)
+			objs := []client.Object{tu}
+			if !tt.withoutNode {
+				objs = append(objs, newNode(fakeNodeA, testNodeIP1))
+			}
+			if tt.withJob {
+				objs = append(objs, &batchv1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      testJobNameNodeA,
+						Namespace: testNamespace,
+						Labels: map[string]string{
+							appLabelKey:         talosUpgradeAppName,
+							appInstanceLabelKey: testUpgradeName,
+							appPartOfLabelKey:   appPartOfTuppr,
+							targetNodeLabelKey:  fakeNodeA,
+						},
+					},
+					Spec:   batchv1.JobSpec{BackoffLimit: ptr.To(int32(2)), Template: corev1.PodTemplateSpec{}},
+					Status: failedJobStatus(2),
+				})
+			}
+			cl := fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(objs...).WithStatusSubresource(tu).Build()
+			r := newTalosReconciler(cl, scheme, tt.talos, &mockHealthChecker{})
+
+			result := reconcileTalos(t, r, testUpgradeName)
+
+			updated := getTalosUpgrade(t, cl, testUpgradeName)
+			if tt.wantFailed == "" {
+				if result.RequeueAfter != 30*time.Second {
+					t.Fatalf("expected 30s requeue while rebooting, got: %v", result.RequeueAfter)
+				}
+				if updated.Status.Phase != tupprv1alpha1.JobPhaseRebooting {
+					t.Fatalf("expected phase Rebooting, got: %s", updated.Status.Phase)
+				}
+				if len(updated.Status.FailedNodes) != 0 {
+					t.Fatalf("expected no failed nodes while waiting, got: %v", updated.Status.FailedNodes)
+				}
+				if len(updated.Status.RebootingNodes) != 1 {
+					t.Fatalf("expected reboot tracking kept, got: %v", updated.Status.RebootingNodes)
+				}
+				return
+			}
+
+			if len(updated.Status.FailedNodes) != 1 || updated.Status.FailedNodes[0].NodeName != fakeNodeA {
+				t.Fatalf("expected node-a in failedNodes, got: %v", updated.Status.FailedNodes)
+			}
+			lastErr := updated.Status.FailedNodes[0].LastError
+			if !strings.Contains(lastErr, "did not become ready") || !strings.Contains(lastErr, tt.wantFailed) {
+				t.Fatalf("expected reboot-timeout error containing %q, got: %s", tt.wantFailed, lastErr)
+			}
+			if len(updated.Status.RebootingNodes) != 0 {
+				t.Fatalf("expected reboot tracking cleared, got: %v", updated.Status.RebootingNodes)
+			}
+			// With the Job gone the run stops in the same pass; with the Job
+			// present it requeues first and stops on the next one.
+			if !tt.withJob && updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
+				t.Fatalf("expected phase Failed, got: %s", updated.Status.Phase)
+			}
+		})
 	}
 }
 

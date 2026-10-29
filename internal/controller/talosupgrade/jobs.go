@@ -142,21 +142,25 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 	var rebootingNodes []string
 	var failedNodes []string
 	failedNodeMessages := make(map[string]string)
+	verifyErrs := make(map[string]string)
 	for i := range terminalJobs {
 		job := &terminalJobs[i]
 		nodeName := job.Labels[targetNodeLabelKey]
 		jobFailed := jobs.IsFailed(job)
 
-		result, failureMessage, err := r.processTerminalJob(ctx, talosUpgrade, job, nodeName, jobFailed)
+		result, message, err := r.processTerminalJob(ctx, talosUpgrade, job, nodeName, jobFailed)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("process terminal job %s for node %s: %w", job.Name, nodeName, err)
 		}
 		switch result {
 		case jobResultRebooting:
 			rebootingNodes = append(rebootingNodes, nodeName)
+			if message != "" {
+				verifyErrs[nodeName] = message
+			}
 		case jobResultFailed:
 			failedNodes = append(failedNodes, nodeName)
-			failedNodeMessages[nodeName] = failureMessage
+			failedNodeMessages[nodeName] = message
 		}
 	}
 
@@ -174,6 +178,9 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 				continue
 			}
 			message := fmt.Sprintf("Node did not become ready within %s after upgrade", nodeUpgradeTimeout(talosUpgrade))
+			if verifyErr := verifyErrs[nodeName]; verifyErr != "" {
+				message += ": " + verifyErr
+			}
 			if err := r.processSingleJobFailure(ctx, talosUpgrade, nodeName, message); err != nil {
 				return ctrl.Result{RequeueAfter: time.Minute}, err
 			}
@@ -234,6 +241,9 @@ const (
 	controlPlaneLabel    = "node-role.kubernetes.io/control-plane"
 )
 
+// processTerminalJob verifies the node a finished Job targeted. The returned
+// message is the failure reason for jobResultFailed, or the verification error
+// that left the node at jobResultRebooting (empty when it is simply not back yet).
 func (r *Reconciler) processTerminalJob(
 	ctx context.Context,
 	talosUpgrade *tupprv1alpha1.TalosUpgrade,
@@ -267,10 +277,10 @@ func (r *Reconciler) processTerminalJob(
 		// answers with transient errors (1.14's install flow has a window where
 		// apid returns PermissionDenied), and the node's true state only settles
 		// once it is back. Treat it as rebooting; the reboot deadline bounds the
-		// wait and fails the node with a clear message if it never returns.
+		// wait and fails the node with this error if it never settles.
 		logger.V(1).Info("Could not verify node yet, waiting for it to settle",
 			"node", nodeName, "error", err.Error())
-		return jobResultRebooting, "", nil
+		return jobResultRebooting, err.Error(), nil
 	}
 
 	if !isReady {
