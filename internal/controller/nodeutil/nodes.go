@@ -3,6 +3,7 @@ package nodeutil
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -11,7 +12,27 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/home-operations/tuppr/internal/constants"
 )
+
+// Talos sets Node.status.nodeInfo.osImage to e.g. "Talos (v1.7.5)".
+var talosVersionRegexp = regexp.MustCompile(`v\d+\.\d+\.\d+[^\s)]*`)
+
+// TalosVersionFromOSImage returns the Talos version in a Node's osImage, or ""
+// when it names none.
+func TalosVersionFromOSImage(osImage string) string {
+	return talosVersionRegexp.FindString(osImage)
+}
+
+// TargetTalosVersion returns the Talos version the node is upgraded to: its
+// version annotation when set, otherwise the plan's version.
+func TargetTalosVersion(node *corev1.Node, planVersion string) string {
+	if v := node.Annotations[constants.VersionAnnotation]; v != "" {
+		return v
+	}
+	return planVersion
+}
 
 // Now provides time functionality for testing
 type Now interface {

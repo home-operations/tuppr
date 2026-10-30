@@ -3,11 +3,12 @@ package talosupgrade
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"slices"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -38,7 +39,7 @@ var _ admission.Validator[*tupprv1alpha1.TalosUpgrade] = &Validator{}
 // ValidateCreate implements admission.Validator so a webhook will be registered for the type
 func (v *Validator) ValidateCreate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
 	log.FromContext(ctx).V(1).Info("Validating create", "targetVersion", t.Spec.Talos.Version)
-	return v.validate(ctx, t)
+	return v.validate(ctx, t, true)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type
@@ -50,7 +51,12 @@ func (v *Validator) ValidateUpdate(ctx context.Context, old, t *tupprv1alpha1.Ta
 		logger.Info("Rejected TalosUpgrade", "targetVersion", t.Spec.Talos.Version, "reason", err.Error())
 		return nil, err
 	}
-	return v.validate(ctx, t)
+	// Only a changed target or selector re-checks the upgrade path, so a
+	// metadata-only update (such as removing the finalizer) is never refused
+	// because the nodes have moved on since the plan was admitted.
+	checkUpgradePath := old.Spec.Talos.Version != t.Spec.Talos.Version ||
+		!reflect.DeepEqual(old.Spec.NodeSelector, t.Spec.NodeSelector)
+	return v.validate(ctx, t, checkUpgradePath)
 }
 
 func (v *Validator) ValidateDelete(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
@@ -64,7 +70,7 @@ func (v *Validator) ValidateDelete(ctx context.Context, t *tupprv1alpha1.TalosUp
 
 // validate logs the admission outcome itself: the apiserver only relays a
 // rejection to the caller, so it is the one decision worth an Info line.
-func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (warnings admission.Warnings, err error) {
+func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade, checkUpgradePath bool) (warnings admission.Warnings, err error) {
 	logger := log.FromContext(ctx)
 	defer func() {
 		if err != nil {
@@ -88,6 +94,14 @@ func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade)
 
 	if err := validation.ValidateVersionFormat(t.Spec.Talos.Version); err != nil {
 		return warnings, fmt.Errorf("invalid talos version: %w", err)
+	}
+
+	if checkUpgradePath {
+		pathWarnings, err := v.validateUpgradePath(ctx, t)
+		warnings = append(warnings, pathWarnings...)
+		if err != nil {
+			return warnings, err
+		}
 	}
 
 	if err := validation.ValidateHealthChecks(t.Spec.HealthChecks); err != nil {
@@ -198,28 +212,36 @@ func (v *Validator) validateOverlaps(ctx context.Context, current *tupprv1alpha1
 
 // getMatchingNodes returns a set of node names that match the given selector
 func (v *Validator) getMatchingNodes(ctx context.Context, labelSelector *metav1.LabelSelector) (map[string]bool, error) {
-	var selector labels.Selector
-	var err error
-
-	if labelSelector != nil {
-		selector, err = metav1.LabelSelectorAsSelector(labelSelector)
-		if err != nil {
-			return nil, fmt.Errorf("invalid nodeSelector: %w", err)
-		}
-	} else {
-		selector = labels.Everything()
+	nodes, err := v.listSelectedNodes(ctx, labelSelector)
+	if err != nil {
+		return nil, err
 	}
 
-	nodeList := &corev1.NodeList{}
-	if err := v.Client.List(ctx, nodeList, &client.ListOptions{LabelSelector: selector}); err != nil {
-		return nil, fmt.Errorf("failed to list nodes: %w", err)
-	}
-
-	nodeSet := make(map[string]bool)
-	for _, node := range nodeList.Items {
+	nodeSet := make(map[string]bool, len(nodes))
+	for _, node := range nodes {
 		nodeSet[node.Name] = true
 	}
 	return nodeSet, nil
+}
+
+// listSelectedNodes returns the nodes matching the selector, sorted by name.
+func (v *Validator) listSelectedNodes(ctx context.Context, labelSelector *metav1.LabelSelector) ([]corev1.Node, error) {
+	opts := []client.ListOption{}
+	if labelSelector != nil {
+		selector, err := metav1.LabelSelectorAsSelector(labelSelector)
+		if err != nil {
+			return nil, fmt.Errorf("invalid nodeSelector: %w", err)
+		}
+		opts = append(opts, client.MatchingLabelsSelector{Selector: selector})
+	}
+	nodeList := &corev1.NodeList{}
+	if err := v.Client.List(ctx, nodeList, opts...); err != nil {
+		return nil, fmt.Errorf("failed to list nodes: %w", err)
+	}
+	slices.SortFunc(nodeList.Items, func(a, b corev1.Node) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+	return nodeList.Items, nil
 }
 
 func findNodeIntersection(setA, setB map[string]bool) []string {

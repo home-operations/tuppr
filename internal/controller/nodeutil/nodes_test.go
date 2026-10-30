@@ -169,3 +169,22 @@ func TestControlPlaneEndpointIPs(t *testing.T) {
 		t.Fatalf("ControlPlaneEndpointIPs() = %v, want %v", got, want)
 	}
 }
+
+func TestTalosVersionFromOSImage(t *testing.T) {
+	cases := []struct {
+		osImage string
+		want    string
+	}{
+		{"Talos (v1.13.0)", "v1.13.0"},
+		{"Talos (v1.7.5-pre.0)", "v1.7.5-pre.0"},
+		{"Talos v1.5.0", "v1.5.0"},
+		{"Talos (v1.10.6-amd64)", "v1.10.6-amd64"},
+		{"Ubuntu 22.04 LTS", ""},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := TalosVersionFromOSImage(c.osImage); got != c.want {
+			t.Errorf("TalosVersionFromOSImage(%q) = %q, want %q", c.osImage, got, c.want)
+		}
+	}
+}
