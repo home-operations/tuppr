@@ -739,6 +739,50 @@ func TestTalosReconcile_HealthCheckFailureStreak(t *testing.T) {
 	}
 }
 
+// The health check wait histogram only counts runs that had checks to wait on.
+func TestTalosReconcile_HealthCheckWaitSampledOnlyWithChecks(t *testing.T) {
+	tests := []struct {
+		name   string
+		checks []tupprv1alpha1.HealthCheckSpec
+		want   uint64
+	}{
+		{name: "hc-wait-no-checks"},
+		{name: "hc-wait-one-check", checks: []tupprv1alpha1.HealthCheckSpec{nodeCheck()}, want: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := newTestScheme()
+			tu := newTalosUpgrade(tt.name, withFinalizer, withPhase(tupprv1alpha1.JobPhasePending), withHealthChecks(tt.checks...))
+			cl := fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(tu, newNode(fakeNodeA, testNodeIP1)).WithStatusSubresource(tu).Build()
+			r := newTalosReconciler(cl, scheme, singleNodeTalosClient(), &mockHealthChecker{})
+
+			reconcileTalos(t, r, tt.name)
+
+			families, err := ctrlmetrics.Registry.Gather()
+			if err != nil {
+				t.Fatalf("gather metrics: %v", err)
+			}
+			var got uint64
+			for _, mf := range families {
+				if mf.GetName() != "tuppr_health_check_duration_seconds" {
+					continue
+				}
+				for _, m := range mf.GetMetric() {
+					for _, l := range m.GetLabel() {
+						if l.GetName() == "upgrade_name" && l.GetValue() == tt.name {
+							got += m.GetHistogram().GetSampleCount()
+						}
+					}
+				}
+			}
+			if got != tt.want {
+				t.Fatalf("expected %d health check wait sample(s), got %d", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestTalosReconcile_AllNodesUpToDate(t *testing.T) {
 	scheme := newTestScheme()
 	tu := newTalosUpgrade(testUpgradeName,
