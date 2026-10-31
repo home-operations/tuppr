@@ -24,6 +24,7 @@ import (
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
 	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
+	"github.com/home-operations/tuppr/internal/healthcheck"
 	"github.com/home-operations/tuppr/internal/metrics"
 )
 
@@ -429,8 +430,8 @@ func TestK8sReconcile_HealthCheckFailure(t *testing.T) {
 	r := newK8sReconciler(cl, vg, &mockTalosClient{}, hc)
 
 	result := reconcileK8s(t, r, "test-upgrade")
-	if result.RequeueAfter != time.Minute {
-		t.Fatalf("expected 1m requeue on health check failure, got: %v", result.RequeueAfter)
+	if result.RequeueAfter != healthcheck.RetryInterval {
+		t.Fatalf("expected %v requeue on health check failure, got: %v", healthcheck.RetryInterval, result.RequeueAfter)
 	}
 
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
@@ -439,6 +440,147 @@ func TestK8sReconcile_HealthCheckFailure(t *testing.T) {
 	}
 	if !strings.Contains(updated.Status.Message, "health") {
 		t.Fatalf("expected message about health checks, got: %s", updated.Status.Message)
+	}
+}
+
+// A pass with unchanged versions and an unchanged health check failure writes
+// nothing, so it doesn't trigger a second reconcile; the re-evaluation backs off.
+func TestK8sReconcile_HealthCheckFailureStreak(t *testing.T) {
+	scheme := newTestScheme()
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		withK8sPhase(tupprv1alpha1.JobPhasePending),
+	)
+	node := newControllerNodeWithVersion(fakeCrtl, testNodeIP, testV1330)
+	vg := &mockVersionGetter{version: testV1330}
+	hc := &mockHealthChecker{err: fmt.Errorf("cluster not healthy")}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku, node).WithStatusSubresource(ku).Build()
+	r := newK8sReconciler(cl, vg, &mockTalosClient{}, hc)
+	start := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	clock := &fixedClock{t: start}
+	r.Now = clock
+
+	reconcileK8s(t, r, "test-upgrade")
+	first := getK8sUpgrade(t, cl, "test-upgrade")
+	if since := first.Status.HealthChecksFailingSince; since == nil || !since.Time.Equal(start) {
+		t.Fatalf("expected the failure streak to start at %v, got %v", start, first.Status.HealthChecksFailingSince)
+	}
+
+	clock.t = start.Add(10 * time.Minute)
+	if result := reconcileK8s(t, r, "test-upgrade"); result.RequeueAfter != healthcheck.RetryAfter(10*time.Minute) {
+		t.Fatalf("expected the re-evaluation to back off to %v, got %v", healthcheck.RetryAfter(10*time.Minute), result.RequeueAfter)
+	}
+	if again := getK8sUpgrade(t, cl, "test-upgrade"); again.ResourceVersion != first.ResourceVersion {
+		t.Fatal("expected no status write for unchanged versions and an unchanged failure")
+	}
+
+	hc.err = nil
+	reconcileK8s(t, r, "test-upgrade")
+	if since := getK8sUpgrade(t, cl, "test-upgrade").Status.HealthChecksFailingSince; since != nil {
+		t.Fatalf("expected the failure streak cleared once checks pass, got %v", since)
+	}
+}
+
+// Health checks that pass after the maintenance window closed don't start the
+// upgrade: the window is re-checked even though a run waiting on checks is
+// active (HealthChecking), which skips the gate at the top of the reconcile.
+func TestK8sReconcile_HealthChecksPassingAfterWindowCloses(t *testing.T) {
+	scheme := newTestScheme()
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		withK8sPhase(tupprv1alpha1.JobPhasePending),
+		func(ku *tupprv1alpha1.KubernetesUpgrade) {
+			ku.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{Windows: []tupprv1alpha1.WindowSpec{{
+				Start: testCronDaily2, Duration: metav1.Duration{Duration: 4 * time.Hour}, Timezone: testTimezoneUTC,
+			}}}
+		},
+	)
+	node := newControllerNodeWithVersion(fakeCrtl, testNodeIP, testV1330)
+	vg := &mockVersionGetter{version: testV1330}
+	hc := &mockHealthChecker{err: fmt.Errorf("cluster not healthy")}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku, node).WithStatusSubresource(ku).Build()
+	r := newK8sReconciler(cl, vg, &mockTalosClient{}, hc)
+	clock := &fixedClock{t: time.Date(2026, 10, 31, 5, 0, 0, 0, time.UTC)} // inside 02:00-06:00
+	r.Now = clock
+
+	reconcileK8s(t, r, "test-upgrade")
+	if got := getK8sUpgrade(t, cl, "test-upgrade").Status.Phase; got != tupprv1alpha1.JobPhaseHealthChecking {
+		t.Fatalf("expected HealthChecking inside the window, got %s", got)
+	}
+
+	clock.t = time.Date(2026, 10, 31, 7, 0, 0, 0, time.UTC) // window closed
+	hc.err = nil
+	reconcileK8s(t, r, "test-upgrade")
+
+	if got := getK8sUpgrade(t, cl, "test-upgrade").Status.Phase; got != tupprv1alpha1.JobPhaseMaintenanceWindow {
+		t.Fatalf("expected MaintenanceWindow once the window closed, got %s", got)
+	}
+	var jobList batchv1.JobList
+	if err := cl.List(context.Background(), &jobList); err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	if len(jobList.Items) != 0 {
+		t.Fatalf("expected no upgrade job outside the window, got %d", len(jobList.Items))
+	}
+}
+
+const (
+	testKindNode    = "Node"
+	testCronDaily2  = "0 2 * * *"
+	testTimezoneUTC = "UTC"
+)
+
+// healthCheckWaitSamples counts tuppr_health_check_duration_seconds samples
+// recorded for one upgrade.
+func healthCheckWaitSamples(t *testing.T, upgradeName string) uint64 {
+	t.Helper()
+	families, err := ctrlmetrics.Registry.Gather()
+	if err != nil {
+		t.Fatalf("gather metrics: %v", err)
+	}
+	var n uint64
+	for _, mf := range families {
+		if mf.GetName() != "tuppr_health_check_duration_seconds" {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetName() == "upgrade_name" && l.GetValue() == upgradeName {
+					n += m.GetHistogram().GetSampleCount()
+				}
+			}
+		}
+	}
+	return n
+}
+
+// The health check wait histogram only counts runs that had checks to wait on.
+func TestK8sReconcile_HealthCheckWaitSampledOnlyWithChecks(t *testing.T) {
+	tests := []struct {
+		name   string
+		checks []tupprv1alpha1.HealthCheckSpec
+		want   uint64
+	}{
+		{name: "hc-wait-no-checks"},
+		{name: "hc-wait-one-check", checks: []tupprv1alpha1.HealthCheckSpec{{APIVersion: "v1", Kind: testKindNode, Expr: "true"}}, want: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := newTestScheme()
+			ku := newKubernetesUpgrade(tt.name, withK8sFinalizer, withK8sPhase(tupprv1alpha1.JobPhasePending), func(ku *tupprv1alpha1.KubernetesUpgrade) { ku.Spec.HealthChecks = tt.checks })
+			node := newControllerNodeWithVersion(fakeCrtl, testNodeIP, testV1330)
+			cl := fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(ku, node).WithStatusSubresource(ku).Build()
+			r := newK8sReconciler(cl, &mockVersionGetter{version: testV1330}, &mockTalosClient{}, &mockHealthChecker{})
+
+			reconcileK8s(t, r, tt.name)
+
+			if got := healthCheckWaitSamples(t, tt.name); got != tt.want {
+				t.Fatalf("expected %d health check wait sample(s), got %d", tt.want, got)
+			}
+		})
 	}
 }
 

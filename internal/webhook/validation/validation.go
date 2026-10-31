@@ -173,10 +173,10 @@ func ValidateUpdateInProgress(oldConditions []metav1.Condition, oldPhase tupprv1
 func GenerateCommonWarnings(version string, checks []tupprv1alpha1.HealthCheckSpec, talosctlTag string) admission.Warnings {
 	var warnings admission.Warnings
 
-	// Warn about health checks without timeouts
 	for i, check := range checks {
-		if check.Timeout == nil {
-			warnings = append(warnings, fmt.Sprintf("Health check %d has no timeout specified", i))
+		if check.Timeout != nil {
+			warnings = append(warnings, fmt.Sprintf(
+				"Health check %d sets timeout, which has no effect: checks are re-evaluated until they pass.", i))
 		}
 	}
 

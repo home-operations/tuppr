@@ -18,6 +18,7 @@ import (
 	"github.com/home-operations/tuppr/internal/controller/maintenance"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
+	"github.com/home-operations/tuppr/internal/healthcheck"
 	"github.com/home-operations/tuppr/internal/metrics"
 )
 
@@ -78,11 +79,13 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 		}
 		logger.Info("Node lagging target version, restarting campaign", "targetVersion", targetVersion, "cycle", cycles+1)
 		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "", "Node lagging target version, restarting upgrade", map[string]any{
-			statusFieldCompletionCycles: cycles + 1,
+			statusFieldCompletionCycles:         cycles + 1,
+			statusFieldHealthChecksFailingSince: nil,
 		}); err != nil {
 			return ctrl.Result{}, fmt.Errorf("re-enter Pending after completion: %w", err)
 		}
 		kubernetesUpgrade.Status.CompletionCycles = cycles + 1
+		kubernetesUpgrade.Status.HealthChecksFailingSince = nil
 		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
 
@@ -104,13 +107,22 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 	targetVersion := kubernetesUpgrade.Spec.Kubernetes.Version
 
 	currentVersion, err := r.VersionGetter.GetCurrentKubernetesVersion(ctx)
-	if err != nil {
+	switch {
+	case err != nil:
 		logger.Error(err, "Failed to determine current Kubernetes version")
-	} else if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
-		statusFieldCurrentVersion: currentVersion,
-		statusFieldTargetVersion:  targetVersion,
-	}); err != nil {
-		logger.Error(err, "Failed to update version status")
+	// An unchanged write would still bump lastUpdated and trigger another
+	// reconcile, doubling every pass while health checks fail.
+	case kubernetesUpgrade.Status.CurrentVersion == currentVersion && kubernetesUpgrade.Status.TargetVersion == targetVersion:
+	default:
+		if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
+			statusFieldCurrentVersion: currentVersion,
+			statusFieldTargetVersion:  targetVersion,
+		}); err != nil {
+			logger.Error(err, "Failed to update version status")
+		} else {
+			kubernetesUpgrade.Status.CurrentVersion = currentVersion
+			kubernetesUpgrade.Status.TargetVersion = targetVersion
+		}
 	}
 
 	allUpgraded, err := r.areAllNodesUpgraded(ctx, targetVersion)
@@ -143,20 +155,59 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 
 	logger.V(1).Info("Kubernetes upgrade needed", "currentVersion", currentVersion, "targetVersion", targetVersion)
 
-	checkErr := r.runHealthChecks(ctx, kubernetesUpgrade)
-	message := "Running health checks"
-	if checkErr != nil {
-		message = fmt.Sprintf("Waiting for health checks: %s", checkErr.Error())
+	if result, waiting := r.waitForHealthChecks(ctx, kubernetesUpgrade); waiting {
+		return result, nil
 	}
-	if err := r.setPhase(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", message); err != nil {
-		logger.Error(err, "Failed to update phase for health check")
-	}
-	if checkErr != nil {
-		logger.V(1).Info("Waiting for health checks to pass", "error", checkErr.Error())
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
+
+	// The window gate above is skipped once the run is active, and a run
+	// waiting on health checks is (HealthChecking). Checks that pass after
+	// the window closed must not start the upgrade.
+	if result, done, err := r.checkMaintenanceWindow(ctx, kubernetesUpgrade); done {
+		return result, err
 	}
 
 	return r.startUpgrade(ctx, kubernetesUpgrade)
+}
+
+// waitForHealthChecks evaluates the checks once and reports waiting=true
+// while they fail. The start of the failure streak, kept in status, spaces
+// out the re-evaluations and times how long the checks took to pass.
+func (r *Reconciler) waitForHealthChecks(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade) (ctrl.Result, bool) {
+	logger := log.FromContext(ctx)
+	now := r.Now.Now()
+	since := kubernetesUpgrade.Status.HealthChecksFailingSince
+	checkErr := r.runHealthChecks(ctx, kubernetesUpgrade)
+
+	if checkErr != nil {
+		var extra map[string]any
+		if since == nil {
+			since = &metav1.Time{Time: now}
+			extra = map[string]any{statusFieldHealthChecksFailingSince: since}
+		}
+		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", "", healthCheckWaitMessage(checkErr), extra); err != nil {
+			logger.Error(err, "Failed to update phase for health check")
+		} else {
+			kubernetesUpgrade.Status.HealthChecksFailingSince = since
+		}
+		logger.V(1).Info("Waiting for health checks to pass", "error", checkErr.Error())
+		return ctrl.Result{RequeueAfter: healthcheck.RetryAfter(now.Sub(since.Time))}, true
+	}
+
+	var waited time.Duration
+	var extra map[string]any
+	if since != nil {
+		waited = now.Sub(since.Time)
+		extra = map[string]any{statusFieldHealthChecksFailingSince: nil}
+	}
+	if len(kubernetesUpgrade.Spec.HealthChecks) > 0 {
+		r.MetricsReporter.RecordHealthCheckDuration(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, waited.Seconds())
+	}
+	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", "", "Running health checks", extra); err != nil {
+		logger.Error(err, "Failed to update phase for health check")
+	} else {
+		kubernetesUpgrade.Status.HealthChecksFailingSince = nil
+	}
+	return ctrl.Result{}, false
 }
 
 func (r *Reconciler) checkMaintenanceWindow(ctx context.Context, kubernetesUpgrade *tupprv1alpha1.KubernetesUpgrade) (ctrl.Result, bool, error) {
