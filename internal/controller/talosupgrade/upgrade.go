@@ -326,8 +326,23 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	}
 
 	if len(pendingNodes) == 0 {
-		if err := r.recordOutOfBandCompletedNodes(ctx, talosUpgrade); err != nil {
+		// Read before recordOutOfBandCompletedNodes, which also lists nodes
+		// this run never touched.
+		upgradedNodes := len(talosUpgrade.Status.CompletedNodes) > 0
+		resumed, err := r.recordOutOfBandCompletedNodes(ctx, talosUpgrade)
+		if err != nil {
 			logger.Error(err, "Failed to record out-of-band upgraded nodes")
+			// Unknown whether this run upgraded anything; waiting is the safe side.
+			resumed = true
+		}
+		upgradedNodes = upgradedNodes || resumed
+		// The last batch has no next batch to hold it back; without this the
+		// run completes (unblocking a queued KubernetesUpgrade and running
+		// post-hooks) while that batch is still rejoining.
+		if upgradedNodes {
+			if result, done := r.waitForClusterHealth(ctx, talosUpgrade); done {
+				return result, nil
+			}
 		}
 		return r.transitionToFinalize(ctx, talosUpgrade)
 	}
@@ -341,6 +356,10 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 
 	batch, result, done := r.buildBatchImages(ctx, talosUpgrade, nextNodes)
 	if done {
+		return result, nil
+	}
+
+	if result, done := r.waitForClusterHealth(ctx, talosUpgrade); done {
 		return result, nil
 	}
 
@@ -502,12 +521,17 @@ func (r *Reconciler) processRebootingNodes(ctx context.Context, talosUpgrade *tu
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, true
 }
 
-func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) error {
+// recordOutOfBandCompletedNodes adds selected nodes already at the target
+// version to CompletedNodes. resumed reports whether any of them still carried
+// the upgrading label: tuppr started that node's upgrade but its Job was
+// garbage collected before the outcome was recorded (e.g. the controller was
+// down), so the node counts as upgraded by this run, not out of band.
+func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (resumed bool, err error) {
 	logger := log.FromContext(ctx)
 
 	nodes, err := r.getSortedNodes(ctx, talosUpgrade.Spec.NodeSelector)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	crdTargetVersion := talosUpgrade.Spec.Talos.Version
@@ -530,19 +554,25 @@ func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpg
 				logger.V(1).Info("Node unreachable, skipping out-of-band check", "node", node.Name, "error", err.Error())
 				continue
 			}
-			return fmt.Errorf("check node %s: %w", node.Name, err)
+			return resumed, fmt.Errorf("check node %s: %w", node.Name, err)
 		}
 		if needsUpgrade {
 			continue
 		}
 		// Job may have been GC'd before the controller reconciled post-reboot; the
-		// node is at target but may still be cordoned.
+		// node is at target but may still be cordoned and labeled upgrading.
 		r.ensureNodeUncordoned(ctx, talosUpgrade, node.Name)
+		if node.Labels[constants.NodeUpgradingLabel] != "" {
+			resumed = true
+			if err := r.removeNodeUpgradingLabel(ctx, node.Name); err != nil {
+				logger.Error(err, "Failed to remove upgrading label from node", "node", node.Name)
+			}
+		}
 		added = append(added, node.Name)
 	}
 
 	if len(added) == 0 {
-		return nil
+		return resumed, nil
 	}
 
 	logger.Info("Recording nodes upgraded out of band", "nodes", added)
@@ -552,7 +582,7 @@ func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpg
 			len(added), crdTargetVersion, added)
 	}
 	talosUpgrade.Status.CompletedNodes = append(talosUpgrade.Status.CompletedNodes, added...)
-	return r.updateStatus(ctx, talosUpgrade, map[string]any{
+	return resumed, r.updateStatus(ctx, talosUpgrade, map[string]any{
 		statusCompletedNodes: talosUpgrade.Status.CompletedNodes,
 	})
 }

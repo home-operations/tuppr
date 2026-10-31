@@ -71,6 +71,41 @@ emits no Events.
 
 Health checks are also available on [`KubernetesUpgrade`](/kubernetes-upgrades/).
 
+### Built-in cluster health gate
+
+Before every batch, before the user health checks above, and before a run that
+upgraded nodes completes, a `TalosUpgrade` waits until the nodes it selects and
+every control-plane node are healthy:
+
+- the Kubernetes node is `Ready`;
+- the node's Talos `MachineStatus` is `running` and ready (what
+  `talosctl get machinestatus` shows: time sync, network, required services
+  including `etcd` on control-plane nodes, static pods, and the node);
+- etcd has exactly one voting member per control-plane node, none still a
+  learner, and every member reports a leader and no errors.
+
+Nodes outside the selection that are not control-plane nodes are not checked,
+so a powered-off node still registered in another pool does not block the run.
+
+A node that just upgraded reports its new version as soon as the Talos API is
+back, before it has rejoined etcd or Kubernetes. Talos 1.13 and newer accept an
+upgrade without checking etcd (only the legacy upgrade API used before 1.13 did),
+so nothing else stops the next control-plane reboot while etcd is still
+degraded. This gate holds the next batch,
+and the run's completion (which would unblock a queued `KubernetesUpgrade` and
+start post-hooks), until it has. While it waits, the run stays in
+`HealthChecking` with the failing condition in its message; the controller log
+has the underlying Talos error. Each check gives up after a minute and is
+retried 30 seconds later. The gate cannot be disabled or skipped with
+`skipAfterPreHooks`: a cluster that never becomes healthy keeps the run waiting
+rather than upgrading the next node.
+
+Control-plane nodes are found by the `node-role.kubernetes.io/control-plane`
+label; if no node carries it, the etcd membership check is skipped. A cluster
+with exactly two control-plane nodes passes the gate, but rebooting either of
+them loses etcd quorum until it is back: Talos older than 1.13 refuses that
+upgrade, 1.13 and newer do not. Run three or more control-plane nodes.
+
 ## Policy
 
 `spec.policy` tunes how the upgrade runs:
