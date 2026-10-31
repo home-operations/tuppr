@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/constants"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -68,12 +69,17 @@ func cephNoutHook(name, action string) tupprv1alpha1.HookSpec {
 
 func listHookJobs(t *testing.T, cl client.Client, phase string) []batchv1.Job {
 	t.Helper()
+	return listHookJobsFor(t, cl, "tu", phase)
+}
+
+func listHookJobsFor(t *testing.T, cl client.Client, upgradeName, phase string) []batchv1.Job {
+	t.Helper()
 	var list batchv1.JobList
 	if err := cl.List(context.Background(), &list,
 		client.InNamespace("default"),
 		client.MatchingLabels{
 			"app.kubernetes.io/name":     hookJobAppName,
-			"app.kubernetes.io/instance": "tu",
+			"app.kubernetes.io/instance": upgradeName,
 			hookPhaseLabel:               phase,
 		},
 	); err != nil {
@@ -523,5 +529,124 @@ func TestAfterPreHooks_AllChecksSkipped_StartsBatch(t *testing.T) {
 	jobs := listJobs(t, cl)
 	if len(jobs) != 1 || jobs[0].Labels[targetNodeLabelKey] != fakeNodeA {
 		t.Fatalf("expected one upgrade job for %s, got %d jobs", fakeNodeA, len(jobs))
+	}
+}
+
+// A failed batch must still run the post-hooks, so a pre-hook's `noout` is
+// undone after a node fails. The run ends Failed whatever the post-hook does.
+func TestBatchFailure_RunsPostHooksThenFails(t *testing.T) {
+	for _, postHookFails := range []bool{false, true} {
+		name := "post-hook succeeds"
+		if postHookFails {
+			name = "post-hook fails"
+		}
+		t.Run(name, func(t *testing.T) {
+			scheme := newTestScheme()
+			tu := newTalosUpgrade(testUpgradeName,
+				withFinalizer,
+				withPhase(tupprv1alpha1.JobPhaseUpgrading),
+				withHooks(
+					[]tupprv1alpha1.HookSpec{cephNoutHook("set-noout", "set")},
+					[]tupprv1alpha1.HookSpec{cephNoutHook("unset-noout", "unset")},
+				),
+				withPreHooksDone,
+			)
+			job, pod := offTargetFailedJob()
+			tc := &mockTalosClient{nodeVersions: map[string]string{testNodeIP1: testV110Talos}}
+			cl := fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(tu, newNode(fakeNodeA, testNodeIP1), job, pod).WithStatusSubresource(tu).Build()
+			r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+			reconcileTalos(t, r, testUpgradeName)
+			updated := getTalosUpgrade(t, cl, testUpgradeName)
+			if updated.Status.Phase != tupprv1alpha1.JobPhasePostHook {
+				t.Fatalf("expected PostHook after the batch failed, got %s (%s)", updated.Status.Phase, updated.Status.Message)
+			}
+			if len(updated.Status.FailedNodes) != 1 || updated.Status.FailedNodes[0].NodeName != fakeNodeA {
+				t.Fatalf("expected %s recorded as failed, got %v", fakeNodeA, updated.Status.FailedNodes)
+			}
+
+			reconcileTalos(t, r, testUpgradeName)
+			postJobs := listHookJobsFor(t, cl, testUpgradeName, hookPhasePost)
+			if len(postJobs) != 1 {
+				t.Fatalf("expected the post-hook to run, got %d jobs", len(postJobs))
+			}
+			if postHookFails {
+				markJobFailed(t, cl, postJobs[0])
+			} else {
+				markJobSucceeded(t, cl, postJobs[0])
+			}
+			reconcileTalos(t, r, testUpgradeName)
+			reconcileTalos(t, r, testUpgradeName)
+
+			updated = getTalosUpgrade(t, cl, testUpgradeName)
+			if updated.Status.Phase != tupprv1alpha1.JobPhaseFailed {
+				t.Fatalf("expected Failed after the post-hooks, got %s (%s)", updated.Status.Phase, updated.Status.Message)
+			}
+			if want := "Upgrade stopped after failures: 0 successful, 1 failed"; updated.Status.Message != want {
+				t.Fatalf("expected message %q, got %q", want, updated.Status.Message)
+			}
+		})
+	}
+}
+
+// Resetting a run mid post-hooks must not leave the previous run's hook Job
+// racing the new run's hooks, nor have it counted as the new run's.
+func TestRunReset_DeletesHookJobs(t *testing.T) {
+	tests := []struct {
+		name string
+		opt  func(*tupprv1alpha1.TalosUpgrade)
+	}{
+		{
+			name: "reset annotation",
+			opt: func(tu *tupprv1alpha1.TalosUpgrade) {
+				tu.Annotations = map[string]string{constants.ResetAnnotation: "now"}
+			},
+		},
+		{
+			name: "spec change",
+			opt: func(tu *tupprv1alpha1.TalosUpgrade) {
+				tu.Generation = 2
+				tu.Status.ObservedGeneration = 1
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := newTestScheme()
+			tu := newTalosUpgrade("tu",
+				withFinalizer,
+				withPhase(tupprv1alpha1.JobPhasePostHook),
+				withHooks(nil, []tupprv1alpha1.HookSpec{cephNoutHook("unset-noout", "unset")}),
+			)
+			cl := fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(tu).WithStatusSubresource(tu).Build()
+			r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+
+			// The post-hook of the run being reset is still running.
+			reconcileTalos(t, r, "tu")
+			if jobs := listHookJobs(t, cl, hookPhasePost); len(jobs) != 1 {
+				t.Fatalf("expected 1 running post-hook job, got %d", len(jobs))
+			}
+
+			current := getTalosUpgrade(t, cl, "tu")
+			tt.opt(current)
+			if err := cl.Update(context.Background(), current); err != nil {
+				t.Fatalf("update TalosUpgrade: %v", err)
+			}
+			if current.Status.ObservedGeneration != 0 {
+				if err := cl.Status().Update(context.Background(), current); err != nil {
+					t.Fatalf("update TalosUpgrade status: %v", err)
+				}
+			}
+			reconcileTalos(t, r, "tu")
+
+			if jobs := listHookJobs(t, cl, hookPhasePost); len(jobs) != 0 {
+				t.Fatalf("expected the previous run's hook job deleted, got %d", len(jobs))
+			}
+			if got := getTalosUpgrade(t, cl, "tu").Status.Phase; got != tupprv1alpha1.JobPhasePending {
+				t.Fatalf("expected Pending after the reset, got %s", got)
+			}
+		})
 	}
 }
