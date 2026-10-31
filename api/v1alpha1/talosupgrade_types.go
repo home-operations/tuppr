@@ -432,8 +432,10 @@ type PreBatchHookStatus struct {
 	// +optional
 	Index int `json:"index,omitempty"`
 
-	// Job is the name of the Job running the hook at Index, if one has been
-	// started. Only this Job's outcome counts for the hook.
+	// Job is the name of the Job running the hook at Index, recorded before
+	// the Job is created. Only this Job's outcome counts for the hook; if it
+	// is missing, the hook runs again under this name after fresh health
+	// checks.
 	// +optional
 	Job string `json:"job,omitempty"`
 
@@ -452,9 +454,12 @@ type PreBatchHookStatus struct {
 	// +optional
 	CompletedAt *metav1.Time `json:"completedAt,omitempty"`
 
-	// BatchStarted records that the batch's drain or upgrade Jobs have
-	// started, so the hooks are not run again for it however old their
-	// result is.
+	// BatchStarted records that the batch's drain or upgrade Jobs are being
+	// started. It is written before either. Once the batch has disrupted any
+	// of its nodes (an upgrade Job, a cordon when tuppr drains, or a node
+	// finished, failed or rebooting), the hooks are not run again for it,
+	// however old their result; its unfinished nodes resume as their own
+	// batch. If none was disrupted, a stale result still re-runs the hooks.
 	// +optional
 	BatchStarted bool `json:"batchStarted,omitempty"`
 

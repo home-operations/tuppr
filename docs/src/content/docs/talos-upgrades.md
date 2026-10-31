@@ -272,18 +272,28 @@ spec:
   the batch starts without another check, so a hook may change what the
   checks look at for its batch.
 - A failing hook is re-run every `interval`. Once it has kept failing for
-  `timeout`, no further batch starts: post-hooks run as cleanup and the run is
-  marked `Failed`. Set a short `timeout` to stop on the first failure. Nothing
-  in the batch has been cordoned when a pre-batch hook fails.
+  `timeout`, the run fails without another attempt, even if the next retry
+  would come later: no further batch starts, post-hooks run as cleanup, and
+  the run is marked `Failed`. Set a short `timeout` to stop on the first
+  failure. The timeout counts wall-clock time from the first failure,
+  including time the run spends waiting for a maintenance window or an
+  unreachable node. Nothing in the batch has been cordoned when a pre-batch
+  hook fails.
+- A running hook Job keeps the run in `PreHook` until it finishes, even if
+  the maintenance window closes or a node becomes unreachable meanwhile, so
+  no other plan starts while it may still be changing the cluster.
 - The batch starts only if it is still exactly the nodes the hooks ran for,
   within 5 minutes of the last hook succeeding. Otherwise, for example after
   waiting for a maintenance window or an unreachable node, the checks and
-  hooks run again. Once the batch's drain or upgrade Jobs have started, the
-  hooks don't run again for it. Write them to be safe to re-run.
-- While a hook is running or waiting to retry, the run is in the `PreHook`
-  phase and its spec can't be edited.
-  [Suspend](/operations/#suspend-and-resume) the run to edit it; a running hook
-  Job is left to finish and is picked up again on resume.
+  hooks run again. Once the batch has disrupted any of its nodes (an upgrade
+  Job, a cordon when tuppr drains, or a node finished, failed or rebooting),
+  the hooks don't run again for it: its unfinished nodes resume as their own
+  batch. Write the hooks to be safe to re-run.
+- While a hook Job is running, the run stays in `PreHook` and its spec can't
+  be edited. [Suspend](/operations/#suspend-and-resume) the run to edit it. A
+  running hook Job is left to finish and is picked up again on resume, unless
+  the spec was changed meanwhile: a spec change restarts the run, and that
+  Job's outcome is ignored.
 
 Phase progression with hooks:
 
