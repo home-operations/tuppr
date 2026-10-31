@@ -37,8 +37,11 @@ kubectl annotate kubernetesupgrade kubernetes tuppr.home-operations.com/suspend-
 
 ## Retry a failed upgrade
 
-`Failed` is terminal - the controller stops reconciling until you act. Three
-ways to retry:
+`Failed` is terminal - the controller stops reconciling until you act. A run
+that stops on a failed node first runs its post-hooks (`PostHook` phase), then
+becomes `Failed`. A reset or spec edit during the post-hooks deletes their
+running Job, so wait for `Failed` if they must finish (e.g. to unset Ceph
+`noout`). Three ways to retry:
 
 ```bash
 # Reset: wipe runtime state (phase, completed/failed nodes, hook progress),

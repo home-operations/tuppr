@@ -75,7 +75,8 @@ func (r *Reconciler) processHookPhase(ctx context.Context, tu *tupprv1alpha1.Tal
 }
 
 // findActiveHookJob returns the in-flight hook Job (at most one — they run
-// sequentially) for this CR + phase + current index.
+// sequentially) for this CR + phase + current index. Jobs being deleted
+// belong to an earlier run (see deleteHookJobs) and are ignored.
 func (r *Reconciler) findActiveHookJob(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade, phase string) (*batchv1.Job, error) {
 	jobList := &batchv1.JobList{}
 	if err := r.List(ctx, jobList,
@@ -93,7 +94,7 @@ func (r *Reconciler) findActiveHookJob(ctx context.Context, tu *tupprv1alpha1.Ta
 	for i := range jobList.Items {
 		job := &jobList.Items[i]
 		owner := metav1.GetControllerOf(job)
-		if owner == nil || owner.UID != tu.UID {
+		if owner == nil || owner.UID != tu.UID || job.DeletionTimestamp != nil {
 			continue
 		}
 		if job.Labels[hookIndexLabel] != fmt.Sprintf("%d", idx) {
@@ -102,6 +103,34 @@ func (r *Reconciler) findActiveHookJob(ctx context.Context, tu *tupprv1alpha1.Ta
 		return job, nil
 	}
 	return nil, nil
+}
+
+// deleteHookJobs deletes every hook Job of this CR when its run is reset.
+// The hook indexes restart at 0, so a Job left running (a post-hook still
+// unsetting Ceph noout, say) would race the new run's hooks, and a finished
+// one could be counted as the new run's.
+func (r *Reconciler) deleteHookJobs(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade) error {
+	jobList := &batchv1.JobList{}
+	if err := r.List(ctx, jobList,
+		client.InNamespace(r.ControllerNamespace),
+		client.MatchingLabels{
+			appLabelKey:         hookJobAppName,
+			appInstanceLabelKey: tu.Name,
+		},
+	); err != nil {
+		return fmt.Errorf("list hook jobs for %s: %w", tu.Name, err)
+	}
+	for i := range jobList.Items {
+		job := &jobList.Items[i]
+		if owner := metav1.GetControllerOf(job); owner == nil || owner.UID != tu.UID || job.DeletionTimestamp != nil {
+			continue
+		}
+		if err := jobs.DeleteJob(ctx, r.Client, job); err != nil {
+			return fmt.Errorf("delete hook job %s: %w", job.Name, err)
+		}
+		log.FromContext(ctx).Info("Deleted hook job of the previous run", "job", job.Name, "hookPhase", job.Labels[hookPhaseLabel])
+	}
+	return nil
 }
 
 func (r *Reconciler) startHookJob(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade, hook tupprv1alpha1.HookSpec, phase string, idx, total int) (ctrl.Result, bool, error) {

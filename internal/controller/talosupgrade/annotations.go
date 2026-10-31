@@ -47,6 +47,10 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, talosUpgrade *tu
 	logger := log.FromContext(ctx)
 	logger.Info("Reset annotation found, clearing upgrade state", "resetValue", resetValue)
 
+	if err := r.deleteHookJobs(ctx, talosUpgrade); err != nil {
+		return false, err
+	}
+
 	newAnnotations := maps.Clone(talosUpgrade.Annotations)
 	maps.DeleteFunc(newAnnotations, func(k, v string) bool {
 		return k == constants.ResetAnnotation
@@ -85,6 +89,10 @@ func (r *Reconciler) handleGenerationChange(ctx context.Context, talosUpgrade *t
 	logger.Info("Spec changed, resetting upgrade process",
 		"generation", talosUpgrade.Generation,
 		"observed", talosUpgrade.Status.ObservedGeneration)
+
+	if err := r.deleteHookJobs(ctx, talosUpgrade); err != nil {
+		return false, err
+	}
 
 	if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", nil, "Spec updated, restarting upgrade process", map[string]any{
 		statusCompletedNodes:   []string{},
