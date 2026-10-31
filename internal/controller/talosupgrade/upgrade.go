@@ -246,7 +246,9 @@ func (r *Reconciler) waitForHealthChecks(ctx context.Context, talosUpgrade *tupp
 		waited = now.Sub(since.Time)
 		extra = map[string]any{statusHealthChecksFailingSince: nil}
 	}
-	r.MetricsReporter.RecordHealthCheckDuration(metrics.UpgradeTypeTalos, talosUpgrade.Name, waited.Seconds())
+	if len(checks) > 0 {
+		r.MetricsReporter.RecordHealthCheckDuration(metrics.UpgradeTypeTalos, talosUpgrade.Name, waited.Seconds())
+	}
 	if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", nil, "Running health checks", extra); err != nil {
 		logger.Error(err, "Failed to update phase for health check")
 	} else {

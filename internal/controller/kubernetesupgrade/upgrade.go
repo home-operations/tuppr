@@ -159,6 +159,13 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 		return result, nil
 	}
 
+	// The window gate above is skipped once the run is active, and a run
+	// waiting on health checks is (HealthChecking). Checks that pass after
+	// the window closed must not start the upgrade.
+	if result, done, err := r.checkMaintenanceWindow(ctx, kubernetesUpgrade); done {
+		return result, err
+	}
+
 	return r.startUpgrade(ctx, kubernetesUpgrade)
 }
 
@@ -192,7 +199,9 @@ func (r *Reconciler) waitForHealthChecks(ctx context.Context, kubernetesUpgrade 
 		waited = now.Sub(since.Time)
 		extra = map[string]any{statusFieldHealthChecksFailingSince: nil}
 	}
-	r.MetricsReporter.RecordHealthCheckDuration(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, waited.Seconds())
+	if len(kubernetesUpgrade.Spec.HealthChecks) > 0 {
+		r.MetricsReporter.RecordHealthCheckDuration(metrics.UpgradeTypeKubernetes, kubernetesUpgrade.Name, waited.Seconds())
+	}
 	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", "", "Running health checks", extra); err != nil {
 		logger.Error(err, "Failed to update phase for health check")
 	} else {
