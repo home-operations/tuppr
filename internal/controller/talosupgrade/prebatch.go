@@ -8,6 +8,7 @@ import (
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -17,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/constants"
 	"github.com/home-operations/tuppr/internal/controller/jobs"
 )
 
@@ -39,24 +41,27 @@ const (
 	// preBatchStart: no hook has run for this batch yet, or an earlier
 	// result no longer covers it.
 	preBatchStart
-	// preBatchReady: the hook at Index is due to start.
+	// preBatchReady: the hook at Index is due to start, or to start again
+	// under its recorded Job name because that Job is missing.
 	preBatchReady
 	// preBatchWaiting: the hook at Index failed and waits for RetryAt.
 	preBatchWaiting
-	// preBatchRunning: the Job for the hook at Index has been started.
-	preBatchRunning
+	// preBatchExpired: the hook at Index has kept failing past the retry
+	// timeout; the run fails without another attempt.
+	preBatchExpired
 	// preBatchCleared: every hook succeeded recently, or the batch has
 	// already started.
 	preBatchCleared
 )
 
 // skipsHealthChecks reports whether the health checks are left out this
-// pass. They gate the start of every hook attempt, not a Job already running
-// or a retry still waiting. Once the hooks have succeeded they aren't run
-// again before the batch starts: a hook may change what they check for its
-// batch (e.g. moving a database primary away).
+// pass. They gate the start of every hook attempt, not a retry still waiting
+// or a run about to fail. Once the hooks have succeeded they aren't run again
+// before the batch starts: a hook may change what they check for its batch
+// (e.g. moving a database primary away). A running hook Job never gets here:
+// observeRunningPreBatchHook handles it before anything else.
 func (s preBatchStage) skipsHealthChecks() bool {
-	return s == preBatchWaiting || s == preBatchRunning || s == preBatchCleared
+	return s == preBatchWaiting || s == preBatchExpired || s == preBatchCleared
 }
 
 func hasPreBatchHooks(tu *tupprv1alpha1.TalosUpgrade) bool {
@@ -80,29 +85,107 @@ func preBatchRetry(tu *tupprv1alpha1.TalosUpgrade) (timeout, interval time.Durat
 
 // preBatchStageFor reports the pre-batch stage of the batch made of nodes,
 // and when it is preBatchStart over an earlier result, why (for the log).
-func preBatchStageFor(tu *tupprv1alpha1.TalosUpgrade, nodes []string, now time.Time) (preBatchStage, string) {
+// touched reports whether any of the recorded batch's nodes has been cordoned
+// or given an upgrade Job; it is only called for a batch recorded as started.
+func preBatchStageFor(tu *tupprv1alpha1.TalosUpgrade, nodes []string, now time.Time, touched func() bool) (preBatchStage, string) {
 	if !hasPreBatchHooks(tu) {
 		return preBatchNone, ""
 	}
 	state := tu.Status.PreBatchHooks
+	fresh := state != nil && state.CompletedAt != nil && now.Sub(state.CompletedAt.Time) < preBatchHookValidity
+	timeout, _ := preBatchRetry(tu)
 	switch {
 	case state == nil:
 		return preBatchStart, ""
+	// BatchStarted is written before the batch's drain or upgrade Jobs, so it
+	// may cover a start that never happened (say, every Job create failed).
+	// The nodes left over from a batch that did start are resumed; a batch
+	// nothing happened to is cleared only by a fresh result.
+	case state.BatchStarted && isSubset(nodes, state.Nodes):
+		if fresh || touched() {
+			return preBatchCleared, ""
+		}
+		return preBatchStart, "batch never started and its hook result went stale"
 	case !slices.Equal(state.Nodes, nodes):
 		return preBatchStart, "batch changed from " + strings.Join(state.Nodes, ", ")
-	case state.BatchStarted:
-		return preBatchCleared, ""
 	case state.Index >= len(tu.Spec.Hooks.PreBatch):
-		if state.CompletedAt != nil && now.Sub(state.CompletedAt.Time) < preBatchHookValidity {
+		if fresh {
 			return preBatchCleared, ""
 		}
 		return preBatchStart, "hook result went stale"
+	case state.FailingSince != nil && now.Sub(state.FailingSince.Time) >= timeout:
+		return preBatchExpired, ""
 	case state.Job != "":
-		return preBatchRunning, ""
+		// A running Job is observed before processNextBatch, so this one is
+		// missing: it never got created, or was deleted before its outcome
+		// was recorded. It runs again under its name, after fresh checks.
+		return preBatchReady, ""
 	case state.RetryAt != nil && state.RetryAt.After(now):
 		return preBatchWaiting, ""
 	}
 	return preBatchReady, ""
+}
+
+func isSubset(sub, of []string) bool {
+	for _, n := range sub {
+		if !slices.Contains(of, n) {
+			return false
+		}
+	}
+	return len(sub) > 0
+}
+
+// resumeStartedBatch keeps a started batch together. While some nodes of a
+// batch recorded as started are still pending, they are the next batch, so a
+// half-started batch (one of its upgrade Jobs failed to be created, say) isn't
+// regrouped with nodes it never included and gated again as a new batch.
+func resumeStartedBatch(tu *tupprv1alpha1.TalosUpgrade, pending, next []string) []string {
+	state := tu.Status.PreBatchHooks
+	if !hasPreBatchHooks(tu) || state == nil || !state.BatchStarted {
+		return next
+	}
+	var left []string
+	for _, n := range pending {
+		if slices.Contains(state.Nodes, n) {
+			left = append(left, n)
+		}
+	}
+	if len(left) == 0 {
+		return next
+	}
+	return left
+}
+
+// preBatchNodesTouched reports whether the recorded batch has disrupted any
+// of its nodes: one has finished, failed or is rebooting, carries the
+// upgrading label, or (when tuppr drains) has been cordoned. A cordon is
+// ignored when tuppr doesn't drain, since it can't tell one from a user's.
+// A node that can't be read counts as touched, which keeps the batch going
+// rather than re-running its hooks.
+func (r *Reconciler) preBatchNodesTouched(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade) bool {
+	status := tu.Status
+	for _, name := range status.PreBatchHooks.Nodes {
+		if slices.Contains(status.CompletedNodes, name) ||
+			slices.ContainsFunc(status.FailedNodes, func(n tupprv1alpha1.NodeUpgradeStatus) bool { return n.NodeName == name }) ||
+			slices.ContainsFunc(status.RebootingNodes, func(n tupprv1alpha1.NodeRebootStatus) bool { return n.NodeName == name }) {
+			return true
+		}
+	}
+	ownsDrain := r.tupprOwnsDrain(ctx, tu)
+	for _, name := range status.PreBatchHooks.Nodes {
+		node := &corev1.Node{}
+		if err := r.Get(ctx, types.NamespacedName{Name: name}, node); err != nil {
+			if !apierrors.IsNotFound(err) {
+				log.FromContext(ctx).Error(err, "Failed to read batch node; treating the batch as started", "node", name)
+				return true
+			}
+			continue
+		}
+		if node.Labels[constants.NodeUpgradingLabel] != "" || (ownsDrain && node.Spec.Unschedulable) {
+			return true
+		}
+	}
+	return false
 }
 
 // gatePreBatch returns proceed=true when the batch may start: the run has
@@ -131,9 +214,17 @@ func (r *Reconciler) gatePreBatch(ctx context.Context, tu *tupprv1alpha1.TalosUp
 func (r *Reconciler) processPreBatchHooks(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade, nodes []string, stage preBatchStage, now time.Time) (ctrl.Result, error) {
 	switch stage {
 	case preBatchWaiting:
-		return ctrl.Result{RequeueAfter: tu.Status.PreBatchHooks.RetryAt.Sub(now)}, nil
-	case preBatchRunning:
-		return r.observePreBatchHookJob(ctx, tu, now)
+		// Wake at the deadline too, so a retry interval longer than the time
+		// left still fails the run on time.
+		state := tu.Status.PreBatchHooks
+		wait := state.RetryAt.Sub(now)
+		if state.FailingSince != nil {
+			timeout, _ := preBatchRetry(tu)
+			wait = min(wait, state.FailingSince.Add(timeout).Sub(now))
+		}
+		return ctrl.Result{RequeueAfter: wait}, nil
+	case preBatchExpired:
+		return r.failPreBatchHooks(ctx, tu, tu.Status.PreBatchHooks.DeepCopy())
 	case preBatchStart:
 		r.deletePreBatchHookJobs(ctx, tu)
 		tu.Status.PreBatchHooks = &tupprv1alpha1.PreBatchHookStatus{Nodes: slices.Clone(nodes)}
@@ -142,12 +233,22 @@ func (r *Reconciler) processPreBatchHooks(ctx context.Context, tu *tupprv1alpha1
 }
 
 // startPreBatchHookJob records the Job name before creating the Job, so an
-// outcome is only ever read from the Job started for this attempt.
+// outcome is only ever read from the Job started for this attempt. A Job
+// already named in status (one that went missing) keeps its name, so a Job
+// that exists but isn't in the cache yet isn't duplicated.
 func (r *Reconciler) startPreBatchHookJob(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {
 	state := tu.Status.PreBatchHooks.DeepCopy()
 	hook := tu.Spec.Hooks.PreBatch[state.Index]
 
+	// The health checks before this attempt may have taken a while.
+	if timeout, _ := preBatchRetry(tu); state.FailingSince != nil && r.Now.Now().Sub(state.FailingSince.Time) >= timeout {
+		return r.failPreBatchHooks(ctx, tu, state)
+	}
+
 	job := r.buildHookJob(tu, hook, hookPhasePreBatch, state.Index)
+	if state.Job != "" {
+		job.Name = state.Job
+	}
 	state.Job = job.Name
 	if err := r.writePreBatchHooks(ctx, tu, state, runningPreBatchMessage(tu, state)); err != nil {
 		return ctrl.Result{}, err
@@ -170,28 +271,49 @@ func (r *Reconciler) createPreBatchHookJob(ctx context.Context, tu *tupprv1alpha
 	return nil
 }
 
-func (r *Reconciler) observePreBatchHookJob(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade, now time.Time) (ctrl.Result, error) {
+// observeRunningPreBatchHook handles the pre-batch hook Job named in status
+// before any other gate of the reconcile. A running hook keeps the run in
+// PreHook (an active phase, which holds other plans back) until it finishes,
+// even if the maintenance window closes or a node goes unreachable meanwhile.
+// observed=false means there is no such Job, and the caller carries on. Not
+// run during PostHook: by then the run is finishing.
+func (r *Reconciler) observeRunningPreBatchHook(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade) (ctrl.Result, bool, error) {
+	state := tu.Status.PreBatchHooks
+	if state == nil || state.Job == "" || state.Failed || !hasPreBatchHooks(tu) ||
+		state.Index >= len(tu.Spec.Hooks.PreBatch) || tu.Status.Phase == tupprv1alpha1.JobPhasePostHook {
+		return ctrl.Result{}, false, nil
+	}
+	job, err := r.getPreBatchHookJob(ctx, state.Job)
+	if apierrors.IsNotFound(err) {
+		return ctrl.Result{}, false, nil
+	}
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to get hook job", "hookPhase", hookPhasePreBatch, "job", state.Job)
+		return ctrl.Result{RequeueAfter: time.Minute}, true, nil
+	}
+	result, err := r.observePreBatchHookJob(ctx, tu, job, r.Now.Now())
+	return result, true, err
+}
+
+// getPreBatchHookJob reads the named hook Job. The cache can miss a Job
+// created moments ago (the status write that names it wakes the next
+// reconcile at once), so a NotFound is confirmed against the API server before
+// the Job is treated as missing.
+func (r *Reconciler) getPreBatchHookJob(ctx context.Context, name string) (*batchv1.Job, error) {
+	key := types.NamespacedName{Namespace: r.ControllerNamespace, Name: name}
+	job := &batchv1.Job{}
+	err := r.Get(ctx, key, job)
+	if apierrors.IsNotFound(err) && r.APIReader != nil {
+		err = r.APIReader.Get(ctx, key, job)
+	}
+	return job, err
+}
+
+func (r *Reconciler) observePreBatchHookJob(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade, job *batchv1.Job, now time.Time) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	state := tu.Status.PreBatchHooks
 	hook := tu.Spec.Hooks.PreBatch[state.Index]
 
-	job := &batchv1.Job{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: r.ControllerNamespace, Name: state.Job}, job)
-	if apierrors.IsNotFound(err) {
-		// Creating it failed after its name was recorded, or it was deleted
-		// before its outcome was recorded: run the hook (again).
-		job = r.buildHookJob(tu, hook, hookPhasePreBatch, state.Index)
-		job.Name = state.Job
-		if err := r.createPreBatchHookJob(ctx, tu, job); err != nil {
-			return ctrl.Result{}, err
-		}
-		logger.Info("Re-created missing hook job", "hookPhase", hookPhasePreBatch, "hook", hook.Name, "job", job.Name)
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-	}
-	if err != nil {
-		logger.Error(err, "Failed to get hook job", "hookPhase", hookPhasePreBatch, "job", state.Job)
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
-	}
 	if !jobs.IsTerminal(job) {
 		// Back from a suspend or a wait elsewhere while the Job kept running.
 		if tu.Status.Phase != tupprv1alpha1.JobPhasePreHook {
@@ -234,14 +356,7 @@ func (r *Reconciler) observePreBatchHookJob(ctx context.Context, tu *tupprv1alph
 	timeout, interval := preBatchRetry(tu)
 
 	if now.Sub(failingSince) >= timeout {
-		logger.Info("Pre-batch hook kept failing past its retry timeout, stopping the run",
-			"hook", hook.Name, "nodes", state.Nodes, "timeout", timeout, "job", job.Name)
-		next.Failed = true
-		message := fmt.Sprintf("Pre-batch hook %q kept failing for node(s) %s", hook.Name, nodes)
-		if err := r.writePreBatchHooks(ctx, tu, next, message); err != nil {
-			return ctrl.Result{}, err
-		}
-		return r.transitionToFinalize(ctx, tu)
+		return r.failPreBatchHooks(ctx, tu, next)
 	}
 
 	logger.Info("Pre-batch hook failed, retrying", "hook", hook.Name, "nodes", state.Nodes, "retryIn", interval, "job", job.Name)
@@ -252,6 +367,29 @@ func (r *Reconciler) observePreBatchHookJob(ctx context.Context, tu *tupprv1alph
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{RequeueAfter: interval}, nil
+}
+
+// failPreBatchHooks records that the hook at state.Index kept failing past
+// its retry timeout and stops the run through the post-hooks.
+func (r *Reconciler) failPreBatchHooks(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade, state *tupprv1alpha1.PreBatchHookStatus) (ctrl.Result, error) {
+	hook := tu.Spec.Hooks.PreBatch[state.Index]
+	timeout, _ := preBatchRetry(tu)
+	log.FromContext(ctx).Info("Pre-batch hook kept failing past its retry timeout, stopping the run",
+		"hook", hook.Name, "nodes", state.Nodes, "timeout", timeout)
+	if state.Job != "" {
+		// An attempt the cache hadn't seen yet may still be running.
+		job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: state.Job, Namespace: r.ControllerNamespace}}
+		if err := jobs.DeleteJob(ctx, r.Client, job); err != nil {
+			log.FromContext(ctx).Error(err, "Failed to delete pre-batch hook job (continuing)", "job", state.Job)
+		}
+	}
+	state.Failed = true
+	state.Job, state.RetryAt = "", nil
+	message := fmt.Sprintf("Pre-batch hook %q kept failing for node(s) %s", hook.Name, strings.Join(state.Nodes, ", "))
+	if err := r.writePreBatchHooks(ctx, tu, state, message); err != nil {
+		return ctrl.Result{}, err
+	}
+	return r.transitionToFinalize(ctx, tu)
 }
 
 func runningPreBatchMessage(tu *tupprv1alpha1.TalosUpgrade, state *tupprv1alpha1.PreBatchHookStatus) string {

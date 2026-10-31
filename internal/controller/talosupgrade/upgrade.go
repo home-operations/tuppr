@@ -153,6 +153,10 @@ func (r *Reconciler) processHookPhases(ctx context.Context, talosUpgrade *tupprv
 		return result, true, err
 	}
 
+	if result, observed, err := r.observeRunningPreBatchHook(ctx, talosUpgrade); observed {
+		return result, true, err
+	}
+
 	switch talosUpgrade.Status.Phase {
 	case tupprv1alpha1.JobPhasePreHook:
 		// Pre-batch hooks run in PreHook too, driven from processNextBatch.
@@ -393,6 +397,7 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	if err != nil {
 		return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonFindNextNodes, "select next batch", time.Minute, err), nil
 	}
+	nextNodes = resumeStartedBatch(talosUpgrade, pendingNodes, nextNodes)
 
 	if result, done := r.waitForControlPlaneSlot(ctx, talosUpgrade, nextNodes, pendingNodes); done {
 		return result, nil
@@ -408,7 +413,9 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	}
 
 	now := r.Now.Now()
-	preBatch, rerunReason := preBatchStageFor(talosUpgrade, nextNodes, now)
+	preBatch, rerunReason := preBatchStageFor(talosUpgrade, nextNodes, now, func() bool {
+		return r.preBatchNodesTouched(ctx, talosUpgrade)
+	})
 
 	checks, skipHealthCheck := interBatchHealthChecks(talosUpgrade)
 	if preBatch.skipsHealthChecks() {

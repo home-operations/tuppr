@@ -3,16 +3,19 @@ package talosupgrade
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
@@ -246,14 +249,21 @@ func TestPreBatchHooks_FailurePastTimeoutRunsPostHooksThenFails(t *testing.T) {
 	f.reconcile(t)
 	markJobFailed(t, f.cl, onePreBatchJob(t, f.cl))
 	f.reconcile(t)
-	f.clock.t = f.clock.t.Add(time.Minute)
+	f.clock.t = f.clock.t.Add(30 * time.Second)
 	f.reconcile(t)
 	markJobFailed(t, f.cl, onePreBatchJob(t, f.cl))
+	f.reconcile(t)
+
+	// Past the deadline, the run fails without another attempt.
+	f.clock.t = f.clock.t.Add(30 * time.Second)
 	f.reconcile(t)
 
 	st := f.status(t)
 	if st.Phase != tupprv1alpha1.JobPhasePostHook || st.PreBatchHooks == nil || !st.PreBatchHooks.Failed {
 		t.Fatalf("expected PostHook with the pre-batch failure recorded, got phase %s, state %+v", st.Phase, st.PreBatchHooks)
+	}
+	if jobs := listHookJobs(t, f.cl, hookPhasePreBatch); len(jobs) != 0 {
+		t.Fatalf("expected no attempt after the deadline, got %d pre-batch hook jobs", len(jobs))
 	}
 
 	f.reconcile(t)
@@ -342,24 +352,264 @@ func TestPreBatchHooks_RerunWhenResultDoesNotCoverBatch(t *testing.T) {
 	}
 }
 
-func TestPreBatchHooks_StartedBatchIsNotGatedAgain(t *testing.T) {
-	// The batch was drained, then creating its upgrade Job kept failing
-	// past the result's validity.
+// A batch recorded as started is gated again only if nothing actually
+// happened to its nodes: BatchStarted is written before the drain and the
+// upgrade Jobs, so it may cover a start that never took place.
+func TestPreBatchHooks_StartedBatch(t *testing.T) {
+	now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	stale := metav1.Time{Time: now.Add(-time.Hour)}
+	fresh := metav1.Time{Time: now.Add(-time.Minute)}
+	cordon := func(n *corev1.Node) { n.Spec.Unschedulable = true }
+	label := func(n *corev1.Node) { n.Labels = map[string]string{constants.NodeUpgradingLabel: upgradingLabelValue} }
+	tests := []struct {
+		name        string
+		batchNodes  []string
+		completedAt metav1.Time
+		tupprDrains bool
+		completed   []string
+		touch       map[string]func(*corev1.Node)
+		wantGated   bool
+	}{
+		{name: "drained batch resumes", batchNodes: []string{fakeNodeA}, completedAt: stale, tupprDrains: true, touch: map[string]func(*corev1.Node){fakeNodeA: cordon}},
+		{name: "batch with an upgrade Job resumes", batchNodes: []string{fakeNodeA}, completedAt: stale, touch: map[string]func(*corev1.Node){fakeNodeA: label}},
+		{name: "batch touched through its other node resumes", batchNodes: []string{fakeNodeA, fakeNodeB}, completedAt: stale, touch: map[string]func(*corev1.Node){fakeNodeB: label}},
+		{name: "batch with a finished node resumes", batchNodes: []string{fakeNodeA, fakeNodeB}, completedAt: stale, completed: []string{fakeNodeA}},
+		{name: "untouched batch with a fresh result resumes", batchNodes: []string{fakeNodeA}, completedAt: fresh},
+		{name: "untouched batch with a stale result runs its hooks again", batchNodes: []string{fakeNodeA}, completedAt: stale, wantGated: true},
+		{
+			name: "a user's cordon doesn't count when tuppr doesn't drain", batchNodes: []string{fakeNodeA}, completedAt: stale,
+			touch: map[string]func(*corev1.Node){fakeNodeA: cordon}, wantGated: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newPreBatchFixture(t,
+				withPreBatchHooks(nil, preBatchHook(testHookDRBD)),
+				withHealthChecks(nodeCheck()),
+				withPhase(tupprv1alpha1.JobPhaseDraining),
+				withPreBatchState(&tupprv1alpha1.PreBatchHookStatus{Nodes: tt.batchNodes, Index: 1, CompletedAt: &tt.completedAt, BatchStarted: true}),
+				func(tu *tupprv1alpha1.TalosUpgrade) {
+					tu.Status.CompletedNodes = tt.completed
+					if tt.tupprDrains {
+						tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Enabled: true}
+					}
+				})
+			for _, done := range tt.completed {
+				f.tc.nodeVersions[map[string]string{fakeNodeA: testNodeIP1, fakeNodeB: testNodeIP2}[done]] = fakeTalosVersion
+			}
+			for name, touch := range tt.touch {
+				node := &corev1.Node{}
+				if err := f.cl.Get(context.Background(), client.ObjectKey{Name: name}, node); err != nil {
+					t.Fatalf("get node: %v", err)
+				}
+				touch(node)
+				if err := f.cl.Update(context.Background(), node); err != nil {
+					t.Fatalf("update node: %v", err)
+				}
+			}
+
+			f.reconcile(t)
+
+			st := f.status(t)
+			if tt.wantGated {
+				if st.Phase != tupprv1alpha1.JobPhasePreHook || st.PreBatchHooks == nil || st.PreBatchHooks.BatchStarted || f.hc.calls != 1 {
+					t.Fatalf("expected the checks and hooks to run again, got phase %s, state %+v, %d check calls", st.Phase, st.PreBatchHooks, f.hc.calls)
+				}
+				return
+			}
+			// Draining when tuppr drains (the fake client can't finish one),
+			// Upgrading otherwise: either way past the pre-batch gate.
+			if st.Phase != tupprv1alpha1.JobPhaseUpgrading && st.Phase != tupprv1alpha1.JobPhaseDraining {
+				t.Fatalf("expected the started batch to proceed, got %s (%s)", st.Phase, st.Message)
+			}
+			if f.hc.calls != 0 || len(listHookJobs(t, f.cl, hookPhasePreBatch)) != 0 {
+				t.Fatalf("expected neither checks nor hooks for a started batch, got %d check calls", f.hc.calls)
+			}
+		})
+	}
+}
+
+// With more pending nodes than the parallelism, the leftover node of a
+// half-started batch isn't regrouped with a new node and gated again: the
+// started batch [a, b] lost b's upgrade Job create, a finished, and the next
+// pending pair is [b, c].
+func TestPreBatchHooks_HalfStartedBatchResumesAlone(t *testing.T) {
 	stale := metav1.Time{Time: time.Date(2026, 10, 31, 11, 0, 0, 0, time.UTC)}
 	f := newPreBatchFixture(t,
 		withPreBatchHooks(nil, preBatchHook(testHookDRBD)),
 		withHealthChecks(nodeCheck()),
-		withPhase(tupprv1alpha1.JobPhaseDraining),
-		withPreBatchState(&tupprv1alpha1.PreBatchHookStatus{Nodes: []string{fakeNodeA}, Index: 1, CompletedAt: &stale, BatchStarted: true}))
-	f.hc.err = errors.New("replicas degraded by the drain")
+		withParallelism(2),
+		withPhase(tupprv1alpha1.JobPhasePending),
+		withPreBatchState(&tupprv1alpha1.PreBatchHookStatus{Nodes: []string{fakeNodeA, fakeNodeB}, Index: 1, CompletedAt: &stale, BatchStarted: true}),
+		func(tu *tupprv1alpha1.TalosUpgrade) {
+			tu.Spec.Drain = &tupprv1alpha1.DrainSpec{Enabled: true}
+			tu.Status.CompletedNodes = []string{fakeNodeA}
+		})
+	f.tc.nodeVersions[testNodeIP1] = fakeTalosVersion
+	f.tc.nodeVersions[testNodeIP3] = testV110Talos
+	f.tc.installImages[testNodeIP3] = testFactoryInstaller
+	if err := f.cl.Create(context.Background(), newNode(fakeNodeC, testNodeIP3)); err != nil {
+		t.Fatalf("create node-c: %v", err)
+	}
+	nodeB := &corev1.Node{}
+	if err := f.cl.Get(context.Background(), client.ObjectKey{Name: fakeNodeB}, nodeB); err != nil {
+		t.Fatalf("get node-b: %v", err)
+	}
+	nodeB.Spec.Unschedulable = true
+	if err := f.cl.Update(context.Background(), nodeB); err != nil {
+		t.Fatalf("cordon node-b: %v", err)
+	}
 
 	f.reconcile(t)
 
-	if st := f.status(t); st.Phase != tupprv1alpha1.JobPhaseUpgrading {
-		t.Fatalf("expected the started batch to proceed to Upgrading, got %s (%s)", st.Phase, st.Message)
+	st := f.status(t)
+	if st.Phase != tupprv1alpha1.JobPhaseDraining || f.hc.calls != 0 || len(listHookJobs(t, f.cl, hookPhasePreBatch)) != 0 {
+		t.Fatalf("expected node-b to resume without checks or hooks, got phase %s (%s), %d check calls", st.Phase, st.Message, f.hc.calls)
 	}
-	if f.hc.calls != 0 || len(listHookJobs(t, f.cl, hookPhasePreBatch)) != 0 {
-		t.Fatalf("expected neither checks nor hooks for a started batch, got %d check calls", f.hc.calls)
+	if !slices.Equal(st.CurrentNodes, []string{fakeNodeB}) {
+		t.Fatalf("expected the batch to be %s alone, got %v", fakeNodeB, st.CurrentNodes)
+	}
+}
+
+// The deadline also passes while the run waits on failing health checks; the
+// run then fails without another attempt once the checks pass.
+func TestPreBatchHooks_DeadlinePassesDuringHealthChecks(t *testing.T) {
+	retry := &tupprv1alpha1.HookRetrySpec{
+		Timeout:  &metav1.Duration{Duration: time.Minute},
+		Interval: &metav1.Duration{Duration: 10 * time.Second},
+	}
+	f := newPreBatchFixture(t, withPreBatchHooks(retry, preBatchHook(testHookDRBD)), withHealthChecks(nodeCheck()))
+	f.reconcile(t)
+	markJobFailed(t, f.cl, onePreBatchJob(t, f.cl))
+	f.reconcile(t)
+
+	f.clock.t = f.clock.t.Add(30 * time.Second)
+	f.hc.err = errors.New("node not ready")
+	f.reconcile(t)
+	if st := f.status(t); st.Phase != tupprv1alpha1.JobPhaseHealthChecking {
+		t.Fatalf("expected the retry held by the health checks, got %s", st.Phase)
+	}
+
+	f.clock.t = f.clock.t.Add(time.Minute)
+	f.hc.err = nil
+	f.reconcile(t)
+	st := f.status(t)
+	if st.PreBatchHooks == nil || !st.PreBatchHooks.Failed || len(listHookJobs(t, f.cl, hookPhasePreBatch)) != 0 {
+		t.Fatalf("expected the run to fail without another attempt, got phase %s, state %+v", st.Phase, st.PreBatchHooks)
+	}
+}
+
+// slowHealthChecker passes after moving the clock on, like checks that take a
+// while against a slow apiserver.
+type slowHealthChecker struct {
+	clock *fixedClock
+	takes time.Duration
+}
+
+func (c *slowHealthChecker) CheckHealth(context.Context, []tupprv1alpha1.HealthCheckSpec) error {
+	c.clock.t = c.clock.t.Add(c.takes)
+	return nil
+}
+
+// Health checks that cross the deadline mid-pass don't let one more attempt
+// start.
+func TestPreBatchHooks_DeadlinePassesWithinHealthChecks(t *testing.T) {
+	retry := &tupprv1alpha1.HookRetrySpec{
+		Timeout:  &metav1.Duration{Duration: time.Minute},
+		Interval: &metav1.Duration{Duration: 10 * time.Second},
+	}
+	f := newPreBatchFixture(t, withPreBatchHooks(retry, preBatchHook(testHookDRBD)), withHealthChecks(nodeCheck()))
+	f.reconcile(t)
+	markJobFailed(t, f.cl, onePreBatchJob(t, f.cl))
+	f.reconcile(t)
+
+	f.clock.t = f.clock.t.Add(50 * time.Second)
+	f.r.HealthChecker = &slowHealthChecker{clock: f.clock, takes: 20 * time.Second}
+	f.reconcile(t)
+
+	st := f.status(t)
+	if st.PreBatchHooks == nil || !st.PreBatchHooks.Failed || len(listHookJobs(t, f.cl, hookPhasePreBatch)) != 0 {
+		t.Fatalf("expected the run to fail without another attempt, got phase %s, state %+v", st.Phase, st.PreBatchHooks)
+	}
+}
+
+// A hook Job the cache hasn't caught up with yet is confirmed against the API
+// server, so the run neither re-runs the health checks nor leaves PreHook.
+func TestPreBatchHooks_JobMissingFromCacheIsStillObserved(t *testing.T) {
+	f := newPreBatchFixture(t, withPreBatchHooks(nil, preBatchHook(testHookDRBD)), withHealthChecks(nodeCheck()))
+	f.reconcile(t)
+	job := onePreBatchJob(t, f.cl)
+
+	missedOnce := false
+	f.r.APIReader = f.cl
+	f.r.Client = interceptor.NewClient(f.cl.(client.WithWatch), interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, isJob := obj.(*batchv1.Job); isJob && key.Name == job.Name && !missedOnce {
+				missedOnce = true
+				return apierrors.NewNotFound(batchv1.Resource("jobs"), key.Name)
+			}
+			return c.Get(ctx, key, obj, opts...)
+		},
+	})
+
+	f.reconcile(t)
+
+	if !missedOnce {
+		t.Fatal("expected the cache miss to be exercised")
+	}
+	if st := f.status(t); st.Phase != tupprv1alpha1.JobPhasePreHook || st.PreBatchHooks.Job != job.Name || f.hc.calls != 1 {
+		t.Fatalf("expected the running hook observed, got phase %s, state %+v, %d check calls", st.Phase, st.PreBatchHooks, f.hc.calls)
+	}
+}
+
+// A running hook keeps the run in PreHook, an active phase that holds other
+// plans back, even when the maintenance window closes while it runs.
+func TestPreBatchHooks_RunningHookOutlivesClosedWindow(t *testing.T) {
+	f := newPreBatchFixture(t, withPreBatchHooks(nil, preBatchHook(testHookDRBD)))
+	f.reconcile(t)
+	job := onePreBatchJob(t, f.cl)
+
+	tu := getTalosUpgrade(t, f.cl, "tu")
+	tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{Windows: []tupprv1alpha1.WindowSpec{{
+		Start: testCronEvery2, Duration: metav1.Duration{Duration: time.Hour}, Timezone: testTimezoneUTC,
+	}}}
+	if err := f.cl.Update(context.Background(), tu); err != nil {
+		t.Fatalf("update spec: %v", err)
+	}
+	// Keep the run's progress: this exercises the window, not a spec change.
+	tu = getTalosUpgrade(t, f.cl, "tu")
+	tu.Status.ObservedGeneration = tu.Generation
+	if err := f.cl.Status().Update(context.Background(), tu); err != nil {
+		t.Fatalf("update status: %v", err)
+	}
+
+	f.reconcile(t)
+	if st := f.status(t); st.Phase != tupprv1alpha1.JobPhasePreHook || st.PreBatchHooks.Job != job.Name {
+		t.Fatalf("expected the running hook to keep the run in PreHook, got phase %s (%s), state %+v", st.Phase, st.Message, st.PreBatchHooks)
+	}
+
+	markJobSucceeded(t, f.cl, job)
+	f.reconcile(t)
+	if state := f.status(t).PreBatchHooks; state.Index != 1 || state.CompletedAt == nil {
+		t.Fatalf("expected the hook's outcome recorded, got %+v", state)
+	}
+}
+
+// After a failure the run wakes at the retry deadline even when the retry
+// interval is longer, and fails then.
+func TestPreBatchHooks_WaitingRetryWakesAtDeadline(t *testing.T) {
+	retry := &tupprv1alpha1.HookRetrySpec{
+		Timeout:  &metav1.Duration{Duration: time.Minute},
+		Interval: &metav1.Duration{Duration: 10 * time.Minute},
+	}
+	f := newPreBatchFixture(t, withPreBatchHooks(retry, preBatchHook(testHookDRBD)))
+	f.reconcile(t)
+	markJobFailed(t, f.cl, onePreBatchJob(t, f.cl))
+	f.reconcile(t)
+
+	f.clock.t = f.clock.t.Add(20 * time.Second)
+	if result := reconcileTalos(t, f.r, "tu"); result.RequeueAfter != 40*time.Second {
+		t.Fatalf("expected to wake at the deadline in 40s, got %v", result.RequeueAfter)
 	}
 }
 
@@ -367,6 +617,7 @@ func TestPreBatchHooks_OnlyRecordedJobCounts(t *testing.T) {
 	const recorded = "tu-pre-batch-hook-recorded"
 	f := newPreBatchFixture(t,
 		withPreBatchHooks(nil, preBatchHook(testHookDRBD)),
+		withHealthChecks(nodeCheck()),
 		withPhase(tupprv1alpha1.JobPhasePreHook),
 		withPreBatchState(&tupprv1alpha1.PreBatchHookStatus{Nodes: []string{fakeNodeA}, Job: recorded}))
 
@@ -382,13 +633,23 @@ func TestPreBatchHooks_OnlyRecordedJobCounts(t *testing.T) {
 	}
 
 	// The recorded Job is missing (its create failed, or it was deleted
-	// before its outcome was recorded), so the hook runs under that name.
+	// before its outcome was recorded). It must pass fresh health checks
+	// before it runs again under that name.
+	f.hc.err = errors.New("node not ready")
 	f.reconcile(t)
+	var job batchv1.Job
+	if err := f.cl.Get(context.Background(), client.ObjectKey{Namespace: testNamespace, Name: recorded}, &job); err == nil {
+		t.Fatal("expected no hook job while the health checks fail")
+	}
 
+	f.hc.err = nil
+	f.reconcile(t)
 	if state := f.status(t).PreBatchHooks; state.Index != 0 || state.Job != recorded {
 		t.Fatalf("expected the hook still pending on %s, got %+v", recorded, state)
 	}
-	var job batchv1.Job
+	if f.hc.calls != 2 {
+		t.Fatalf("expected the health checks before each attempt to re-create the job, got %d calls", f.hc.calls)
+	}
 	if err := f.cl.Get(context.Background(), client.ObjectKey{Namespace: testNamespace, Name: recorded}, &job); err != nil {
 		t.Fatalf("expected the recorded hook job re-created: %v", err)
 	}
