@@ -26,7 +26,6 @@ spec:
     - apiVersion: v1
       kind: Node
       expr: status.conditions.exists(c, c.type == "Ready" && c.status == "True")
-      timeout: 10m
 
   # Optional maintenance windows and talosctl image, identical to TalosUpgrade.
 ```

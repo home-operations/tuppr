@@ -24,6 +24,7 @@ import (
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
 	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
+	"github.com/home-operations/tuppr/internal/healthcheck"
 	"github.com/home-operations/tuppr/internal/metrics"
 )
 
@@ -429,8 +430,8 @@ func TestK8sReconcile_HealthCheckFailure(t *testing.T) {
 	r := newK8sReconciler(cl, vg, &mockTalosClient{}, hc)
 
 	result := reconcileK8s(t, r, "test-upgrade")
-	if result.RequeueAfter != time.Minute {
-		t.Fatalf("expected 1m requeue on health check failure, got: %v", result.RequeueAfter)
+	if result.RequeueAfter != healthcheck.RetryInterval {
+		t.Fatalf("expected %v requeue on health check failure, got: %v", healthcheck.RetryInterval, result.RequeueAfter)
 	}
 
 	updated := getK8sUpgrade(t, cl, "test-upgrade")
@@ -439,6 +440,45 @@ func TestK8sReconcile_HealthCheckFailure(t *testing.T) {
 	}
 	if !strings.Contains(updated.Status.Message, "health") {
 		t.Fatalf("expected message about health checks, got: %s", updated.Status.Message)
+	}
+}
+
+// A pass with unchanged versions and an unchanged health check failure writes
+// nothing, so it doesn't trigger a second reconcile; the re-evaluation backs off.
+func TestK8sReconcile_HealthCheckFailureStreak(t *testing.T) {
+	scheme := newTestScheme()
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		withK8sPhase(tupprv1alpha1.JobPhasePending),
+	)
+	node := newControllerNodeWithVersion(fakeCrtl, testNodeIP, testV1330)
+	vg := &mockVersionGetter{version: testV1330}
+	hc := &mockHealthChecker{err: fmt.Errorf("cluster not healthy")}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku, node).WithStatusSubresource(ku).Build()
+	r := newK8sReconciler(cl, vg, &mockTalosClient{}, hc)
+	start := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	clock := &fixedClock{t: start}
+	r.Now = clock
+
+	reconcileK8s(t, r, "test-upgrade")
+	first := getK8sUpgrade(t, cl, "test-upgrade")
+	if since := first.Status.HealthChecksFailingSince; since == nil || !since.Time.Equal(start) {
+		t.Fatalf("expected the failure streak to start at %v, got %v", start, first.Status.HealthChecksFailingSince)
+	}
+
+	clock.t = start.Add(10 * time.Minute)
+	if result := reconcileK8s(t, r, "test-upgrade"); result.RequeueAfter != healthcheck.RetryAfter(10*time.Minute) {
+		t.Fatalf("expected the re-evaluation to back off to %v, got %v", healthcheck.RetryAfter(10*time.Minute), result.RequeueAfter)
+	}
+	if again := getK8sUpgrade(t, cl, "test-upgrade"); again.ResourceVersion != first.ResourceVersion {
+		t.Fatal("expected no status write for unchanged versions and an unchanged failure")
+	}
+
+	hc.err = nil
+	reconcileK8s(t, r, "test-upgrade")
+	if since := getK8sUpgrade(t, cl, "test-upgrade").Status.HealthChecksFailingSince; since != nil {
+		t.Fatalf("expected the failure streak cleared once checks pass, got %v", since)
 	}
 }
 

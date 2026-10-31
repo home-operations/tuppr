@@ -128,8 +128,8 @@ var (
 	healthCheckDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "tuppr_health_check_duration_seconds",
-			Help:    "Time taken for health checks to pass",
-			Buckets: []float64{1, 5, 10, 30, 60, 120, 300, 600},
+			Help:    "Time health checks took to pass, from their first failing evaluation (0 when they pass at once)",
+			Buckets: []float64{1, 30, 60, 120, 300, 600, 1800, 3600, 7200},
 		},
 		[]string{labelUpgradeType, labelUpgradeName},
 	)

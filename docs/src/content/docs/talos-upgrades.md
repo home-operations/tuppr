@@ -26,8 +26,14 @@ defaults lives in the CRD schema; this page covers the ones you'll reach for.
 ## Health checks
 
 Health checks are [CEL](https://cel.dev/) expressions evaluated against live
-cluster objects before an upgrade proceeds. They run concurrently, and (for a
-`TalosUpgrade`) before each node or batch.
+cluster objects before an upgrade proceeds (for a `TalosUpgrade`, before each
+node or batch). Every check must pass. While any fails, the run waits in
+`HealthChecking` and re-evaluates them every 30 seconds, backing off to every
+5 minutes while they keep failing. The status message names each failing
+check (by its `description`, or its kind, namespace and name or label
+selector), and `status.healthChecksFailingSince` says since when. A failing
+check never fails the upgrade, so the run waits until it passes or you change
+the spec. The `timeout` field has no effect.
 
 ```yaml
 spec:
@@ -36,7 +42,7 @@ spec:
     - apiVersion: v1
       kind: Node
       expr: status.conditions.filter(c, c.type == "Ready").all(c, c.status == "True")
-      timeout: 10m
+      description: all nodes Ready
 
     # A named Deployment fully rolled out
     - apiVersion: apps/v1
@@ -62,9 +68,10 @@ spec:
       expr: status.ceph.health in ["HEALTH_OK"]
 ```
 
-Each check attempt is emitted as Events on the resource (`HealthChecksStarted`,
-then `HealthChecksPassed` or a `HealthChecksFailed` warning), so a run waiting
-on failing checks is visible in `kubectl describe`. A check with
+Results are emitted as Events on the resource: a `HealthChecksFailed` warning
+when checks start failing or the failure changes, and `HealthChecksPassed`
+when they pass, so a run waiting on failing checks is visible in
+`kubectl describe`. A check with
 `skipAfterPreHooks: true` is left out of every run once
 [pre-hooks](#prepost-upgrade-hooks) have completed; a run with no checks left
 emits no Events.
@@ -236,7 +243,7 @@ spec:
 - Health checks still run before every batch after the pre-hooks. A check the
   pre-hooks invalidate for the upgrade window (Ceph is `HEALTH_WARN` while
   `noout` is set) must set `skipAfterPreHooks: true`: it then gates only the
-  initial check before the hooks, otherwise every later run fails and the
+  initial check before the hooks, otherwise every later check fails and the
   upgrade stalls before its first batch. Other checks keep gating each batch,
   so a pre-hook that pauses CI runners doesn't switch off the Ceph check.
 - Each hook is a Job in the controller namespace with the same non-root,

@@ -446,10 +446,15 @@ func TestGenerateCommonWarnings(t *testing.T) {
 	warnings = GenerateCommonWarnings("v1.0.0", nil, "")
 	g.Expect(warnings).To(ContainElement(ContainSubstring("No talosctl version specified")))
 
-	// Case 4: No timeout
-	check := tupprv1alpha1.HealthCheckSpec{Expr: testExprTrue} // timeout is nil
+	// Case 4: No timeout is the norm
+	check := tupprv1alpha1.HealthCheckSpec{Expr: testExprTrue}
 	warnings = GenerateCommonWarnings("v1.0.0", []tupprv1alpha1.HealthCheckSpec{check}, "v1.0.0")
-	g.Expect(warnings).To(ContainElement(ContainSubstring("no timeout specified")))
+	g.Expect(warnings).To(BeEmpty())
+
+	// Case 5: A timeout has no effect
+	check.Timeout = &metav1.Duration{Duration: 10 * time.Minute}
+	warnings = GenerateCommonWarnings("v1.0.0", []tupprv1alpha1.HealthCheckSpec{check}, "v1.0.0")
+	g.Expect(warnings).To(ContainElement(ContainSubstring("Health check 0 sets timeout, which has no effect")))
 }
 
 func mwSpec(windows ...tupprv1alpha1.WindowSpec) *tupprv1alpha1.MaintenanceSpec {

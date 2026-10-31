@@ -299,6 +299,13 @@ type TalosUpgradeStatus struct {
 	// +optional
 	CompletionCycles int `json:"completionCycles,omitempty"`
 
+	// HealthChecksFailingSince is when spec.healthChecks started failing in
+	// their current streak; cleared once they pass. It spaces out the
+	// re-evaluations while they keep failing and times how long they took
+	// to pass.
+	// +optional
+	HealthChecksFailingSince *metav1.Time `json:"healthChecksFailingSince,omitempty"`
+
 	// PreHookIndex is the index of the next pre-hook to run.
 	// Equals len(spec.hooks.pre) once all pre-hooks are done.
 	// +optional
