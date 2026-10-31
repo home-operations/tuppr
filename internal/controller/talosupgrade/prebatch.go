@@ -68,6 +68,31 @@ func hasPreBatchHooks(tu *tupprv1alpha1.TalosUpgrade) bool {
 	return tu.Spec.Hooks != nil && len(tu.Spec.Hooks.PreBatch) > 0
 }
 
+// preBatchDeadline reports when the failing pre-batch hook runs out of
+// retries; ok is false when no hook is failing.
+func preBatchDeadline(tu *tupprv1alpha1.TalosUpgrade) (deadline time.Time, ok bool) {
+	state := tu.Status.PreBatchHooks
+	if !hasPreBatchHooks(tu) || state == nil || state.Failed || state.FailingSince == nil || state.Index >= len(tu.Spec.Hooks.PreBatch) {
+		return time.Time{}, false
+	}
+	timeout, _ := preBatchRetry(tu)
+	return state.FailingSince.Add(timeout), true
+}
+
+// wakeByPreBatchDeadline shortens result's requeue to the failing pre-batch
+// hook's deadline, so a gate that holds the run (a closed maintenance window,
+// an unreachable node, a pre-pull) can't keep it past the hook's timeout.
+func wakeByPreBatchDeadline(tu *tupprv1alpha1.TalosUpgrade, now time.Time, result ctrl.Result) ctrl.Result {
+	deadline, ok := preBatchDeadline(tu)
+	if !ok {
+		return result
+	}
+	if left := deadline.Sub(now); left > 0 && (result.RequeueAfter == 0 || result.RequeueAfter > left) {
+		result.RequeueAfter = left
+	}
+	return result
+}
+
 func preBatchRetry(tu *tupprv1alpha1.TalosUpgrade) (timeout, interval time.Duration) {
 	timeout, interval = defaultPreBatchRetryTimeout, defaultPreBatchRetryInterval
 	if tu.Spec.Hooks == nil || tu.Spec.Hooks.PreBatchRetry == nil {

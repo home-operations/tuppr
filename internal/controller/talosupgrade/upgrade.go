@@ -157,6 +157,13 @@ func (r *Reconciler) processHookPhases(ctx context.Context, talosUpgrade *tupprv
 		return result, true, err
 	}
 
+	// Ahead of the batch gates, which would otherwise hold the run (and its
+	// post-hooks) past the hook's timeout.
+	if deadline, ok := preBatchDeadline(talosUpgrade); ok && talosUpgrade.Status.Phase != tupprv1alpha1.JobPhasePostHook && !r.Now.Now().Before(deadline) {
+		result, err := r.failPreBatchHooks(ctx, talosUpgrade, talosUpgrade.Status.PreBatchHooks.DeepCopy())
+		return result, true, err
+	}
+
 	switch talosUpgrade.Status.Phase {
 	case tupprv1alpha1.JobPhasePreHook:
 		// Pre-batch hooks run in PreHook too, driven from processNextBatch.

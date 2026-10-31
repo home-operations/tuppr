@@ -91,6 +91,24 @@ func (f *preBatchFixture) status(t *testing.T) tupprv1alpha1.TalosUpgradeStatus 
 	return getTalosUpgrade(t, f.cl, "tu").Status
 }
 
+// closeWindow gives the run a maintenance window that is closed now, keeping
+// its progress: it exercises the window, not a spec change.
+func (f *preBatchFixture) closeWindow(t *testing.T) {
+	t.Helper()
+	tu := getTalosUpgrade(t, f.cl, "tu")
+	tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{Windows: []tupprv1alpha1.WindowSpec{{
+		Start: testCronEvery2, Duration: metav1.Duration{Duration: time.Hour}, Timezone: testTimezoneUTC,
+	}}}
+	if err := f.cl.Update(context.Background(), tu); err != nil {
+		t.Fatalf("update spec: %v", err)
+	}
+	tu = getTalosUpgrade(t, f.cl, "tu")
+	tu.Status.ObservedGeneration = tu.Generation
+	if err := f.cl.Status().Update(context.Background(), tu); err != nil {
+		t.Fatalf("update status: %v", err)
+	}
+}
+
 // newPreBatchFixture builds a run on node-a and node-b, both needing the
 // upgrade, at parallelism 1.
 func newPreBatchFixture(t *testing.T, opts ...func(*tupprv1alpha1.TalosUpgrade)) *preBatchFixture {
@@ -569,19 +587,7 @@ func TestPreBatchHooks_RunningHookOutlivesClosedWindow(t *testing.T) {
 	f.reconcile(t)
 	job := onePreBatchJob(t, f.cl)
 
-	tu := getTalosUpgrade(t, f.cl, "tu")
-	tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{Windows: []tupprv1alpha1.WindowSpec{{
-		Start: testCronEvery2, Duration: metav1.Duration{Duration: time.Hour}, Timezone: testTimezoneUTC,
-	}}}
-	if err := f.cl.Update(context.Background(), tu); err != nil {
-		t.Fatalf("update spec: %v", err)
-	}
-	// Keep the run's progress: this exercises the window, not a spec change.
-	tu = getTalosUpgrade(t, f.cl, "tu")
-	tu.Status.ObservedGeneration = tu.Generation
-	if err := f.cl.Status().Update(context.Background(), tu); err != nil {
-		t.Fatalf("update status: %v", err)
-	}
+	f.closeWindow(t)
 
 	f.reconcile(t)
 	if st := f.status(t); st.Phase != tupprv1alpha1.JobPhasePreHook || st.PreBatchHooks.Job != job.Name {
@@ -592,6 +598,41 @@ func TestPreBatchHooks_RunningHookOutlivesClosedWindow(t *testing.T) {
 	f.reconcile(t)
 	if state := f.status(t).PreBatchHooks; state.Index != 1 || state.CompletedAt == nil {
 		t.Fatalf("expected the hook's outcome recorded, got %+v", state)
+	}
+}
+
+// A failing hook's deadline holds while a closed maintenance window holds
+// the run: it wakes at the deadline and fails through the post-hooks.
+func TestPreBatchHooks_DeadlinePassesWhileWindowClosed(t *testing.T) {
+	retry := &tupprv1alpha1.HookRetrySpec{
+		Timeout:  &metav1.Duration{Duration: time.Minute},
+		Interval: &metav1.Duration{Duration: 10 * time.Second},
+	}
+	f := newPreBatchFixture(t,
+		withHooks(nil, []tupprv1alpha1.HookSpec{cephNoutHook("unset-noout", "unset")}),
+		withPreBatchHooks(retry, preBatchHook(testHookDRBD)))
+	f.reconcile(t)
+	markJobFailed(t, f.cl, onePreBatchJob(t, f.cl))
+	f.reconcile(t)
+	f.closeWindow(t)
+
+	f.clock.t = f.clock.t.Add(20 * time.Second)
+	result := reconcileTalos(t, f.r, "tu")
+	if st := f.status(t); st.Phase != tupprv1alpha1.JobPhaseMaintenanceWindow {
+		t.Fatalf("expected the closed window to hold the run, got %s (%s)", st.Phase, st.Message)
+	}
+	if result.RequeueAfter != 40*time.Second {
+		t.Fatalf("expected to wake at the deadline in 40s, got %v", result.RequeueAfter)
+	}
+
+	f.clock.t = f.clock.t.Add(40 * time.Second)
+	f.reconcile(t)
+	st := f.status(t)
+	if st.Phase != tupprv1alpha1.JobPhasePostHook || st.PreBatchHooks == nil || !st.PreBatchHooks.Failed {
+		t.Fatalf("expected PostHook with the pre-batch failure recorded, got phase %s (%s), state %+v", st.Phase, st.Message, st.PreBatchHooks)
+	}
+	if jobs := listHookJobs(t, f.cl, hookPhasePreBatch); len(jobs) != 0 {
+		t.Fatalf("expected no attempt after the deadline, got %d pre-batch hook jobs", len(jobs))
 	}
 }
 

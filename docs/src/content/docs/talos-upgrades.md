@@ -386,7 +386,8 @@ spec:
   the run is marked `Failed`. Set a short `timeout` to stop on the first
   failure. The timeout counts wall-clock time from the first failure,
   including time the run spends waiting for a maintenance window or an
-  unreachable node. Nothing in the batch has been cordoned when a pre-batch
+  unreachable node, and the run fails at the deadline rather than when that
+  wait ends. Nothing in the batch has been cordoned when a pre-batch
   hook fails.
 - A running hook Job keeps the run in `PreHook` until it finishes, even if
   the maintenance window closes or a node becomes unreachable meanwhile, so
