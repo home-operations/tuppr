@@ -1649,13 +1649,9 @@ func TestTalosReconcile_FailedJobButNodeRebooting_TreatedAsRebooting(t *testing.
 	}
 }
 
-func TestTalosReconcile_FailedOffTargetJobWithOldVersion_FailsImmediately(t *testing.T) {
-	scheme := newTestScheme()
-	tu := newTalosUpgrade(testUpgradeName,
-		withFinalizer,
-		withPhase(tupprv1alpha1.JobPhaseUpgrading),
-	)
-	node := newNode(fakeNodeA, testNodeIP1)
+// offTargetFailedJob returns a failed upgrade Job for node-a whose pod ran on
+// node-b, so a node still at its old version fails without a reboot wait.
+func offTargetFailedJob() (*batchv1.Job, *corev1.Pod) {
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      testJobNameNodeA,
@@ -1685,6 +1681,17 @@ func TestTalosReconcile_FailedOffTargetJobWithOldVersion_FailsImmediately(t *tes
 		},
 		Spec: corev1.PodSpec{NodeName: fakeNodeB},
 	}
+	return job, pod
+}
+
+func TestTalosReconcile_FailedOffTargetJobWithOldVersion_FailsImmediately(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhaseUpgrading),
+	)
+	node := newNode(fakeNodeA, testNodeIP1)
+	job, pod := offTargetFailedJob()
 	tc := &mockTalosClient{
 		nodeVersions: map[string]string{testNodeIP1: testV110Talos},
 	}
@@ -1693,8 +1700,8 @@ func TestTalosReconcile_FailedOffTargetJobWithOldVersion_FailsImmediately(t *tes
 	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
 
 	result := reconcileTalos(t, r, testUpgradeName)
-	if result.RequeueAfter != 10*time.Minute {
-		t.Fatalf("expected 10m failed requeue, got: %v", result.RequeueAfter)
+	if result.RequeueAfter != 5*time.Minute {
+		t.Fatalf("expected 5m failed requeue, got: %v", result.RequeueAfter)
 	}
 
 	updated := getTalosUpgrade(t, cl, testUpgradeName)
