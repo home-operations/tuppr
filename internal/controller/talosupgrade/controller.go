@@ -49,23 +49,24 @@ const (
 )
 
 const (
-	appLabelKey              = jobs.AppLabelKey
-	appInstanceLabelKey      = jobs.AppInstanceLabelKey
-	appPartOfLabelKey        = jobs.AppPartOfLabelKey
-	appPartOfTuppr           = jobs.AppPartOfTuppr
-	targetNodeLabelKey       = jobs.TargetNodeLabelKey
-	talosUpgradeAppName      = "talos-upgrade"
-	statusAlertSilenceIDs    = "alertSilenceIDs"
-	statusAlertSilencesSince = "alertSilencesSince"
-	statusCompletedNodes     = "completedNodes"
-	statusFailedNodes        = "failedNodes"
-	statusRebootingNodes     = "rebootingNodes"
-	statusPreHookFailed      = "preHookFailed"
-	statusPreHookIndex       = "preHookIndex"
-	statusPostHookIndex      = "postHookIndex"
-	statusPrePulledNodes     = "prePulledNodes"
-	statusPrePullFailure     = "prePullFailure"
-	statusCompletionCycles   = "completionCycles"
+	appLabelKey                    = jobs.AppLabelKey
+	appInstanceLabelKey            = jobs.AppInstanceLabelKey
+	appPartOfLabelKey              = jobs.AppPartOfLabelKey
+	appPartOfTuppr                 = jobs.AppPartOfTuppr
+	targetNodeLabelKey             = jobs.TargetNodeLabelKey
+	talosUpgradeAppName            = "talos-upgrade"
+	statusAlertSilenceIDs          = "alertSilenceIDs"
+	statusAlertSilencesSince       = "alertSilencesSince"
+	statusCompletedNodes           = "completedNodes"
+	statusFailedNodes              = "failedNodes"
+	statusRebootingNodes           = "rebootingNodes"
+	statusPreHookFailed            = "preHookFailed"
+	statusPreHookIndex             = "preHookIndex"
+	statusPostHookIndex            = "postHookIndex"
+	statusPrePulledNodes           = "prePulledNodes"
+	statusPrePullFailure           = "prePullFailure"
+	statusCompletionCycles         = "completionCycles"
+	statusHealthChecksFailingSince = "healthChecksFailingSince"
 )
 
 // TalosClient defines the interface for Talos operations

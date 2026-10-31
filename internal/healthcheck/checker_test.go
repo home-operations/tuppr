@@ -2,6 +2,7 @@ package healthcheck
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,7 +13,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 const (
@@ -634,6 +637,165 @@ func TestHealthChecker_CheckHealth_NilMetricsReporter(t *testing.T) {
 	err := hc.CheckHealth(ctx, checks)
 	if err != nil {
 		t.Fatalf("expected no error with nil MetricsReporter, got: %v", err)
+	}
+}
+
+type recordingMetrics struct {
+	failedChecks []int
+}
+
+func (m *recordingMetrics) RecordHealthCheckFailure(_, _ string, checkIndex int) {
+	m.failedChecks = append(m.failedChecks, checkIndex)
+}
+
+// CheckHealth evaluates once and returns: the caller requeues, so a failing
+// check must not hold the reconcile worker.
+func TestHealthChecker_CheckHealth_EvaluatesOnce(t *testing.T) {
+	cm := &unstructured.Unstructured{}
+	cm.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind(kindConfigMap))
+	cm.SetName(cmName)
+	cm.SetNamespace(defaultNS)
+
+	pass := tupprv1alpha1.HealthCheckSpec{APIVersion: "v1", Kind: kindConfigMap, Name: cmName, Namespace: defaultNS, Expr: exprTrue}
+	unsatisfied := tupprv1alpha1.HealthCheckSpec{APIVersion: "v1", Kind: kindConfigMap, Name: cmName, Namespace: defaultNS, Expr: exprHasData}
+	described := unsatisfied
+	described.Description = "config has data"
+	missing := tupprv1alpha1.HealthCheckSpec{APIVersion: "v1", Kind: kindConfigMap, Name: "absent", Namespace: defaultNS, Expr: exprTrue}
+	missingDescribed := missing
+	missingDescribed.Description = "app config present"
+	selected := tupprv1alpha1.HealthCheckSpec{
+		APIVersion: "v1", Kind: kindConfigMap, Namespace: defaultNS, Expr: exprTrue,
+		LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{labelApp: valCritical}},
+	}
+
+	tests := []struct {
+		name       string
+		checks     []tupprv1alpha1.HealthCheckSpec
+		wantErr    []string
+		wantFailed []int
+	}{
+		{name: "all pass", checks: []tupprv1alpha1.HealthCheckSpec{pass, pass}},
+		{
+			name:       "unsatisfied check is named",
+			checks:     []tupprv1alpha1.HealthCheckSpec{pass, unsatisfied},
+			wantErr:    []string{"check 1 (default/ConfigMap test-cm) not satisfied"},
+			wantFailed: []int{1},
+		},
+		{
+			name:       "description names the check",
+			checks:     []tupprv1alpha1.HealthCheckSpec{described},
+			wantErr:    []string{"check 0 (config has data) not satisfied"},
+			wantFailed: []int{0},
+		},
+		{
+			name:       "every failure is reported",
+			checks:     []tupprv1alpha1.HealthCheckSpec{missing, pass, unsatisfied},
+			wantErr:    []string{"check 0 (default/ConfigMap absent) evaluation error", "not found", "check 2 (default/ConfigMap test-cm) not satisfied"},
+			wantFailed: []int{0, 2},
+		},
+		{
+			name:       "unreadable check is named by its description",
+			checks:     []tupprv1alpha1.HealthCheckSpec{missingDescribed},
+			wantErr:    []string{"check 0 (app config present) evaluation error"},
+			wantFailed: []int{0},
+		},
+		{
+			name:       "list check is named by its selector",
+			checks:     []tupprv1alpha1.HealthCheckSpec{selected},
+			wantErr:    []string{"check 0 (default/ConfigMap app=critical) not satisfied"},
+			wantFailed: []int{0},
+		},
+		{
+			name:    "a bad expression stops before any read",
+			checks:  []tupprv1alpha1.HealthCheckSpec{missing, {APIVersion: "v1", Kind: kindConfigMap, Expr: "this is invalid !!!"}},
+			wantErr: []string{"health check validation failed"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cl := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(cm.DeepCopy()).Build()
+			rec := &recordingMetrics{}
+			hc := &Checker{Client: cl, MetricsReporter: rec}
+			ctx := context.WithValue(context.Background(), metrics.ContextKeyUpgradeType, metrics.UpgradeTypeTalos)
+			ctx = context.WithValue(ctx, metrics.ContextKeyUpgradeName, "test-upgrade")
+
+			start := time.Now()
+			err := hc.CheckHealth(ctx, tt.checks)
+			if elapsed := time.Since(start); elapsed > time.Second {
+				t.Fatalf("expected CheckHealth to return without waiting, took %v", elapsed)
+			}
+
+			if len(tt.wantErr) == 0 && err != nil {
+				t.Fatalf("expected no error, got: %v", err)
+			}
+			for _, want := range tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Fatalf("expected error containing %q, got: %v", want, err)
+				}
+			}
+			if len(rec.failedChecks) != len(tt.wantFailed) {
+				t.Fatalf("expected failures recorded for checks %v, got %v", tt.wantFailed, rec.failedChecks)
+			}
+			for i, idx := range tt.wantFailed {
+				if rec.failedChecks[i] != idx {
+					t.Fatalf("expected failures recorded for checks %v, got %v", tt.wantFailed, rec.failedChecks)
+				}
+			}
+		})
+	}
+}
+
+// Each check's reads get their own CheckTimeout, so a slow check can neither
+// hold the worker nor use up the time of the checks after it.
+func TestHealthChecker_CheckHealth_BoundsEachCheck(t *testing.T) {
+	type call struct{ start, deadline time.Time }
+	var calls []call
+	cl := fake.NewClientBuilder().WithScheme(newTestScheme()).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Get: func(ctx context.Context, _ client.WithWatch, _ client.ObjectKey, _ client.Object, _ ...client.GetOption) error {
+				deadline, _ := ctx.Deadline()
+				calls = append(calls, call{start: time.Now(), deadline: deadline})
+				if len(calls) == 1 {
+					time.Sleep(200 * time.Millisecond) // a slow first check
+				}
+				return context.DeadlineExceeded
+			},
+		}).Build()
+	hc := &Checker{Client: cl}
+
+	check := tupprv1alpha1.HealthCheckSpec{APIVersion: "v1", Kind: kindConfigMap, Name: cmName, Namespace: defaultNS, Expr: exprTrue}
+	if err := hc.CheckHealth(context.Background(), []tupprv1alpha1.HealthCheckSpec{check, check}); err == nil {
+		t.Fatal("expected the failed reads to fail the checks")
+	}
+	if len(calls) != 2 {
+		t.Fatalf("expected both checks read, got %d reads", len(calls))
+	}
+	for i, c := range calls {
+		if c.deadline.IsZero() {
+			t.Fatalf("check %d: expected a deadline on its reads", i)
+		}
+		if left := c.deadline.Sub(c.start); left > CheckTimeout || left < CheckTimeout-100*time.Millisecond {
+			t.Fatalf("check %d: expected about %v for its reads, got %v", i, CheckTimeout, left)
+		}
+	}
+}
+
+func TestRetryAfter(t *testing.T) {
+	tests := []struct {
+		failingFor time.Duration
+		want       time.Duration
+	}{
+		{0, RetryInterval},
+		{time.Minute, RetryInterval},
+		{4 * time.Minute, time.Minute},
+		{10 * time.Minute, 150 * time.Second},
+		{time.Hour, MaxRetryInterval},
+	}
+	for _, tt := range tests {
+		if got := RetryAfter(tt.failingFor); got != tt.want {
+			t.Errorf("RetryAfter(%v) = %v, want %v", tt.failingFor, got, tt.want)
+		}
 	}
 }
 

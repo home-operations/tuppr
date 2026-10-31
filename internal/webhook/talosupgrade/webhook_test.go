@@ -663,11 +663,12 @@ func TestTalosUpgrade_Warnings_NoTalosctlVersion(t *testing.T) {
 	}
 }
 
-func TestTalosUpgrade_Warnings_HealthCheckNoTimeout(t *testing.T) {
+func TestTalosUpgrade_Warnings_HealthCheckTimeout(t *testing.T) {
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "v1",
 		Kind:       testKindNode,
 		Expr:       testExprTrue,
+		Timeout:    &metav1.Duration{Duration: 10 * time.Minute},
 	}
 	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 	tu := newTalosUpgrade("test", withTalosHealthChecks(check))
@@ -676,18 +677,16 @@ func TestTalosUpgrade_Warnings_HealthCheckNoTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	if !containsWarning(warnings, "no timeout") {
+	if !containsWarning(warnings, "sets timeout, which has no effect") {
 		t.Errorf("expected timeout warning, got: %v", warnings)
 	}
 }
 
 func TestTalosUpgrade_Warnings_NoWarningsForSafeDefaults(t *testing.T) {
-	timeout := metav1.Duration{Duration: 5 * time.Minute}
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "v1",
 		Kind:       testKindNode,
 		Expr:       testExprTrue,
-		Timeout:    &timeout,
 	}
 	v := newTalosValidator(talosConfigSecretWithKey(testNamespace, validTalosConfig()))
 	tu := newTalosUpgrade("test",

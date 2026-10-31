@@ -201,7 +201,7 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "description": "Health check failures over the last hour.",
+      "description": "Failing health check evaluations over the last hour. Failing checks are re-evaluated every 30s, backing off to 5m.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1502,7 +1502,7 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "description": "Failure rate of health checks (per minute), by upgrade type.",
+      "description": "Failing health check evaluations per minute, by upgrade.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1561,7 +1561,7 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "description": "p50/p95 health check duration.",
+      "description": "p50/p95 time health checks took to pass, from their first failing evaluation.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1617,7 +1617,7 @@
           "refId": "B"
         }
       ],
-      "title": "Health check duration",
+      "title": "Health check wait",
       "type": "timeseries"
     },
     {

@@ -24,6 +24,7 @@ import (
 	"github.com/home-operations/tuppr/internal/controller/maintenance"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
+	"github.com/home-operations/tuppr/internal/healthcheck"
 	"github.com/home-operations/tuppr/internal/metrics"
 	"github.com/home-operations/tuppr/internal/talos"
 )
@@ -87,15 +88,16 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 		}
 		logger.Info("Node detected requiring upgrade after completion, restarting campaign", "node", nextNodes[0], "cycle", cycles+1)
 		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "", nil, "New node detected, restarting upgrade", map[string]any{
-			statusCompletedNodes:   []string{},
-			statusFailedNodes:      []tupprv1alpha1.NodeUpgradeStatus{},
-			statusRebootingNodes:   []tupprv1alpha1.NodeRebootStatus{},
-			statusPreHookIndex:     0,
-			statusPostHookIndex:    0,
-			statusPreHookFailed:    false,
-			statusPrePulledNodes:   []tupprv1alpha1.PrePulledNode{},
-			statusPrePullFailure:   nil,
-			statusCompletionCycles: cycles + 1,
+			statusCompletedNodes:           []string{},
+			statusFailedNodes:              []tupprv1alpha1.NodeUpgradeStatus{},
+			statusRebootingNodes:           []tupprv1alpha1.NodeRebootStatus{},
+			statusPreHookIndex:             0,
+			statusPostHookIndex:            0,
+			statusPreHookFailed:            false,
+			statusPrePulledNodes:           []tupprv1alpha1.PrePulledNode{},
+			statusPrePullFailure:           nil,
+			statusCompletionCycles:         cycles + 1,
+			statusHealthChecksFailingSince: nil,
 		}); err != nil {
 			return ctrl.Result{}, fmt.Errorf("re-enter Pending after completion: %w", err)
 		}
@@ -212,6 +214,45 @@ func interBatchHealthChecks(tu *tupprv1alpha1.TalosUpgrade) (checks []tupprv1alp
 		}
 	}
 	return checks, len(checks) == 0
+}
+
+// waitForHealthChecks evaluates checks once and reports waiting=true while
+// they fail. The start of the failure streak, kept in status, spaces out the
+// re-evaluations and times how long the checks took to pass.
+func (r *Reconciler) waitForHealthChecks(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, checks []tupprv1alpha1.HealthCheckSpec) (ctrl.Result, bool) {
+	logger := log.FromContext(ctx)
+	now := r.Now.Now()
+	since := talosUpgrade.Status.HealthChecksFailingSince
+	checkErr := r.runHealthChecks(ctx, talosUpgrade, checks)
+
+	if checkErr != nil {
+		var extra map[string]any
+		if since == nil {
+			since = &metav1.Time{Time: now}
+			extra = map[string]any{statusHealthChecksFailingSince: since}
+		}
+		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", nil, healthCheckWaitMessage(checkErr), extra); err != nil {
+			logger.Error(err, "Failed to update phase for health check")
+		} else {
+			talosUpgrade.Status.HealthChecksFailingSince = since
+		}
+		logger.V(1).Info("Waiting for health checks to pass", "error", checkErr.Error())
+		return ctrl.Result{RequeueAfter: healthcheck.RetryAfter(now.Sub(since.Time))}, true
+	}
+
+	var waited time.Duration
+	var extra map[string]any
+	if since != nil {
+		waited = now.Sub(since.Time)
+		extra = map[string]any{statusHealthChecksFailingSince: nil}
+	}
+	r.MetricsReporter.RecordHealthCheckDuration(metrics.UpgradeTypeTalos, talosUpgrade.Name, waited.Seconds())
+	if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, "", nil, "Running health checks", extra); err != nil {
+		logger.Error(err, "Failed to update phase for health check")
+	} else {
+		talosUpgrade.Status.HealthChecksFailingSince = nil
+	}
+	return ctrl.Result{}, false
 }
 
 func hasPostHooks(tu *tupprv1alpha1.TalosUpgrade) bool {
@@ -347,17 +388,8 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	checks, skipHealthCheck := interBatchHealthChecks(talosUpgrade)
 
 	if !skipHealthCheck {
-		checkErr := r.runHealthChecks(ctx, talosUpgrade, checks)
-		message := "Running health checks"
-		if checkErr != nil {
-			message = fmt.Sprintf("Waiting for health checks: %s", checkErr.Error())
-		}
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseHealthChecking, message); err != nil {
-			logger.Error(err, "Failed to update phase for health check")
-		}
-		if checkErr != nil {
-			logger.V(1).Info("Waiting for health checks to pass", "error", checkErr.Error())
-			return ctrl.Result{RequeueAfter: time.Minute}, nil
+		if result, waiting := r.waitForHealthChecks(ctx, talosUpgrade, checks); waiting {
+			return result, nil
 		}
 	}
 

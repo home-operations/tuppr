@@ -471,11 +471,12 @@ func TestKubernetesUpgrade_Warnings_PreReleaseVersion(t *testing.T) {
 	}
 }
 
-func TestKubernetesUpgrade_Warnings_HealthCheckNoTimeout(t *testing.T) {
+func TestKubernetesUpgrade_Warnings_HealthCheckTimeout(t *testing.T) {
 	check := tupprv1alpha1.HealthCheckSpec{
 		APIVersion: "apps/v1",
 		Kind:       "Deployment",
 		Expr:       "true",
+		Timeout:    &metav1.Duration{Duration: 10 * time.Minute},
 	}
 	v := newK8sValidator(talosConfigSecret(testNamespace, validTalosConfig()))
 	ku := newKubernetesUpgrade("test", withK8sHealthChecks(check))
@@ -484,7 +485,7 @@ func TestKubernetesUpgrade_Warnings_HealthCheckNoTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	if !containsWarning(warnings, "no timeout") {
+	if !containsWarning(warnings, "sets timeout, which has no effect") {
 		t.Errorf("expected timeout warning, got: %v", warnings)
 	}
 }

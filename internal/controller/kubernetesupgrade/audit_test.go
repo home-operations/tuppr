@@ -397,22 +397,38 @@ func TestEmitPhaseEvent_SkipsIdenticalPhase(t *testing.T) {
 
 func TestRunHealthChecks_K8s_EmitsEvents(t *testing.T) {
 	check := tupprv1alpha1.HealthCheckSpec{APIVersion: "v1", Kind: "Node", Expr: "status != null"}
+	checkErr := errors.New("cluster not healthy")
+	since := metav1.NewTime(time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC))
 	tests := []struct {
 		name       string
 		checks     []tupprv1alpha1.HealthCheckSpec
 		checkErr   error
+		status     tupprv1alpha1.KubernetesUpgradeStatus
 		wantEvents []string
 	}{
 		{
-			name:       "pass emits started and passed",
+			name:       "pass emits passed",
 			checks:     []tupprv1alpha1.HealthCheckSpec{check},
-			wantEvents: []string{"HealthChecksStarted", "HealthChecksPassed"},
+			wantEvents: []string{"HealthChecksPassed"},
 		},
 		{
-			name:       "failure emits started and warning",
+			name:       "first failure emits a warning",
 			checks:     []tupprv1alpha1.HealthCheckSpec{check},
-			checkErr:   errors.New("cluster not healthy"),
-			wantEvents: []string{"HealthChecksStarted", "HealthChecksFailed"},
+			checkErr:   checkErr,
+			wantEvents: []string{"HealthChecksFailed"},
+		},
+		{
+			name:     "unchanged failure emits nothing",
+			checks:   []tupprv1alpha1.HealthCheckSpec{check},
+			checkErr: checkErr,
+			status:   tupprv1alpha1.KubernetesUpgradeStatus{HealthChecksFailingSince: &since, Message: healthCheckWaitMessage(checkErr)},
+		},
+		{
+			name:       "changed failure emits a warning",
+			checks:     []tupprv1alpha1.HealthCheckSpec{check},
+			checkErr:   checkErr,
+			status:     tupprv1alpha1.KubernetesUpgradeStatus{HealthChecksFailingSince: &since, Message: "Waiting for health checks: something else"},
+			wantEvents: []string{"HealthChecksFailed"},
 		},
 		{
 			name: "no configured checks emits nothing",
@@ -422,6 +438,7 @@ func TestRunHealthChecks_K8s_EmitsEvents(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ku := newKubernetesUpgrade("test", func(ku *tupprv1alpha1.KubernetesUpgrade) {
 				ku.Spec.HealthChecks = tt.checks
+				ku.Status = tt.status
 			})
 			recorder := record.NewFakeRecorder(4)
 			r := &Reconciler{Recorder: recorder, HealthChecker: &mockHealthChecker{err: tt.checkErr}}

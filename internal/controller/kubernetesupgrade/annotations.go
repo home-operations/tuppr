@@ -56,14 +56,16 @@ func (r *Reconciler) handleResetAnnotation(ctx context.Context, kubernetesUpgrad
 	}
 
 	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "", "Reset requested via annotation", map[string]any{
-		statusFieldJobName:          "",
-		"retries":                   0,
-		statusFieldLastError:        "",
-		statusFieldCompletionCycles: 0,
+		statusFieldJobName:                  "",
+		"retries":                           0,
+		statusFieldLastError:                "",
+		statusFieldCompletionCycles:         0,
+		statusFieldHealthChecksFailingSince: nil,
 	}); err != nil {
 		return false, fmt.Errorf("reset status after annotation: %w", err)
 	}
 	kubernetesUpgrade.Status.CompletionCycles = 0
+	kubernetesUpgrade.Status.HealthChecksFailingSince = nil
 
 	return true, nil
 }
@@ -81,13 +83,15 @@ func (r *Reconciler) handleGenerationChange(ctx context.Context, kubernetesUpgra
 
 	message := fmt.Sprintf("Spec updated to %s, restarting upgrade process", kubernetesUpgrade.Spec.Kubernetes.Version)
 	if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "", message, map[string]any{
-		statusFieldJobName:          "",
-		"retries":                   0,
-		statusFieldLastError:        "",
-		statusFieldCompletionCycles: 0,
+		statusFieldJobName:                  "",
+		"retries":                           0,
+		statusFieldLastError:                "",
+		statusFieldCompletionCycles:         0,
+		statusFieldHealthChecksFailingSince: nil,
 	}); err != nil {
 		return false, err
 	}
 	kubernetesUpgrade.Status.CompletionCycles = 0
+	kubernetesUpgrade.Status.HealthChecksFailingSince = nil
 	return true, nil
 }
