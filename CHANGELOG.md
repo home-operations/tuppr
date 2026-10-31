@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.5.11](https://github.com/home-operations/tuppr/compare/0.5.10...0.5.11) (2026-10-31)
+
+
+### Bug Fixes
+
+* **container:** update talos group ([#662](https://github.com/home-operations/tuppr/issues/662)) ([09e2997](https://github.com/home-operations/tuppr/commit/09e2997268e61daa31912ffb9e45e6252cff1f29))
+* **go:** update module k8s.io/utils (cf1189d → ca04ba5) ([#661](https://github.com/home-operations/tuppr/issues/661)) ([c3a4525](https://github.com/home-operations/tuppr/commit/c3a4525f362715faae1d6657f580e12a75def213))
+
+
+### Documentation
+
+* build the docs site with Astro Starlight instead of MkDocs ([#665](https://github.com/home-operations/tuppr/issues/665)) ([4ea10a9](https://github.com/home-operations/tuppr/commit/4ea10a956ba4b57b57dcee8a6e948bcfb372ecca))
+
+
+### Continuous Integration
+
+* mark issues and PRs stale after 180 days, close 14 days later ([fe91749](https://github.com/home-operations/tuppr/commit/fe91749c6db40649a5e3773a3dae40011571fc64))
+
+
+### Miscellaneous Chores
+
+* **container:** update image ghcr.io/siderolabs/kubelet (v1.37.1 → v1.37.2) ([#667](https://github.com/home-operations/tuppr/issues/667)) ([735d843](https://github.com/home-operations/tuppr/commit/735d843d3a89ee25a527fa0432621826a8ac0c8f))
+* **github-action:** update action docker/github-builder (v1.18.0 → v1.18.1) ([#658](https://github.com/home-operations/tuppr/issues/658)) ([b400fa3](https://github.com/home-operations/tuppr/commit/b400fa3a99ff953306fdd173486fc25ef9f1f3f3))
+* **github-action:** update action docker/login-action (v4.6.0 → v4.7.0) ([#663](https://github.com/home-operations/tuppr/issues/663)) ([f046359](https://github.com/home-operations/tuppr/commit/f0463594a62fbec27607b7dda2421100ef455486))
+* **github-action:** update action jdx/mise-action (v5.2.1 → v5.2.2) ([#657](https://github.com/home-operations/tuppr/issues/657)) ([422f696](https://github.com/home-operations/tuppr/commit/422f696cf7421f6bf8296485d4a5a327a8dbd1de))
+* **github-action:** update action jdx/mise-action (v5.2.2 → v5.2.3) ([#664](https://github.com/home-operations/tuppr/issues/664)) ([895a0bb](https://github.com/home-operations/tuppr/commit/895a0bb70456516e53f986620f4c2b567389a476))
+* **github-action:** update action jdx/mise-action (v5.2.2 → v5.2.3) ([#666](https://github.com/home-operations/tuppr/issues/666)) ([787b9fd](https://github.com/home-operations/tuppr/commit/787b9fd63259ab5f1112de64ec4243206f53a53b))
+* **github-action:** update action jdx/mise-action (v5.2.3 → v5.2.4) ([#677](https://github.com/home-operations/tuppr/issues/677)) ([801ae6e](https://github.com/home-operations/tuppr/commit/801ae6e04f163bacbedb52d12bce477409b45353))
+* **github-action:** update action jdx/mise-action (v5.2.4 → v5.2.5) ([#686](https://github.com/home-operations/tuppr/issues/686)) ([5abfeb7](https://github.com/home-operations/tuppr/commit/5abfeb70c1a4f3392e7a5654e5cc80dac2800935))
+* **github-action:** update github-actions ([#650](https://github.com/home-operations/tuppr/issues/650)) ([d7bf85d](https://github.com/home-operations/tuppr/commit/d7bf85d96099f48d87f5f432765aa4a40272319f))
+* **go:** update kubernetes monorepo (v0.37.1 → v0.37.2) ([#684](https://github.com/home-operations/tuppr/issues/684)) ([07aa104](https://github.com/home-operations/tuppr/commit/07aa104f5cae7eef30e0e340711de7099f010522))
+* **go:** update module cel.dev/cel-go (v0.32.0 → v0.33.1) ([#675](https://github.com/home-operations/tuppr/issues/675)) ([90008a3](https://github.com/home-operations/tuppr/commit/90008a39922105bf8f7abe38c0c9f6173439067d))
+* **go:** update module cel.dev/cel-go (v0.33.1 → v0.33.2) ([#687](https://github.com/home-operations/tuppr/issues/687)) ([35f8578](https://github.com/home-operations/tuppr/commit/35f857866c22b4e9be141efbcd04df51ec9a440a))
+* **go:** update module github.com/cosi-project/runtime (v1.16.3 → v1.16.4) ([#685](https://github.com/home-operations/tuppr/issues/685)) ([7ad5dc2](https://github.com/home-operations/tuppr/commit/7ad5dc290978b6f8c4fffbefae78ea906251b775))
+* **go:** update module github.com/netresearch/go-cron (v0.16.1 → v0.17.0) ([#670](https://github.com/home-operations/tuppr/issues/670)) ([b7796c2](https://github.com/home-operations/tuppr/commit/b7796c238f4f508b169ce726ad08565f2ffc5310))
+* **go:** update module github.com/netresearch/go-cron (v0.17.0 → v0.18.0) ([#690](https://github.com/home-operations/tuppr/issues/690)) ([ab93314](https://github.com/home-operations/tuppr/commit/ab93314512fb1cc12a5b5a8ba3704a0fbb27235d))
+* **go:** update module github.com/unraid/apprise-go (v0.3.3 → v0.4.0) ([#676](https://github.com/home-operations/tuppr/issues/676)) ([92e1bd0](https://github.com/home-operations/tuppr/commit/92e1bd09f51eed008f467bf8246c8d4f9e204564))
+* **go:** update module google.golang.org/grpc (v1.84.0 → v1.85.0) ([#678](https://github.com/home-operations/tuppr/issues/678)) ([389227e](https://github.com/home-operations/tuppr/commit/389227ecce5d4845a9729d912b986d27feba9a87))
+* **mise:** update mise tools ([#673](https://github.com/home-operations/tuppr/issues/673)) ([6140b46](https://github.com/home-operations/tuppr/commit/6140b466fb06a7b81e0eb2e256b2b86893c9560d))
+* **mise:** update tool aqua:astral-sh/uv (0.13.1 → 0.13.2) ([#653](https://github.com/home-operations/tuppr/issues/653)) ([d228225](https://github.com/home-operations/tuppr/commit/d2282250477984afd426893e0ffb669afb76a67a))
+* **mise:** update tool aqua:astral-sh/uv (0.13.2 → 0.13.3) ([#654](https://github.com/home-operations/tuppr/issues/654)) ([0dacee2](https://github.com/home-operations/tuppr/commit/0dacee240ce22cfe110ad5d35fd35290e9141599))
+* **mise:** update tool aqua:astral-sh/uv (0.13.3 → 0.13.4) ([#655](https://github.com/home-operations/tuppr/issues/655)) ([01c266a](https://github.com/home-operations/tuppr/commit/01c266afbc4b19e9f89abd88255041a00ab937df))
+* **mise:** update tool aqua:astral-sh/uv (0.13.4 → 0.13.5) ([#659](https://github.com/home-operations/tuppr/issues/659)) ([a9a9da9](https://github.com/home-operations/tuppr/commit/a9a9da9ec2ca0f103aa1a148f6178aa3a2b707f3))
+* **mise:** update tool cosign (3.1.3 → 3.1.4) ([#656](https://github.com/home-operations/tuppr/issues/656)) ([39823e0](https://github.com/home-operations/tuppr/commit/39823e09e945099c95a70366c95fe37626b2ba50))
+* **mise:** update tool node (26.12.1 → v26.13.0) ([#680](https://github.com/home-operations/tuppr/issues/680)) ([3ca45e5](https://github.com/home-operations/tuppr/commit/3ca45e53c1b26cff01c4225f4e70cbb37f5e9235))
+* **mise:** update tool oxfmt (0.73.0 → 0.74.0) ([#651](https://github.com/home-operations/tuppr/issues/651)) ([dc30bcd](https://github.com/home-operations/tuppr/commit/dc30bcdf99cfb8f3ed3a2c4796832db3db1dabc4))
+* **mise:** update tool oxfmt (0.74.0 → 0.75.0) ([#679](https://github.com/home-operations/tuppr/issues/679)) ([d7d9271](https://github.com/home-operations/tuppr/commit/d7d9271e8f74a179a127e032b6205085c665fe49))
+* **mise:** update tool stern (1.34.0 → 1.35.0) ([#660](https://github.com/home-operations/tuppr/issues/660)) ([1cd3bd0](https://github.com/home-operations/tuppr/commit/1cd3bd082638701c5c9be51c79a074852de57508))
+* **npm:** update dependency @astrojs/starlight (0.42.7 → 0.42.8) ([#688](https://github.com/home-operations/tuppr/issues/688)) ([02b6901](https://github.com/home-operations/tuppr/commit/02b69018391e861180012c219e51c97cc4430730))
+* **npm:** update dependency astro (7.4.2 → 7.4.4) ([#689](https://github.com/home-operations/tuppr/issues/689)) ([c1a0286](https://github.com/home-operations/tuppr/commit/c1a02863f9f7ac1271de3f187bd115624420bde2))
+* **renovate:** extend the org preset from home-operations/.github ([512d955](https://github.com/home-operations/tuppr/commit/512d9551e27862c704b053857e70e085aa6c5eef))
+
 ## [0.5.10](https://github.com/home-operations/tuppr/compare/0.5.9...0.5.10) (2026-10-21)
 
 
