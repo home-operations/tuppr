@@ -32,6 +32,11 @@ const (
 	hookJobBackoffLimit       = int32(0)
 	hookJobTTLAfterFinished   = int32(300)
 	hookJobGracePeriodSeconds = int64(30)
+
+	// hookJobStopTimeout bounds how long a reset waits for a deleted hook Job
+	// to go. A pod on a node that has gone down can stay Terminating until
+	// the node returns, and a reset must not hang on it.
+	hookJobStopTimeout = 2 * time.Minute
 )
 
 func hookList(tu *tupprv1alpha1.TalosUpgrade, phase string) []tupprv1alpha1.HookSpec {
@@ -105,11 +110,15 @@ func (r *Reconciler) findActiveHookJob(ctx context.Context, tu *tupprv1alpha1.Ta
 	return nil, nil
 }
 
-// deleteHookJobs deletes every hook Job of this CR when its run is reset.
-// The hook indexes restart at 0, so a Job left running (a post-hook still
-// unsetting Ceph noout, say) would race the new run's hooks, and a finished
-// one could be counted as the new run's.
-func (r *Reconciler) deleteHookJobs(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade) error {
+// deleteHookJobs deletes every hook Job of this CR when its run is reset,
+// and returns how many still exist. The hook indexes restart at 0, so a Job
+// left running (a post-hook still unsetting Ceph noout, say) would race the
+// new run's hooks, and a finished one could be counted as the new run's. A
+// foreground delete only marks the Job: it stays, with a deletion timestamp,
+// until its pods have stopped, so the caller holds the reset until none is
+// left. A Job still there hookJobStopTimeout after its deletion no longer
+// counts.
+func (r *Reconciler) deleteHookJobs(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade) (int, error) {
 	jobList := &batchv1.JobList{}
 	if err := r.List(ctx, jobList,
 		client.InNamespace(r.ControllerNamespace),
@@ -118,19 +127,44 @@ func (r *Reconciler) deleteHookJobs(ctx context.Context, tu *tupprv1alpha1.Talos
 			appInstanceLabelKey: tu.Name,
 		},
 	); err != nil {
-		return fmt.Errorf("list hook jobs for %s: %w", tu.Name, err)
+		return 0, fmt.Errorf("list hook jobs for %s: %w", tu.Name, err)
 	}
+	remaining := 0
 	for i := range jobList.Items {
 		job := &jobList.Items[i]
-		if owner := metav1.GetControllerOf(job); owner == nil || owner.UID != tu.UID || job.DeletionTimestamp != nil {
+		if owner := metav1.GetControllerOf(job); owner == nil || owner.UID != tu.UID {
 			continue
 		}
+		if job.DeletionTimestamp != nil {
+			if stopping := r.Now.Now().Sub(job.DeletionTimestamp.Time); stopping < hookJobStopTimeout {
+				remaining++
+			} else {
+				log.FromContext(ctx).Info("Hook job of the previous run is still stopping; resetting anyway", "job", job.Name, "stopping", stopping.Round(time.Second))
+			}
+			continue
+		}
+		remaining++
 		if err := jobs.DeleteJob(ctx, r.Client, job); err != nil {
-			return fmt.Errorf("delete hook job %s: %w", job.Name, err)
+			return remaining, fmt.Errorf("delete hook job %s: %w", job.Name, err)
 		}
 		log.FromContext(ctx).Info("Deleted hook job of the previous run", "job", job.Name, "hookPhase", job.Labels[hookPhaseLabel])
 	}
-	return nil
+	return remaining, nil
+}
+
+// waitForHookJobsGone deletes the run's hook Jobs and reports wait=true while
+// any is still stopping. It writes no status: every status patch records the
+// current generation as observed, which would swallow a pending spec reset.
+func (r *Reconciler) waitForHookJobsGone(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade) (bool, error) {
+	remaining, err := r.deleteHookJobs(ctx, tu)
+	if err != nil {
+		return true, err
+	}
+	if remaining > 0 {
+		log.FromContext(ctx).Info("Waiting for the previous run's hook Jobs to stop before resetting", "jobs", remaining)
+		return true, nil
+	}
+	return false, nil
 }
 
 func (r *Reconciler) startHookJob(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade, hook tupprv1alpha1.HookSpec, phase string, idx, total int) (ctrl.Result, bool, error) {

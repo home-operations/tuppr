@@ -39,9 +39,10 @@ kubectl annotate kubernetesupgrade kubernetes tuppr.home-operations.com/suspend-
 
 `Failed` is terminal - the controller stops reconciling until you act. A run
 that stops on a failed node first runs its post-hooks (`PostHook` phase), then
-becomes `Failed`. A reset or spec edit during the post-hooks deletes their
-running Job, so wait for `Failed` if they must finish (e.g. to unset Ceph
-`noout`). Three ways to retry:
+becomes `Failed`. A reset or spec edit stops the run's hook Jobs and takes
+effect once they have exited (at most 2 minutes, for a pod stuck on a node
+that went down), so the old run's hooks don't overlap the new run's. It still cuts a running post-hook short: wait for `Failed` if the
+post-hooks must finish (e.g. to unset Ceph `noout`). Three ways to retry:
 
 ```bash
 # Reset: wipe runtime state (phase, completed/failed nodes, hook progress),

@@ -593,23 +593,22 @@ func TestBatchFailure_RunsPostHooksThenFails(t *testing.T) {
 // Resetting a run mid post-hooks must not leave the previous run's hook Job
 // racing the new run's hooks, nor have it counted as the new run's.
 func TestRunReset_DeletesHookJobs(t *testing.T) {
+	resetAnnotation := func(tu *tupprv1alpha1.TalosUpgrade) {
+		tu.Annotations = map[string]string{constants.ResetAnnotation: "now"}
+	}
+	specChange := func(tu *tupprv1alpha1.TalosUpgrade) {
+		tu.Generation = 2
+		tu.Status.ObservedGeneration = 1
+	}
 	tests := []struct {
-		name string
-		opt  func(*tupprv1alpha1.TalosUpgrade)
+		name          string
+		opt           func(*tupprv1alpha1.TalosUpgrade)
+		isSpecChange  bool
+		podNeverStops bool
 	}{
-		{
-			name: "reset annotation",
-			opt: func(tu *tupprv1alpha1.TalosUpgrade) {
-				tu.Annotations = map[string]string{constants.ResetAnnotation: "now"}
-			},
-		},
-		{
-			name: "spec change",
-			opt: func(tu *tupprv1alpha1.TalosUpgrade) {
-				tu.Generation = 2
-				tu.Status.ObservedGeneration = 1
-			},
-		},
+		{name: "reset annotation", opt: resetAnnotation},
+		{name: "spec change", opt: specChange, isSpecChange: true},
+		{name: "reset annotation with a hook pod that never stops", opt: resetAnnotation, podNeverStops: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -623,10 +622,18 @@ func TestRunReset_DeletesHookJobs(t *testing.T) {
 				WithObjects(tu).WithStatusSubresource(tu).Build()
 			r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
 
-			// The post-hook of the run being reset is still running.
+			// The post-hook of the run being reset is still running. The
+			// finalizer stands in for its pod still shutting down: a
+			// foreground delete leaves the Job until then.
 			reconcileTalos(t, r, "tu")
-			if jobs := listHookJobs(t, cl, hookPhasePost); len(jobs) != 1 {
+			jobs := listHookJobs(t, cl, hookPhasePost)
+			if len(jobs) != 1 {
 				t.Fatalf("expected 1 running post-hook job, got %d", len(jobs))
+			}
+			old := jobs[0]
+			old.Finalizers = append(old.Finalizers, "test.tuppr/pod-stopping")
+			if err := cl.Update(context.Background(), &old); err != nil {
+				t.Fatalf("hold the hook job: %v", err)
 			}
 
 			current := getTalosUpgrade(t, cl, "tu")
@@ -639,13 +646,47 @@ func TestRunReset_DeletesHookJobs(t *testing.T) {
 					t.Fatalf("update TalosUpgrade status: %v", err)
 				}
 			}
+
+			// Held while the old Job is still stopping: nothing is reset and
+			// no hook of a new run starts.
+			for range 2 {
+				reconcileTalos(t, r, "tu")
+			}
+			held := getTalosUpgrade(t, cl, "tu")
+			if held.Status.Phase != tupprv1alpha1.JobPhasePostHook {
+				t.Fatalf("expected the reset held in PostHook, got %s", held.Status.Phase)
+			}
+			if _, stillAnnotated := held.Annotations[constants.ResetAnnotation]; !tt.isSpecChange && !stillAnnotated {
+				t.Fatal("expected the reset annotation kept until the old hook stopped")
+			}
+			if tt.isSpecChange && held.Status.ObservedGeneration >= held.Generation {
+				t.Fatal("expected the spec change left unobserved until the old hook stopped")
+			}
+			jobs = listHookJobs(t, cl, hookPhasePost)
+			if len(jobs) != 1 || jobs[0].Name != old.Name || jobs[0].DeletionTimestamp == nil {
+				t.Fatalf("expected only the old hook job, marked for deletion, got %d jobs", len(jobs))
+			}
+
+			if tt.podNeverStops {
+				// Its pod is stuck Terminating on a node that went down: the
+				// reset stops waiting after hookJobStopTimeout.
+				r.Now = &fixedClock{t: jobs[0].DeletionTimestamp.Add(hookJobStopTimeout)}
+			} else {
+				// Its pod stopped: the Job goes.
+				jobs[0].Finalizers = nil
+				if err := cl.Update(context.Background(), &jobs[0]); err != nil {
+					t.Fatalf("release the hook job: %v", err)
+				}
+			}
 			reconcileTalos(t, r, "tu")
 
-			if jobs := listHookJobs(t, cl, hookPhasePost); len(jobs) != 0 {
-				t.Fatalf("expected the previous run's hook job deleted, got %d", len(jobs))
-			}
 			if got := getTalosUpgrade(t, cl, "tu").Status.Phase; got != tupprv1alpha1.JobPhasePending {
 				t.Fatalf("expected Pending after the reset, got %s", got)
+			}
+			if !tt.podNeverStops {
+				if jobs := listHookJobs(t, cl, hookPhasePost); len(jobs) != 0 {
+					t.Fatalf("expected the previous run's hook job gone, got %d", len(jobs))
+				}
 			}
 		})
 	}
