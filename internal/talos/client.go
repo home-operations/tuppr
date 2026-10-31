@@ -32,6 +32,8 @@ type talosClient interface {
 	ApplyConfiguration(ctx context.Context, req *machine.ApplyConfigurationRequest, opts ...grpc.CallOption) (*machine.ApplyConfigurationResponse, error)
 	ImagePull(ctx context.Context, req *machine.ImageServicePullRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[machine.ImageServicePullResponse], error)
 	COSIGetRawSpec(ctx context.Context, namespace, typ, id string) ([]byte, error)
+	EtcdMemberList(ctx context.Context, req *machine.EtcdMemberListRequest, opts ...grpc.CallOption) (*machine.EtcdMemberListResponse, error)
+	EtcdStatus(ctx context.Context, opts ...grpc.CallOption) (*machine.EtcdStatusResponse, error)
 	Close() error
 }
 
@@ -430,6 +432,102 @@ func (s *Client) CheckNodeReady(ctx context.Context, nodeIP, nodeName string) er
 
 	if err := s.checkNodeReady(ctx, nodeIP); err != nil {
 		return fmt.Errorf("node not ready: %w", err)
+	}
+
+	return nil
+}
+
+// CheckMachineReady reports whether Talos itself considers the node ready: its
+// MachineStatus is in the running stage with every readiness condition met
+// (time sync, network, required services including etcd on control-plane
+// nodes, static pods, and the Kubernetes node). The error carries Talos's
+// unmet conditions verbatim.
+func (s *Client) CheckMachineReady(ctx context.Context, nodeIP string) error {
+	nodeCtx := client.WithNode(ctx, nodeIP)
+	var r resource.Resource
+
+	err := s.executeWithRetry(ctx, func() error {
+		var err error
+		r, err = s.talos.COSIGet(nodeCtx, talosruntime.NamespaceName, talosruntime.MachineStatusType, talosruntime.MachineStatusID)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get machine status from node %s: %w", nodeIP, err)
+	}
+
+	ms, ok := r.(*talosruntime.MachineStatus)
+	if !ok {
+		return fmt.Errorf("unexpected resource type for machine status from node %s", nodeIP)
+	}
+
+	spec := ms.TypedSpec()
+	if spec.Stage != talosruntime.MachineStageRunning {
+		return fmt.Errorf("node %s is in stage %s", nodeIP, spec.Stage)
+	}
+	if !spec.Status.Ready {
+		unmet := make([]string, 0, len(spec.Status.UnmetConditions))
+		for _, c := range spec.Status.UnmetConditions {
+			unmet = append(unmet, c.Name+": "+c.Reason)
+		}
+		return fmt.Errorf("node %s not ready: %s", nodeIP, strings.Join(unmet, "; "))
+	}
+	return nil
+}
+
+// CheckEtcdHealthy reports whether etcd can safely lose a member to the next
+// upgrade: the member list, a quorum read served by the first node, holds
+// exactly one voting member per control-plane node, and every node reports a
+// leader and no errors. A just-upgraded node rejoins as a learner first, so
+// this also waits out its promotion. No nodes means no etcd to check.
+func (s *Client) CheckEtcdHealthy(ctx context.Context, controlPlaneIPs []string) error {
+	if len(controlPlaneIPs) == 0 {
+		return nil
+	}
+
+	var members *machine.EtcdMemberListResponse
+	err := s.executeWithRetry(ctx, func() error {
+		var err error
+		members, err = s.talos.EtcdMemberList(client.WithNode(ctx, controlPlaneIPs[0]), &machine.EtcdMemberListRequest{})
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list etcd members from %s: %w", controlPlaneIPs[0], err)
+	}
+	if len(members.GetMessages()) == 0 {
+		return fmt.Errorf("no etcd member list from %s", controlPlaneIPs[0])
+	}
+	list := members.GetMessages()[0].GetMembers()
+	if len(list) != len(controlPlaneIPs) {
+		return fmt.Errorf("etcd has %d member(s), expected %d (one per control-plane node)", len(list), len(controlPlaneIPs))
+	}
+	for _, m := range list {
+		if m.GetIsLearner() {
+			return fmt.Errorf("etcd member %s is still a learner", m.GetHostname())
+		}
+	}
+
+	for _, ip := range controlPlaneIPs {
+		var resp *machine.EtcdStatusResponse
+		err := s.executeWithRetry(ctx, func() error {
+			var err error
+			resp, err = s.talos.EtcdStatus(client.WithNode(ctx, ip))
+			return err
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get etcd status from %s: %w", ip, err)
+		}
+		if len(resp.GetMessages()) == 0 || resp.GetMessages()[0].GetMemberStatus() == nil {
+			return fmt.Errorf("no etcd status from %s", ip)
+		}
+		st := resp.GetMessages()[0].GetMemberStatus()
+		switch {
+		case len(st.GetErrors()) > 0:
+			return fmt.Errorf("etcd on %s reports errors: %s", ip, strings.Join(st.GetErrors(), "; "))
+		case st.GetLeader() == 0:
+			return fmt.Errorf("etcd on %s has no leader", ip)
+		case st.GetIsLearner():
+			return fmt.Errorf("etcd on %s is still a learner", ip)
+		}
 	}
 
 	return nil

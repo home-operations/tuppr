@@ -5013,7 +5013,8 @@ spec:
               parallelism:
                 default: 1
                 description: |-
-                  Parallelism is the number of nodes to upgrade concurrently in each batch.
+                  Parallelism is the number of worker nodes to upgrade concurrently in each batch.
+                  Control-plane nodes are always upgraded one at a time, in a batch of their own.
                   Defaults to 1 (sequential upgrades). Must be >= 1 and <= the number of matching nodes.
                 format: int32
                 minimum: 1
@@ -5034,8 +5035,9 @@ spec:
                     type: string
                   force:
                     default: false
-                    description: Force the upgrade (skip checks on etcd health and
-                      members)
+                    description: |-
+                      Force the upgrade (skip checks on etcd health and members).
+                      Only takes effect on nodes older than Talos 1.13 (legacy upgrade API); newer Talos runs no such checks.
                     type: boolean
                   nodrain:
                     default: false
@@ -5066,7 +5068,9 @@ spec:
                     type: string
                   stage:
                     default: false
-                    description: Stage the upgrade to perform it after a reboot
+                    description: |-
+                      Stage the upgrade to perform it after a reboot.
+                      Only takes effect on nodes older than Talos 1.13 (legacy upgrade API); talosctl ignores it on newer nodes.
                     type: boolean
                   timeout:
                     default: 30m

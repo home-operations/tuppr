@@ -77,6 +77,8 @@ type TalosClient interface {
 	GetNodePlatform(ctx context.Context, nodeIP string) (string, error)
 	PatchNodeInstallImage(ctx context.Context, nodeIP, newImage string) error
 	PullImage(ctx context.Context, nodeIP, imageRef string) error
+	CheckMachineReady(ctx context.Context, nodeIP string) error
+	CheckEtcdHealthy(ctx context.Context, controlPlaneIPs []string) error
 }
 
 // ImageChecker defines the interface for checking image availability
@@ -122,10 +124,16 @@ type Reconciler struct {
 	Renderer            *notification.Renderer
 	Silencer            alerting.Silencer
 	Recorder            record.EventRecorder
+	// APIReader reads straight from the API server for checks a stale cache
+	// would defeat; defaults to the manager's API reader.
+	APIReader client.Reader
 
 	// silenceWarnings latches once-per-CR silence Warning events (see
 	// silenceWarnOnce) so steady-state conditions don't spam the apiserver.
 	silenceWarnings sync.Map
+
+	// clusterHealthTimeout overrides defaultClusterHealthTimeout when > 0.
+	clusterHealthTimeout time.Duration
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -204,6 +212,9 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			return fmt.Errorf("failed to create talos client: %w", err)
 		}
 		r.TalosClient = talosClient
+	}
+	if r.APIReader == nil {
+		r.APIReader = mgr.GetAPIReader()
 	}
 	if r.Now == nil {
 		r.Now = &nodeutil.Clock{}

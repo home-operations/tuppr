@@ -157,8 +157,16 @@ var _ = Describe("TalosUpgrade Integration", func() {
 		var testNode2 *corev1.Node
 
 		BeforeEach(func() {
+			// Parallelism only batches workers; control-plane nodes always go
+			// one at a time, so both batch nodes must be workers.
+			worker := testNode.DeepCopy()
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testNodeName}, worker)).To(Succeed())
+			delete(worker.Labels, "node-role.kubernetes.io/control-plane")
+			Expect(k8sClient.Update(ctx, worker)).To(Succeed())
+
 			// Create a second node for batch tests
 			testNode2 = createTestNode("test-node-2", "10.0.0.11")
+			delete(testNode2.Labels, "node-role.kubernetes.io/control-plane")
 			Expect(k8sClient.Create(ctx, testNode2)).To(Succeed())
 
 			mockTalos.SetNodeVersion("10.0.0.11", "v1.10.0")
