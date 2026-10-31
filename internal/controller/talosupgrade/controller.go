@@ -61,6 +61,7 @@ const (
 	statusFailedNodes        = "failedNodes"
 	statusRebootingNodes     = "rebootingNodes"
 	statusPreHookFailed      = "preHookFailed"
+	statusPreBatchHooks      = "preBatchHooks"
 	statusPreHookIndex       = "preHookIndex"
 	statusPostHookIndex      = "postHookIndex"
 	statusPrePulledNodes     = "prePulledNodes"

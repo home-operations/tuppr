@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -16,13 +18,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/constants"
 	"github.com/home-operations/tuppr/internal/controller/jobs"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 )
 
 const (
-	hookPhasePre  = "pre"
-	hookPhasePost = "post"
+	hookPhasePre      = "pre"
+	hookPhasePreBatch = "pre-batch"
+	hookPhasePost     = "post"
 
 	hookJobAppName            = "talos-upgrade-hook"
 	hookPhaseLabel            = "tuppr.home-operations.com/hook-phase"
@@ -212,13 +216,21 @@ func (r *Reconciler) buildHookJob(tu *tupprv1alpha1.TalosUpgrade, hook tupprv1al
 		backoff = *hook.BackoffLimit
 	}
 
+	env := hook.Env
+	if phase == hookPhasePreBatch {
+		env = append(slices.Clone(hook.Env), corev1.EnvVar{
+			Name:  constants.PreBatchNodesEnv,
+			Value: strings.Join(tu.Status.PreBatchHooks.Nodes, ","),
+		})
+	}
+
 	pod := jobs.BuildHookPodSpec(jobs.HookPodSpecOptions{
 		ContainerName:      "hook",
 		Image:              hook.Image,
 		PullPolicy:         hook.ImagePullPolicy,
 		Command:            hook.Command,
 		Args:               hook.Args,
-		Env:                hook.Env,
+		Env:                env,
 		EnvFrom:            hook.EnvFrom,
 		VolumeMounts:       hook.VolumeMounts,
 		Volumes:            hook.Volumes,
@@ -251,6 +263,7 @@ func resetRunProgress(status *tupprv1alpha1.TalosUpgradeStatus) {
 	status.PreHookIndex = 0
 	status.PostHookIndex = 0
 	status.PreHookFailed = false
+	status.PreBatchHooks = nil
 	status.PrePulledNodes = nil
 	status.PrePullFailure = nil
 }

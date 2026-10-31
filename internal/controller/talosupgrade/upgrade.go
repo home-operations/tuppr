@@ -93,6 +93,7 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 			statusPreHookIndex:     0,
 			statusPostHookIndex:    0,
 			statusPreHookFailed:    false,
+			statusPreBatchHooks:    nil,
 			statusPrePulledNodes:   []tupprv1alpha1.PrePulledNode{},
 			statusPrePullFailure:   nil,
 			statusCompletionCycles: cycles + 1,
@@ -104,32 +105,8 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
 
-	switch talosUpgrade.Status.Phase {
-	case tupprv1alpha1.JobPhasePreHook:
-		result, done, err := r.processHookPhase(ctx, talosUpgrade, hookPhasePre)
-		if err != nil {
-			return result, err
-		}
-		if !done {
-			return result, nil
-		}
-		if talosUpgrade.Status.PreHookFailed {
-			logger.Info("Pre-hook failed; running post-hooks then failing")
-			return r.transitionToFinalize(ctx, talosUpgrade)
-		}
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "Pre-hooks complete; starting upgrade"); err != nil {
-			logger.Error(err, "Failed to advance phase past pre-hooks")
-		}
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
-	case tupprv1alpha1.JobPhasePostHook:
-		result, done, err := r.processHookPhase(ctx, talosUpgrade, hookPhasePost)
-		if err != nil {
-			return result, err
-		}
-		if !done {
-			return result, nil
-		}
-		return r.completeUpgrade(ctx, talosUpgrade)
+	if result, handled, err := r.processHookPhases(ctx, talosUpgrade); handled {
+		return result, err
 	}
 
 	if !talosUpgrade.Status.Phase.IsActive() {
@@ -161,6 +138,47 @@ func (r *Reconciler) processUpgrade(ctx context.Context, talosUpgrade *tupprv1al
 	}
 
 	return r.processNextBatch(ctx, talosUpgrade)
+}
+
+// processHookPhases drives the run-level pre- and post-hook phases, and
+// finalizes a run whose pre-batch hook has failed. handled=false means the
+// caller carries on with the batch path.
+func (r *Reconciler) processHookPhases(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, bool, error) {
+	// Checked outside the PreHook phase too: a suspend can land between
+	// recording the failure and finalizing.
+	if state := talosUpgrade.Status.PreBatchHooks; state != nil && state.Failed && talosUpgrade.Status.Phase != tupprv1alpha1.JobPhasePostHook {
+		result, err := r.transitionToFinalize(ctx, talosUpgrade)
+		return result, true, err
+	}
+
+	switch talosUpgrade.Status.Phase {
+	case tupprv1alpha1.JobPhasePreHook:
+		// Pre-batch hooks run in PreHook too, driven from processNextBatch.
+		if talosUpgrade.Status.PreBatchHooks != nil {
+			break
+		}
+		result, done, err := r.processHookPhase(ctx, talosUpgrade, hookPhasePre)
+		if err != nil || !done {
+			return result, true, err
+		}
+		if talosUpgrade.Status.PreHookFailed {
+			log.FromContext(ctx).Info("Pre-hook failed; running post-hooks then failing")
+			result, err := r.transitionToFinalize(ctx, talosUpgrade)
+			return result, true, err
+		}
+		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhasePending, "Pre-hooks complete; starting upgrade"); err != nil {
+			log.FromContext(ctx).Error(err, "Failed to advance phase past pre-hooks")
+		}
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, true, nil
+	case tupprv1alpha1.JobPhasePostHook:
+		result, done, err := r.processHookPhase(ctx, talosUpgrade, hookPhasePost)
+		if err != nil || !done {
+			return result, true, err
+		}
+		result, err = r.completeUpgrade(ctx, talosUpgrade)
+		return result, true, err
+	}
+	return ctrl.Result{}, false, nil
 }
 
 // maybeEnterPreHook transitions to PreHook phase if pre-hooks are configured
@@ -268,6 +286,10 @@ func (r *Reconciler) completeUpgrade(ctx context.Context, talosUpgrade *tupprv1a
 	case talosUpgrade.Status.PreHookFailed:
 		phase = tupprv1alpha1.JobPhaseFailed
 		message = "Pre-upgrade hook failed; upgrade did not run"
+	case talosUpgrade.Status.PreBatchHooks != nil && talosUpgrade.Status.PreBatchHooks.Failed:
+		phase = tupprv1alpha1.JobPhaseFailed
+		message = fmt.Sprintf("Pre-batch hook failed for node(s) %s; stopped after %d successful, %d failed",
+			strings.Join(talosUpgrade.Status.PreBatchHooks.Nodes, ", "), completedCount, failedCount)
 	case failedCount > 0:
 		phase = tupprv1alpha1.JobPhaseFailed
 		message = fmt.Sprintf("Completed with failures: %d successful, %d failed", completedCount, failedCount)
@@ -344,7 +366,13 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		return result, nil
 	}
 
+	now := r.Now.Now()
+	preBatch, rerunReason := preBatchStageFor(talosUpgrade, nextNodes, now)
+
 	checks, skipHealthCheck := interBatchHealthChecks(talosUpgrade)
+	if preBatch.skipsHealthChecks() {
+		skipHealthCheck = true
+	}
 
 	if !skipHealthCheck {
 		checkErr := r.runHealthChecks(ctx, talosUpgrade, checks)
@@ -362,6 +390,10 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	}
 
 	if result, entered, err := r.maybeEnterPreHook(ctx, talosUpgrade); entered {
+		return result, err
+	}
+
+	if result, proceed, err := r.gatePreBatch(ctx, talosUpgrade, nextNodes, preBatch, rerunReason, now); !proceed {
 		return result, err
 	}
 
@@ -388,6 +420,7 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 						logger.Info("Rolled back drain for node", "node", n)
 					}
 				}
+				r.resetPreBatchHooks(ctx, talosUpgrade)
 				return ctrl.Result{RequeueAfter: time.Minute}, nil
 			}
 			drainedNodes = append(drainedNodes, ni.nodeName)
@@ -406,9 +439,15 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		}
 	}
 
-	if err := r.setPhaseWithNodes(ctx, talosUpgrade, tupprv1alpha1.JobPhaseUpgrading, nextNodes, fmt.Sprintf("Upgrading %d nodes", len(nextNodes))); err != nil {
+	// The next batch runs its own pre-batch hooks.
+	var extra map[string]any
+	if talosUpgrade.Status.PreBatchHooks != nil {
+		extra = map[string]any{statusPreBatchHooks: nil}
+	}
+	if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhaseUpgrading, "", nextNodes, fmt.Sprintf("Upgrading %d nodes", len(nextNodes)), extra); err != nil {
 		return ctrl.Result{}, fmt.Errorf("update phase for batch upgrade: %w", err)
 	}
+	talosUpgrade.Status.PreBatchHooks = nil
 	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 }
 

@@ -87,9 +87,9 @@ type PolicySpec struct {
 	Timeout *metav1.Duration `json:"timeout,omitempty"`
 }
 
-// HookSpec describes a Job to run before or after a TalosUpgrade run.
+// HookSpec describes a Job to run around a TalosUpgrade run or batch.
 type HookSpec struct {
-	// Name is a human-readable identifier, unique within its pre/post list.
+	// Name is a human-readable identifier, unique within its hook list.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
@@ -152,11 +152,42 @@ type HooksSpec struct {
 	// +optional
 	Pre []HookSpec `json:"pre,omitempty"`
 
+	// PreBatch runs sequentially before every batch, including the first,
+	// after the run's pre-hooks and before any of the batch's nodes is
+	// cordoned. The health checks gate every attempt of every hook. The
+	// batch's node names are passed in the TUPPR_NODES environment variable,
+	// comma-separated. A failing hook is re-run every preBatchRetry.interval;
+	// once it has kept failing for preBatchRetry.timeout, no further batches
+	// start and the run fails after the post-hooks.
+	// +optional
+	PreBatch []HookSpec `json:"preBatch,omitempty"`
+
+	// PreBatchRetry bounds how long a failing pre-batch hook is re-run.
+	// +optional
+	PreBatchRetry *HookRetrySpec `json:"preBatchRetry,omitempty"`
+
 	// Post runs sequentially after the upgrade reaches a terminal state.
 	// Always runs if any pre-hook was attempted; failures don't override the
 	// upgrade outcome.
 	// +optional
 	Post []HookSpec `json:"post,omitempty"`
+}
+
+// HookRetrySpec configures how a failing hook is re-run.
+type HookRetrySpec struct {
+	// Timeout is how long a hook may keep failing before the run fails.
+	// Defaults to 30m.
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern=`^([0-9]+[smh])+$`
+	// +optional
+	Timeout *metav1.Duration `json:"timeout,omitempty"`
+
+	// Interval is the wait between a failed attempt and the next one.
+	// Defaults to 30s.
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern=`^([0-9]+[smh])+$`
+	// +optional
+	Interval *metav1.Duration `json:"interval,omitempty"`
 }
 
 type DrainSpec struct {
@@ -214,7 +245,8 @@ type TalosUpgradeSpec struct {
 	// +optional
 	Parallelism *int32 `json:"parallelism,omitempty"`
 
-	// Hooks configures pre/post-upgrade Jobs (e.g. `ceph osd set/unset noout`).
+	// Hooks configures Jobs run before the run, before each batch, and after
+	// the run (e.g. `ceph osd set/unset noout`).
 	// +optional
 	Hooks *HooksSpec `json:"hooks,omitempty"`
 
@@ -313,6 +345,11 @@ type TalosUpgradeStatus struct {
 	// +optional
 	PreHookFailed bool `json:"preHookFailed,omitempty"`
 
+	// PreBatchHooks tracks the pre-batch hooks of the batch about to start.
+	// Cleared once that batch's upgrade Jobs are created.
+	// +optional
+	PreBatchHooks *PreBatchHookStatus `json:"preBatchHooks,omitempty"`
+
 	// PrePulledNodes records the installer image pre-pulled on each node
 	// during this run (or noted as skipped because the node's Talos version
 	// predates the ImageService API), so pulls are not repeated on every
@@ -381,6 +418,50 @@ type PrePullFailure struct {
 	// LastError is the failure from the most recent cycle.
 	// +kubebuilder:validation:Required
 	LastError string `json:"lastError"`
+}
+
+// PreBatchHookStatus records the progress of the pre-batch hooks for one batch.
+type PreBatchHookStatus struct {
+	// Nodes are the nodes of the batch the hooks run for. The batch is
+	// drained only if it is still exactly these nodes; otherwise the hooks
+	// run again for the new batch.
+	// +kubebuilder:validation:Required
+	Nodes []string `json:"nodes"`
+
+	// Index is the index of the next pre-batch hook to run.
+	// +optional
+	Index int `json:"index,omitempty"`
+
+	// Job is the name of the Job running the hook at Index, if one has been
+	// started. Only this Job's outcome counts for the hook.
+	// +optional
+	Job string `json:"job,omitempty"`
+
+	// FailingSince is when the hook at Index first failed in its current
+	// streak of failures.
+	// +optional
+	FailingSince *metav1.Time `json:"failingSince,omitempty"`
+
+	// RetryAt is the earliest time the failed hook at Index is re-run.
+	// +optional
+	RetryAt *metav1.Time `json:"retryAt,omitempty"`
+
+	// CompletedAt is when the last pre-batch hook succeeded. A result that has
+	// gone stale before the batch starts, for example while the run waits for
+	// a maintenance window, is discarded and the hooks run again.
+	// +optional
+	CompletedAt *metav1.Time `json:"completedAt,omitempty"`
+
+	// BatchStarted records that the batch's drain or upgrade Jobs have
+	// started, so the hooks are not run again for it however old their
+	// result is.
+	// +optional
+	BatchStarted bool `json:"batchStarted,omitempty"`
+
+	// Failed records that the hook at Index kept failing past its retry
+	// timeout, so the run ends Failed after the post-hooks.
+	// +optional
+	Failed bool `json:"failed,omitempty"`
 }
 
 // PrePulledNode records one node's handled installer pre-pull for this run.
