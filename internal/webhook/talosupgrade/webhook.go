@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/constants"
 	"github.com/home-operations/tuppr/internal/webhook/validation"
 )
 
@@ -265,13 +267,29 @@ func (v *Validator) validateParallelism(ctx context.Context, t *tupprv1alpha1.Ta
 	return nil, nil
 }
 
-// validateHooks rejects empty images and duplicate names within each hook list.
+// validateHooks rejects empty images and duplicate names within each hook
+// list, a pre-batch hook setting the env var tuppr sets, and a pre-batch retry
+// interval under a second.
 func validateHooks(hooks *tupprv1alpha1.HooksSpec) error {
 	if hooks == nil {
 		return nil
 	}
 	if err := validateHookList("spec.hooks.pre", hooks.Pre); err != nil {
 		return err
+	}
+	if err := validateHookList("spec.hooks.preBatch", hooks.PreBatch); err != nil {
+		return err
+	}
+	for i, h := range hooks.PreBatch {
+		for _, e := range h.Env {
+			if e.Name == constants.PreBatchNodesEnv {
+				return fmt.Errorf("spec.hooks.preBatch[%d].env: %s is set by tuppr to the batch's nodes", i, constants.PreBatchNodesEnv)
+			}
+		}
+	}
+	// A zero interval would re-create a failing hook Job in a tight loop.
+	if r := hooks.PreBatchRetry; r != nil && r.Interval != nil && r.Interval.Duration < time.Second {
+		return fmt.Errorf("spec.hooks.preBatchRetry.interval must be at least 1s, got %s", r.Interval.Duration)
 	}
 	return validateHookList("spec.hooks.post", hooks.Post)
 }

@@ -230,9 +230,9 @@ spec:
 - **Pre-hooks** run sequentially after the initial health check, before any node
   is touched. A failed pre-hook skips the upgrade and marks the run `Failed`
   (post-hooks still run as cleanup).
-- **Post-hooks** run sequentially once the upgrade reaches a terminal state
-  (success or failure), if any pre-hook was attempted. Their failures are logged
-  and recorded but don't change the upgrade outcome.
+- **Post-hooks** run sequentially as cleanup after the last batch, and after a
+  failed pre-hook or pre-batch hook. Their failures are logged and recorded
+  but don't change the upgrade outcome.
 - Health checks still run before every batch after the pre-hooks. A check the
   pre-hooks invalidate for the upgrade window (Ceph is `HEALTH_WARN` while
   `noout` is set) must set `skipAfterPreHooks: true`: it then gates only the
@@ -244,10 +244,61 @@ spec:
   `volumes` / `envFrom`, and set `serviceAccountName` if you need cluster-API
   access.
 
+### Pre-batch hooks
+
+`spec.hooks.preBatch` gates every batch, including the first, on state that
+health checks can't read from Kubernetes objects: replicated storage that must
+finish resyncing after the previous node's reboot (DRBD/LINSTOR, Longhorn), a
+database replica catching up, or node-specific prep such as moving a primary
+away. The hook gets the batch's node names in `TUPPR_NODES`, comma-separated.
+
+```yaml
+spec:
+  hooks:
+    preBatch:
+      - name: drbd-uptodate
+        image: python:3.13-alpine
+        command: ["python3", "/scripts/check.py"] # exits non-zero while anything is syncing
+        serviceAccountName: drbd-health
+    preBatchRetry: # optional
+      timeout: 30m # default 30m
+      interval: 30s # default 30s, at least 1s
+```
+
+- For each batch, tuppr runs the pre-batch hooks in order, then cordons and
+  drains the batch. The health checks run before every hook attempt, retries
+  included, so a hook that keeps failing for 20 minutes doesn't leave the
+  batch to start on a 20-minute-old check. Once the last hook has succeeded
+  the batch starts without another check, so a hook may change what the
+  checks look at for its batch.
+- A failing hook is re-run every `interval`. Once it has kept failing for
+  `timeout`, the run fails without another attempt, even if the next retry
+  would come later: no further batch starts, post-hooks run as cleanup, and
+  the run is marked `Failed`. Set a short `timeout` to stop on the first
+  failure. The timeout counts wall-clock time from the first failure,
+  including time the run spends waiting for a maintenance window or an
+  unreachable node. Nothing in the batch has been cordoned when a pre-batch
+  hook fails.
+- A running hook Job keeps the run in `PreHook` until it finishes, even if
+  the maintenance window closes or a node becomes unreachable meanwhile, so
+  no other plan starts while it may still be changing the cluster.
+- The batch starts only if it is still exactly the nodes the hooks ran for,
+  within 5 minutes of the last hook succeeding. Otherwise, for example after
+  waiting for a maintenance window or an unreachable node, the checks and
+  hooks run again. Once the batch has disrupted any of its nodes (an upgrade
+  Job, a cordon when tuppr drains, or a node finished, failed or rebooting),
+  the hooks don't run again for it: its unfinished nodes resume as their own
+  batch. Write the hooks to be safe to re-run.
+- While a hook Job is running, the run stays in `PreHook` and its spec can't
+  be edited. [Suspend](/operations/#suspend-and-resume) the run to edit it. A
+  running hook Job is left to finish and is picked up again on resume, unless
+  the spec was changed meanwhile: a spec change restarts the run, and that
+  Job's outcome is ignored.
+
 Phase progression with hooks:
 
 ```text
-Pending → HealthChecking → PreHook → (Draining → Upgrading → Rebooting per batch) → PostHook → Completed
+Pending → HealthChecking → PreHook → (HealthChecking → PreHook → Draining → Upgrading → Rebooting per batch) → PostHook → Completed
 ```
 
 ## Maintenance windows

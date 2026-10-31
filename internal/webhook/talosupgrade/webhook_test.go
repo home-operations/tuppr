@@ -191,6 +191,82 @@ func TestValidateHooks_AllowsValidConfig(t *testing.T) {
 	}
 }
 
+const (
+	hookCeph = "ceph"
+	hookDRBD = "drbd"
+)
+
+func TestValidateHooks_PreBatch(t *testing.T) {
+	tests := []struct {
+		name    string
+		hooks   *tupprv1alpha1.HooksSpec
+		wantErr string
+	}{
+		{
+			name: "valid pre-batch hooks with retry",
+			hooks: &tupprv1alpha1.HooksSpec{
+				PreBatch: []tupprv1alpha1.HookSpec{{Name: hookDRBD, Image: testCephImage}},
+				PreBatchRetry: &tupprv1alpha1.HookRetrySpec{
+					Timeout:  &metav1.Duration{Duration: 0},
+					Interval: &metav1.Duration{Duration: time.Second},
+				},
+			},
+		},
+		{
+			name:    "duplicate pre-batch hook name",
+			hooks:   &tupprv1alpha1.HooksSpec{PreBatch: []tupprv1alpha1.HookSpec{{Name: hookDRBD, Image: testCephImage}, {Name: hookDRBD, Image: testCephImage}}},
+			wantErr: `spec.hooks.preBatch: duplicate hook name "drbd"`,
+		},
+		{
+			name:    "pre-batch hook without image",
+			hooks:   &tupprv1alpha1.HooksSpec{PreBatch: []tupprv1alpha1.HookSpec{{Name: hookDRBD}}},
+			wantErr: "spec.hooks.preBatch[0].image is required",
+		},
+		{
+			name: "zero retry interval",
+			hooks: &tupprv1alpha1.HooksSpec{
+				PreBatch:      []tupprv1alpha1.HookSpec{{Name: hookDRBD, Image: testCephImage}},
+				PreBatchRetry: &tupprv1alpha1.HookRetrySpec{Interval: &metav1.Duration{}},
+			},
+			wantErr: "spec.hooks.preBatchRetry.interval must be at least 1s",
+		},
+		{
+			name: "pre-batch hook setting TUPPR_NODES",
+			hooks: &tupprv1alpha1.HooksSpec{PreBatch: []tupprv1alpha1.HookSpec{{
+				Name: hookDRBD, Image: testCephImage, Env: []corev1.EnvVar{{Name: "TUPPR_NODES", Value: "x"}},
+			}}},
+			wantErr: "spec.hooks.preBatch[0].env: TUPPR_NODES is set by tuppr",
+		},
+		{
+			name: "pre-hook may set TUPPR_NODES",
+			hooks: &tupprv1alpha1.HooksSpec{Pre: []tupprv1alpha1.HookSpec{{
+				Name: hookCeph, Image: testCephImage, Env: []corev1.EnvVar{{Name: "TUPPR_NODES", Value: "x"}},
+			}}},
+		},
+		{
+			name: "same name in pre and pre-batch lists",
+			hooks: &tupprv1alpha1.HooksSpec{
+				Pre:      []tupprv1alpha1.HookSpec{{Name: hookCeph, Image: testCephImage}},
+				PreBatch: []tupprv1alpha1.HookSpec{{Name: hookCeph, Image: testCephImage}},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateHooks(tt.hooks)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("expected no error, got: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got: %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
 func TestValidateHooks_NilHooksOk(t *testing.T) {
 	if err := validateHooks(nil); err != nil {
 		t.Fatalf("expected nil hooks to be valid, got: %v", err)
