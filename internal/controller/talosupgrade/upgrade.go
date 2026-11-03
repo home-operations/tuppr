@@ -290,16 +290,7 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonCheckMaintenanceWindow, "evaluate maintenance window", 30*time.Second, err), nil
 	}
 	if !maintenanceRes.Allowed {
-		requeueAfter := maintenanceRes.RequeueAfter(r.Now.Now())
-		nextTimestamp := maintenanceRes.NextWindowStart.Unix()
-		r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, false, &nextTimestamp)
-		message := fmt.Sprintf("Maintenance window closed between nodes, waiting (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339))
-		if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhaseMaintenanceWindow, "", nil, message, map[string]any{
-			"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
-		}); err != nil {
-			logger.Error(err, "Failed to update status for maintenance window")
-		}
-		return ctrl.Result{RequeueAfter: requeueAfter}, nil
+		return r.parkForClosedWindow(ctx, talosUpgrade, maintenanceRes), nil
 	}
 	r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, true, nil)
 
@@ -521,6 +512,26 @@ func (r *Reconciler) processRebootingNodes(ctx context.Context, talosUpgrade *tu
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, true
 }
 
+// parkForClosedWindow parks a run whose maintenance window closed between
+// batches. MaintenanceWindow does not block a KubernetesUpgrade, so a run that
+// already upgraded nodes stays in HealthChecking until they recover.
+func (r *Reconciler) parkForClosedWindow(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, maintenanceRes *maintenance.WindowResult) ctrl.Result {
+	if len(talosUpgrade.Status.CompletedNodes) > 0 {
+		if result, done := r.waitForClusterHealth(ctx, talosUpgrade); done {
+			return result
+		}
+	}
+	nextTimestamp := maintenanceRes.NextWindowStart.Unix()
+	r.MetricsReporter.RecordMaintenanceWindow(metrics.UpgradeTypeTalos, talosUpgrade.Name, false, &nextTimestamp)
+	message := fmt.Sprintf("Maintenance window closed between nodes, waiting (next: %s)", maintenanceRes.NextWindowStart.Format(time.RFC3339))
+	if err := r.setPhaseWithUpdates(ctx, talosUpgrade, tupprv1alpha1.JobPhaseMaintenanceWindow, "", nil, message, map[string]any{
+		"nextMaintenanceWindow": metav1.NewTime(*maintenanceRes.NextWindowStart),
+	}); err != nil {
+		log.FromContext(ctx).Error(err, "Failed to update status for maintenance window")
+	}
+	return ctrl.Result{RequeueAfter: maintenanceRes.RequeueAfter(r.Now.Now())}
+}
+
 // recordOutOfBandCompletedNodes adds selected nodes already at the target
 // version to CompletedNodes. resumed reports whether any of them still carried
 // the upgrading label: tuppr started that node's upgrade but its Job was
@@ -535,7 +546,7 @@ func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpg
 	}
 
 	crdTargetVersion := talosUpgrade.Spec.Talos.Version
-	var added []string
+	var added, labeled []string
 
 	for i := range nodes {
 		node := &nodes[i]
@@ -564,9 +575,7 @@ func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpg
 		r.ensureNodeUncordoned(ctx, talosUpgrade, node.Name)
 		if node.Labels[constants.NodeUpgradingLabel] != "" {
 			resumed = true
-			if err := r.removeNodeUpgradingLabel(ctx, node.Name); err != nil {
-				logger.Error(err, "Failed to remove upgrading label from node", "node", node.Name)
-			}
+			labeled = append(labeled, node.Name)
 		}
 		added = append(added, node.Name)
 	}
@@ -582,9 +591,19 @@ func (r *Reconciler) recordOutOfBandCompletedNodes(ctx context.Context, talosUpg
 			len(added), crdTargetVersion, added)
 	}
 	talosUpgrade.Status.CompletedNodes = append(talosUpgrade.Status.CompletedNodes, added...)
-	return resumed, r.updateStatus(ctx, talosUpgrade, map[string]any{
+	if err := r.updateStatus(ctx, talosUpgrade, map[string]any{
 		statusCompletedNodes: talosUpgrade.Status.CompletedNodes,
-	})
+	}); err != nil {
+		return resumed, err
+	}
+	// Until CompletedNodes is saved, the label is the only record that this
+	// run upgraded the node, which is what makes completion wait for health.
+	for _, name := range labeled {
+		if err := r.removeNodeUpgradingLabel(ctx, name); err != nil {
+			logger.Error(err, "Failed to remove upgrading label from node", "node", name)
+		}
+	}
+	return resumed, nil
 }
 
 // findNextNodes returns up to `count` node names that need upgrading, sorted

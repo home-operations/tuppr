@@ -922,9 +922,9 @@ func TestClient_CheckMachineReady(t *testing.T) {
 	}
 }
 
-func etcdStatusFor(leader uint64, learner bool, errs ...string) *machine.EtcdStatusResponse {
+func etcdStatusFor(member, leader uint64, learner bool, errs ...string) *machine.EtcdStatusResponse {
 	return &machine.EtcdStatusResponse{Messages: []*machine.EtcdStatus{{
-		MemberStatus: &machine.EtcdMemberStatus{Leader: leader, IsLearner: learner, Errors: errs},
+		MemberStatus: &machine.EtcdMemberStatus{MemberId: member, Leader: leader, IsLearner: learner, Errors: errs},
 	}}}
 }
 
@@ -936,7 +936,7 @@ func TestClient_CheckEtcdHealthy(t *testing.T) {
 	twoMembers := &machine.EtcdMemberListResponse{Messages: []*machine.EtcdMembers{{
 		Members: []*machine.EtcdMember{{Id: 1, Hostname: cp1}, {Id: 2, Hostname: cp2}},
 	}}}
-	healthy := map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, false), ip2: etcdStatusFor(1, false)}
+	healthy := map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, 1, false), ip2: etcdStatusFor(2, 1, false)}
 
 	tests := []struct {
 		name    string
@@ -974,28 +974,42 @@ func TestClient_CheckEtcdHealthy(t *testing.T) {
 			name:    "member without a leader",
 			ips:     []string{ip1, ip2},
 			members: twoMembers,
-			status:  map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, false), ip2: etcdStatusFor(0, false)},
+			status:  map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, 1, false), ip2: etcdStatusFor(2, 0, false)},
 			wantErr: "etcd on 10.0.0.2 has no leader",
 		},
 		{
 			name:    "member status still a learner",
 			ips:     []string{ip1, ip2},
 			members: twoMembers,
-			status:  map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, false), ip2: etcdStatusFor(1, true)},
+			status:  map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, 1, false), ip2: etcdStatusFor(2, 1, true)},
 			wantErr: "etcd on 10.0.0.2 is still a learner",
 		},
 		{
 			name:    "member reporting errors",
 			ips:     []string{ip1, ip2},
 			members: twoMembers,
-			status:  map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, false, "NOSPACE"), ip2: etcdStatusFor(1, false)},
+			status:  map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, 1, false, "NOSPACE"), ip2: etcdStatusFor(2, 1, false)},
 			wantErr: "etcd on 10.0.0.1 reports errors: NOSPACE",
+		},
+		{
+			name:    "member ID not in the member list",
+			ips:     []string{ip1, ip2},
+			members: twoMembers,
+			status:  map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, 1, false), ip2: etcdStatusFor(4, 1, false)},
+			wantErr: "etcd on 10.0.0.2 reports member 4, which is not in the member list or is shared with another node",
+		},
+		{
+			name:    "two nodes report the same member",
+			ips:     []string{ip1, ip2},
+			members: twoMembers,
+			status:  map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, 1, false), ip2: etcdStatusFor(1, 1, false)},
+			wantErr: "etcd on 10.0.0.2 reports member 1, which is not in the member list or is shared with another node",
 		},
 		{
 			name:    "member returns no status",
 			ips:     []string{ip1, ip2},
 			members: twoMembers,
-			status:  map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, false), ip2: {}},
+			status:  map[string]*machine.EtcdStatusResponse{ip1: etcdStatusFor(1, 1, false), ip2: {}},
 			wantErr: "no etcd status from 10.0.0.2",
 		},
 	}

@@ -476,8 +476,8 @@ func (s *Client) CheckMachineReady(ctx context.Context, nodeIP string) error {
 
 // CheckEtcdHealthy reports whether etcd can safely lose a member to the next
 // upgrade: the member list, a quorum read served by the first node, holds
-// exactly one voting member per control-plane node, and every node reports a
-// leader and no errors. A just-upgraded node rejoins as a learner first, so
+// exactly one voting member per control-plane node, matched by member ID, and
+// every node reports a leader and no errors. A just-upgraded node rejoins as a learner first, so
 // this also waits out its promotion. No nodes means no etcd to check.
 func (s *Client) CheckEtcdHealthy(ctx context.Context, controlPlaneIPs []string) error {
 	if len(controlPlaneIPs) == 0 {
@@ -500,10 +500,12 @@ func (s *Client) CheckEtcdHealthy(ctx context.Context, controlPlaneIPs []string)
 	if len(list) != len(controlPlaneIPs) {
 		return fmt.Errorf("etcd has %d member(s), expected %d (one per control-plane node)", len(list), len(controlPlaneIPs))
 	}
+	unclaimed := make(map[uint64]bool, len(list))
 	for _, m := range list {
 		if m.GetIsLearner() {
 			return fmt.Errorf("etcd member %s is still a learner", m.GetHostname())
 		}
+		unclaimed[m.GetId()] = true
 	}
 
 	for _, ip := range controlPlaneIPs {
@@ -527,7 +529,10 @@ func (s *Client) CheckEtcdHealthy(ctx context.Context, controlPlaneIPs []string)
 			return fmt.Errorf("etcd on %s has no leader", ip)
 		case st.GetIsLearner():
 			return fmt.Errorf("etcd on %s is still a learner", ip)
+		case !unclaimed[st.GetMemberId()]:
+			return fmt.Errorf("etcd on %s reports member %x, which is not in the member list or is shared with another node", ip, st.GetMemberId())
 		}
+		delete(unclaimed, st.GetMemberId())
 	}
 
 	return nil

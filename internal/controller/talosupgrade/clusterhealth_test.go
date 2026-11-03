@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
@@ -47,6 +48,7 @@ func TestCheckClusterHealth(t *testing.T) {
 	tests := []struct {
 		name         string
 		selectorPool string
+		force        bool
 		nodes        []client.Object
 		machineErrs  map[string]error
 		etcdErr      error
@@ -104,6 +106,14 @@ func TestCheckClusterHealth(t *testing.T) {
 			wantNoEtcd:  true,
 		},
 		{
+			name:        "force skips the etcd check",
+			force:       true,
+			nodes:       []client.Object{newControlPlaneNode(fakeNodeA, testNodeIP1)},
+			etcdErr:     errors.New("etcd member node-a is still a learner"),
+			wantMachine: []string{testNodeIP1},
+			wantNoEtcd:  true,
+		},
+		{
 			name:        "etcd failure is reported",
 			nodes:       []client.Object{newControlPlaneNode(fakeNodeA, testNodeIP1)},
 			etcdErr:     errors.New("etcd member node-a is still a learner"),
@@ -122,6 +132,9 @@ func TestCheckClusterHealth(t *testing.T) {
 			var opts []func(*tupprv1alpha1.TalosUpgrade)
 			if tt.selectorPool != "" {
 				opts = append(opts, withPoolSelector(tt.selectorPool))
+			}
+			if tt.force {
+				opts = append(opts, func(tu *tupprv1alpha1.TalosUpgrade) { tu.Spec.Policy.Force = true })
 			}
 			tu := newTalosUpgrade(testUpgradeName, opts...)
 
@@ -316,5 +329,89 @@ func TestTalosReconcile_ClusterHealthGatesCompletion(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestTalosReconcile_ClusterHealthHoldsClosedMaintenanceWindow(t *testing.T) {
+	tests := []struct {
+		name      string
+		etcdErr   error
+		wantPhase tupprv1alpha1.JobPhase
+	}{
+		{
+			name:      "unhealthy cluster keeps the run in HealthChecking",
+			etcdErr:   errors.New("etcd member node-a is still a learner"),
+			wantPhase: tupprv1alpha1.JobPhaseHealthChecking,
+		},
+		{
+			name:      "healthy cluster parks the run in MaintenanceWindow",
+			wantPhase: tupprv1alpha1.JobPhaseMaintenanceWindow,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := newTestScheme()
+			tu := newTalosUpgrade(testUpgradeName,
+				withFinalizer,
+				withPhase(tupprv1alpha1.JobPhaseHealthChecking),
+				withCompletedNodes(fakeNodeA),
+				func(tu *tupprv1alpha1.TalosUpgrade) {
+					tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{
+						Windows: []tupprv1alpha1.WindowSpec{{
+							Start:    testCronEvery2,
+							Duration: metav1.Duration{Duration: 4 * time.Hour},
+							Timezone: testTimezoneUTC,
+						}},
+					}
+				},
+			)
+			tc := &mockTalosClient{
+				nodeVersions: map[string]string{testNodeIP1: fakeTalosVersion},
+				etcdErr:      tt.etcdErr,
+			}
+			cl := fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(tu, newControlPlaneNode(fakeNodeA, testNodeIP1)).WithStatusSubresource(tu).Build()
+			r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+			r.Now = &fixedClock{time.Date(2025, 6, 15, 10, 0, 0, 0, time.UTC)}
+
+			reconcileTalos(t, r, testUpgradeName)
+
+			updated := getTalosUpgrade(t, cl, testUpgradeName)
+			if updated.Status.Phase != tt.wantPhase {
+				t.Fatalf("expected phase %s, got: %s (%s)", tt.wantPhase, updated.Status.Phase, updated.Status.Message)
+			}
+		})
+	}
+}
+
+func TestRecordOutOfBandCompletedNodes_KeepsLabelUntilStatusSaved(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName, withFinalizer, withPhase(tupprv1alpha1.JobPhasePending))
+	node := newNode(fakeNodeA, testNodeIP1)
+	node.Labels = map[string]string{constants.NodeUpgradingLabel: upgradingLabelValue}
+	tc := &mockTalosClient{nodeVersions: map[string]string{testNodeIP1: fakeTalosVersion}}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, node).WithStatusSubresource(tu).
+		WithInterceptorFuncs(interceptor.Funcs{
+			SubResourcePatch: func(context.Context, client.Client, string, client.Object, client.Patch, ...client.SubResourcePatchOption) error {
+				return errors.New("simulated status patch failure")
+			},
+		}).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+
+	resumed, err := r.recordOutOfBandCompletedNodes(context.Background(), tu)
+	if err == nil {
+		t.Fatal("expected the status patch failure to be returned")
+	}
+	if !resumed {
+		t.Fatal("expected the labeled node to count as resumed")
+	}
+	got := &corev1.Node{}
+	if err := cl.Get(context.Background(), client.ObjectKey{Name: fakeNodeA}, got); err != nil {
+		t.Fatalf("get node: %v", err)
+	}
+	if got.Labels[constants.NodeUpgradingLabel] == "" {
+		t.Fatal("expected the upgrading label to stay until CompletedNodes is saved")
 	}
 }

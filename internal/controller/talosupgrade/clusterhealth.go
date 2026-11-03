@@ -90,6 +90,11 @@ func (r *Reconciler) checkClusterHealth(ctx context.Context, talosUpgrade *tuppr
 		}
 	}
 
+	// spec.policy.force is documented to skip etcd health checks, and is the
+	// only way past an etcd that cannot become healthy.
+	if talosUpgrade.Spec.Policy.Force {
+		return nil
+	}
 	if err := r.TalosClient.CheckEtcdHealthy(ctx, controlPlaneIPs); err != nil {
 		return &unhealthyError{reason: "etcd not healthy", err: err}
 	}

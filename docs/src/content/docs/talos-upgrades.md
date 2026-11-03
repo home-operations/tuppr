@@ -96,9 +96,14 @@ and the run's completion (which would unblock a queued `KubernetesUpgrade` and
 start post-hooks), until it has. While it waits, the run stays in
 `HealthChecking` with the failing condition in its message; the controller log
 has the underlying Talos error. Each check gives up after a minute and is
-retried 30 seconds later. The gate cannot be disabled or skipped with
-`skipAfterPreHooks`: a cluster that never becomes healthy keeps the run waiting
-rather than upgrading the next node.
+retried 30 seconds later. If the maintenance window closes while the run waits,
+the run stays in `HealthChecking` until the nodes recover, because
+`MaintenanceWindow` does not hold back a `KubernetesUpgrade`.
+
+`skipAfterPreHooks` does not apply to the gate: a cluster that never becomes
+healthy keeps the run waiting rather than upgrading the next node.
+`spec.policy.force` skips the etcd check (the node checks still apply), which
+is the only way past an etcd that cannot become healthy.
 
 Control-plane nodes are found by the `node-role.kubernetes.io/control-plane`
 label; if no node carries it, the etcd membership check is skipped. A cluster
@@ -113,7 +118,7 @@ upgrade, 1.13 and newer do not. Run three or more control-plane nodes.
 | Field                 | Default   | Effect                                                                                                                                                                                                              |
 | --------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `debug`               | `false`   | Verbose upgrade logging.                                                                                                                                                                                            |
-| `force`               | `false`   | Skip etcd health checks. Dangerous - can break quorum.                                                                                                                                                              |
+| `force`               | `false`   | Skip etcd health checks, in Talos and in the built-in health gate. Dangerous - can break quorum.                                                                                                                    |
 | `placement`           | `hard`    | How strictly the upgrade Job avoids the target node (`hard` or `soft`).                                                                                                                                             |
 | `rebootMode`          | `default` | `default`, or `powercycle` for nodes that don't reboot cleanly.                                                                                                                                                     |
 | `stage`               | `false`   | Stage the upgrade and apply it on the next reboot (two reboots total).                                                                                                                                              |
