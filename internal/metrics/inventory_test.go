@@ -16,25 +16,6 @@ const (
 	labelWorker       = "node-role.kubernetes.io/worker"
 )
 
-func TestParseTalosVersion(t *testing.T) {
-	cases := []struct {
-		osImage string
-		want    string
-	}{
-		{"Talos (v1.13.0)", "v1.13.0"},
-		{"Talos (v1.7.5-pre.0)", "v1.7.5-pre.0"},
-		{"Talos v1.5.0", "v1.5.0"},
-		{"Talos (v1.10.6-amd64)", "v1.10.6-amd64"},
-		{"Ubuntu 22.04 LTS", ""},
-		{"", ""},
-	}
-	for _, c := range cases {
-		if got := parseTalosVersion(c.osImage); got != c.want {
-			t.Errorf("parseTalosVersion(%q) = %q, want %q", c.osImage, got, c.want)
-		}
-	}
-}
-
 func TestSelectorFor(t *testing.T) {
 	got, err := selectorFor(nil)
 	if err != nil {

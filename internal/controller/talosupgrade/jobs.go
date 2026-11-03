@@ -473,7 +473,7 @@ func (r *Reconciler) createJob(ctx context.Context, talosUpgrade *tupprv1alpha1.
 		title, message, err := r.Renderer.Render(notification.EventData{
 			Node:           nodeName,
 			CurrentVersion: currentVersion,
-			TargetVersion:  r.getTargetVersion(targetNode, talosUpgrade.Spec.Talos.Version),
+			TargetVersion:  nodeutil.TargetTalosVersion(targetNode, talosUpgrade.Spec.Talos.Version),
 			Plan:           talosUpgrade.Name,
 		})
 		if err != nil {

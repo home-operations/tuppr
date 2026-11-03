@@ -23,6 +23,45 @@ spec:
 Everything below is optional and layers onto that. The full set of fields and
 defaults lives in the CRD schema; this page covers the ones you'll reach for.
 
+## Upgrade path validation
+
+When a `TalosUpgrade` is created, or its `talos.version` or `nodeSelector`
+changes, the admission webhook checks the target against what each selected
+node runs now (its `osImage` and `kubeletVersion`), using the compatibility
+tables Talos ships with its own tooling. It **rejects** the change when:
+
+- the node's Talos version can't be upgraded (or downgraded) straight to the
+  target. Talos's installer would refuse it anyway, but only after the node
+  was cordoned and drained.
+- the target Talos release doesn't support the Kubernetes version the node
+  runs. Talos only checks this when it validates the machine config, after
+  the node has already rebooted into the new version. Upgrade Kubernetes
+  first (or pick a Talos release that supports it).
+
+A node's own `tuppr.home-operations.com/version` annotation is its target (see
+[per-node overrides](#per-node-overrides)), and a rejection names the nodes
+it pins. An annotation must use the same `vX.Y.Z` format as `talos.version`,
+because tuppr uses it as the installer image tag, so the webhook rejects one
+that doesn't (for example `1.13.0` or `latest`). Pre-release targets such as
+`v1.14.0-alpha.1`, `v1.14.0-beta.0` and `v1.14.0-rc.2` are checked like the
+1.14 release. The webhook also rejects an invalid `nodeSelector`.
+
+The webhook warns when a node would be downgraded, and when the target isn't
+in the compatibility data the running tuppr release was built with (such as
+a Talos release newer than it). In the second case, the upgrade path and
+Kubernetes support aren't checked. If a `KubernetesUpgrade` is in progress,
+the target must support both the Kubernetes version each node runs now and
+that upgrade's target version. The `TalosUpgrade` waits for the
+`KubernetesUpgrade` to finish, but it starts anyway if that upgrade fails. If
+only the running version is unsupported, apply the `TalosUpgrade` again after
+the `KubernetesUpgrade` completes. Nodes that don't report a Talos version are
+skipped. If the nodes can't be listed, the check is skipped
+rather than blocking the change.
+
+The check runs at admission only. Changes on the Node side afterwards, such
+as a new annotation, a relabel that brings a node into the selector, or a
+node joining, aren't re-checked.
+
 ## Health checks
 
 Health checks are [CEL](https://cel.dev/) expressions evaluated against live
