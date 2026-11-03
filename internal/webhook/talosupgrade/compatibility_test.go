@@ -21,6 +21,7 @@ const (
 	testTalos114    = "v1.14.0"
 	testTalos1115   = "v1.11.5"
 	testTalos1135   = "v1.13.5"
+	testTalos114RC2 = "v1.14.0-rc.2"
 	testKube133     = "v1.33.1"
 	testTooOldError = "host version 1.11.5 is too old to upgrade to Talos 1.14.0"
 )
@@ -111,9 +112,53 @@ func TestTalosUpgrade_ValidateCreate_UpgradePath(t *testing.T) {
 			nodes:  []*corev1.Node{k3os},
 		},
 		{
-			name:   "pre-release target",
+			name:   "alpha target",
+			target: "v1.14.0-alpha.1",
+			nodes:  []*corev1.Node{newTalosNode(testNode1, "v1.12.3", testKube133)},
+		},
+		{
+			name:   "beta target",
 			target: "v1.14.0-beta.0",
 			nodes:  []*corev1.Node{newTalosNode(testNode1, "v1.12.3", testKube133)},
+		},
+		{
+			name:   "rc target",
+			target: testTalos114RC2,
+			nodes:  []*corev1.Node{newTalosNode(testNode1, "v1.13.2", testKube133)},
+		},
+		{
+			name:    "pre-release target still enforces the upgrade path",
+			target:  testTalos114RC2,
+			nodes:   []*corev1.Node{newTalosNode(testNode1, testTalos1115, testKube133)},
+			wantErr: []string{"host version 1.11.5 is too old to upgrade to Talos 1.14.0-rc.2"},
+		},
+		{
+			name:    "pre-release target still enforces Kubernetes support",
+			target:  "v1.14.0-beta.1",
+			nodes:   []*corev1.Node{newTalosNode(testNode1, "v1.13.2", "v1.31.4")},
+			wantErr: []string{"Kubernetes 1.31.4 is too old to be used with Talos 1.14.0-beta.1"},
+		},
+		{
+			name:   "pre-release host upgraded to its release",
+			target: testTalos114,
+			nodes:  []*corev1.Node{newTalosNode(testNode1, testTalos114RC2, testKube133)},
+		},
+		{
+			name:   "pre-release host at the oldest supported minor",
+			target: testTalos114,
+			nodes:  []*corev1.Node{newTalosNode(testNode1, "v1.12.0-alpha.0", testKube133)},
+		},
+		{
+			name:         "release host moved to its own rc warns as a downgrade",
+			target:       testTalos114RC2,
+			nodes:        []*corev1.Node{newTalosNode(testNode1, testTalos114, testKube133)},
+			wantWarnings: []string{"Node(s) node-1 will be downgraded from Talos v1.14.0 to v1.14.0-rc.2"},
+		},
+		{
+			name:         "alpha of a minor newer than the compatibility data warns",
+			target:       "v1.15.0-alpha.2",
+			nodes:        []*corev1.Node{newTalosNode(testNode1, "v1.14.1", testKube133)},
+			wantWarnings: []string{"Talos v1.15.0-alpha.2 is not in the compatibility data"},
 		},
 		{
 			name:    "host too old for the target",

@@ -178,6 +178,9 @@ func TestTalosVersionFromOSImage(t *testing.T) {
 	}{
 		{"Talos (v1.13.0)", "v1.13.0"},
 		{"Talos (v1.7.5-pre.0)", "v1.7.5-pre.0"},
+		{"Talos (v1.15.0-alpha.2)", "v1.15.0-alpha.2"},
+		{"Talos (v1.14.0-beta.1)", "v1.14.0-beta.1"},
+		{"Talos (v1.14.0-rc.2)", "v1.14.0-rc.2"},
 		{"Talos v1.5.0", "v1.5.0"},
 		{"Talos (v1.10.6-amd64)", "v1.10.6-amd64"},
 		{"Ubuntu 22.04 LTS", ""},

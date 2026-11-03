@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	cel.dev/cel-go v0.33.2
-	github.com/blang/semver/v4 v4.0.0
+	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/cosi-project/runtime v1.16.4
 	github.com/go-logr/logr v1.4.4
 	github.com/go-sprout/sprout v1.1.2
@@ -34,12 +34,12 @@ require (
 	cel.dev/expr v0.25.3 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-amqp v1.7.0 // indirect
-	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/ProtonMail/go-crypto v1.5.2 // indirect
 	github.com/ProtonMail/gopenpgp/v3 v3.5.2 // indirect
 	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudflare/circl v1.6.5 // indirect

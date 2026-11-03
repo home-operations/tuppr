@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/blang/semver/v4"
+	"github.com/Masterminds/semver/v3"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
 	"github.com/siderolabs/talos/pkg/machinery/compatibility"
 	corev1 "k8s.io/api/core/v1"
@@ -92,7 +92,7 @@ func (v *Validator) validateUpgradePath(ctx context.Context, t *tupprv1alpha1.Ta
 		}
 		if pathErr != nil {
 			problems[pathErr.Error()] = append(problems[pathErr.Error()], name)
-		} else if hostSemver.GT(tgt.semver) {
+		} else if hostSemver.GreaterThan(tgt.semver) {
 			key := current + " to " + target
 			downgrades[key] = append(downgrades[key], name)
 		}
@@ -148,7 +148,7 @@ func (v *Validator) activeKubernetesUpgrade(ctx context.Context) *tupprv1alpha1.
 
 // talosTarget is a node's target Talos version, parsed once per distinct value.
 type talosTarget struct {
-	semver   semver.Version
+	semver   *semver.Version
 	version  *compatibility.TalosVersion
 	inTables bool
 	err      error
@@ -168,7 +168,7 @@ func parseTalosTarget(target string) talosTarget {
 	// Every table accepts a host on the target's own minor, so a failed probe
 	// means the target is outside the tables tuppr was built with. The
 	// pre-release keeps the probe from matching DeniedHostUpgradeVersions.
-	_, probe, err := parseTalosVersion(fmt.Sprintf("v%d.%d.0-tuppr.probe", sv.Major, sv.Minor))
+	_, probe, err := parseTalosVersion(fmt.Sprintf("v%d.%d.0-tuppr.probe", sv.Major(), sv.Minor()))
 	return talosTarget{
 		semver:   sv,
 		version:  version,
@@ -179,10 +179,10 @@ func parseTalosTarget(target string) talosTarget {
 // parseTalosVersion parses v strictly. Machinery's tolerant parser reads
 // "v1.014.0" as 1.14.0, but the controller uses a target verbatim as the
 // installer image tag.
-func parseTalosVersion(v string) (semver.Version, *compatibility.TalosVersion, error) {
-	sv, err := semver.Parse(strings.TrimPrefix(v, "v"))
+func parseTalosVersion(v string) (*semver.Version, *compatibility.TalosVersion, error) {
+	sv, err := semver.StrictNewVersion(strings.TrimPrefix(v, "v"))
 	if err != nil {
-		return semver.Version{}, nil, err
+		return nil, nil, err
 	}
 	version, err := compatibility.ParseTalosVersion(&machine.VersionInfo{Tag: v})
 	return sv, version, err
