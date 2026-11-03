@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 	"time"
 
 	"cel.dev/cel-go/cel"
@@ -41,6 +42,20 @@ func RetryAfter(failingFor time.Duration) time.Duration {
 }
 
 const celStatusKey = "status"
+
+// Error is a failed evaluation. Reason names each failing check and stays the
+// same while the same checks fail, so a caller can keep it in status without a
+// write, and the reconcile that write triggers, on every evaluation. Err adds
+// the read and CEL errors, whose text can change between evaluations: a reset
+// connection names its local port, for example.
+type Error struct {
+	Reason string
+	Err    error
+}
+
+func (e *Error) Error() string { return "health checks failed: " + e.Err.Error() }
+
+func (e *Error) Unwrap() error { return e.Err }
 
 // MetricsRecorder defines the interface for metrics the health checker needs
 type MetricsRecorder interface {
@@ -87,12 +102,14 @@ func (hc *Checker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1
 	upgradeType, _ := ctx.Value(metrics.ContextKeyUpgradeType).(string)
 	upgradeName, _ := ctx.Value(metrics.ContextKeyUpgradeName).(string)
 
+	var reasons []string
 	var checkErrors []error
 	for i, check := range healthChecks {
 		passed, err := hc.evaluateCheck(ctx, check, programs[i])
 		if passed {
 			continue
 		}
+		name := fmt.Sprintf("check %d (%s)", i, describeCheck(check))
 		if err != nil {
 			logger.V(1).Info("Health check evaluation failed",
 				"index", i,
@@ -100,7 +117,8 @@ func (hc *Checker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1
 				"apiVersion", check.APIVersion,
 				"kind", check.Kind,
 				"error", err)
-			checkErrors = append(checkErrors, fmt.Errorf("check %d (%s) evaluation error: %w", i, describeCheck(check), err))
+			reasons = append(reasons, name+" evaluation error")
+			checkErrors = append(checkErrors, fmt.Errorf("%s evaluation error: %w", name, err))
 		} else {
 			logger.V(1).Info("Health check not satisfied",
 				"index", i,
@@ -108,7 +126,8 @@ func (hc *Checker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1
 				"apiVersion", check.APIVersion,
 				"kind", check.Kind,
 			)
-			checkErrors = append(checkErrors, fmt.Errorf("check %d (%s) not satisfied", i, describeCheck(check)))
+			reasons = append(reasons, name+" not satisfied")
+			checkErrors = append(checkErrors, errors.New(name+" not satisfied"))
 		}
 		if upgradeType != "" && upgradeName != "" && hc.MetricsReporter != nil {
 			hc.MetricsReporter.RecordHealthCheckFailure(upgradeType, upgradeName, i)
@@ -116,7 +135,7 @@ func (hc *Checker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1
 	}
 
 	if len(checkErrors) > 0 {
-		return fmt.Errorf("health checks failed: %w", errors.Join(checkErrors...))
+		return &Error{Reason: strings.Join(reasons, "; "), Err: errors.Join(checkErrors...)}
 	}
 	logger.V(1).Info("All health checks passed")
 	return nil

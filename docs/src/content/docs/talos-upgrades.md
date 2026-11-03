@@ -71,7 +71,10 @@ spec:
 Results are emitted as Events on the resource: a `HealthChecksFailed` warning
 when checks start failing or the failure changes, and `HealthChecksPassed`
 when they pass, so a run waiting on failing checks is visible in
-`kubectl describe`. A check with
+`kubectl describe`. The warning also gives the read or CEL error for each
+check that tuppr cannot evaluate. The status message does not include that
+error.
+A check with
 `skipAfterPreHooks: true` is left out of every run once
 [pre-hooks](#prepost-upgrade-hooks) have completed; a run with no checks left
 emits no Events.

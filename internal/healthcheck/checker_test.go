@@ -2,6 +2,8 @@ package healthcheck
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -778,6 +780,43 @@ func TestHealthChecker_CheckHealth_BoundsEachCheck(t *testing.T) {
 		if left := c.deadline.Sub(c.start); left > CheckTimeout || left < CheckTimeout-100*time.Millisecond {
 			t.Fatalf("check %d: expected about %v for its reads, got %v", i, CheckTimeout, left)
 		}
+	}
+}
+
+// Reason leaves out the read errors, whose text can change between
+// evaluations, so a caller can keep it in status without a write per pass.
+func TestHealthChecker_CheckHealth_ReasonIsStable(t *testing.T) {
+	var reads int
+	cl := fake.NewClientBuilder().WithScheme(newTestScheme()).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Get: func(context.Context, client.WithWatch, client.ObjectKey, client.Object, ...client.GetOption) error {
+				reads++
+				return fmt.Errorf("read tcp 10.0.0.5:%d->10.96.0.1:443: read: connection reset by peer", 40000+reads)
+			},
+		}).Build()
+	hc := &Checker{Client: cl}
+	checks := []tupprv1alpha1.HealthCheckSpec{{
+		APIVersion: "v1", Kind: kindConfigMap, Name: cmName, Namespace: defaultNS, Expr: exprTrue,
+		Description: "app config present",
+	}}
+
+	failures := make([]*Error, 0, 2)
+	for range 2 {
+		failed, ok := errors.AsType[*Error](hc.CheckHealth(context.Background(), checks))
+		if !ok {
+			t.Fatal("expected a *healthcheck.Error")
+		}
+		failures = append(failures, failed)
+	}
+
+	const want = "check 0 (app config present) evaluation error"
+	for _, failed := range failures {
+		if failed.Reason != want {
+			t.Fatalf("expected reason %q, got %q", want, failed.Reason)
+		}
+	}
+	if !strings.Contains(failures[1].Error(), "10.0.0.5:40002") {
+		t.Fatalf("expected the error to keep the read error, got: %v", failures[1])
 	}
 }
 

@@ -739,6 +739,55 @@ func TestTalosReconcile_HealthCheckFailureStreak(t *testing.T) {
 	}
 }
 
+// A run that parks for a closed window ends its failure streak: the next
+// window starts a new one, backing off from RetryInterval again.
+func TestTalosReconcile_HealthCheckStreakEndsWhenWindowCloses(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhasePending),
+		withHealthChecks(nodeCheck()),
+		func(tu *tupprv1alpha1.TalosUpgrade) {
+			tu.Spec.Maintenance = &tupprv1alpha1.MaintenanceSpec{Windows: []tupprv1alpha1.WindowSpec{{
+				Start: testCronEvery2, Duration: metav1.Duration{Duration: 4 * time.Hour}, Timezone: testTimezoneUTC,
+			}}}
+		},
+	)
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{testNodeIP1: testV110Talos},
+		installImages: map[string]string{testNodeIP1: testFactoryInstaller},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu, newNode(fakeNodeA, testNodeIP1)).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{err: fmt.Errorf("nodes not ready")})
+	start := time.Date(2026, 10, 31, 2, 30, 0, 0, time.UTC)
+	clock := &fixedClock{t: start}
+	r.Now = clock
+
+	reconcileTalos(t, r, testUpgradeName)
+	if since := getTalosUpgrade(t, cl, testUpgradeName).Status.HealthChecksFailingSince; since == nil {
+		t.Fatal("expected a failure streak inside the window")
+	}
+
+	clock.t = start.Add(4 * time.Hour)
+	reconcileTalos(t, r, testUpgradeName)
+	parked := getTalosUpgrade(t, cl, testUpgradeName)
+	if parked.Status.Phase != tupprv1alpha1.JobPhaseMaintenanceWindow {
+		t.Fatalf("expected phase MaintenanceWindow once the window closed, got: %s", parked.Status.Phase)
+	}
+	if parked.Status.HealthChecksFailingSince != nil {
+		t.Fatalf("expected the failure streak cleared while parked, got %v", parked.Status.HealthChecksFailingSince)
+	}
+
+	clock.t = start.Add(24 * time.Hour)
+	if result := reconcileTalos(t, r, testUpgradeName); result.RequeueAfter != healthcheck.RetryInterval {
+		t.Fatalf("expected the next window's first failure to requeue after %v, got %v", healthcheck.RetryInterval, result.RequeueAfter)
+	}
+	if since := getTalosUpgrade(t, cl, testUpgradeName).Status.HealthChecksFailingSince; since == nil || !since.Time.Equal(clock.t) {
+		t.Fatalf("expected a new failure streak starting at %v, got %v", clock.t, since)
+	}
+}
+
 // The health check wait histogram only counts runs that had checks to wait on.
 func TestTalosReconcile_HealthCheckWaitSampledOnlyWithChecks(t *testing.T) {
 	tests := []struct {

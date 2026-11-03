@@ -79,13 +79,11 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 		}
 		logger.Info("Node lagging target version, restarting campaign", "targetVersion", targetVersion, "cycle", cycles+1)
 		if err := r.setPhaseWithUpdates(ctx, kubernetesUpgrade, tupprv1alpha1.JobPhasePending, "", "", "Node lagging target version, restarting upgrade", map[string]any{
-			statusFieldCompletionCycles:         cycles + 1,
-			statusFieldHealthChecksFailingSince: nil,
+			statusFieldCompletionCycles: cycles + 1,
 		}); err != nil {
 			return ctrl.Result{}, fmt.Errorf("re-enter Pending after completion: %w", err)
 		}
 		kubernetesUpgrade.Status.CompletionCycles = cycles + 1
-		kubernetesUpgrade.Status.HealthChecksFailingSince = nil
 		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
 
@@ -113,15 +111,14 @@ func (r *Reconciler) processUpgrade(ctx context.Context, kubernetesUpgrade *tupp
 	// An unchanged write would still bump lastUpdated and trigger another
 	// reconcile, doubling every pass while health checks fail.
 	case kubernetesUpgrade.Status.CurrentVersion == currentVersion && kubernetesUpgrade.Status.TargetVersion == targetVersion:
+	// The in-memory status keeps the previous versions: a completion later in
+	// this pass records CurrentVersion as the history entry's FromVersion.
 	default:
 		if err := r.updateStatus(ctx, kubernetesUpgrade, map[string]any{
 			statusFieldCurrentVersion: currentVersion,
 			statusFieldTargetVersion:  targetVersion,
 		}); err != nil {
 			logger.Error(err, "Failed to update version status")
-		} else {
-			kubernetesUpgrade.Status.CurrentVersion = currentVersion
-			kubernetesUpgrade.Status.TargetVersion = targetVersion
 		}
 	}
 

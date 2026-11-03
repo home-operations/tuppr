@@ -14,6 +14,7 @@ import (
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
+	"github.com/home-operations/tuppr/internal/healthcheck"
 	"github.com/home-operations/tuppr/internal/metrics"
 )
 
@@ -324,6 +325,8 @@ func TestSyncLocalAuditFields_Talos(t *testing.T) {
 func TestRunHealthChecks_Talos_EmitsEvents(t *testing.T) {
 	check := tupprv1alpha1.HealthCheckSpec{APIVersion: "v1", Kind: "Node", Expr: "status != null"}
 	checkErr := errors.New("nodes not ready")
+	readErr := &healthcheck.Error{Reason: "check 0 (nodes Ready) evaluation error", Err: errors.New("read tcp 10.0.0.5:40001: connection reset by peer")}
+	nextReadErr := &healthcheck.Error{Reason: readErr.Reason, Err: errors.New("read tcp 10.0.0.5:40002: connection reset by peer")}
 	since := metav1.NewTime(time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC))
 	tests := []struct {
 		name       string
@@ -348,6 +351,12 @@ func TestRunHealthChecks_Talos_EmitsEvents(t *testing.T) {
 			checks:   []tupprv1alpha1.HealthCheckSpec{check},
 			checkErr: checkErr,
 			status:   tupprv1alpha1.TalosUpgradeStatus{HealthChecksFailingSince: &since, Message: healthCheckWaitMessage(checkErr)},
+		},
+		{
+			name:     "a new read error behind the same reason emits nothing",
+			checks:   []tupprv1alpha1.HealthCheckSpec{check},
+			checkErr: nextReadErr,
+			status:   tupprv1alpha1.TalosUpgradeStatus{HealthChecksFailingSince: &since, Message: healthCheckWaitMessage(readErr)},
 		},
 		{
 			name:       "changed failure emits a warning",

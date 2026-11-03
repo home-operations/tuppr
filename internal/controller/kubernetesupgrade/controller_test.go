@@ -416,6 +416,68 @@ func TestK8sReconcile_AlreadyAtTargetVersion(t *testing.T) {
 	}
 }
 
+// A run that finds every node at the target with no Job left (it was garbage
+// collected, or the nodes were upgraded out of band) records the version it
+// upgraded from, not the one it just observed.
+func TestK8sReconcile_CompletionWithoutJobRecordsSourceVersion(t *testing.T) {
+	scheme := newTestScheme()
+	startedAt := metav1.NewTime(time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC))
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		withK8sPhase(tupprv1alpha1.JobPhaseUpgrading),
+		func(ku *tupprv1alpha1.KubernetesUpgrade) {
+			ku.Status.CurrentVersion = testV1330
+			ku.Status.TargetVersion = testK8sVersion
+			ku.Status.StartedAt = &startedAt
+		},
+	)
+	node := newControllerNodeWithVersion(fakeCrtl, testNodeIP, testK8sVersion)
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku, node).WithStatusSubresource(ku).Build()
+	r := newK8sReconciler(cl, &mockVersionGetter{version: testK8sVersion}, &mockTalosClient{}, &mockHealthChecker{})
+
+	reconcileK8s(t, r, "test-upgrade")
+
+	updated := getK8sUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
+		t.Fatalf("expected phase Completed, got: %s", updated.Status.Phase)
+	}
+	if len(updated.Status.History) != 1 {
+		t.Fatalf("expected one history entry, got %+v", updated.Status.History)
+	}
+	if entry := updated.Status.History[0]; entry.FromVersion != testV1330 || entry.ToVersion != testK8sVersion {
+		t.Fatalf("expected history %s -> %s, got %s -> %s", testV1330, testK8sVersion, entry.FromVersion, entry.ToVersion)
+	}
+}
+
+// A run that completes while its checks were failing (the nodes were upgraded
+// out of band) doesn't keep the failure streak.
+func TestK8sReconcile_CompletionEndsHealthCheckStreak(t *testing.T) {
+	scheme := newTestScheme()
+	since := metav1.NewTime(time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC))
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		withK8sPhase(tupprv1alpha1.JobPhaseHealthChecking),
+		func(ku *tupprv1alpha1.KubernetesUpgrade) {
+			ku.Status.HealthChecksFailingSince = &since
+		},
+	)
+	node := newControllerNodeWithVersion(fakeCrtl, testNodeIP, testK8sVersion)
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(ku, node).WithStatusSubresource(ku).Build()
+	r := newK8sReconciler(cl, &mockVersionGetter{version: testK8sVersion}, &mockTalosClient{}, &mockHealthChecker{})
+
+	reconcileK8s(t, r, "test-upgrade")
+
+	updated := getK8sUpgrade(t, cl, "test-upgrade")
+	if updated.Status.Phase != tupprv1alpha1.JobPhaseCompleted {
+		t.Fatalf("expected phase Completed, got: %s", updated.Status.Phase)
+	}
+	if updated.Status.HealthChecksFailingSince != nil {
+		t.Fatalf("expected the failure streak cleared on completion, got %v", updated.Status.HealthChecksFailingSince)
+	}
+}
+
 func TestK8sReconcile_HealthCheckFailure(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",

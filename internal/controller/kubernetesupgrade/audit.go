@@ -2,12 +2,14 @@ package kubernetesupgrade
 
 import (
 	"context"
+	"errors"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
+	"github.com/home-operations/tuppr/internal/healthcheck"
 )
 
 // CompletedAt != nil guard on terminal branch is idempotency against a stale
@@ -87,8 +89,14 @@ func (r *Reconciler) runHealthChecks(ctx context.Context, ku *tupprv1alpha1.Kube
 	return checkErr
 }
 
+// healthCheckWaitMessage keeps the read errors out of status: they can change
+// between evaluations, and every status write triggers another reconcile.
 func healthCheckWaitMessage(checkErr error) string {
-	return "Waiting for health checks: " + checkErr.Error()
+	reason := checkErr.Error()
+	if failed, ok := errors.AsType[*healthcheck.Error](checkErr); ok {
+		reason = failed.Reason
+	}
+	return "Waiting for health checks: " + reason
 }
 
 func (r *Reconciler) emitPhaseEvent(ku *tupprv1alpha1.KubernetesUpgrade, prev, next tupprv1alpha1.JobPhase, message string) {

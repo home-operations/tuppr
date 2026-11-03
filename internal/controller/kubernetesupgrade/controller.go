@@ -262,6 +262,12 @@ func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, kubernetesUpgrade 
 		"conditions":     conditions,
 	}
 	maps.Copy(updates, extra)
+	// A failure streak spans one wait in HealthChecking. A run that moves on,
+	// or parks for a closed window or another upgrade, starts a new streak,
+	// so neither the backoff nor the wait metric counts that time.
+	if phase != tupprv1alpha1.JobPhaseHealthChecking && kubernetesUpgrade.Status.HealthChecksFailingSince != nil {
+		updates[statusFieldHealthChecksFailingSince] = nil
+	}
 	applyPhaseAuditFields(&kubernetesUpgrade.Status, updates, phase, metav1.Now(), message)
 
 	if err := r.updateStatus(ctx, kubernetesUpgrade, updates); err != nil {
@@ -271,6 +277,9 @@ func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, kubernetesUpgrade 
 	kubernetesUpgrade.Status.ControllerNode = controllerNode
 	kubernetesUpgrade.Status.Message = message
 	kubernetesUpgrade.Status.Conditions = conditions
+	if phase != tupprv1alpha1.JobPhaseHealthChecking {
+		kubernetesUpgrade.Status.HealthChecksFailingSince = nil
+	}
 	syncLocalAuditFields(&kubernetesUpgrade.Status, updates)
 	if prevPhase != phase {
 		kv := []any{"from", prevPhase, "to", phase, "reason", reason, "message", message}
