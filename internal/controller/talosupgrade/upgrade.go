@@ -11,10 +11,8 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/platforms"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	k8slabel "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
@@ -621,24 +619,11 @@ func (r *Reconciler) findNextNodes(ctx context.Context, talosUpgrade *tupprv1alp
 }
 
 func (r *Reconciler) getSortedNodes(ctx context.Context, nodeSelector *metav1.LabelSelector) ([]corev1.Node, error) {
-	var selector k8slabel.Selector
-	var err error
-	nodeList := &corev1.NodeList{}
-	if nodeSelector != nil {
-		selector, err = metav1.LabelSelectorAsSelector(nodeSelector)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse nodeSelector: %w", err)
-		}
-	} else {
-		selector = k8slabel.Everything()
+	nodes, err := nodeutil.ListSelectedNodes(ctx, r.Client, nodeSelector)
+	if err != nil {
+		return nil, err
 	}
 
-	listOpts := &client.ListOptions{LabelSelector: selector}
-	if err := r.List(ctx, nodeList, listOpts); err != nil {
-		return nil, fmt.Errorf("failed to list nodes: %w", err)
-	}
-
-	nodes := nodeList.Items
 	controllerNode := r.ControllerNodeName
 	slices.SortFunc(nodes, func(a, b corev1.Node) int {
 		// if present, always upgrade controller node first

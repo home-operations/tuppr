@@ -40,11 +40,19 @@ tables Talos ships with its own tooling. It **rejects** the change when:
 
 A node's own `tuppr.home-operations.com/version` annotation is its target (see
 [per-node overrides](#per-node-overrides)), and a rejection names the nodes
-it pins. The webhook also warns when a node would be downgraded, and when the
-target isn't in the compatibility data the running tuppr release was built
-with (such as a Talos release newer than it), in which case nothing is
-checked. Nodes that don't report a version are skipped, and if the nodes
-can't be listed the check is skipped rather than blocking the change.
+it pins. An annotation must use the same `vX.Y.Z` format as `talos.version`,
+because tuppr uses it as the installer image tag, so the webhook rejects one
+that doesn't (for example `1.13.0` or `latest`). The webhook also rejects an
+invalid `nodeSelector`.
+
+The webhook warns when a node would be downgraded, and when the target isn't
+in the compatibility data the running tuppr release was built with (such as
+a Talos release newer than it). In the second case, the upgrade path and
+Kubernetes support aren't checked. If a `KubernetesUpgrade` is in progress,
+the webhook checks Kubernetes support against that upgrade's target version,
+because the `TalosUpgrade` waits for it to finish. Nodes that don't report a
+Talos version are skipped. If the nodes can't be listed, the check is skipped
+rather than blocking the change.
 
 The check runs at admission only. Changes on the Node side afterwards, such
 as a new annotation, a relabel that brings a node into the selector, or a

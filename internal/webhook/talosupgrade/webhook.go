@@ -2,10 +2,10 @@ package talosupgrade
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
-	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/webhook/validation"
 )
 
@@ -55,8 +56,19 @@ func (v *Validator) ValidateUpdate(ctx context.Context, old, t *tupprv1alpha1.Ta
 	// metadata-only update (such as removing the finalizer) is never refused
 	// because the nodes have moved on since the plan was admitted.
 	checkUpgradePath := old.Spec.Talos.Version != t.Spec.Talos.Version ||
-		!reflect.DeepEqual(old.Spec.NodeSelector, t.Spec.NodeSelector)
+		!sameNodeSelector(old.Spec.NodeSelector, t.Spec.NodeSelector)
 	return v.validate(ctx, t, checkUpgradePath)
+}
+
+// sameNodeSelector reports whether two nodeSelectors select the same nodes, so
+// a nil and an empty selector (both every node) compare equal.
+func sameNodeSelector(a, b *metav1.LabelSelector) bool {
+	selA, errA := nodeutil.ParseNodeSelector(a)
+	selB, errB := nodeutil.ParseNodeSelector(b)
+	if errA != nil || errB != nil {
+		return reflect.DeepEqual(a, b)
+	}
+	return selA.String() == selB.String()
 }
 
 func (v *Validator) ValidateDelete(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
@@ -80,7 +92,14 @@ func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade,
 		logger.V(1).Info("TalosUpgrade validation successful", "targetVersion", t.Spec.Talos.Version, "warningCount", len(warnings))
 	}()
 
-	overlapWarnings, err := v.validateOverlaps(ctx, t)
+	// Listed once for every node check below. Each check fails open, like
+	// the other cluster-state checks here, when nodes is nil.
+	nodes, listErr := nodeutil.ListSelectedNodes(ctx, v.Client, t.Spec.NodeSelector)
+	if listErr != nil {
+		logger.Error(listErr, "Failed to list selected nodes")
+	}
+
+	overlapWarnings, err := v.validateOverlaps(ctx, t, nodes)
 	if err != nil {
 		// We fail open if we can't check overlaps (e.g. API error), but log it
 		logger.Error(err, "Failed to check for overlaps")
@@ -97,7 +116,10 @@ func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade,
 	}
 
 	if checkUpgradePath {
-		pathWarnings, err := v.validateUpgradePath(ctx, t)
+		if errors.Is(listErr, nodeutil.ErrInvalidNodeSelector) {
+			return warnings, listErr
+		}
+		pathWarnings, err := v.validateUpgradePath(ctx, t, nodes)
 		warnings = append(warnings, pathWarnings...)
 		if err != nil {
 			return warnings, err
@@ -150,7 +172,7 @@ func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade,
 	}
 
 	// Validate parallelism
-	if pWarnings, err := v.validateParallelism(ctx, t); err != nil {
+	if pWarnings, err := validateParallelism(t, len(nodes)); err != nil {
 		return warnings, err
 	} else {
 		warnings = append(warnings, pWarnings...)
@@ -165,17 +187,13 @@ func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade,
 
 // validateOverlaps checks if the new/updated TalosUpgrade targets nodes that are already
 // targeted by other existing TalosUpgrade resources.
-func (v *Validator) validateOverlaps(ctx context.Context, current *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
+func (v *Validator) validateOverlaps(ctx context.Context, current *tupprv1alpha1.TalosUpgrade, nodes []corev1.Node) (admission.Warnings, error) {
 	var warnings admission.Warnings
 
-	currentNodes, err := v.getMatchingNodes(ctx, current.Spec.NodeSelector)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(currentNodes) == 0 {
+	if len(nodes) == 0 {
 		return nil, nil
 	}
+	currentNodes := nodeNameSet(nodes)
 
 	existingList := &tupprv1alpha1.TalosUpgradeList{}
 	if err := v.Client.List(ctx, existingList); err != nil {
@@ -212,36 +230,19 @@ func (v *Validator) validateOverlaps(ctx context.Context, current *tupprv1alpha1
 
 // getMatchingNodes returns a set of node names that match the given selector
 func (v *Validator) getMatchingNodes(ctx context.Context, labelSelector *metav1.LabelSelector) (map[string]bool, error) {
-	nodes, err := v.listSelectedNodes(ctx, labelSelector)
+	nodes, err := nodeutil.ListSelectedNodes(ctx, v.Client, labelSelector)
 	if err != nil {
 		return nil, err
 	}
+	return nodeNameSet(nodes), nil
+}
 
+func nodeNameSet(nodes []corev1.Node) map[string]bool {
 	nodeSet := make(map[string]bool, len(nodes))
 	for _, node := range nodes {
 		nodeSet[node.Name] = true
 	}
-	return nodeSet, nil
-}
-
-// listSelectedNodes returns the nodes matching the selector, sorted by name.
-func (v *Validator) listSelectedNodes(ctx context.Context, labelSelector *metav1.LabelSelector) ([]corev1.Node, error) {
-	opts := []client.ListOption{}
-	if labelSelector != nil {
-		selector, err := metav1.LabelSelectorAsSelector(labelSelector)
-		if err != nil {
-			return nil, fmt.Errorf("invalid nodeSelector: %w", err)
-		}
-		opts = append(opts, client.MatchingLabelsSelector{Selector: selector})
-	}
-	nodeList := &corev1.NodeList{}
-	if err := v.Client.List(ctx, nodeList, opts...); err != nil {
-		return nil, fmt.Errorf("failed to list nodes: %w", err)
-	}
-	slices.SortFunc(nodeList.Items, func(a, b corev1.Node) int {
-		return strings.Compare(a.Name, b.Name)
-	})
-	return nodeList.Items, nil
+	return nodeSet
 }
 
 func findNodeIntersection(setA, setB map[string]bool) []string {
@@ -255,8 +256,10 @@ func findNodeIntersection(setA, setB map[string]bool) []string {
 	return intersection
 }
 
-// validateParallelism checks that parallelism is within valid bounds.
-func (v *Validator) validateParallelism(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
+// validateParallelism checks that parallelism is within valid bounds. A
+// nodeCount of 0 (none selected, or the nodes couldn't be listed) skips the
+// upper bound.
+func validateParallelism(t *tupprv1alpha1.TalosUpgrade, nodeCount int) (admission.Warnings, error) {
 	if t.Spec.Parallelism == nil {
 		return nil, nil
 	}
@@ -266,15 +269,7 @@ func (v *Validator) validateParallelism(ctx context.Context, t *tupprv1alpha1.Ta
 		return nil, fmt.Errorf("spec.parallelism must be >= 1, got %d", p)
 	}
 
-	matchingNodes, err := v.getMatchingNodes(ctx, t.Spec.NodeSelector)
-	if err != nil {
-		// Fail open if we can't count nodes
-		log.FromContext(ctx).Error(err, "Failed to count matching nodes for parallelism validation")
-		return nil, nil
-	}
-
-	nodeCount := int32(len(matchingNodes))
-	if nodeCount > 0 && p > nodeCount {
+	if nodeCount > 0 && int(p) > nodeCount {
 		return nil, fmt.Errorf("spec.parallelism (%d) exceeds number of matching nodes (%d)", p, nodeCount)
 	}
 

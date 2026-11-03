@@ -20,6 +20,7 @@ import (
 const (
 	testTalos114    = "v1.14.0"
 	testTalos1115   = "v1.11.5"
+	testTalos1135   = "v1.13.5"
 	testKube133     = "v1.33.1"
 	testTooOldError = "host version 1.11.5 is too old to upgrade to Talos 1.14.0"
 )
@@ -38,12 +39,22 @@ func withVersionAnnotation(node *corev1.Node, version string) *corev1.Node {
 	return node
 }
 
+func newKubernetesUpgrade(version string, phase tupprv1alpha1.JobPhase) *tupprv1alpha1.KubernetesUpgrade {
+	return &tupprv1alpha1.KubernetesUpgrade{
+		ObjectMeta: metav1.ObjectMeta{Name: "kubernetes"},
+		Spec: tupprv1alpha1.KubernetesUpgradeSpec{
+			Kubernetes: tupprv1alpha1.KubernetesSpec{Version: version},
+		},
+		Status: tupprv1alpha1.KubernetesUpgradeStatus{Phase: phase},
+	}
+}
+
 // upgradePathWarnings returns the warnings validateUpgradePath can emit, so a
 // case can assert none appeared without matching the webhook's other warnings.
 func upgradePathWarnings(warnings []string) []string {
 	var out []string
 	for _, w := range warnings {
-		if strings.Contains(w, "will be downgraded") || strings.Contains(w, "compatibility data") {
+		if strings.Contains(w, "will be downgraded") || strings.Contains(w, "compatibility data") || strings.Contains(w, "KubernetesUpgrade") {
 			out = append(out, w)
 		}
 	}
@@ -54,6 +65,9 @@ func TestTalosUpgrade_ValidateCreate_UpgradePath(t *testing.T) {
 	nonTalos := newWebhookNode(testNode1, nil)
 	nonTalos.Status.NodeInfo.OSImage = "Ubuntu 22.04 LTS"
 	nonTalos.Status.NodeInfo.KubeletVersion = "v1.20.0"
+	k3os := newWebhookNode(testNode2, nil)
+	k3os.Status.NodeInfo.OSImage = "k3OS v0.21.5-k3s2r1"
+	k3os.Status.NodeInfo.KubeletVersion = "v1.21.5+k3s2"
 
 	tooOld := func(names ...string) []*corev1.Node {
 		nodes := make([]*corev1.Node, 0, len(names))
@@ -64,11 +78,12 @@ func TestTalosUpgrade_ValidateCreate_UpgradePath(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		target      string
-		nodes       []*corev1.Node
-		wantErr     []string
-		wantWarning string
+		name         string
+		target       string
+		nodes        []*corev1.Node
+		objects      []runtime.Object
+		wantErr      []string
+		wantWarnings []string
 	}{
 		{
 			name:   "supported upgrade",
@@ -89,6 +104,11 @@ func TestTalosUpgrade_ValidateCreate_UpgradePath(t *testing.T) {
 			name:   "non-Talos osImage is skipped",
 			target: testTalos114,
 			nodes:  []*corev1.Node{nonTalos},
+		},
+		{
+			name:   "non-Talos osImage with a v-prefixed version is skipped",
+			target: testTalos114,
+			nodes:  []*corev1.Node{k3os},
 		},
 		{
 			name:   "pre-release target",
@@ -115,9 +135,41 @@ func TestTalosUpgrade_ValidateCreate_UpgradePath(t *testing.T) {
 		},
 		{
 			name:    "running Kubernetes too new for the target",
-			target:  "v1.13.5",
+			target:  testTalos1135,
 			nodes:   []*corev1.Node{newTalosNode(testNode1, "v1.12.3", "v1.37.0")},
 			wantErr: []string{"Kubernetes 1.37.0 is too new to be used with Talos 1.13.5"},
+		},
+		{
+			name:   "a node with both problems reports both",
+			target: testTalos114,
+			nodes:  []*corev1.Node{newTalosNode(testNode1, testTalos1115, "v1.31.4")},
+			wantErr: []string{
+				testTooOldError + " (node(s) node-1); version of Kubernetes 1.31.4 is too old to be used with Talos 1.14.0 (node(s) node-1)",
+			},
+		},
+		{
+			name:    "active KubernetesUpgrade target is checked instead of the kubelet",
+			target:  testTalos114,
+			nodes:   []*corev1.Node{newTalosNode(testNode1, "v1.13.2", "v1.31.4")},
+			objects: []runtime.Object{newKubernetesUpgrade("v1.33.0", tupprv1alpha1.JobPhaseUpgrading)},
+			wantWarnings: []string{
+				"KubernetesUpgrade 'kubernetes' is in progress; Kubernetes support was checked against its target v1.33.0",
+			},
+		},
+		{
+			name:         "active KubernetesUpgrade target too new for the Talos target",
+			target:       testTalos1135,
+			nodes:        []*corev1.Node{newTalosNode(testNode1, "v1.12.3", "v1.36.2")},
+			objects:      []runtime.Object{newKubernetesUpgrade("v1.37.0", tupprv1alpha1.JobPhaseUpgrading)},
+			wantErr:      []string{"Kubernetes 1.37.0 is too new to be used with Talos 1.13.5"},
+			wantWarnings: []string{"KubernetesUpgrade 'kubernetes' is in progress"},
+		},
+		{
+			name:    "finished KubernetesUpgrade is ignored",
+			target:  testTalos114,
+			nodes:   []*corev1.Node{newTalosNode(testNode1, "v1.13.2", "v1.31.4")},
+			objects: []runtime.Object{newKubernetesUpgrade("v1.33.0", tupprv1alpha1.JobPhaseCompleted)},
+			wantErr: []string{"Kubernetes 1.31.4 is too old to be used with Talos 1.14.0"},
 		},
 		{
 			name:   "several reasons are listed in order",
@@ -131,10 +183,10 @@ func TestTalosUpgrade_ValidateCreate_UpgradePath(t *testing.T) {
 			},
 		},
 		{
-			name:        "supported downgrade warns",
-			target:      "v1.13.5",
-			nodes:       []*corev1.Node{newTalosNode(testNode1, "v1.14.1", testKube133)},
-			wantWarning: "Node(s) node-1 will be downgraded from Talos v1.14.1 to v1.13.5",
+			name:         "supported downgrade warns",
+			target:       testTalos1135,
+			nodes:        []*corev1.Node{newTalosNode(testNode1, "v1.14.1", testKube133)},
+			wantWarnings: []string{"Node(s) node-1 will be downgraded from Talos v1.14.1 to v1.13.5"},
 		},
 		{
 			name:    "downgrade past the supported window",
@@ -143,16 +195,37 @@ func TestTalosUpgrade_ValidateCreate_UpgradePath(t *testing.T) {
 			wantErr: []string{"host version 1.14.1 is too new to downgrade to Talos 1.12.0"},
 		},
 		{
-			name:        "target outside the compatibility data warns",
-			target:      "v1.99.0",
-			nodes:       []*corev1.Node{newTalosNode(testNode1, "v1.12.3", testKube133)},
-			wantWarning: "Talos v1.99.0 is not in the compatibility data",
+			name:         "target outside the compatibility data warns",
+			target:       "v1.99.0",
+			nodes:        []*corev1.Node{newTalosNode(testNode1, "v1.12.3", testKube133)},
+			wantWarnings: []string{"Talos v1.99.0 is not in the compatibility data"},
 		},
 		{
-			name:        "target outside the compatibility data skips the Kubernetes check",
-			target:      "v1.99.0",
-			nodes:       []*corev1.Node{newTalosNode(testNode1, "v1.12.3", "v1.20.0")},
-			wantWarning: "Talos v1.99.0 is not in the compatibility data",
+			name:         "target outside the compatibility data skips the Kubernetes check",
+			target:       "v1.99.0",
+			nodes:        []*corev1.Node{newTalosNode(testNode1, "v1.12.3", "v1.20.0")},
+			wantWarnings: []string{"Talos v1.99.0 is not in the compatibility data"},
+		},
+		{
+			name:   "downgrade to a target outside the compatibility data warns",
+			target: "v1.1.0",
+			nodes:  []*corev1.Node{newTalosNode(testNode1, "v1.12.3", testKube133)},
+			wantWarnings: []string{
+				"Talos v1.1.0 is not in the compatibility data",
+				"Node(s) node-1 will be downgraded from Talos v1.12.3 to v1.1.0",
+			},
+		},
+		{
+			name:    "target that is not valid semver is rejected",
+			target:  "v1.14.0-alpha.01",
+			nodes:   []*corev1.Node{newTalosNode(testNode1, "v1.12.3", testKube133)},
+			wantErr: []string{`invalid target version "v1.14.0-alpha.01"`, "(node(s) node-1)"},
+		},
+		{
+			name:    "target with a leading zero is rejected",
+			target:  "v1.014.0",
+			nodes:   []*corev1.Node{newTalosNode(testNode1, "v1.13.0", testKube133)},
+			wantErr: []string{`invalid target version "v1.014.0"`},
 		},
 		{
 			name:   "per-node version annotation is the node's target",
@@ -160,9 +233,16 @@ func TestTalosUpgrade_ValidateCreate_UpgradePath(t *testing.T) {
 			nodes:  []*corev1.Node{withVersionAnnotation(newTalosNode(testNode1, testTalos1115, testKube133), "v1.13.0")},
 		},
 		{
-			name:   "annotation without the v prefix matches the running version",
-			target: testTalos114,
-			nodes:  []*corev1.Node{withVersionAnnotation(newTalosNode(testNode1, "v1.13.0", testKube133), "1.13.0")},
+			name:    "annotation without the v prefix is rejected",
+			target:  testTalos114,
+			nodes:   []*corev1.Node{withVersionAnnotation(newTalosNode(testNode1, "v1.13.0", testKube133), "1.13.0")},
+			wantErr: []string{`invalid target version "1.13.0"`, "(pinned by " + constants.VersionAnnotation + ")"},
+		},
+		{
+			name:    "annotation that is not a version is rejected",
+			target:  testTalos114,
+			nodes:   []*corev1.Node{withVersionAnnotation(newTalosNode(testNode1, "v1.13.0", testKube133), "latest")},
+			wantErr: []string{`invalid target version "latest"`},
 		},
 		{
 			name:    "rejection names the pinning annotation",
@@ -174,7 +254,7 @@ func TestTalosUpgrade_ValidateCreate_UpgradePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			objects := []runtime.Object{talosConfigSecretWithKey(testNamespace, validTalosConfig())}
+			objects := append([]runtime.Object{talosConfigSecretWithKey(testNamespace, validTalosConfig())}, tt.objects...)
 			for _, n := range tt.nodes {
 				objects = append(objects, n)
 			}
@@ -191,11 +271,13 @@ func TestTalosUpgrade_ValidateCreate_UpgradePath(t *testing.T) {
 			}
 
 			pathWarnings := upgradePathWarnings(warnings)
-			switch {
-			case tt.wantWarning == "" && len(pathWarnings) > 0:
-				t.Fatalf("expected no upgrade path warnings, got: %v", pathWarnings)
-			case tt.wantWarning != "" && !containsWarning(pathWarnings, tt.wantWarning):
-				t.Fatalf("expected warning containing %q, got: %v", tt.wantWarning, pathWarnings)
+			if len(pathWarnings) != len(tt.wantWarnings) {
+				t.Fatalf("expected %d upgrade path warning(s), got: %v", len(tt.wantWarnings), pathWarnings)
+			}
+			for _, want := range tt.wantWarnings {
+				if !containsWarning(pathWarnings, want) {
+					t.Fatalf("expected warning containing %q, got: %v", want, pathWarnings)
+				}
 			}
 		})
 	}
@@ -229,11 +311,15 @@ func TestTalosUpgrade_ValidateUpdate_UpgradePathOnlyOnTargetChange(t *testing.T)
 	tooOld := newTalosNode(testNode1, testTalos1115, testKube133)
 	tooOld.Labels = map[string]string{testLabelRole: testRoleWorker}
 
+	invalidSelector := &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{
+		{Key: testLabelRole, Operator: metav1.LabelSelectorOpIn},
+	}}
+
 	tests := []struct {
 		name    string
 		old     *tupprv1alpha1.TalosUpgrade
 		update  func(*tupprv1alpha1.TalosUpgrade)
-		wantErr bool
+		wantErr string
 	}{
 		{
 			name: "metadata-only update is not re-checked",
@@ -243,10 +329,25 @@ func TestTalosUpgrade_ValidateUpdate_UpgradePathOnlyOnTargetChange(t *testing.T)
 			},
 		},
 		{
+			name: "empty nodeSelector replacing nil is not re-checked",
+			old:  newTalosUpgrade("test", withTalosVersion(testTalos114), withTalosPhase(tupprv1alpha1.JobPhaseCompleted)),
+			update: func(tu *tupprv1alpha1.TalosUpgrade) {
+				tu.Spec.NodeSelector = &metav1.LabelSelector{}
+				tu.Spec.Policy.Debug = true
+			},
+		},
+		{
+			name: "metadata-only update of a plan with an invalid nodeSelector is allowed",
+			old: newTalosUpgrade("test", withTalosVersion(testTalos114), func(tu *tupprv1alpha1.TalosUpgrade) {
+				tu.Spec.NodeSelector = invalidSelector.DeepCopy()
+			}),
+			update: func(tu *tupprv1alpha1.TalosUpgrade) { tu.Finalizers = nil },
+		},
+		{
 			name:    "changed target is checked",
 			old:     newTalosUpgrade("test", withTalosVersion("v1.13.0"), withTalosPhase(tupprv1alpha1.JobPhaseCompleted)),
 			update:  func(tu *tupprv1alpha1.TalosUpgrade) { tu.Spec.Talos.Version = testTalos114 },
-			wantErr: true,
+			wantErr: "too old to upgrade",
 		},
 		{
 			name: "changed nodeSelector is checked",
@@ -254,7 +355,15 @@ func TestTalosUpgrade_ValidateUpdate_UpgradePathOnlyOnTargetChange(t *testing.T)
 			update: func(tu *tupprv1alpha1.TalosUpgrade) {
 				tu.Spec.NodeSelector = &metav1.LabelSelector{MatchLabels: map[string]string{testLabelRole: testRoleWorker}}
 			},
-			wantErr: true,
+			wantErr: "too old to upgrade",
+		},
+		{
+			name: "changed nodeSelector that is invalid is rejected",
+			old:  newTalosUpgrade("test", withTalosVersion(testTalos114), withTalosPhase(tupprv1alpha1.JobPhaseCompleted)),
+			update: func(tu *tupprv1alpha1.TalosUpgrade) {
+				tu.Spec.NodeSelector = invalidSelector.DeepCopy()
+			},
+			wantErr: "invalid nodeSelector",
 		},
 	}
 
@@ -266,10 +375,10 @@ func TestTalosUpgrade_ValidateUpdate_UpgradePathOnlyOnTargetChange(t *testing.T)
 			tt.update(updated)
 
 			_, err := v.ValidateUpdate(context.Background(), tt.old, updated)
-			if tt.wantErr && (err == nil || !strings.Contains(err.Error(), "too old to upgrade")) {
-				t.Fatalf("expected upgrade path rejection, got: %v", err)
+			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
+				t.Fatalf("expected error containing %q, got: %v", tt.wantErr, err)
 			}
-			if !tt.wantErr && err != nil {
+			if tt.wantErr == "" && err != nil {
 				t.Fatalf("expected update to be allowed, got: %v", err)
 			}
 		})

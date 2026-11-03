@@ -1,6 +1,7 @@
 package talosupgrade
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -10,19 +11,21 @@ import (
 	"github.com/blang/semver/v4"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
 	"github.com/siderolabs/talos/pkg/machinery/compatibility"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
+	"github.com/home-operations/tuppr/internal/webhook/validation"
 )
 
 // maxListedNodes caps how many node names a single message lists.
 const maxListedNodes = 3
 
 // validateUpgradePath checks the version each selected node would be upgraded
-// to against the Talos and Kubernetes versions it runs now, using the
+// to against the Talos and Kubernetes versions it runs, using the
 // compatibility tables Talos itself ships in machinery. Talos's installer
 // refuses an unsupported Talos version path, but only once the node has been
 // cordoned and drained. Talos checks Kubernetes support only when it validates
@@ -30,37 +33,34 @@ const maxListedNodes = 3
 // without this check every node in the plan would be upgraded before the
 // mismatch surfaced.
 //
-// Nodes whose osImage or kubeletVersion is not reported are skipped, and an
-// API error fails open, like the other cluster-state checks here. Node changes
-// after admission (annotations, labels, new nodes) are not re-checked.
-func (v *Validator) validateUpgradePath(ctx context.Context, t *tupprv1alpha1.TalosUpgrade) (admission.Warnings, error) {
-	nodes, err := v.listSelectedNodes(ctx, t.Spec.NodeSelector)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to list nodes for upgrade path validation")
-		return nil, nil
-	}
-
+// Nodes without a Talos osImage are skipped entirely, and nodes without a
+// kubeletVersion skip only the Kubernetes check. While a KubernetesUpgrade is
+// active, the Kubernetes check uses its target instead of the kubelets: the
+// controller holds this plan until that upgrade finishes. Node changes after
+// admission (annotations, labels, new nodes) are not re-checked.
+func (v *Validator) validateUpgradePath(ctx context.Context, t *tupprv1alpha1.TalosUpgrade, nodes []corev1.Node) (admission.Warnings, error) {
 	var (
 		warnings   admission.Warnings
+		kubeTarget string
+		targets    = map[string]talosTarget{}
 		problems   = map[string][]string{}
 		downgrades = map[string][]string{}
 		unchecked  []string
 	)
+	if ku := v.activeKubernetesUpgrade(ctx); ku != nil {
+		kubeTarget = ku.Spec.Kubernetes.Version
+		warnings = append(warnings, fmt.Sprintf(
+			"KubernetesUpgrade '%s' is in progress; Kubernetes support was checked against its target %s, which this plan waits for.",
+			ku.Name, kubeTarget))
+	}
+
 	for i := range nodes {
 		node := &nodes[i]
-		target := nodeutil.TargetTalosVersion(node, t.Spec.Talos.Version)
 		current := nodeutil.TalosVersionFromOSImage(node.Status.NodeInfo.OSImage)
-		if current == "" {
-			continue
-		}
-		// The same tolerant parse machinery uses, so "1.13.0" and "v1.13.0"
-		// are the same version.
-		targetSemver, err := semver.ParseTolerant(target)
-		if err != nil {
-			continue
-		}
-		currentSemver, err := semver.ParseTolerant(current)
-		if err != nil || currentSemver.EQ(targetSemver) {
+		target := nodeutil.TargetTalosVersion(node, t.Spec.Talos.Version)
+		// A raw comparison, like the controller's: it treats "1.13.0" and
+		// "v1.13.0" as different versions, so the former is checked below.
+		if current == "" || current == target {
 			continue
 		}
 
@@ -69,40 +69,44 @@ func (v *Validator) validateUpgradePath(ctx context.Context, t *tupprv1alpha1.Ta
 			name += " (pinned by " + constants.VersionAnnotation + ")"
 		}
 
-		targetVersion, err := compatibility.ParseTalosVersion(&machine.VersionInfo{Tag: target})
-		if err != nil {
+		tgt, ok := targets[target]
+		if !ok {
+			tgt = parseTalosTarget(target)
+			targets[target] = tgt
+		}
+		if tgt.err != nil {
+			reason := fmt.Sprintf("invalid target version %q: %v", target, tgt.err)
+			problems[reason] = append(problems[reason], name)
 			continue
 		}
-		// A release in the tables can always be reinstalled over itself, so
-		// failing this means target is outside the tables tuppr was built with.
-		if targetVersion.UpgradeableFrom(targetVersion) != nil {
-			if !slices.Contains(unchecked, target) {
-				unchecked = append(unchecked, target)
-			}
+		hostSemver, host, err := parseTalosVersion(current)
+		if err != nil {
 			continue
 		}
 
-		hostVersion, err := compatibility.ParseTalosVersion(&machine.VersionInfo{Tag: current})
-		if err != nil {
-			continue
+		var pathErr error
+		if tgt.inTables {
+			pathErr = tgt.version.UpgradeableFrom(host)
+		} else if !slices.Contains(unchecked, target) {
+			unchecked = append(unchecked, target)
 		}
-		if err := targetVersion.UpgradeableFrom(hostVersion); err != nil {
-			problems[err.Error()] = append(problems[err.Error()], name)
-			continue
-		}
-		if currentSemver.GT(targetSemver) {
+		if pathErr != nil {
+			problems[pathErr.Error()] = append(problems[pathErr.Error()], name)
+		} else if hostSemver.GT(tgt.semver) {
 			key := current + " to " + target
 			downgrades[key] = append(downgrades[key], name)
 		}
 
-		if kubelet := node.Status.NodeInfo.KubeletVersion; kubelet != "" {
-			k8sVersion, err := compatibility.ParseKubernetesVersion(kubelet)
-			if err != nil {
-				continue
-			}
-			if err := k8sVersion.SupportedWith(targetVersion); err != nil {
-				problems[err.Error()] = append(problems[err.Error()], name)
-			}
+		kube := cmp.Or(kubeTarget, node.Status.NodeInfo.KubeletVersion)
+		if !tgt.inTables || kube == "" {
+			continue
+		}
+		kubeVersion, err := compatibility.ParseKubernetesVersion(kube)
+		if err != nil {
+			continue
+		}
+		if err := kubeVersion.SupportedWith(tgt.version); err != nil {
+			problems[err.Error()] = append(problems[err.Error()], name)
 		}
 	}
 
@@ -126,7 +130,66 @@ func (v *Validator) validateUpgradePath(ctx context.Context, t *tupprv1alpha1.Ta
 	return warnings, fmt.Errorf("unsupported upgrade: %s", strings.Join(reasons, "; "))
 }
 
+// activeKubernetesUpgrade returns the KubernetesUpgrade in progress, if any.
+// A list error falls back to checking the kubelets' own versions.
+func (v *Validator) activeKubernetesUpgrade(ctx context.Context) *tupprv1alpha1.KubernetesUpgrade {
+	list := &tupprv1alpha1.KubernetesUpgradeList{}
+	if err := v.Client.List(ctx, list); err != nil {
+		log.FromContext(ctx).Error(err, "Failed to list KubernetesUpgrades for upgrade path validation")
+		return nil
+	}
+	for i := range list.Items {
+		if list.Items[i].Status.Phase.IsActive() {
+			return &list.Items[i]
+		}
+	}
+	return nil
+}
+
+// talosTarget is a node's target Talos version, parsed once per distinct value.
+type talosTarget struct {
+	semver   semver.Version
+	version  *compatibility.TalosVersion
+	inTables bool
+	err      error
+}
+
+func parseTalosTarget(target string) talosTarget {
+	// Nothing else validates an annotation, and the controller uses it
+	// verbatim as the installer image tag, so it must match the format
+	// spec.talos.version is held to.
+	if err := validation.ValidateVersionFormat(target); err != nil {
+		return talosTarget{err: err}
+	}
+	sv, version, err := parseTalosVersion(target)
+	if err != nil {
+		return talosTarget{err: err}
+	}
+	// Every table accepts a host on the target's own minor, so a failed probe
+	// means the target is outside the tables tuppr was built with. The
+	// pre-release keeps the probe from matching DeniedHostUpgradeVersions.
+	_, probe, err := parseTalosVersion(fmt.Sprintf("v%d.%d.0-tuppr.probe", sv.Major, sv.Minor))
+	return talosTarget{
+		semver:   sv,
+		version:  version,
+		inTables: err == nil && version.UpgradeableFrom(probe) == nil,
+	}
+}
+
+// parseTalosVersion parses v strictly. Machinery's tolerant parser reads
+// "v1.014.0" as 1.14.0, but the controller uses a target verbatim as the
+// installer image tag.
+func parseTalosVersion(v string) (semver.Version, *compatibility.TalosVersion, error) {
+	sv, err := semver.Parse(strings.TrimPrefix(v, "v"))
+	if err != nil {
+		return semver.Version{}, nil, err
+	}
+	version, err := compatibility.ParseTalosVersion(&machine.VersionInfo{Tag: v})
+	return sv, version, err
+}
+
 func listNodes(names []string) string {
+	slices.Sort(names)
 	if len(names) > maxListedNodes {
 		return fmt.Sprintf("%s and %d more", strings.Join(names[:maxListedNodes], ", "), len(names)-maxListedNodes)
 	}
