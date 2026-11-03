@@ -2,6 +2,7 @@ package talosupgrade
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -10,7 +11,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 // Helper functions copied from kubernetesupgrade tests since test files can't be imported
@@ -140,9 +143,20 @@ func newTalosValidator(objects ...runtime.Object) *Validator {
 		WithScheme(scheme).
 		WithRuntimeObjects(objects...).
 		Build()
+	// In production a Secret read through Client starts a cluster-wide Secret
+	// informer, so only APIReader may serve it.
+	cached := interceptor.NewClient(c, interceptor.Funcs{
+		Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, ok := obj.(*corev1.Secret); ok {
+				return errors.New("secret read through the cached client")
+			}
+			return cl.Get(ctx, key, obj, opts...)
+		},
+	})
 
 	return &Validator{
-		Client:            c,
+		Client:            cached,
+		APIReader:         c,
 		TalosConfigSecret: testTalosConfigKey,
 		Namespace:         testNamespace,
 	}

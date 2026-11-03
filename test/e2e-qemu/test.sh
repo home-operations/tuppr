@@ -275,12 +275,15 @@ main() {
     fi
 
     log "Installing tuppr via Helm..."
+    # No health checks run here, so dropping the read-all health check rule
+    # proves the controller's own RBAC is complete.
     helm upgrade --install tuppr "$chart_ref" "${helm_oci_args[@]}" \
         --namespace tuppr-system \
         --set image.repository="$REPO" \
         --set image.tag="$TAG" \
         --set image.pullPolicy=Always \
         --set replicaCount=2 \
+        --set-json 'rbac.healthCheckRules=[]' \
         --wait \
         --timeout 5m
 

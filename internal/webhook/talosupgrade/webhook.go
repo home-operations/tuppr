@@ -30,10 +30,15 @@ type Validator struct {
 	// connection, so spec.silences without one warns at apply time instead of
 	// being silently inert.
 	AlertmanagerConfigured bool
+	// APIReader reads the talosconfig Secret uncached. A cached read would
+	// start a Secret informer, which needs list/watch on Secrets in every
+	// namespace.
+	APIReader client.Reader
 }
 
 // +kubebuilder:webhook:path=/validate-tuppr-home-operations-com-v1alpha1-talosupgrade,mutating=false,failurePolicy=fail,sideEffects=None,groups=tuppr.home-operations.com,resources=talosupgrades,verbs=create;update,versions=v1alpha1,name=vtalosupgrade.kb.io,admissionReviewVersions=v1
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=talosupgrades,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",namespace=tuppr-system,resources=secrets,verbs=get
 
 var _ admission.Validator[*tupprv1alpha1.TalosUpgrade] = &Validator{}
 
@@ -107,7 +112,7 @@ func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade,
 		warnings = append(warnings, overlapWarnings...)
 	}
 
-	if _, err := validation.ValidateTalosConfigSecret(ctx, v.Client, v.TalosConfigSecret, v.Namespace); err != nil {
+	if _, err := validation.ValidateTalosConfigSecret(ctx, v.APIReader, v.TalosConfigSecret, v.Namespace); err != nil {
 		return warnings, err
 	}
 

@@ -92,7 +92,8 @@ Kubernetes: `>=1.25.0-0`
 | podSecurityContext | object | `{"fsGroup":65532,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}}` | Pod-level securityContext (runs as non-root uid/gid 65532). |
 | priorityClassName | string | `"system-node-critical"` | Priority class name for pod scheduling. |
 | rbac.annotations | object | `{}` | Annotations for the RBAC resources. |
-| rbac.create | bool | `true` | Create the ClusterRole + ClusterRoleBinding the controller needs to manage nodes and jobs. |
+| rbac.create | bool | `true` | Create the ClusterRole, the Role in the release namespace, and their bindings that the controller needs to manage nodes and jobs. |
+| rbac.healthCheckRules | list | `[{"apiGroups":["*"],"resources":["*"],"verbs":["get","list","watch"]}]` | ClusterRole rules for the resources that `healthChecks` read. The default lets the controller read every resource in the cluster, Secrets included. To limit it, replace it with read rules for only the kinds that your health checks use. |
 | readinessProbe | object | `{"httpGet":{"path":"/readyz","port":"metrics"},"initialDelaySeconds":5,"periodSeconds":10}` | Readiness probe. |
 | replicaCount | int | `1` | Number of controller replicas (only one is active at a time via leader election). |
 | resources | object | `{}` | Pod resource requests/limits. |
