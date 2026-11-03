@@ -50,9 +50,12 @@ The webhook warns when a node would be downgraded, and when the target isn't
 in the compatibility data the running tuppr release was built with (such as
 a Talos release newer than it). In the second case, the upgrade path and
 Kubernetes support aren't checked. If a `KubernetesUpgrade` is in progress,
-the webhook checks Kubernetes support against that upgrade's target version,
-because the `TalosUpgrade` waits for it to finish. Nodes that don't report a
-Talos version are skipped. If the nodes can't be listed, the check is skipped
+the target must support both the Kubernetes version each node runs now and
+that upgrade's target version. The `TalosUpgrade` waits for the
+`KubernetesUpgrade` to finish, but it starts anyway if that upgrade fails. If
+only the running version is unsupported, apply the `TalosUpgrade` again after
+the `KubernetesUpgrade` completes. Nodes that don't report a Talos version are
+skipped. If the nodes can't be listed, the check is skipped
 rather than blocking the change.
 
 The check runs at admission only. Changes on the Node side afterwards, such

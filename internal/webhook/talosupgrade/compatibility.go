@@ -1,7 +1,6 @@
 package talosupgrade
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -33,11 +32,11 @@ const maxListedNodes = 3
 // without this check every node in the plan would be upgraded before the
 // mismatch surfaced.
 //
-// Nodes without a Talos osImage are skipped entirely, and nodes without a
-// kubeletVersion skip only the Kubernetes check. While a KubernetesUpgrade is
-// active, the Kubernetes check uses its target instead of the kubelets: the
-// controller holds this plan until that upgrade finishes. Node changes after
-// admission (annotations, labels, new nodes) are not re-checked.
+// Nodes without a Talos osImage are skipped entirely. While a
+// KubernetesUpgrade is active, the target must also support its version: the
+// controller holds this plan until that upgrade finishes, but starts it anyway
+// if that upgrade fails, so the running kubelet must stay supported too. Node
+// changes after admission (annotations, labels, new nodes) are not re-checked.
 func (v *Validator) validateUpgradePath(ctx context.Context, t *tupprv1alpha1.TalosUpgrade, nodes []corev1.Node) (admission.Warnings, error) {
 	var (
 		warnings   admission.Warnings
@@ -50,7 +49,7 @@ func (v *Validator) validateUpgradePath(ctx context.Context, t *tupprv1alpha1.Ta
 	if ku := v.activeKubernetesUpgrade(ctx); ku != nil {
 		kubeTarget = ku.Spec.Kubernetes.Version
 		warnings = append(warnings, fmt.Sprintf(
-			"KubernetesUpgrade '%s' is in progress; Kubernetes support was checked against its target %s, which this plan waits for.",
+			"KubernetesUpgrade '%s' is in progress; Kubernetes support was checked against its target %s as well as the running kubelets.",
 			ku.Name, kubeTarget))
 	}
 
@@ -97,16 +96,24 @@ func (v *Validator) validateUpgradePath(ctx context.Context, t *tupprv1alpha1.Ta
 			downgrades[key] = append(downgrades[key], name)
 		}
 
-		kube := cmp.Or(kubeTarget, node.Status.NodeInfo.KubeletVersion)
-		if !tgt.inTables || kube == "" {
+		if !tgt.inTables {
 			continue
 		}
-		kubeVersion, err := compatibility.ParseKubernetesVersion(kube)
-		if err != nil {
-			continue
+		kubes := []string{node.Status.NodeInfo.KubeletVersion}
+		if kubeTarget != "" && kubeTarget != kubes[0] {
+			kubes = append(kubes, kubeTarget)
 		}
-		if err := kubeVersion.SupportedWith(tgt.version); err != nil {
-			problems[err.Error()] = append(problems[err.Error()], name)
+		for _, kube := range kubes {
+			if kube == "" {
+				continue
+			}
+			kubeVersion, err := compatibility.ParseKubernetesVersion(kube)
+			if err != nil {
+				continue
+			}
+			if err := kubeVersion.SupportedWith(tgt.version); err != nil {
+				problems[err.Error()] = append(problems[err.Error()], name)
+			}
 		}
 	}
 
@@ -131,7 +138,7 @@ func (v *Validator) validateUpgradePath(ctx context.Context, t *tupprv1alpha1.Ta
 }
 
 // activeKubernetesUpgrade returns the KubernetesUpgrade in progress, if any.
-// A list error falls back to checking the kubelets' own versions.
+// A list error skips checking its target, like the other cluster checks here.
 func (v *Validator) activeKubernetesUpgrade(ctx context.Context) *tupprv1alpha1.KubernetesUpgrade {
 	list := &tupprv1alpha1.KubernetesUpgradeList{}
 	if err := v.Client.List(ctx, list); err != nil {

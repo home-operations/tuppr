@@ -24,6 +24,8 @@ const (
 	testTalos114RC2 = "v1.14.0-rc.2"
 	testKube133     = "v1.33.1"
 	testTooOldError = "host version 1.11.5 is too old to upgrade to Talos 1.14.0"
+	testKubeTooOld  = "Kubernetes 1.31.4 is too old to be used with Talos 1.14.0"
+	testKubeActive  = "KubernetesUpgrade 'kubernetes' is in progress"
 )
 
 func newTalosNode(name, talosVersion, kubeletVersion string) *corev1.Node {
@@ -176,7 +178,7 @@ func TestTalosUpgrade_ValidateCreate_UpgradePath(t *testing.T) {
 			name:    "running Kubernetes too old for the target",
 			target:  testTalos114,
 			nodes:   []*corev1.Node{newTalosNode(testNode1, "v1.13.2", "v1.31.4")},
-			wantErr: []string{"Kubernetes 1.31.4 is too old to be used with Talos 1.14.0", "(node(s) node-1)"},
+			wantErr: []string{testKubeTooOld, "(node(s) node-1)"},
 		},
 		{
 			name:    "running Kubernetes too new for the target",
@@ -193,13 +195,29 @@ func TestTalosUpgrade_ValidateCreate_UpgradePath(t *testing.T) {
 			},
 		},
 		{
-			name:    "active KubernetesUpgrade target is checked instead of the kubelet",
+			name:    "active KubernetesUpgrade target supported along with the kubelet",
 			target:  testTalos114,
-			nodes:   []*corev1.Node{newTalosNode(testNode1, "v1.13.2", "v1.31.4")},
-			objects: []runtime.Object{newKubernetesUpgrade("v1.33.0", tupprv1alpha1.JobPhaseUpgrading)},
+			nodes:   []*corev1.Node{newTalosNode(testNode1, "v1.13.2", testKube133)},
+			objects: []runtime.Object{newKubernetesUpgrade("v1.34.0", tupprv1alpha1.JobPhaseUpgrading)},
 			wantWarnings: []string{
-				"KubernetesUpgrade 'kubernetes' is in progress; Kubernetes support was checked against its target v1.33.0",
+				"KubernetesUpgrade 'kubernetes' is in progress; Kubernetes support was checked against its target v1.34.0 as well as the running kubelets",
 			},
+		},
+		{
+			name:         "running kubelet is still checked while a KubernetesUpgrade is active",
+			target:       testTalos114,
+			nodes:        []*corev1.Node{newTalosNode(testNode1, "v1.13.2", "v1.31.4")},
+			objects:      []runtime.Object{newKubernetesUpgrade("v1.33.0", tupprv1alpha1.JobPhaseUpgrading)},
+			wantErr:      []string{testKubeTooOld},
+			wantWarnings: []string{testKubeActive},
+		},
+		{
+			name:         "KubernetesUpgrade target equal to the kubelet lists the node once",
+			target:       testTalos114,
+			nodes:        []*corev1.Node{newTalosNode(testNode1, "v1.13.2", "v1.31.4")},
+			objects:      []runtime.Object{newKubernetesUpgrade("v1.31.4", tupprv1alpha1.JobPhaseUpgrading)},
+			wantErr:      []string{"version of Kubernetes 1.31.4 is too old to be used with Talos 1.14.0 (node(s) node-1)"},
+			wantWarnings: []string{testKubeActive},
 		},
 		{
 			name:         "active KubernetesUpgrade target too new for the Talos target",
@@ -207,14 +225,14 @@ func TestTalosUpgrade_ValidateCreate_UpgradePath(t *testing.T) {
 			nodes:        []*corev1.Node{newTalosNode(testNode1, "v1.12.3", "v1.36.2")},
 			objects:      []runtime.Object{newKubernetesUpgrade("v1.37.0", tupprv1alpha1.JobPhaseUpgrading)},
 			wantErr:      []string{"Kubernetes 1.37.0 is too new to be used with Talos 1.13.5"},
-			wantWarnings: []string{"KubernetesUpgrade 'kubernetes' is in progress"},
+			wantWarnings: []string{testKubeActive},
 		},
 		{
 			name:    "finished KubernetesUpgrade is ignored",
 			target:  testTalos114,
 			nodes:   []*corev1.Node{newTalosNode(testNode1, "v1.13.2", "v1.31.4")},
 			objects: []runtime.Object{newKubernetesUpgrade("v1.33.0", tupprv1alpha1.JobPhaseCompleted)},
-			wantErr: []string{"Kubernetes 1.31.4 is too old to be used with Talos 1.14.0"},
+			wantErr: []string{testKubeTooOld},
 		},
 		{
 			name:   "several reasons are listed in order",
