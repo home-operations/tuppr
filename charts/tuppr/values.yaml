@@ -206,10 +206,15 @@ webhook:
   annotations: {}
 
 rbac:
-  # -- Create the ClusterRole + ClusterRoleBinding the controller needs to manage nodes and jobs.
+  # -- Create the ClusterRole, the Role in the release namespace, and their bindings that the controller needs to manage nodes and jobs.
   create: true
   # -- Annotations for the RBAC resources.
   annotations: {}
+  # -- ClusterRole rules for the resources that `healthChecks` read. The default lets the controller read every resource in the cluster, Secrets included. To limit it, replace it with read rules for only the kinds that your health checks use.
+  healthCheckRules:
+    - apiGroups: ["*"]
+      resources: ["*"]
+      verbs: ["get", "list", "watch"]
 
 monitoring:
   serviceMonitor:

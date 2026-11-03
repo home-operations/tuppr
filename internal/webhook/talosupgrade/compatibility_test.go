@@ -362,7 +362,7 @@ func TestTalosUpgrade_ValidateCreate_UpgradePathFailsOpen(t *testing.T) {
 			},
 		}).
 		Build()
-	v := &Validator{Client: c, TalosConfigSecret: testTalosConfigKey, Namespace: testNamespace}
+	v := &Validator{Client: c, APIReader: c, TalosConfigSecret: testTalosConfigKey, Namespace: testNamespace}
 
 	if _, err := v.ValidateCreate(context.Background(), newTalosUpgrade("test", withTalosVersion(testTalos114))); err != nil {
 		t.Fatalf("expected the check to fail open when nodes can't be listed, got: %v", err)
