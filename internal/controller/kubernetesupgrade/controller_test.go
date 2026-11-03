@@ -478,6 +478,31 @@ func TestK8sReconcile_CompletionEndsHealthCheckStreak(t *testing.T) {
 	}
 }
 
+// Leaving HealthChecking clears the streak even when the in-memory copy, read
+// from a cache that lags the last status write, doesn't show one.
+func TestK8sSetPhase_ClearsStreakTheCacheMissed(t *testing.T) {
+	since := metav1.NewTime(time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC))
+	ku := newKubernetesUpgrade("test-upgrade",
+		withK8sFinalizer,
+		withK8sPhase(tupprv1alpha1.JobPhaseHealthChecking),
+		func(ku *tupprv1alpha1.KubernetesUpgrade) {
+			ku.Status.HealthChecksFailingSince = &since
+		},
+	)
+	cl := fake.NewClientBuilder().WithScheme(newTestScheme()).
+		WithObjects(ku).WithStatusSubresource(ku).Build()
+	r := newK8sReconciler(cl, &mockVersionGetter{}, &mockTalosClient{}, &mockHealthChecker{})
+
+	stale := getK8sUpgrade(t, cl, "test-upgrade")
+	stale.Status.HealthChecksFailingSince = nil
+	if err := r.setPhaseWithUpdates(context.Background(), stale, tupprv1alpha1.JobPhasePending, "", "", "Spec updated", nil); err != nil {
+		t.Fatalf("setPhaseWithUpdates: %v", err)
+	}
+	if got := getK8sUpgrade(t, cl, "test-upgrade").Status.HealthChecksFailingSince; got != nil {
+		t.Fatalf("expected the failure streak cleared, got %v", got)
+	}
+}
+
 func TestK8sReconcile_HealthCheckFailure(t *testing.T) {
 	scheme := newTestScheme()
 	ku := newKubernetesUpgrade("test-upgrade",

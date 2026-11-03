@@ -265,7 +265,9 @@ func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, kubernetesUpgrade 
 	// A failure streak spans one wait in HealthChecking. A run that moves on,
 	// or parks for a closed window or another upgrade, starts a new streak,
 	// so neither the backoff nor the wait metric counts that time.
-	if phase != tupprv1alpha1.JobPhaseHealthChecking && kubernetesUpgrade.Status.HealthChecksFailingSince != nil {
+	// Cleared whatever the in-memory status says: the cache can lag a streak
+	// the previous reconcile wrote.
+	if phase != tupprv1alpha1.JobPhaseHealthChecking {
 		updates[statusFieldHealthChecksFailingSince] = nil
 	}
 	applyPhaseAuditFields(&kubernetesUpgrade.Status, updates, phase, metav1.Now(), message)

@@ -739,6 +739,31 @@ func TestTalosReconcile_HealthCheckFailureStreak(t *testing.T) {
 	}
 }
 
+// Leaving HealthChecking clears the streak even when the in-memory copy, read
+// from a cache that lags the last status write, doesn't show one.
+func TestTalosSetPhase_ClearsStreakTheCacheMissed(t *testing.T) {
+	scheme := newTestScheme()
+	since := metav1.NewTime(time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC))
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhaseHealthChecking),
+		func(tu *tupprv1alpha1.TalosUpgrade) {
+			tu.Status.HealthChecksFailingSince = &since
+		},
+	)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tu).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
+
+	stale := getTalosUpgrade(t, cl, testUpgradeName)
+	stale.Status.HealthChecksFailingSince = nil
+	if err := r.setPhaseWithUpdates(context.Background(), stale, tupprv1alpha1.JobPhasePending, "", nil, "Spec updated", nil); err != nil {
+		t.Fatalf("setPhaseWithUpdates: %v", err)
+	}
+	if got := getTalosUpgrade(t, cl, testUpgradeName).Status.HealthChecksFailingSince; got != nil {
+		t.Fatalf("expected the failure streak cleared, got %v", got)
+	}
+}
+
 // A run that parks for a closed window ends its failure streak: the next
 // window starts a new one, backing off from RetryInterval again.
 func TestTalosReconcile_HealthCheckStreakEndsWhenWindowCloses(t *testing.T) {

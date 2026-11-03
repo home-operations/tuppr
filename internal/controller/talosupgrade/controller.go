@@ -321,7 +321,9 @@ func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, talosUpgrade *tupp
 	// A failure streak spans one wait in HealthChecking. A run that moves on,
 	// or parks for a closed window, a suspend or an unreachable node, starts a
 	// new streak, so neither the backoff nor the wait metric counts that time.
-	if phase != tupprv1alpha1.JobPhaseHealthChecking && talosUpgrade.Status.HealthChecksFailingSince != nil {
+	// Cleared whatever the in-memory status says: the cache can lag a streak
+	// the previous reconcile wrote.
+	if phase != tupprv1alpha1.JobPhaseHealthChecking {
 		updates[statusHealthChecksFailingSince] = nil
 	}
 	applyPhaseAuditFields(&talosUpgrade.Status, updates, phase, metav1.Now(), talosUpgrade.Spec.Talos.Version)
