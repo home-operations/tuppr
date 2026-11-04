@@ -2,14 +2,15 @@
 title: Upgrade coordination
 ---
 
-tuppr runs **one upgrade at a time across the whole cluster**. This is the
-safety property that lets you apply many upgrade resources at once and trust
-that they won't fight each other.
+tuppr keeps upgrades from fighting each other, so you can apply many upgrade
+resources at once. A `KubernetesUpgrade` waits while any `TalosUpgrade` is
+queued or in progress. A `TalosUpgrade` waits while another upgrade is in
+progress. Control-plane nodes are upgraded **one at a time across every plan**.
 
 |                   | `TalosUpgrade`                                         | `KubernetesUpgrade`           |
 | ----------------- | ------------------------------------------------------ | ----------------------------- |
 | Scope             | Talos on selected nodes                                | Kubernetes cluster-wide       |
-| Resources allowed | Many (queued, first-come-first-served)                 | Exactly one                   |
+| Resources allowed | Many (they take turns between batches)                 | Exactly one                   |
 | Within a plan     | Sequential, or parallel workers via `spec.parallelism` | Single controller node        |
 | Reboot            | Yes                                                    | No                            |
 | Health checks     | Before each node/batch                                 | Before the upgrade            |
@@ -18,16 +19,18 @@ that they won't fight each other.
 ## Multiple TalosUpgrade plans queue
 
 You may create several `TalosUpgrade` resources targeting different node groups
-(for example one per zone). Only **one plan executes at a time**, first-come,
-first-served; the rest stay `Pending` until the active plan finishes. Within a
-single plan, use [`spec.parallelism`](/talos-upgrades/#parallel-upgrades) to
-upgrade several worker nodes concurrently.
+(for example one per zone). A plan does not start a batch while another plan is
+in progress. It waits in `Pending` instead. Within a single plan, use
+[`spec.parallelism`](/talos-upgrades/#parallel-upgrades) to upgrade several
+worker nodes concurrently.
 
-Plans queue through their phases, and a running plan shows `Pending` for a
-moment between batches and while it retries an error, so another plan can start
-in that gap. Control-plane nodes have a guard that does not depend on phases:
-tuppr never starts a control-plane upgrade while another control-plane node's
-upgrade is in flight, from any plan (see
+Plans take turns between batches, not between runs. A running plan shows
+`Pending` for a moment between batches and while it retries an error, so
+another plan can start in that gap. Two waiting plans can also start at the same
+moment. Worker nodes of different plans can therefore upgrade at the same time.
+Control-plane nodes have a guard that does not depend on phases: tuppr never
+starts a control-plane upgrade while another control-plane node's upgrade is in
+flight, from any plan (see
 [Parallel upgrades](/talos-upgrades/#parallel-upgrades)).
 
 ```yaml
