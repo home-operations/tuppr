@@ -11,7 +11,7 @@
     "@astrojs/starlight": "^0.42.8",
     "astro": "^7.4.5",
     "astro-mermaid": "^2.2.0",
-    "mermaid": "^12.2.0",
+    "mermaid": "^12.3.0",
     "starlight-links-validator": "^0.27.0"
   }
 }
