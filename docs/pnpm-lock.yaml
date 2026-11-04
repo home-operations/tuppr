@@ -16,10 +16,10 @@ importers:
         version: 7.4.5(@types/node@24.19.2)(yaml@2.9.1)
       astro-mermaid:
         specifier: ^2.2.0
-        version: 2.2.0(astro@7.4.5(@types/node@24.19.2)(yaml@2.9.1))(mermaid@12.2.0)
+        version: 2.2.0(astro@7.4.5(@types/node@24.19.2)(yaml@2.9.1))(mermaid@12.3.0)
       mermaid:
-        specifier: ^12.2.0
-        version: 12.2.0
+        specifier: ^12.3.0
+        version: 12.3.0
       starlight-links-validator:
         specifier: ^0.27.0
         version: 0.27.0(@astrojs/starlight@0.42.8(astro@7.4.5(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2))(astro@7.4.5(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2)
@@ -1153,8 +1153,8 @@ packages:
     resolution: {integrity: sha512-2QF/g9/zTaPDc3BjNcVTGoBbXBgYfMTTceLaYcFJ/W9kggFUkhxD/hMEeuLKbugyef9SqAx8cpgwlIP/jinUTA==}
     engines: {node: '>=4'}
 
-  elkjs@0.9.3:
-    resolution: {integrity: sha512-f/ZeWvW/BCXbhGEf1Ujp29EASo/lk1FDnETgNKwJrsVvGZhUWCZyg3xLJjAsxfOmt8KjswHmI5EwCQcPMpOYhQ==}
+  elkjs@0.12.1:
+    resolution: {integrity: sha512-IhMYKHE4S2vtx0QrhBP3lYOIKDeIiJXBrdq9MGYkuB8ZHqhrBnHNfSUndjXFewrX1CPK8chwq+2NA0K0hliYuw==}
 
   entities@4.5.0:
     resolution: {integrity: sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw==}
@@ -1493,8 +1493,8 @@ packages:
   mdn-data@2.27.1:
     resolution: {integrity: sha512-9Yubnt3e8A0OKwxYSXyhLymGW4sCufcLG6VdiDdUGVkPhpqLxlvP5vl1983gQjJl3tqbrM731mjaZaP68AgosQ==}
 
-  mermaid@12.2.0:
-    resolution: {integrity: sha512-w7nr/SFrLO7BaVTs3dQTvYSV6nYSBj0Yy9DjBhsIJtAcHqRzXSq4Pg32ujHZ/AdWsAMNEvvhbm5dt9E2tOiHzw==}
+  mermaid@12.3.0:
+    resolution: {integrity: sha512-4113TdXeLAsMruJ79OpFL5O8+LTFXhQqZ260rF3tgUmiNAtRm4Uume04I+65PRN6yZ69J4f8rVYWW8zRk65UYw==}
     engines: {node: '>=22.12.0'}
 
   micromark-core-commonmark@2.0.4:
@@ -1941,10 +1941,6 @@ packages:
 
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
-
-  uuid@14.0.3:
-    resolution: {integrity: sha512-Sc5u1VVln93y1Xnz4R+CunOZc7R9LUcTmhj7Rc7Eg3HVcf7rVn2FOoa812fe0W8p3jD7xeoGSYbfqCGGH2B6xw==}
-    hasBin: true
 
   verkit@0.5.0:
     resolution: {integrity: sha512-u4J1hr6Y+C/hit34GwL3eIcUf3wngT8TlYUjK7tk0jxydKLAq3sYvifjdTDA6U3KCKRcQCQDGf/srjxfZF3l7g==}
@@ -2762,12 +2758,12 @@ snapshots:
       rehype-expressive-code: 0.44.3
       url-extras: 0.1.0
 
-  astro-mermaid@2.2.0(astro@7.4.5(@types/node@24.19.2)(yaml@2.9.1))(mermaid@12.2.0):
+  astro-mermaid@2.2.0(astro@7.4.5(@types/node@24.19.2)(yaml@2.9.1))(mermaid@12.3.0):
     dependencies:
       astro: 7.4.5(@types/node@24.19.2)(yaml@2.9.1)
       import-meta-resolve: 4.2.0
       mdast-util-to-string: 4.0.0
-      mermaid: 12.2.0
+      mermaid: 12.3.0
       unist-util-visit: 5.2.0
 
   astro@7.4.5(@types/node@24.19.2)(yaml@2.9.1):
@@ -3195,7 +3191,7 @@ snapshots:
 
   dset@3.1.4: {}
 
-  elkjs@0.9.3: {}
+  elkjs@0.12.1: {}
 
   entities@4.5.0: {}
 
@@ -3600,7 +3596,7 @@ snapshots:
 
   mdn-data@2.27.1: {}
 
-  mermaid@12.2.0:
+  mermaid@12.3.0:
     dependencies:
       '@braintree/sanitize-url': 7.1.2
       '@iconify/utils': 3.1.7
@@ -3616,7 +3612,7 @@ snapshots:
       dagre-d3-es: 7.0.14
       dayjs: 1.11.23
       dompurify: 3.4.17
-      elkjs: 0.9.3
+      elkjs: 0.12.1
       es-toolkit: 1.53.0
       katex: 0.18.10
       khroma: 2.1.0
@@ -3624,7 +3620,6 @@ snapshots:
       roughjs: 4.6.6
       stylis: 4.4.0
       ts-dedent: 2.3.0
-      uuid: 14.0.3
 
   micromark-core-commonmark@2.0.4:
     dependencies:
@@ -4175,8 +4170,6 @@ snapshots:
   url-extras@0.1.0: {}
 
   util-deprecate@1.0.2: {}
-
-  uuid@14.0.3: {}
 
   verkit@0.5.0: {}
 
