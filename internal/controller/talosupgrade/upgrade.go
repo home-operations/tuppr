@@ -9,16 +9,19 @@ import (
 	"time"
 
 	"github.com/siderolabs/talos/pkg/machinery/platforms"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/constants"
 	"github.com/home-operations/tuppr/internal/controller/coordination"
 	"github.com/home-operations/tuppr/internal/controller/drain"
+	"github.com/home-operations/tuppr/internal/controller/jobs"
 	"github.com/home-operations/tuppr/internal/controller/maintenance"
 	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
@@ -357,33 +360,21 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 	}
 
 	if len(pendingNodes) == 0 {
-		// Read before recordOutOfBandCompletedNodes, which also lists nodes
-		// this run never touched.
-		upgradedNodes := len(talosUpgrade.Status.CompletedNodes) > 0
-		resumed, err := r.recordOutOfBandCompletedNodes(ctx, talosUpgrade)
-		if err != nil {
-			logger.Error(err, "Failed to record out-of-band upgraded nodes")
-			// Unknown whether this run upgraded anything; waiting is the safe side.
-			resumed = true
-		}
-		upgradedNodes = upgradedNodes || resumed
-		// The last batch has no next batch to hold it back; without this the
-		// run completes (unblocking a queued KubernetesUpgrade and running
-		// post-hooks) while that batch is still rejoining.
-		if upgradedNodes {
-			if result, done := r.waitForClusterHealth(ctx, talosUpgrade); done {
-				return result, nil
-			}
-		}
-		return r.transitionToFinalize(ctx, talosUpgrade)
+		return r.finishRun(ctx, talosUpgrade)
 	}
 
 	if result, done := r.prePullInstallerImages(ctx, talosUpgrade, pendingNodes); done {
 		return result, nil
 	}
 
-	parallelism := getParallelism(talosUpgrade.Spec)
-	nextNodes := pendingNodes[:min(parallelism, len(pendingNodes))]
+	nextNodes, err := r.nextBatch(ctx, pendingNodes, getParallelism(talosUpgrade.Spec))
+	if err != nil {
+		return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonFindNextNodes, "select next batch", time.Minute, err), nil
+	}
+
+	if result, done := r.waitForControlPlaneSlot(ctx, talosUpgrade, nextNodes, pendingNodes); done {
+		return result, nil
+	}
 
 	batch, result, done := r.buildBatchImages(ctx, talosUpgrade, nextNodes)
 	if done {
@@ -451,6 +442,159 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		return ctrl.Result{}, fmt.Errorf("update phase for batch upgrade: %w", err)
 	}
 	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+}
+
+// nextBatch picks the next batch from pending, keeping its order: the first
+// pending node alone when it is a control-plane node, otherwise up to
+// parallelism pending workers, skipping control-plane nodes until they reach
+// the front. Each control-plane reboot takes an etcd member offline, and
+// Talos 1.13+ (LifecycleService upgrades) does not stop two at once; only the
+// legacy pre-1.13 upgrade API took an etcd lock.
+func (r *Reconciler) nextBatch(ctx context.Context, pending []string, parallelism int) ([]string, error) {
+	var batch []string
+	for _, name := range pending {
+		node := &corev1.Node{}
+		if err := r.Get(ctx, types.NamespacedName{Name: name}, node); err != nil {
+			return nil, fmt.Errorf("failed to get node %s: %w", name, err)
+		}
+		_, isCP := node.Labels[controlPlaneLabel]
+		if isCP {
+			if len(batch) == 0 {
+				return []string{name}, nil
+			}
+			continue
+		}
+		batch = append(batch, name)
+		if len(batch) == parallelism {
+			break
+		}
+	}
+	return batch, nil
+}
+
+// controlPlaneUpgradeInFlight returns a control-plane node outside batch whose
+// upgrade is still in flight, from any TalosUpgrade, when batch holds a
+// control-plane node: an unfinished upgrade Job targets it, or it still
+// carries the upgrading label (set at Job creation, removed once the outcome
+// is recorded). Plans coordinate only through their phases, and a running plan
+// drops to Pending between batches and on errors, so two plans selecting
+// different control-plane nodes could otherwise overlap. Reads bypass the
+// cache so a Job another plan created a moment ago is seen.
+//
+// A label on a node this run selects but no longer has pending does not hold
+// the batch: the caller runs with no Job or reboot of its own outstanding, so
+// the node is at the target and the label is left from a finished upgrade
+// (the Job expired before the outcome was recorded, or removing the label
+// failed). The cluster health gate still waits for the node to rejoin. The
+// label stays: it is the record that makes finishRun wait for health, and it
+// may belong to an overlapping plan.
+func (r *Reconciler) controlPlaneUpgradeInFlight(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, batch, pending []string) (string, error) {
+	reader := r.APIReader
+	if reader == nil {
+		reader = r.Client
+	}
+
+	cpNodes := &corev1.NodeList{}
+	if err := reader.List(ctx, cpNodes, client.HasLabels{controlPlaneLabel}); err != nil {
+		return "", fmt.Errorf("failed to list control-plane nodes: %w", err)
+	}
+	isCP := make(map[string]bool, len(cpNodes.Items))
+	for i := range cpNodes.Items {
+		isCP[cpNodes.Items[i].Name] = true
+	}
+	if !slices.ContainsFunc(batch, func(name string) bool { return isCP[name] }) {
+		return "", nil
+	}
+	// nextBatch read the roles from the cache. A control-plane node sharing a
+	// batch means the cache is behind; the next pass rebuilds the batch.
+	if len(batch) > 1 {
+		return "", fmt.Errorf("batch %s holds a control-plane node with other nodes; node roles changed since it was selected", strings.Join(batch, ", "))
+	}
+
+	jobList := &batchv1.JobList{}
+	if err := reader.List(ctx, jobList,
+		client.InNamespace(r.ControllerNamespace),
+		client.MatchingLabels{appLabelKey: talosUpgradeAppName},
+	); err != nil {
+		return "", fmt.Errorf("failed to list upgrade jobs: %w", err)
+	}
+	for i := range jobList.Items {
+		job := &jobList.Items[i]
+		target := job.Labels[targetNodeLabelKey]
+		if jobs.IsTerminal(job) || !isCP[target] || slices.Contains(batch, target) {
+			continue
+		}
+		return target, nil
+	}
+
+	var selected map[string]bool
+	for i := range cpNodes.Items {
+		node := &cpNodes.Items[i]
+		if node.Labels[constants.NodeUpgradingLabel] == "" || slices.Contains(batch, node.Name) {
+			continue
+		}
+		if selected == nil {
+			nodes, err := nodeutil.ListSelectedNodes(ctx, r.Client, talosUpgrade.Spec.NodeSelector)
+			if err != nil {
+				return "", fmt.Errorf("failed to list selected nodes: %w", err)
+			}
+			selected = make(map[string]bool, len(nodes))
+			for j := range nodes {
+				selected[nodes[j].Name] = true
+			}
+		}
+		if selected[node.Name] && !slices.Contains(pending, node.Name) {
+			continue
+		}
+		return node.Name, nil
+	}
+	return "", nil
+}
+
+// waitForControlPlaneSlot parks the run in Pending while
+// controlPlaneUpgradeInFlight reports another control-plane upgrade. Returns
+// done=true when the caller should return the result.
+func (r *Reconciler) waitForControlPlaneSlot(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, batch, pending []string) (ctrl.Result, bool) {
+	logger := log.FromContext(ctx)
+
+	busy, err := r.controlPlaneUpgradeInFlight(ctx, talosUpgrade, batch, pending)
+	if err != nil {
+		return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonCheckCoordination, "check control-plane upgrades in flight", time.Minute, err), true
+	}
+	if busy == "" {
+		return ctrl.Result{}, false
+	}
+	message := fmt.Sprintf("Waiting for control-plane node %s to finish upgrading before upgrading %s", busy, strings.Join(batch, ", "))
+	logger.Info("Waiting for another control-plane upgrade", "busyNode", busy, "nodes", batch)
+	if err := r.setPendingWithReason(ctx, talosUpgrade, upgradeaudit.ReasonWaitingForOtherUpgrade, message); err != nil {
+		logger.Error(err, "Failed to update phase while waiting for control-plane upgrade")
+	}
+	return ctrl.Result{RequeueAfter: 30 * time.Second}, true
+}
+
+// finishRun records nodes already at the target version and moves the run to
+// its post-hooks or terminal phase once no node is pending.
+func (r *Reconciler) finishRun(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	// Read before recordOutOfBandCompletedNodes, which also lists nodes
+	// this run never touched.
+	upgradedNodes := len(talosUpgrade.Status.CompletedNodes) > 0
+	resumed, err := r.recordOutOfBandCompletedNodes(ctx, talosUpgrade)
+	if err != nil {
+		logger.Error(err, "Failed to record out-of-band upgraded nodes")
+		// Unknown whether this run upgraded anything; waiting is the safe side.
+		resumed = true
+	}
+	// The last batch has no next batch to hold it back; without this the
+	// run completes (unblocking a queued KubernetesUpgrade and running
+	// post-hooks) while that batch is still rejoining.
+	if upgradedNodes || resumed {
+		if result, done := r.waitForClusterHealth(ctx, talosUpgrade); done {
+			return result, nil
+		}
+	}
+	return r.transitionToFinalize(ctx, talosUpgrade)
 }
 
 type nodeImage struct {

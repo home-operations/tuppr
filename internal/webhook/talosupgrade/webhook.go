@@ -19,7 +19,10 @@ import (
 	"github.com/home-operations/tuppr/internal/webhook/validation"
 )
 
-const rebootModeDefault = "default"
+const (
+	rebootModeDefault = "default"
+	controlPlaneLabel = "node-role.kubernetes.io/control-plane"
+)
 
 // Validator validates Talos resources
 type Validator struct {
@@ -154,8 +157,12 @@ func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade,
 	)...)
 
 	if t.Spec.Policy.Force {
-		warnings = append(warnings, "Force upgrade enabled.")
+		warnings = append(warnings, "Force upgrade enabled: tuppr skips the etcd check of its cluster health gate. Talos skips its own etcd health and membership checks only on Talos's legacy upgrade API, which talosctl uses when the node or talosctl is older than Talos 1.13. Control-plane nodes are still upgraded one at a time.")
 	}
+	if t.Spec.Policy.Stage {
+		warnings = append(warnings, "Stage upgrade enabled: it only takes effect on Talos's legacy upgrade API, which talosctl uses when the node or talosctl is older than Talos 1.13.")
+	}
+	warnings = append(warnings, v.controlPlaneWarnings(ctx)...)
 	if t.Spec.Policy.RebootMode == "powercycle" {
 		warnings = append(warnings, "Powercycle reboot mode selected.")
 	}
@@ -177,7 +184,7 @@ func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade,
 	}
 
 	// Validate parallelism
-	if pWarnings, err := validateParallelism(t, len(nodes)); err != nil {
+	if pWarnings, err := validateParallelism(t, nodes); err != nil {
 		return warnings, err
 	} else {
 		warnings = append(warnings, pWarnings...)
@@ -261,10 +268,10 @@ func findNodeIntersection(setA, setB map[string]bool) []string {
 	return intersection
 }
 
-// validateParallelism checks that parallelism is within valid bounds. A
-// nodeCount of 0 (none selected, or the nodes couldn't be listed) skips the
-// upper bound.
-func validateParallelism(t *tupprv1alpha1.TalosUpgrade, nodeCount int) (admission.Warnings, error) {
+// validateParallelism checks that parallelism is within valid bounds. No
+// nodes (none selected, or the nodes couldn't be listed) skips the checks
+// against the selection.
+func validateParallelism(t *tupprv1alpha1.TalosUpgrade, nodes []corev1.Node) (admission.Warnings, error) {
 	if t.Spec.Parallelism == nil {
 		return nil, nil
 	}
@@ -274,17 +281,50 @@ func validateParallelism(t *tupprv1alpha1.TalosUpgrade, nodeCount int) (admissio
 		return nil, fmt.Errorf("spec.parallelism must be >= 1, got %d", p)
 	}
 
-	if nodeCount > 0 && int(p) > nodeCount {
-		return nil, fmt.Errorf("spec.parallelism (%d) exceeds number of matching nodes (%d)", p, nodeCount)
+	if len(nodes) > 0 && int(p) > len(nodes) {
+		return nil, fmt.Errorf("spec.parallelism (%d) exceeds number of matching nodes (%d)", p, len(nodes))
 	}
 
-	if p > 1 {
-		return admission.Warnings{
-			fmt.Sprintf("Parallelism set to %d: up to %d nodes will be upgraded concurrently per batch.", p, p),
-		}, nil
+	if p <= 1 {
+		return nil, nil
 	}
+	warnings := admission.Warnings{
+		fmt.Sprintf("Parallelism set to %d: up to %d worker nodes will be upgraded concurrently per batch; control-plane nodes are always upgraded one at a time.", p, p),
+	}
+	if len(nodes) == 0 {
+		return warnings, nil
+	}
+	// Only worker nodes can share a batch.
+	var workers int32
+	for i := range nodes {
+		if _, isCP := nodes[i].Labels[controlPlaneLabel]; !isCP {
+			workers++
+		}
+	}
+	if p > workers {
+		warnings = append(warnings, fmt.Sprintf(
+			"spec.parallelism (%d) exceeds the %d selected worker node(s); batches never hold more than %d node(s).",
+			p, workers, max(workers, 1)))
+	}
+	return warnings, nil
+}
 
-	return nil, nil
+// controlPlaneWarnings warns about a cluster with exactly two control-plane
+// nodes: etcd needs both for quorum, so rebooting either loses it until the
+// node is back. Talos older than 1.13 refuses that upgrade; newer Talos does
+// not. Fails open: a listing error only skips the warning.
+func (v *Validator) controlPlaneWarnings(ctx context.Context) admission.Warnings {
+	nodeList := &corev1.NodeList{}
+	if err := v.Client.List(ctx, nodeList, client.HasLabels{controlPlaneLabel}); err != nil {
+		log.FromContext(ctx).Error(err, "Failed to count control-plane nodes")
+		return nil
+	}
+	if len(nodeList.Items) != 2 {
+		return nil
+	}
+	return admission.Warnings{
+		"The cluster has exactly two control-plane nodes: etcd loses quorum while either one reboots, so the API is unavailable during each control-plane upgrade. Talos 1.13 and newer do not refuse it. Run three or more control-plane nodes.",
+	}
 }
 
 // validateHooks rejects empty images and duplicate names within each hook list.
