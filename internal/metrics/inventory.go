@@ -2,7 +2,6 @@ package metrics
 
 import (
 	"context"
-	"regexp"
 	"strconv"
 	"time"
 
@@ -15,10 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
+	"github.com/home-operations/tuppr/internal/controller/nodeutil"
 )
-
-// Talos sets Node.status.nodeInfo.osImage to e.g. "Talos (v1.7.5)".
-var talosVersionRegexp = regexp.MustCompile(`v\d+\.\d+\.\d+[^\s)]*`)
 
 const defaultTimezone = "UTC"
 
@@ -92,7 +89,7 @@ func (r *InventoryRefresher) refreshNodes(ctx context.Context, logger logr.Logge
 		snapshot = append(snapshot, NodeInfoSnapshot{
 			Node:              n.Name,
 			Role:              role,
-			TalosVersion:      parseTalosVersion(n.Status.NodeInfo.OSImage),
+			TalosVersion:      nodeutil.TalosVersionFromOSImage(n.Status.NodeInfo.OSImage),
 			KubernetesVersion: n.Status.NodeInfo.KubeletVersion,
 		})
 	}
@@ -243,8 +240,4 @@ func nodeRole(n *corev1.Node) string {
 		return NodeRoleControlPlane
 	}
 	return NodeRoleWorker
-}
-
-func parseTalosVersion(osImage string) string {
-	return talosVersionRegexp.FindString(osImage)
 }

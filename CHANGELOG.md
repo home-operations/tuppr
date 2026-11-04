@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.5.12](https://github.com/home-operations/tuppr/compare/0.5.11...0.5.12) (2026-11-03)
+
+
+### Features
+
+* **rbac:** scope Secret and Job access to the controller namespace ([#698](https://github.com/home-operations/tuppr/issues/698)) ([5f6f6bb](https://github.com/home-operations/tuppr/commit/5f6f6bbeb8e4cc5651f83eefd79bb04b39a72469))
+* **talosupgrade:** wait for cluster health before each batch ([#668](https://github.com/home-operations/tuppr/issues/668)) ([a6c02c9](https://github.com/home-operations/tuppr/commit/a6c02c99e48dcc501046986ae4762ba985739cd1))
+* **webhook:** validate the Talos upgrade path and Kubernetes support per node ([#672](https://github.com/home-operations/tuppr/issues/672)) ([ad3efcb](https://github.com/home-operations/tuppr/commit/ad3efcbea5a8ab7bd7173c7c9858ec27f6f907a3))
+
+
+### Continuous Integration
+
+* **govulncheck:** run the scan on a schedule ([9352e38](https://github.com/home-operations/tuppr/commit/9352e3822b4498f59ce999fe2b7937a6a1db6265))
+* replace the shared workflow-lint action with zizmor-action ([2147d80](https://github.com/home-operations/tuppr/commit/2147d805c862a18124970dfdf817db295a7714c5))
+
+
+### Miscellaneous Chores
+
+* **go:** update module github.com/netresearch/go-cron (v0.18.0 → v0.19.0) ([#693](https://github.com/home-operations/tuppr/issues/693)) ([60df908](https://github.com/home-operations/tuppr/commit/60df908763c3faddb1c010a3342cc4aa1c39a276))
+* **go:** update module github.com/onsi/ginkgo/v2 (v2.33.1 → v2.34.0) ([#694](https://github.com/home-operations/tuppr/issues/694)) ([abda6b5](https://github.com/home-operations/tuppr/commit/abda6b54684c4fcff56b646b842df297056a7686))
+* **go:** update module github.com/siderolabs/talos/pkg/machinery (v1.14.4 → v1.14.5) ([#697](https://github.com/home-operations/tuppr/issues/697)) ([e2255cc](https://github.com/home-operations/tuppr/commit/e2255cc3b669abd544c5378cc420dccf43f9b53d))
+* **npm:** update dependency astro (7.4.4 → 7.4.5) ([#695](https://github.com/home-operations/tuppr/issues/695)) ([90752cb](https://github.com/home-operations/tuppr/commit/90752cb5a1fc38a6fcd6c1541f34148561a2d5de))
+* **renovate:** stop stranding lone Talos updates and match talosctl ([#696](https://github.com/home-operations/tuppr/issues/696)) ([459506b](https://github.com/home-operations/tuppr/commit/459506b449e106ba271702fd10866905bfded626))
+
 ## [0.5.11](https://github.com/home-operations/tuppr/compare/0.5.10...0.5.11) (2026-10-31)
 
 

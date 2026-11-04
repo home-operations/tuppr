@@ -30,8 +30,9 @@ type PolicySpec struct {
 	// +optional
 	Debug bool `json:"debug,omitempty"`
 
-	// Force the upgrade (skip checks on etcd health and members).
-	// Only takes effect on nodes older than Talos 1.13 (legacy upgrade API); newer Talos runs no such checks.
+	// Force the upgrade: skip the etcd check of tuppr's cluster health gate and,
+	// on nodes older than Talos 1.13 (legacy upgrade API), Talos's own checks on
+	// etcd health and members. Newer Talos runs no such checks.
 	// +kubebuilder:default=false
 	// +optional
 	Force bool `json:"force,omitempty"`

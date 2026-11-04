@@ -4,18 +4,19 @@ go 1.26.5
 
 require (
 	cel.dev/cel-go v0.33.2
+	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/cosi-project/runtime v1.16.4
 	github.com/go-logr/logr v1.4.4
 	github.com/go-sprout/sprout v1.1.2
 	github.com/google/go-containerregistry v0.22.1
 	github.com/google/uuid v1.6.0
-	github.com/netresearch/go-cron v0.18.0
-	github.com/onsi/ginkgo/v2 v2.33.1
+	github.com/netresearch/go-cron v0.19.0
+	github.com/onsi/ginkgo/v2 v2.34.0
 	github.com/onsi/gomega v1.44.0
 	github.com/open-policy-agent/cert-controller v0.16.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/siderolabs/go-retry v0.3.3
-	github.com/siderolabs/talos/pkg/machinery v1.14.4
+	github.com/siderolabs/talos/pkg/machinery v1.14.5
 	github.com/stretchr/testify v1.12.1
 	github.com/unraid/apprise-go v0.4.0
 	go.uber.org/zap v1.28.0
@@ -33,7 +34,6 @@ require (
 	cel.dev/expr v0.25.3 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-amqp v1.7.0 // indirect
-	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/ProtonMail/go-crypto v1.5.2 // indirect
 	github.com/ProtonMail/gopenpgp/v3 v3.5.2 // indirect
 	github.com/adrg/xdg v0.5.3 // indirect

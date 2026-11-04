@@ -20,12 +20,14 @@ import (
 	"github.com/open-policy-agent/cert-controller/pkg/rotator"
 	uberzap "go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -216,6 +218,13 @@ func main() {
 		HealthProbeBindAddress: "0",
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "bea89bcd.home-operations.com",
+		// Upgrade and hook Jobs only ever live in the controller namespace, so the
+		// Job informer needs only a namespaced Role, not cluster-wide Job access.
+		Cache: cache.Options{
+			ByObject: map[client.Object]cache.ByObject{
+				&batchv1.Job{}: {Namespaces: map[string]cache.Config{controllerNamespace: {}}},
+			},
+		},
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -336,6 +345,7 @@ func main() {
 		// +kubebuilder:scaffold:builder
 		if err := (&taloswebhook.Validator{
 			Client:                 mgr.GetClient(),
+			APIReader:              mgr.GetAPIReader(),
 			TalosConfigSecret:      talosConfigSecret,
 			Namespace:              controllerNamespace,
 			AlertmanagerConfigured: silencer != nil,
@@ -346,6 +356,7 @@ func main() {
 
 		if err := (&kuberneteswebhook.Validator{
 			Client:            mgr.GetClient(),
+			APIReader:         mgr.GetAPIReader(),
 			TalosConfigSecret: talosConfigSecret,
 			Namespace:         controllerNamespace,
 		}).SetupWebhookWithManager(mgr); err != nil {

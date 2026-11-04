@@ -320,29 +320,6 @@ jobs:
       - name: Running Integration Tests
         run: mise run test-integration
 
-  go-vulncheck:
-    if: >-
-      ${{ !(startsWith(github.head_ref, 'release-please--')
-      && github.event.pull_request.head.repo.full_name == github.repository) }}
-    name: Go Vulncheck
-    runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Setup Mise
-        uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
-        with:
-          experimental: true
-          install_args: --locked
-
-      - name: Run govulncheck
-        run: mise run vulncheck
-
   helm-lint:
     if: >-
       ${{ !(startsWith(github.head_ref, 'release-please--')
@@ -394,11 +371,8 @@ jobs:
       - name: Check chart docs are current
         run: mise run helm-docs-check
 
-  workflow-lint:
-    if: >-
-      ${{ !(startsWith(github.head_ref, 'release-please--')
-      && github.event.pull_request.head.repo.full_name == github.repository) }}
-    name: Workflow Lint
+  zizmor:
+    name: Zizmor
     runs-on: ubuntu-26.04
     permissions:
       contents: read
@@ -408,22 +382,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Mise
-        uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@53290badfa369cb0bf7ad16342cb62c2fa47ac7b # v0.8.0
         with:
-          install: false
-
-      - name: Resolve linter versions
-        id: tools
-        run: |
-          echo "actionlint=$(mise config get tools.actionlint)" >> "$GITHUB_OUTPUT"
-          echo "zizmor=$(mise config get tools.zizmor)" >> "$GITHUB_OUTPUT"
-
-      - name: Lint workflows
-        uses: home-operations/.github/actions/workflow-lint@1d6eebfd2066f2aa84939e573e56f60d8d2ed85f # workflow-lint-v1.0.4
-        with:
-          actionlint-version: ${{ steps.tools.outputs.actionlint }}
-          zizmor-version: ${{ steps.tools.outputs.zizmor }}
+          advanced-security: false
+          annotations: true
 
   status:
     if: ${{ !cancelled() }}
@@ -434,10 +397,9 @@ jobs:
       - go-e2e
       - go-lint
       - go-test
-      - go-vulncheck
       - helm-lint
       - helm-unittest
-      - workflow-lint
+      - zizmor
     runs-on: ubuntu-26.04
     permissions: {}
     steps:

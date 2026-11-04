@@ -23,7 +23,7 @@ import (
 )
 
 // ValidateTalosConfigSecret checks if the secret exists and contains valid Talos configuration
-func ValidateTalosConfigSecret(ctx context.Context, c client.Client, name, namespace string) (string, error) {
+func ValidateTalosConfigSecret(ctx context.Context, c client.Reader, name, namespace string) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("talos config secret name is empty")
 	}
