@@ -32,7 +32,8 @@ type HealthCheckSpec struct {
 	// +kubebuilder:validation:Required
 	Expr string `json:"expr"`
 
-	// Timeout for this health check
+	// Timeout has no effect and is kept for compatibility. Health checks are
+	// re-evaluated until they pass; a failing check never fails the upgrade.
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:Pattern=`^([0-9]+[smh])+$`
 	// +kubebuilder:validation:MinLength=2

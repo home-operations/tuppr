@@ -49,23 +49,24 @@ const (
 )
 
 const (
-	appLabelKey              = jobs.AppLabelKey
-	appInstanceLabelKey      = jobs.AppInstanceLabelKey
-	appPartOfLabelKey        = jobs.AppPartOfLabelKey
-	appPartOfTuppr           = jobs.AppPartOfTuppr
-	targetNodeLabelKey       = jobs.TargetNodeLabelKey
-	talosUpgradeAppName      = "talos-upgrade"
-	statusAlertSilenceIDs    = "alertSilenceIDs"
-	statusAlertSilencesSince = "alertSilencesSince"
-	statusCompletedNodes     = "completedNodes"
-	statusFailedNodes        = "failedNodes"
-	statusRebootingNodes     = "rebootingNodes"
-	statusPreHookFailed      = "preHookFailed"
-	statusPreHookIndex       = "preHookIndex"
-	statusPostHookIndex      = "postHookIndex"
-	statusPrePulledNodes     = "prePulledNodes"
-	statusPrePullFailure     = "prePullFailure"
-	statusCompletionCycles   = "completionCycles"
+	appLabelKey                    = jobs.AppLabelKey
+	appInstanceLabelKey            = jobs.AppInstanceLabelKey
+	appPartOfLabelKey              = jobs.AppPartOfLabelKey
+	appPartOfTuppr                 = jobs.AppPartOfTuppr
+	targetNodeLabelKey             = jobs.TargetNodeLabelKey
+	talosUpgradeAppName            = "talos-upgrade"
+	statusAlertSilenceIDs          = "alertSilenceIDs"
+	statusAlertSilencesSince       = "alertSilencesSince"
+	statusCompletedNodes           = "completedNodes"
+	statusFailedNodes              = "failedNodes"
+	statusRebootingNodes           = "rebootingNodes"
+	statusPreHookFailed            = "preHookFailed"
+	statusPreHookIndex             = "preHookIndex"
+	statusPostHookIndex            = "postHookIndex"
+	statusPrePulledNodes           = "prePulledNodes"
+	statusPrePullFailure           = "prePullFailure"
+	statusCompletionCycles         = "completionCycles"
+	statusHealthChecksFailingSince = "healthChecksFailingSince"
 )
 
 // TalosClient defines the interface for Talos operations
@@ -321,6 +322,14 @@ func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, talosUpgrade *tupp
 		"conditions":   conditions,
 	}
 	maps.Copy(updates, extra)
+	// A failure streak spans one wait in HealthChecking. A run that moves on,
+	// or parks for a closed window, a suspend or an unreachable node, starts a
+	// new streak, so neither the backoff nor the wait metric counts that time.
+	// Cleared whatever the in-memory status says: the cache can lag a streak
+	// the previous reconcile wrote.
+	if phase != tupprv1alpha1.JobPhaseHealthChecking {
+		updates[statusHealthChecksFailingSince] = nil
+	}
 	applyPhaseAuditFields(&talosUpgrade.Status, updates, phase, metav1.Now(), talosUpgrade.Spec.Talos.Version)
 
 	if err := r.updateStatus(ctx, talosUpgrade, updates); err != nil {
@@ -330,6 +339,9 @@ func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, talosUpgrade *tupp
 	talosUpgrade.Status.CurrentNodes = currentNodes
 	talosUpgrade.Status.Message = message
 	talosUpgrade.Status.Conditions = conditions
+	if phase != tupprv1alpha1.JobPhaseHealthChecking {
+		talosUpgrade.Status.HealthChecksFailingSince = nil
+	}
 	if prevPhase != phase {
 		keysAndValues := []any{"from", prevPhase, "to", phase, "reason", reason, "message", message}
 		if currentNode != "" {

@@ -2,12 +2,14 @@ package talosupgrade
 
 import (
 	"context"
+	"errors"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
+	"github.com/home-operations/tuppr/internal/healthcheck"
 )
 
 // CompletedAt != nil guard on terminal branch is idempotency against a stale
@@ -87,26 +89,33 @@ func syncLocalAuditFields(status *tupprv1alpha1.TalosUpgradeStatus, updates map[
 	}
 }
 
-// runHealthChecks wraps CheckHealth with start/result Events. CheckHealth
-// blocks polling until the checks pass or time out, and the HealthChecking
-// phase is only written after it returns, so the started event is the only
-// signal that a (possibly minutes-long) check attempt is in progress.
+// runHealthChecks evaluates the checks once. HealthChecksFailed is emitted
+// when checks start failing or the failure changes, not on every
+// re-evaluation: events on one object share a rate limit, and a run waiting
+// hours on a check would otherwise crowd out every other event.
 func (r *Reconciler) runHealthChecks(ctx context.Context, tu *tupprv1alpha1.TalosUpgrade, checks []tupprv1alpha1.HealthCheckSpec) error {
-	emit := r.Recorder != nil && len(checks) > 0
-	if emit {
-		r.Recorder.Eventf(tu, corev1.EventTypeNormal, "HealthChecksStarted",
-			"Running %d health check(s)", len(checks))
-	}
 	checkErr := r.HealthChecker.CheckHealth(ctx, checks)
-	if emit {
-		if checkErr != nil {
-			r.Recorder.Event(tu, corev1.EventTypeWarning, "HealthChecksFailed", checkErr.Error())
-		} else {
-			r.Recorder.Eventf(tu, corev1.EventTypeNormal, "HealthChecksPassed",
-				"All %d health check(s) passed", len(checks))
-		}
+	if r.Recorder == nil || len(checks) == 0 {
+		return checkErr
+	}
+	switch {
+	case checkErr == nil:
+		r.Recorder.Eventf(tu, corev1.EventTypeNormal, "HealthChecksPassed",
+			"All %d health check(s) passed", len(checks))
+	case tu.Status.HealthChecksFailingSince == nil || tu.Status.Message != healthCheckWaitMessage(checkErr):
+		r.Recorder.Event(tu, corev1.EventTypeWarning, "HealthChecksFailed", checkErr.Error())
 	}
 	return checkErr
+}
+
+// healthCheckWaitMessage keeps the read errors out of status: they can change
+// between evaluations, and every status write triggers another reconcile.
+func healthCheckWaitMessage(checkErr error) string {
+	reason := checkErr.Error()
+	if failed, ok := errors.AsType[*healthcheck.Error](checkErr); ok {
+		reason = failed.Reason
+	}
+	return "Waiting for health checks: " + reason
 }
 
 func (r *Reconciler) emitPhaseEvent(tu *tupprv1alpha1.TalosUpgrade, prev, next tupprv1alpha1.JobPhase, message string) {
