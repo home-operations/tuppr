@@ -168,10 +168,14 @@ func TestTalosReconcile_BatchSerializesControlPlane(t *testing.T) {
 
 func TestControlPlaneUpgradeInFlight(t *testing.T) {
 	tests := []struct {
-		name    string
-		objects []client.Object
-		batch   []string
-		want    string
+		name      string
+		objects   []client.Object
+		batch     []string
+		pending   []string // defaults to batch
+		completed []string // the plan's CompletedNodes
+		want      string
+		wantErr   bool
+		kept      []string // nodes whose upgrading label must stay
 	}{
 		{
 			name:    "worker batch is never held",
@@ -203,7 +207,27 @@ func TestControlPlaneUpgradeInFlight(t *testing.T) {
 			name:    "another control-plane node still labeled upgrading holds the batch",
 			objects: []client.Object{newControlPlaneNode(fakeNodeA, testNodeIP1), withUpgradingLabel(newControlPlaneNode(fakeNodeB, testNodeIP2))},
 			batch:   []string{fakeNodeA},
+			pending: []string{fakeNodeA, fakeNodeB},
 			want:    fakeNodeB,
+		},
+		{
+			name:    "label left on a node this run has at the target does not hold the batch",
+			objects: []client.Object{newControlPlaneNode(fakeNodeA, testNodeIP1), withUpgradingLabel(newControlPlaneNode(fakeNodeB, testNodeIP2))},
+			batch:   []string{fakeNodeA},
+			kept:    []string{fakeNodeB},
+		},
+		{
+			name:      "label left on a node this run completed does not hold the batch",
+			objects:   []client.Object{newControlPlaneNode(fakeNodeA, testNodeIP1), withUpgradingLabel(newControlPlaneNode(fakeNodeB, testNodeIP2))},
+			batch:     []string{fakeNodeA},
+			completed: []string{fakeNodeB},
+			kept:      []string{fakeNodeB},
+		},
+		{
+			name:    "control-plane node sharing a batch is an error",
+			objects: []client.Object{newControlPlaneNode(fakeNodeA, testNodeIP1), newNode(fakeNodeB, testNodeIP2)},
+			batch:   []string{fakeNodeB, fakeNodeA},
+			wantErr: true,
 		},
 	}
 
@@ -213,15 +237,77 @@ func TestControlPlaneUpgradeInFlight(t *testing.T) {
 			cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tt.objects...).Build()
 			r := newTalosReconciler(cl, scheme, &mockTalosClient{}, &mockHealthChecker{})
 			r.APIReader = cl
+			pending := tt.pending
+			if pending == nil {
+				pending = tt.batch
+			}
 
-			got, err := r.controlPlaneUpgradeInFlight(context.Background(), tt.batch)
+			tu := newTalosUpgrade(testUpgradeName, withCompletedNodes(tt.completed...))
+			got, err := r.controlPlaneUpgradeInFlight(context.Background(), tu, tt.batch, pending)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error, got %q", got)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if got != tt.want {
 				t.Fatalf("expected %q, got %q", tt.want, got)
 			}
+			for _, name := range tt.kept {
+				if !hasUpgradingLabel(t, cl, name) {
+					t.Fatalf("expected the upgrading label kept on %s", name)
+				}
+			}
 		})
+	}
+}
+
+func hasUpgradingLabel(t *testing.T, cl client.Client, name string) bool {
+	t.Helper()
+	node := &corev1.Node{}
+	if err := cl.Get(context.Background(), client.ObjectKey{Name: name}, node); err != nil {
+		t.Fatalf("failed to get node %s: %v", name, err)
+	}
+	_, ok := node.Labels[constants.NodeUpgradingLabel]
+	return ok
+}
+
+// A node this run upgraded while the controller was down keeps its upgrading
+// label once its Job expires. The run's next control-plane node must not wait
+// on it forever, and the label must stay: it makes the run's completion wait
+// for cluster health.
+func TestTalosReconcile_OwnLeftoverUpgradingLabelDoesNotHoldBatch(t *testing.T) {
+	scheme := newTestScheme()
+	tu := newTalosUpgrade(testUpgradeName,
+		withFinalizer,
+		withPhase(tupprv1alpha1.JobPhasePending),
+	)
+	tc := &mockTalosClient{
+		nodeVersions:  map[string]string{testNodeIP1: fakeTalosVersion, testNodeIP2: testV110Talos},
+		installImages: map[string]string{testNodeIP2: testFactoryInstaller},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(tu,
+			withUpgradingLabel(newControlPlaneNode(fakeNodeA, testNodeIP1)),
+			newControlPlaneNode(fakeNodeB, testNodeIP2),
+		).WithStatusSubresource(tu).Build()
+	r := newTalosReconciler(cl, scheme, tc, &mockHealthChecker{})
+	r.APIReader = cl
+
+	reconcileTalos(t, r, testUpgradeName)
+
+	var jobList batchv1.JobList
+	if err := cl.List(context.Background(), &jobList, client.MatchingLabels{appInstanceLabelKey: testUpgradeName}); err != nil {
+		t.Fatalf("failed to list jobs: %v", err)
+	}
+	if len(jobList.Items) != 1 || jobList.Items[0].Labels[targetNodeLabelKey] != fakeNodeB {
+		t.Fatalf("expected one job for %s, got %d job(s)", fakeNodeB, len(jobList.Items))
+	}
+	if !hasUpgradingLabel(t, cl, fakeNodeA) {
+		t.Fatalf("expected the leftover upgrading label kept on %s until the run records it", fakeNodeA)
 	}
 }
 

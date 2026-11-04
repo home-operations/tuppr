@@ -1014,7 +1014,7 @@ func TestTalosUpgrade_Warnings_LegacyOnlyPolicies(t *testing.T) {
 		{
 			name: "stage",
 			opt:  func(tu *tupprv1alpha1.TalosUpgrade) { tu.Spec.Policy.Stage = true },
-			want: "Stage upgrade enabled: it only takes effect on nodes older than Talos 1.13",
+			want: "Stage upgrade enabled: it only takes effect on Talos's legacy upgrade API",
 		},
 	}
 	for _, tt := range tests {

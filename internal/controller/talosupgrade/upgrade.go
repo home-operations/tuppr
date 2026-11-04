@@ -330,7 +330,7 @@ func (r *Reconciler) processNextBatch(ctx context.Context, talosUpgrade *tupprv1
 		return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonFindNextNodes, "select next batch", time.Minute, err), nil
 	}
 
-	if result, done := r.waitForControlPlaneSlot(ctx, talosUpgrade, nextNodes); done {
+	if result, done := r.waitForControlPlaneSlot(ctx, talosUpgrade, nextNodes, pendingNodes); done {
 		return result, nil
 	}
 
@@ -447,7 +447,15 @@ func (r *Reconciler) nextBatch(ctx context.Context, pending []string, parallelis
 // drops to Pending between batches and on errors, so two plans selecting
 // different control-plane nodes could otherwise overlap. Reads bypass the
 // cache so a Job another plan created a moment ago is seen.
-func (r *Reconciler) controlPlaneUpgradeInFlight(ctx context.Context, batch []string) (string, error) {
+//
+// A label on a node this run selects but no longer has pending does not hold
+// the batch: the caller runs with no Job or reboot of its own outstanding, so
+// the node is at the target and the label is left from a finished upgrade
+// (the Job expired before the outcome was recorded, or removing the label
+// failed). The cluster health gate still waits for the node to rejoin. The
+// label stays: it is the record that makes finishRun wait for health, and it
+// may belong to an overlapping plan.
+func (r *Reconciler) controlPlaneUpgradeInFlight(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, batch, pending []string) (string, error) {
 	reader := r.APIReader
 	if reader == nil {
 		reader = r.Client
@@ -463,6 +471,11 @@ func (r *Reconciler) controlPlaneUpgradeInFlight(ctx context.Context, batch []st
 	}
 	if !slices.ContainsFunc(batch, func(name string) bool { return isCP[name] }) {
 		return "", nil
+	}
+	// nextBatch read the roles from the cache. A control-plane node sharing a
+	// batch means the cache is behind; the next pass rebuilds the batch.
+	if len(batch) > 1 {
+		return "", fmt.Errorf("batch %s holds a control-plane node with other nodes; node roles changed since it was selected", strings.Join(batch, ", "))
 	}
 
 	jobList := &batchv1.JobList{}
@@ -481,11 +494,26 @@ func (r *Reconciler) controlPlaneUpgradeInFlight(ctx context.Context, batch []st
 		return target, nil
 	}
 
+	var selected map[string]bool
 	for i := range cpNodes.Items {
 		node := &cpNodes.Items[i]
-		if node.Labels[constants.NodeUpgradingLabel] != "" && !slices.Contains(batch, node.Name) {
-			return node.Name, nil
+		if node.Labels[constants.NodeUpgradingLabel] == "" || slices.Contains(batch, node.Name) {
+			continue
 		}
+		if selected == nil {
+			nodes, err := nodeutil.ListSelectedNodes(ctx, r.Client, talosUpgrade.Spec.NodeSelector)
+			if err != nil {
+				return "", fmt.Errorf("failed to list selected nodes: %w", err)
+			}
+			selected = make(map[string]bool, len(nodes))
+			for j := range nodes {
+				selected[nodes[j].Name] = true
+			}
+		}
+		if selected[node.Name] && !slices.Contains(pending, node.Name) {
+			continue
+		}
+		return node.Name, nil
 	}
 	return "", nil
 }
@@ -493,10 +521,10 @@ func (r *Reconciler) controlPlaneUpgradeInFlight(ctx context.Context, batch []st
 // waitForControlPlaneSlot parks the run in Pending while
 // controlPlaneUpgradeInFlight reports another control-plane upgrade. Returns
 // done=true when the caller should return the result.
-func (r *Reconciler) waitForControlPlaneSlot(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, batch []string) (ctrl.Result, bool) {
+func (r *Reconciler) waitForControlPlaneSlot(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade, batch, pending []string) (ctrl.Result, bool) {
 	logger := log.FromContext(ctx)
 
-	busy, err := r.controlPlaneUpgradeInFlight(ctx, batch)
+	busy, err := r.controlPlaneUpgradeInFlight(ctx, talosUpgrade, batch, pending)
 	if err != nil {
 		return r.reportReconcileError(ctx, talosUpgrade, upgradeaudit.ReasonCheckCoordination, "check control-plane upgrades in flight", time.Minute, err), true
 	}

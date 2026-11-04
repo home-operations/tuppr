@@ -30,9 +30,10 @@ type PolicySpec struct {
 	// +optional
 	Debug bool `json:"debug,omitempty"`
 
-	// Force the upgrade: skip the etcd check of tuppr's cluster health gate and,
-	// on nodes older than Talos 1.13 (legacy upgrade API), Talos's own checks on
-	// etcd health and members. Newer Talos runs no such checks.
+	// Force the upgrade: skip the etcd check of tuppr's cluster health gate and
+	// Talos's own checks on etcd health and members. Talos runs those only on its
+	// legacy upgrade API, which talosctl uses when the node or talosctl is older
+	// than Talos 1.13.
 	// +kubebuilder:default=false
 	// +optional
 	Force bool `json:"force,omitempty"`
@@ -72,7 +73,8 @@ type PolicySpec struct {
 	RebootMode string `json:"rebootMode,omitempty"`
 
 	// Stage the upgrade to perform it after a reboot.
-	// Only takes effect on nodes older than Talos 1.13 (legacy upgrade API); talosctl ignores it on newer nodes.
+	// Only takes effect on Talos's legacy upgrade API, which talosctl uses when the
+	// node or talosctl is older than Talos 1.13.
 	// +kubebuilder:default=false
 	// +optional
 	Stage bool `json:"stage,omitempty"`

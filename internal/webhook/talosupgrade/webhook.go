@@ -157,10 +157,10 @@ func (v *Validator) validate(ctx context.Context, t *tupprv1alpha1.TalosUpgrade,
 	)...)
 
 	if t.Spec.Policy.Force {
-		warnings = append(warnings, "Force upgrade enabled: tuppr skips the etcd check of its cluster health gate, and nodes older than Talos 1.13 (legacy upgrade API) also skip Talos's etcd health and membership checks; talosctl ignores it on newer nodes. Control-plane nodes are still upgraded one at a time.")
+		warnings = append(warnings, "Force upgrade enabled: tuppr skips the etcd check of its cluster health gate. Talos skips its own etcd health and membership checks only on Talos's legacy upgrade API, which talosctl uses when the node or talosctl is older than Talos 1.13. Control-plane nodes are still upgraded one at a time.")
 	}
 	if t.Spec.Policy.Stage {
-		warnings = append(warnings, "Stage upgrade enabled: it only takes effect on nodes older than Talos 1.13 (legacy upgrade API); talosctl ignores it on newer nodes.")
+		warnings = append(warnings, "Stage upgrade enabled: it only takes effect on Talos's legacy upgrade API, which talosctl uses when the node or talosctl is older than Talos 1.13.")
 	}
 	warnings = append(warnings, v.controlPlaneWarnings(ctx)...)
 	if t.Spec.Policy.RebootMode == "powercycle" {

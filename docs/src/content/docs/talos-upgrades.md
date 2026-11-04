@@ -154,16 +154,16 @@ upgrade, 1.13 and newer do not. Run three or more control-plane nodes.
 
 `spec.policy` tunes how the upgrade runs:
 
-| Field                 | Default   | Effect                                                                                                                                                                                                                                                                      |
-| --------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `debug`               | `false`   | Verbose upgrade logging.                                                                                                                                                                                                                                                    |
-| `force`               | `false`   | Skip etcd health checks: Talos's own, which only nodes older than Talos 1.13 run (legacy upgrade API), and the etcd check of the [cluster health gate](#built-in-cluster-health-gate). One-at-a-time control-plane upgrades apply either way. Dangerous - can break quorum. |
-| `placement`           | `hard`    | How strictly the upgrade Job avoids the target node (`hard` or `soft`).                                                                                                                                                                                                     |
-| `rebootMode`          | `default` | `default`, or `powercycle` for nodes that don't reboot cleanly.                                                                                                                                                                                                             |
-| `stage`               | `false`   | Stage the upgrade and apply it on the next reboot (two reboots total). Only takes effect on nodes older than Talos 1.13 (legacy upgrade API); talosctl ignores it on newer nodes.                                                                                           |
-| `waitForVolumeDetach` | `false`   | Drain and wait for CSI volumes to detach before the reboot (see below).                                                                                                                                                                                                     |
-| `drainTimeout`        | unset     | Timeout for `talosctl`'s own node drain (talosctl 1.13+, default 5m). If the drain exceeds it the upgrade fails without rebooting; raise it for nodes hosting several PDB-gated workloads. Keep it below `timeout`.                                                         |
-| `timeout`             | `30m`     | Per-node upgrade timeout, including how long a node may take to become ready after its reboot before being marked failed.                                                                                                                                                   |
+| Field                 | Default   | Effect                                                                                                                                                                                                                                                                                                                           |
+| --------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `debug`               | `false`   | Verbose upgrade logging.                                                                                                                                                                                                                                                                                                         |
+| `force`               | `false`   | Skip etcd health checks: the etcd check of the [cluster health gate](#built-in-cluster-health-gate), and Talos's own, which run only on Talos's legacy upgrade API, which talosctl uses when the node or talosctl is older than Talos 1.13. One-at-a-time control-plane upgrades apply either way. Dangerous - can break quorum. |
+| `placement`           | `hard`    | How strictly the upgrade Job avoids the target node (`hard` or `soft`).                                                                                                                                                                                                                                                          |
+| `rebootMode`          | `default` | `default`, or `powercycle` for nodes that don't reboot cleanly.                                                                                                                                                                                                                                                                  |
+| `stage`               | `false`   | Stage the upgrade and apply it on the next reboot (two reboots total). Only takes effect on Talos's legacy upgrade API, which talosctl uses when the node or talosctl is older than Talos 1.13.                                                                                                                                  |
+| `waitForVolumeDetach` | `false`   | Drain and wait for CSI volumes to detach before the reboot (see below).                                                                                                                                                                                                                                                          |
+| `drainTimeout`        | unset     | Timeout for `talosctl`'s own node drain (talosctl 1.13+, default 5m). If the drain exceeds it the upgrade fails without rebooting; raise it for nodes hosting several PDB-gated workloads. Keep it below `timeout`.                                                                                                              |
+| `timeout`             | `30m`     | Per-node upgrade timeout, including how long a node may take to become ready after its reboot before being marked failed.                                                                                                                                                                                                        |
 
 :::tip[waitForVolumeDetach]
 Set this when a fast reboot could orphan a mount and pin a volume to the node -
@@ -217,9 +217,10 @@ control-plane nodes wait for their turn at the front.
 The rule also holds across `TalosUpgrade` resources: before starting a
 control-plane node, tuppr waits while any other control-plane node has an
 unfinished upgrade Job from any plan, or still carries the
-`tuppr.home-operations.com/upgrading` label. A label left behind on a node (for
-example by a plan deleted mid-upgrade) holds every control-plane upgrade until
-it is removed; the run's message names the node.
+`tuppr.home-operations.com/upgrading` label. A plan does not wait on the label
+of a node it selects and has already upgraded. A label left behind on any other
+node (for example by a plan deleted mid-upgrade) holds every control-plane
+upgrade until you remove it. The run's message names the node.
 
 When `parallelism > 1`:
 
