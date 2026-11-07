@@ -300,6 +300,14 @@ to a single-node cluster, where `talosctl`'s own drain is disabled: evicted pods
 stay Pending until the node is uncordoned. `policy.waitForVolumeDetach` on its
 own never drains a single node.
 
+Unless `disableEviction` is set, evictions respect PodDisruptionBudgets. Pods are
+evicted concurrently, and an eviction that a budget refuses is retried every 5
+seconds, as `kubectl drain` does. That gives a budget time to allow it once
+another replica is ready, or an operator time to react to the cordon, such as a
+database switching its primary to another node. Retries and the wait for evicted
+pods to terminate share the node's 10-minute drain timeout. A drain that times
+out uncordons the node, and the run retries the batch a minute later.
+
 ## Pre/post-upgrade hooks
 
 Run side-effecting Jobs around the whole run - for example, set and clear Ceph

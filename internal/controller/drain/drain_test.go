@@ -3,6 +3,7 @@ package drain
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -585,6 +586,219 @@ func TestDrainNode(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// evictionSubResource is the pod subresource the drainer creates to evict a pod.
+const evictionSubResource = "eviction"
+
+// errPDBRefusal is the eviction API's response when evicting a pod would
+// violate its PodDisruptionBudget.
+var errPDBRefusal = apierrors.NewTooManyRequests("Cannot evict pod as it would violate the pod's disruption budget.", 0)
+
+// shortenEvictionRetry makes refused evictions retry almost immediately for
+// the rest of the test.
+func shortenEvictionRetry(t *testing.T) {
+	t.Helper()
+	prev := evictionRetryInterval
+	evictionRetryInterval = time.Millisecond
+	t.Cleanup(func() { evictionRetryInterval = prev })
+}
+
+func TestDrainNode_PDBRefusedEviction(t *testing.T) {
+	scheme := newTestScheme()
+	shortenEvictionRetry(t)
+
+	tests := []struct {
+		name        string
+		respectPDBs bool
+		// refusals is how many eviction attempts the budget refuses before
+		// allowing one; -1 refuses every attempt.
+		refusals int
+		// deleteOnFirstRefusal deletes the pod (another actor removing it) as
+		// the first eviction is refused.
+		deleteOnFirstRefusal bool
+		// replacedOnRetry makes the attempt after the refusals fail the UID
+		// precondition, as the API does when a pod of the same name was
+		// recreated in the meantime.
+		replacedOnRetry bool
+		timeout         time.Duration
+		wantErr         bool
+		// wantAttempts is the exact attempt count on success, and the minimum
+		// on error.
+		wantAttempts int
+	}{
+		{
+			name:         "retries until the budget allows the eviction",
+			respectPDBs:  true,
+			refusals:     2,
+			timeout:      5 * time.Second,
+			wantAttempts: 3,
+		},
+		{
+			name:         "keeps retrying until the drain times out",
+			respectPDBs:  true,
+			refusals:     -1,
+			timeout:      100 * time.Millisecond,
+			wantErr:      true,
+			wantAttempts: 2,
+		},
+		{
+			name:         "deletes instead of retrying when budgets are not respected",
+			respectPDBs:  false,
+			refusals:     -1,
+			timeout:      5 * time.Second,
+			wantAttempts: 1,
+		},
+		{
+			name:                 "treats a pod deleted while refused as drained",
+			respectPDBs:          true,
+			refusals:             1,
+			deleteOnFirstRefusal: true,
+			timeout:              5 * time.Second,
+			wantAttempts:         2,
+		},
+		{
+			name:                 "treats a pod replaced while refused as drained",
+			respectPDBs:          true,
+			refusals:             1,
+			deleteOnFirstRefusal: true,
+			replacedOnRetry:      true,
+			timeout:              5 * time.Second,
+			wantAttempts:         2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pod := newPod("a", "default", "test-node", corev1.PodRunning, nil, nil)
+			attempts := 0
+			cl := nodeNameIndex(fake.NewClientBuilder().WithScheme(scheme)).
+				WithObjects(newNode("test-node", false), pod).
+				WithInterceptorFuncs(interceptor.Funcs{
+					SubResourceCreate: func(ctx context.Context, c client.Client, subResourceName string, obj client.Object, subResource client.Object, opts ...client.SubResourceCreateOption) error {
+						if subResourceName == evictionSubResource {
+							attempts++
+							if got := subResource.(*policyv1.Eviction).DeleteOptions.Preconditions.UID; got == nil || *got != pod.UID {
+								t.Errorf("eviction UID precondition = %v, want %q", got, pod.UID)
+							}
+							if tt.refusals < 0 || attempts <= tt.refusals {
+								if tt.deleteOnFirstRefusal && attempts == 1 {
+									if err := c.Delete(ctx, obj); err != nil {
+										t.Errorf("delete pod: %v", err)
+									}
+								}
+								return errPDBRefusal
+							}
+							if tt.replacedOnRetry {
+								return apierrors.NewConflict(schema.GroupResource{Resource: "pods"}, obj.GetName(), errors.New("the UID in the precondition does not match the UID in record"))
+							}
+						}
+						return c.SubResource(subResourceName).Create(ctx, obj, subResource, opts...)
+					},
+				}).
+				Build()
+
+			err := NewDrainer(cl).DrainNode(context.Background(), "test-node", DrainOptions{
+				RespectPDBs: tt.respectPDBs,
+				Timeout:     tt.timeout,
+			})
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("DrainNode() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				if !apierrors.IsTooManyRequests(err) || !strings.Contains(err.Error(), "still refused by a PodDisruptionBudget") {
+					t.Fatalf("DrainNode() error = %v, want the budget refusal reported at the deadline", err)
+				}
+				if attempts < tt.wantAttempts {
+					t.Fatalf("eviction attempts = %d, want at least %d", attempts, tt.wantAttempts)
+				}
+				return
+			}
+			if attempts != tt.wantAttempts {
+				t.Fatalf("eviction attempts = %d, want %d", attempts, tt.wantAttempts)
+			}
+
+			var got corev1.Pod
+			if err := cl.Get(context.Background(), client.ObjectKeyFromObject(pod), &got); !apierrors.IsNotFound(err) {
+				t.Fatalf("pod should be gone, get error = %v", err)
+			}
+		})
+	}
+}
+
+// A pod whose budget keeps refusing must not stop the other pods on the node
+// from being evicted while the drain waits for it.
+func TestDrainNode_RefusedEvictionDoesNotBlockOtherPods(t *testing.T) {
+	scheme := newTestScheme()
+	shortenEvictionRetry(t)
+
+	refused := newPod("a", "default", "test-node", corev1.PodRunning, nil, nil)
+	other := newPod("b", "default", "test-node", corev1.PodRunning, nil, nil)
+	cl := nodeNameIndex(fake.NewClientBuilder().WithScheme(scheme)).
+		WithObjects(newNode("test-node", false), refused, other).
+		WithInterceptorFuncs(interceptor.Funcs{
+			SubResourceCreate: func(ctx context.Context, c client.Client, subResourceName string, obj client.Object, subResource client.Object, opts ...client.SubResourceCreateOption) error {
+				if subResourceName == evictionSubResource && obj.GetName() == refused.Name {
+					return errPDBRefusal
+				}
+				return c.SubResource(subResourceName).Create(ctx, obj, subResource, opts...)
+			},
+		}).
+		Build()
+
+	err := NewDrainer(cl).DrainNode(context.Background(), "test-node", DrainOptions{
+		RespectPDBs: true,
+		Timeout:     100 * time.Millisecond,
+	})
+	if !apierrors.IsTooManyRequests(err) {
+		t.Fatalf("DrainNode() error = %v, want the refused pod's budget refusal", err)
+	}
+
+	var got corev1.Pod
+	if err := cl.Get(context.Background(), client.ObjectKeyFromObject(other), &got); !apierrors.IsNotFound(err) {
+		t.Fatalf("pod %s should have been evicted while %s was refused, get error = %v", other.Name, refused.Name, err)
+	}
+}
+
+// If the drain's deadline expires while a retry's request is in flight, the
+// error still reports the budget refusal rather than the request's context
+// error.
+func TestDrainNode_DeadlineDuringRefusedEvictionRetry(t *testing.T) {
+	scheme := newTestScheme()
+	shortenEvictionRetry(t)
+
+	pod := newPod("a", "default", "test-node", corev1.PodRunning, nil, nil)
+	attempts := 0
+	cl := nodeNameIndex(fake.NewClientBuilder().WithScheme(scheme)).
+		WithObjects(newNode("test-node", false), pod).
+		WithInterceptorFuncs(interceptor.Funcs{
+			SubResourceCreate: func(ctx context.Context, c client.Client, subResourceName string, obj client.Object, subResource client.Object, opts ...client.SubResourceCreateOption) error {
+				if subResourceName != evictionSubResource {
+					return c.SubResource(subResourceName).Create(ctx, obj, subResource, opts...)
+				}
+				attempts++
+				if attempts == 1 {
+					return errPDBRefusal
+				}
+				<-ctx.Done()
+				return ctx.Err()
+			},
+		}).
+		Build()
+
+	err := NewDrainer(cl).DrainNode(context.Background(), "test-node", DrainOptions{
+		RespectPDBs: true,
+		Timeout:     100 * time.Millisecond,
+	})
+	if !apierrors.IsTooManyRequests(err) || !strings.Contains(err.Error(), "still refused by a PodDisruptionBudget") {
+		t.Fatalf("DrainNode() error = %v, want the budget refusal, not the request's context error", err)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("DrainNode() error = %v, should not surface the request's context error", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("eviction attempts = %d, want the retry's request to have been in flight at the deadline", attempts)
 	}
 }
 
