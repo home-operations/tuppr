@@ -35,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const daemonSetKind = "DaemonSet"
@@ -250,19 +251,23 @@ func (d *Drainer) evictPod(ctx context.Context, pod *corev1.Pod, opts DrainOptio
 			Name:      pod.Name,
 			Namespace: pod.Namespace,
 		},
-	}
-
-	if opts.GracePeriod != nil {
-		eviction.DeleteOptions = &metav1.DeleteOptions{
+		// The UID precondition keeps a retry from evicting a pod that was
+		// recreated under the same name, possibly on another node, while this
+		// one's eviction was being refused.
+		DeleteOptions: &metav1.DeleteOptions{
 			GracePeriodSeconds: opts.GracePeriod,
-		}
+			Preconditions:      &metav1.Preconditions{UID: &pod.UID},
+		},
 	}
 
 	var refusal error
 	for {
 		err := d.client.SubResource("eviction").Create(ctx, pod, eviction)
 		switch {
-		case err == nil, apierrors.IsNotFound(err):
+		case err == nil, apierrors.IsNotFound(err), apierrors.IsConflict(err):
+			// NotFound: the pod is already gone. Conflict: the UID precondition
+			// failed, so the pod was replaced and the replacement isn't ours to
+			// evict. Either way the original pod has left the node.
 			return nil
 		case refusal != nil && ctx.Err() != nil:
 			// The deadline hit during a retry; report the refusal, not the
@@ -272,6 +277,10 @@ func (d *Drainer) evictPod(ctx context.Context, pod *corev1.Pod, opts DrainOptio
 			return err
 		case !opts.RespectPDBs:
 			return d.deletePod(ctx, pod, opts.GracePeriod)
+		}
+		if refusal == nil {
+			log.FromContext(ctx).Info("Eviction refused by a PodDisruptionBudget, retrying until the drain times out",
+				"pod", client.ObjectKeyFromObject(pod).String(), "retryInterval", evictionRetryInterval, "reason", err.Error())
 		}
 		refusal = err
 

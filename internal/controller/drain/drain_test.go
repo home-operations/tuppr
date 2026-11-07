@@ -618,8 +618,12 @@ func TestDrainNode_PDBRefusedEviction(t *testing.T) {
 		// deleteOnFirstRefusal deletes the pod (another actor removing it) as
 		// the first eviction is refused.
 		deleteOnFirstRefusal bool
-		timeout              time.Duration
-		wantErr              bool
+		// replacedOnRetry makes the attempt after the refusals fail the UID
+		// precondition, as the API does when a pod of the same name was
+		// recreated in the meantime.
+		replacedOnRetry bool
+		timeout         time.Duration
+		wantErr         bool
 		// wantAttempts is the exact attempt count on success, and the minimum
 		// on error.
 		wantAttempts int
@@ -654,6 +658,15 @@ func TestDrainNode_PDBRefusedEviction(t *testing.T) {
 			timeout:              5 * time.Second,
 			wantAttempts:         2,
 		},
+		{
+			name:                 "treats a pod replaced while refused as drained",
+			respectPDBs:          true,
+			refusals:             1,
+			deleteOnFirstRefusal: true,
+			replacedOnRetry:      true,
+			timeout:              5 * time.Second,
+			wantAttempts:         2,
+		},
 	}
 
 	for _, tt := range tests {
@@ -666,6 +679,9 @@ func TestDrainNode_PDBRefusedEviction(t *testing.T) {
 					SubResourceCreate: func(ctx context.Context, c client.Client, subResourceName string, obj client.Object, subResource client.Object, opts ...client.SubResourceCreateOption) error {
 						if subResourceName == evictionSubResource {
 							attempts++
+							if got := subResource.(*policyv1.Eviction).DeleteOptions.Preconditions.UID; got == nil || *got != pod.UID {
+								t.Errorf("eviction UID precondition = %v, want %q", got, pod.UID)
+							}
 							if tt.refusals < 0 || attempts <= tt.refusals {
 								if tt.deleteOnFirstRefusal && attempts == 1 {
 									if err := c.Delete(ctx, obj); err != nil {
@@ -673,6 +689,9 @@ func TestDrainNode_PDBRefusedEviction(t *testing.T) {
 									}
 								}
 								return errPDBRefusal
+							}
+							if tt.replacedOnRetry {
+								return apierrors.NewConflict(schema.GroupResource{Resource: "pods"}, obj.GetName(), errors.New("the UID in the precondition does not match the UID in record"))
 							}
 						}
 						return c.SubResource(subResourceName).Create(ctx, obj, subResource, opts...)
@@ -777,6 +796,9 @@ func TestDrainNode_DeadlineDuringRefusedEvictionRetry(t *testing.T) {
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("DrainNode() error = %v, should not surface the request's context error", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("eviction attempts = %d, want the retry's request to have been in flight at the deadline", attempts)
 	}
 }
 
