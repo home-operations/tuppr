@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v4"
 )
 
 // unattendedInstallKind is the 1.14+ document that owns the installer image.
