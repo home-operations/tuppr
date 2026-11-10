@@ -5,7 +5,7 @@ go 1.26.5
 require (
 	cel.dev/cel-go v0.33.2
 	github.com/Masterminds/semver/v3 v3.5.0
-	github.com/cosi-project/runtime v1.17.0
+	github.com/cosi-project/runtime v1.17.1
 	github.com/go-logr/logr v1.4.4
 	github.com/go-sprout/sprout v1.1.2
 	github.com/google/go-containerregistry v0.22.1
@@ -21,7 +21,7 @@ require (
 	github.com/unraid/apprise-go v0.4.0
 	go.uber.org/zap v1.28.0
 	go.yaml.in/yaml/v4 v4.0.0
-	golang.org/x/sync v0.24.0
+	golang.org/x/sync v0.25.0
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 	k8s.io/api v0.37.2
