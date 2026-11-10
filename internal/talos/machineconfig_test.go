@@ -115,6 +115,33 @@ func TestSetInstallImage(t *testing.T) {
 		assert.Contains(t, patched, "image: ghcr.io/siderolabs/kubelet:v1.37.0")
 	})
 
+	t.Run("edited document keeps its comments", func(t *testing.T) {
+		const commented = `# managed by hand
+version: v1alpha1
+machine:
+  # install section
+  install:
+    disk: /dev/vda # boot disk
+    image: factory.talos.dev/installer/abc:v1.13.5 # pinned
+cluster:
+  clusterName: test
+`
+		patched, err := setInstallImage(commented, "img:new")
+		require.NoError(t, err)
+
+		image, err := installImageFromConfig(patched)
+		require.NoError(t, err)
+		assert.Equal(t, "img:new", image)
+
+		assert.Contains(t, patched, "# managed by hand")
+		assert.Contains(t, patched, "# install section")
+		assert.Contains(t, patched, "# boot disk")
+
+		// The replaced value is a fresh node, so a comment trailing the old
+		// image goes with it.
+		assert.NotContains(t, patched, "# pinned")
+	})
+
 	t.Run("round-trips through repeated patches", func(t *testing.T) {
 		once, err := setInstallImage(config114, "img:one")
 		require.NoError(t, err)
