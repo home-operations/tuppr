@@ -86,10 +86,8 @@ func TestSetInstallImage(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "factory.talos.dev/installer/abc:v1.14.0", image)
 
-		// The rest of the document survives the edit.
-		assert.Contains(t, patched, "disk: /dev/vda")
-		assert.Contains(t, patched, "clusterName: test")
-		assert.NotContains(t, patched, "v1.13.5")
+		// Only the image line changes; the rest keeps its layout.
+		assert.Equal(t, strings.Replace(config113, "v1.13.5", "v1.14.0", 1), patched)
 	})
 
 	t.Run("1.14 config edits the UnattendedInstall document only", func(t *testing.T) {
@@ -100,23 +98,16 @@ func TestSetInstallImage(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "factory.talos.dev/metal-installer/abc:v1.14.0-beta.1", image)
 
-		// A 1.14 node rejects any .machine.install alongside the document.
-		assert.NotContains(t, patched, "machine:\n  install:")
-
-		// Unknown documents pass through byte for byte.
-		for _, doc := range []string{
-			"apiVersion: v1alpha1\nkind: DiscoveryIdentityConfig\nidentity: some-identity",
-			"apiVersion: v1alpha1\nkind: BGPPeerConfig\nname: peer-1\npeerAddress: 10.0.0.254",
-		} {
-			assert.Contains(t, patched, doc)
-		}
-
-		// So does the untouched v1alpha1 document.
-		assert.Contains(t, patched, "image: ghcr.io/siderolabs/kubelet:v1.37.0")
+		// Only the image line changes: no .machine.install appears (a 1.14 node
+		// rejects it alongside the document) and every other document, unknown
+		// kinds included, passes through byte for byte.
+		assert.Equal(t, strings.Replace(config114, "v1.14.0-beta.0", "v1.14.0-beta.1", 1), patched)
 	})
 
 	t.Run("edited document keeps its comments", func(t *testing.T) {
-		const commented = `# managed by hand
+		for name, tc := range map[string]struct{ in, want string }{
+			"v1alpha1": {
+				in: `# managed by hand
 version: v1alpha1
 machine:
   # install section
@@ -125,21 +116,45 @@ machine:
     image: factory.talos.dev/installer/abc:v1.13.5 # pinned
 cluster:
   clusterName: test
-`
-		patched, err := setInstallImage(commented, "img:new")
-		require.NoError(t, err)
-
-		image, err := installImageFromConfig(patched)
-		require.NoError(t, err)
-		assert.Equal(t, "img:new", image)
-
-		assert.Contains(t, patched, "# managed by hand")
-		assert.Contains(t, patched, "# install section")
-		assert.Contains(t, patched, "# boot disk")
-
-		// The replaced value is a fresh node, so a comment trailing the old
-		// image goes with it.
-		assert.NotContains(t, patched, "# pinned")
+`,
+				want: `# managed by hand
+version: v1alpha1
+machine:
+  # install section
+  install:
+    disk: /dev/vda # boot disk
+    image: img:new # pinned
+cluster:
+  clusterName: test
+`,
+			},
+			"UnattendedInstallConfig": {
+				in: `apiVersion: v1alpha1
+kind: UnattendedInstallConfig
+# installer section
+installer:
+  image: factory.talos.dev/metal-installer/abc:v1.14.0 # pinned
+provisioning:
+  diskSelector:
+    match: system_disk # first disk
+`,
+				want: `apiVersion: v1alpha1
+kind: UnattendedInstallConfig
+# installer section
+installer:
+  image: img:new # pinned
+provisioning:
+  diskSelector:
+    match: system_disk # first disk
+`,
+			},
+		} {
+			t.Run(name, func(t *testing.T) {
+				patched, err := setInstallImage(tc.in, "img:new")
+				require.NoError(t, err)
+				assert.Equal(t, tc.want, patched)
+			})
+		}
 	})
 
 	t.Run("round-trips through repeated patches", func(t *testing.T) {

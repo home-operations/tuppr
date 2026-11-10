@@ -121,6 +121,11 @@ func setInstallImage(raw, image string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// The split consumes the newline before each separator, and the dump adds
+	// one back; drop it so an interior edit does not leave a blank line.
+	if target < len(docs)-1 {
+		edited = strings.TrimSuffix(edited, "\n")
+	}
 	docs[target] = edited
 
 	return strings.Join(docs, "\n---\n"), nil
@@ -149,14 +154,26 @@ func setYAMLPath(doc string, path []string, value string) (string, error) {
 	leaf := path[len(path)-1]
 	for i := 0; i < len(node.Content)-1; i += 2 {
 		if node.Content[i].Value == leaf {
-			node.Content[i+1] = scalarNode(value)
-			out, err := yaml.Marshal(&root)
-			return string(out), err
+			old := node.Content[i+1]
+			node.Content[i+1] = &yaml.Node{
+				Kind:        yaml.ScalarNode,
+				Tag:         "!!str",
+				Value:       value,
+				Style:       old.Style,
+				LineComment: old.LineComment,
+			}
+			return dumpDocument(&root)
 		}
 	}
 	node.Content = append(node.Content, scalarNode(leaf), scalarNode(value))
 
-	out, err := yaml.Marshal(&root)
+	return dumpDocument(&root)
+}
+
+// dumpDocument serializes with Talos's own layout (2-space indent, no line
+// wrapping) so a patch does not re-indent the untouched rest of the document.
+func dumpDocument(root *yaml.Node) (string, error) {
+	out, err := yaml.Dump(root, yaml.WithV3Defaults(), yaml.WithLineWidth(-1), yaml.WithIndent(2))
 	return string(out), err
 }
 
