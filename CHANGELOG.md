@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.5.14](https://github.com/home-operations/tuppr/compare/0.5.13...0.5.14) (2026-11-13)
+
+
+### Build System
+
+* **deps:** migrate from gopkg.in/yaml.v3 to go.yaml.in/yaml/v4 ([#718](https://github.com/home-operations/tuppr/issues/718)) ([60d1402](https://github.com/home-operations/tuppr/commit/60d1402cb3daee4bd6801127fbf4a746b70140d0))
+
+
+### Miscellaneous Chores
+
+* **container:** update talos group (v1.14.5 → v1.14.6) ([#720](https://github.com/home-operations/tuppr/issues/720)) ([9dd0915](https://github.com/home-operations/tuppr/commit/9dd09157af4de16f1f16dd9809023ad40e2034bf))
+* **github-action:** update action docker/github-builder (v1.18.1 → v1.19.0) ([#713](https://github.com/home-operations/tuppr/issues/713)) ([3989d0c](https://github.com/home-operations/tuppr/commit/3989d0cd61dcf7424ebc89a227df96dd36ee3870))
+* **github-action:** update action docker/login-action (v4.7.0 → v4.8.0) ([#712](https://github.com/home-operations/tuppr/issues/712)) ([e706402](https://github.com/home-operations/tuppr/commit/e7064020b0adf7ce90065814f1920910ff9d3718))
+* **github-action:** update action jdx/mise-action (v5.2.6 → v5.2.7) ([#715](https://github.com/home-operations/tuppr/issues/715)) ([92dec5f](https://github.com/home-operations/tuppr/commit/92dec5f54e493e4cb60cb5dee7d86bb55148a6e7))
+* **go:** update module github.com/cosi-project/runtime (v1.17.0 → v1.17.1) ([#716](https://github.com/home-operations/tuppr/issues/716)) ([b00810d](https://github.com/home-operations/tuppr/commit/b00810d888ca99df7a83560a97c8fa20c5db2f0c))
+* **go:** update module golang.org/x/sync (v0.24.0 → v0.25.0) ([#717](https://github.com/home-operations/tuppr/issues/717)) ([7515f2c](https://github.com/home-operations/tuppr/commit/7515f2cd31e272ed15d57a18a9368a7a1a6bbaf0))
+* **mise:** update tool go (1.27.3 → 1.27.4) ([#725](https://github.com/home-operations/tuppr/issues/725)) ([82a325e](https://github.com/home-operations/tuppr/commit/82a325ec7cb02e8af781e2c05acd291e50fd853f))
+* **mise:** update tool node (26.13.0 → v26.13.1) ([#723](https://github.com/home-operations/tuppr/issues/723)) ([badbeca](https://github.com/home-operations/tuppr/commit/badbecaebd195cb8c3acaa341d809ca8a93e931d))
+* **mise:** update tool pnpm (12.17.0 → 12.18.0) ([#710](https://github.com/home-operations/tuppr/issues/710)) ([e9f048f](https://github.com/home-operations/tuppr/commit/e9f048f740b9c66bb68cf6aa6232befdca724f4d))
+* **mise:** update tool yq (4.54.1 → 4.54.2) ([#714](https://github.com/home-operations/tuppr/issues/714)) ([4f99849](https://github.com/home-operations/tuppr/commit/4f9984907689b6111f22d97304a680e041c95a78))
+* **mise:** update tool yq (4.54.2 → 4.54.3) ([#722](https://github.com/home-operations/tuppr/issues/722)) ([440e2ec](https://github.com/home-operations/tuppr/commit/440e2ec90554e1773d07e0d1d080879eebc2b104))
+* **npm:** update dependency @astrojs/starlight (0.42.10 → 0.42.11) ([#726](https://github.com/home-operations/tuppr/issues/726)) ([953c07f](https://github.com/home-operations/tuppr/commit/953c07f588df9564297fc26dbe59858f85d0965c))
+* **npm:** update dependency astro (7.4.10 → 7.4.11) ([#724](https://github.com/home-operations/tuppr/issues/724)) ([217c9ea](https://github.com/home-operations/tuppr/commit/217c9eadd649a57d13bfaf816d749ed8426a7de9))
+* **npm:** update dependency astro (7.4.7 → 7.4.8) ([#719](https://github.com/home-operations/tuppr/issues/719)) ([54387fe](https://github.com/home-operations/tuppr/commit/54387fed1ec70a33c3294d2116cdb4b9108b8518))
+* **npm:** update dependency astro (7.4.8 → 7.4.10) ([#721](https://github.com/home-operations/tuppr/issues/721)) ([1bcf257](https://github.com/home-operations/tuppr/commit/1bcf2578e15d1973574b7345393ffbc1f5a98881))
+
 ## [0.5.13](https://github.com/home-operations/tuppr/compare/0.5.12...0.5.13) (2026-11-07)
 
 
