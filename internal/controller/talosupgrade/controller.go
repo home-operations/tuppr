@@ -61,6 +61,7 @@ const (
 	statusFailedNodes              = "failedNodes"
 	statusRebootingNodes           = "rebootingNodes"
 	statusPreHookFailed            = "preHookFailed"
+	statusPreBatchHooks            = "preBatchHooks"
 	statusPreHookIndex             = "preHookIndex"
 	statusPostHookIndex            = "postHookIndex"
 	statusPrePulledNodes           = "prePulledNodes"
@@ -157,7 +158,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, r.Update(ctx, &talosUpgrade)
 	}
 
-	return r.processUpgrade(ctx, &talosUpgrade)
+	result, err := r.processUpgrade(ctx, &talosUpgrade)
+	if err != nil {
+		return result, err
+	}
+	return wakeByPreBatchDeadline(&talosUpgrade, r.Now.Now(), result), nil
 }
 
 func (r *Reconciler) cleanup(ctx context.Context, talosUpgrade *tupprv1alpha1.TalosUpgrade) (ctrl.Result, error) {
