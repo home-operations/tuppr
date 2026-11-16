@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.5.14](https://github.com/home-operations/tuppr/compare/0.5.13...0.5.14) (2026-11-16)
+
+
+### Bug Fixes
+
+* **talosupgrade:** wait out verification errors for a rebooting node whose Job is gone ([#671](https://github.com/home-operations/tuppr/issues/671)) ([ab2f055](https://github.com/home-operations/tuppr/commit/ab2f055080ccc0523b68b51cbd89e5dd0b3c420a))
+
+
+### Build System
+
+* **deps:** migrate from gopkg.in/yaml.v3 to go.yaml.in/yaml/v4 ([#718](https://github.com/home-operations/tuppr/issues/718)) ([60d1402](https://github.com/home-operations/tuppr/commit/60d1402cb3daee4bd6801127fbf4a746b70140d0))
+
+
+### Miscellaneous Chores
+
+* **container:** update talos group (v1.14.5 → v1.14.6) ([#720](https://github.com/home-operations/tuppr/issues/720)) ([9dd0915](https://github.com/home-operations/tuppr/commit/9dd09157af4de16f1f16dd9809023ad40e2034bf))
+* **github-action:** update action docker/github-builder (v1.18.1 → v1.19.0) ([#713](https://github.com/home-operations/tuppr/issues/713)) ([3989d0c](https://github.com/home-operations/tuppr/commit/3989d0cd61dcf7424ebc89a227df96dd36ee3870))
+* **github-action:** update action docker/login-action (v4.7.0 → v4.8.0) ([#712](https://github.com/home-operations/tuppr/issues/712)) ([e706402](https://github.com/home-operations/tuppr/commit/e7064020b0adf7ce90065814f1920910ff9d3718))
+* **github-action:** update action jdx/mise-action (v5.2.6 → v5.2.7) ([#715](https://github.com/home-operations/tuppr/issues/715)) ([92dec5f](https://github.com/home-operations/tuppr/commit/92dec5f54e493e4cb60cb5dee7d86bb55148a6e7))
+* **github-action:** update action jdx/mise-action (v5.2.7 → v5.2.8) ([#731](https://github.com/home-operations/tuppr/issues/731)) ([4977b41](https://github.com/home-operations/tuppr/commit/4977b41e60cd9d5ea4d7bc135514679af969ae97))
+* **go:** update module github.com/cosi-project/runtime (v1.17.0 → v1.17.1) ([#716](https://github.com/home-operations/tuppr/issues/716)) ([b00810d](https://github.com/home-operations/tuppr/commit/b00810d888ca99df7a83560a97c8fa20c5db2f0c))
+* **go:** update module golang.org/x/sync (v0.24.0 → v0.25.0) ([#717](https://github.com/home-operations/tuppr/issues/717)) ([7515f2c](https://github.com/home-operations/tuppr/commit/7515f2cd31e272ed15d57a18a9368a7a1a6bbaf0))
+* **go:** update module sigs.k8s.io/controller-runtime (v0.25.2 → v0.25.3) ([#732](https://github.com/home-operations/tuppr/issues/732)) ([0cb976a](https://github.com/home-operations/tuppr/commit/0cb976a01121df5390b261c4c02731587604567a))
+* **mise:** update tool go (1.27.3 → 1.27.4) ([#725](https://github.com/home-operations/tuppr/issues/725)) ([82a325e](https://github.com/home-operations/tuppr/commit/82a325ec7cb02e8af781e2c05acd291e50fd853f))
+* **mise:** update tool helm (4.3.1 → 4.3.2) ([#733](https://github.com/home-operations/tuppr/issues/733)) ([68de230](https://github.com/home-operations/tuppr/commit/68de230d9484c03e37ba25456f68af3fedfdd886))
+* **mise:** update tool node (26.13.0 → v26.13.1) ([#723](https://github.com/home-operations/tuppr/issues/723)) ([badbeca](https://github.com/home-operations/tuppr/commit/badbecaebd195cb8c3acaa341d809ca8a93e931d))
+* **mise:** update tool pnpm (12.17.0 → 12.18.0) ([#710](https://github.com/home-operations/tuppr/issues/710)) ([e9f048f](https://github.com/home-operations/tuppr/commit/e9f048f740b9c66bb68cf6aa6232befdca724f4d))
+* **mise:** update tool pnpm (12.18.0 → 12.20.0) ([#730](https://github.com/home-operations/tuppr/issues/730)) ([1e6d4fa](https://github.com/home-operations/tuppr/commit/1e6d4faf65e2d9384e7cab8993c6e785ea9cb3ca))
+* **mise:** update tool pnpm (12.20.0 → 12.21.0) ([#734](https://github.com/home-operations/tuppr/issues/734)) ([ec761d1](https://github.com/home-operations/tuppr/commit/ec761d1cf150c96de640c58a82aef4e14eb33d9b))
+* **mise:** update tool talosctl (1.14.5 → 1.14.6) ([#727](https://github.com/home-operations/tuppr/issues/727)) ([b1ad208](https://github.com/home-operations/tuppr/commit/b1ad208e92c6005365f8be91a2af365598d53c76))
+* **mise:** update tool yq (4.54.1 → 4.54.2) ([#714](https://github.com/home-operations/tuppr/issues/714)) ([4f99849](https://github.com/home-operations/tuppr/commit/4f9984907689b6111f22d97304a680e041c95a78))
+* **mise:** update tool yq (4.54.2 → 4.54.3) ([#722](https://github.com/home-operations/tuppr/issues/722)) ([440e2ec](https://github.com/home-operations/tuppr/commit/440e2ec90554e1773d07e0d1d080879eebc2b104))
+* **npm:** update dependency @astrojs/starlight (0.42.10 → 0.42.11) ([#726](https://github.com/home-operations/tuppr/issues/726)) ([953c07f](https://github.com/home-operations/tuppr/commit/953c07f588df9564297fc26dbe59858f85d0965c))
+* **npm:** update dependency @astrojs/starlight (0.42.11 → 0.43.1) ([#729](https://github.com/home-operations/tuppr/issues/729)) ([410fcb1](https://github.com/home-operations/tuppr/commit/410fcb19b3c398f257af9c2dbeb7864d0986b1bf))
+* **npm:** update dependency astro (7.4.10 → 7.4.11) ([#724](https://github.com/home-operations/tuppr/issues/724)) ([217c9ea](https://github.com/home-operations/tuppr/commit/217c9eadd649a57d13bfaf816d749ed8426a7de9))
+* **npm:** update dependency astro (7.4.11 → 7.4.12) ([#728](https://github.com/home-operations/tuppr/issues/728)) ([928419a](https://github.com/home-operations/tuppr/commit/928419aa65d1fe1af034a6eb99fc172f2f849cae))
+* **npm:** update dependency astro (7.4.7 → 7.4.8) ([#719](https://github.com/home-operations/tuppr/issues/719)) ([54387fe](https://github.com/home-operations/tuppr/commit/54387fed1ec70a33c3294d2116cdb4b9108b8518))
+* **npm:** update dependency astro (7.4.8 → 7.4.10) ([#721](https://github.com/home-operations/tuppr/issues/721)) ([1bcf257](https://github.com/home-operations/tuppr/commit/1bcf2578e15d1973574b7345393ffbc1f5a98881))
+
 ## [0.5.13](https://github.com/home-operations/tuppr/compare/0.5.12...0.5.13) (2026-11-07)
 
 
