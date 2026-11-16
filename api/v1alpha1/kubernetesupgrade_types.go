@@ -117,6 +117,13 @@ type KubernetesUpgradeStatus struct {
 	// loops; reset by spec changes and the reset annotation.
 	// +optional
 	CompletionCycles int `json:"completionCycles,omitempty"`
+
+	// HealthChecksFailingSince is when spec.healthChecks started failing in
+	// their current streak; cleared once they pass. It spaces out the
+	// re-evaluations while they keep failing and times how long they took
+	// to pass.
+	// +optional
+	HealthChecksFailingSince *metav1.Time `json:"healthChecksFailingSince,omitempty"`
 }
 
 // UpgradeHistoryEntry records a single completed version transition

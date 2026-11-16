@@ -49,23 +49,24 @@ const (
 )
 
 const (
-	appLabelKey              = jobs.AppLabelKey
-	appInstanceLabelKey      = jobs.AppInstanceLabelKey
-	appPartOfLabelKey        = jobs.AppPartOfLabelKey
-	appPartOfTuppr           = jobs.AppPartOfTuppr
-	targetNodeLabelKey       = jobs.TargetNodeLabelKey
-	talosUpgradeAppName      = "talos-upgrade"
-	statusAlertSilenceIDs    = "alertSilenceIDs"
-	statusAlertSilencesSince = "alertSilencesSince"
-	statusCompletedNodes     = "completedNodes"
-	statusFailedNodes        = "failedNodes"
-	statusRebootingNodes     = "rebootingNodes"
-	statusPreHookFailed      = "preHookFailed"
-	statusPreHookIndex       = "preHookIndex"
-	statusPostHookIndex      = "postHookIndex"
-	statusPrePulledNodes     = "prePulledNodes"
-	statusPrePullFailure     = "prePullFailure"
-	statusCompletionCycles   = "completionCycles"
+	appLabelKey                    = jobs.AppLabelKey
+	appInstanceLabelKey            = jobs.AppInstanceLabelKey
+	appPartOfLabelKey              = jobs.AppPartOfLabelKey
+	appPartOfTuppr                 = jobs.AppPartOfTuppr
+	targetNodeLabelKey             = jobs.TargetNodeLabelKey
+	talosUpgradeAppName            = "talos-upgrade"
+	statusAlertSilenceIDs          = "alertSilenceIDs"
+	statusAlertSilencesSince       = "alertSilencesSince"
+	statusCompletedNodes           = "completedNodes"
+	statusFailedNodes              = "failedNodes"
+	statusRebootingNodes           = "rebootingNodes"
+	statusPreHookFailed            = "preHookFailed"
+	statusPreHookIndex             = "preHookIndex"
+	statusPostHookIndex            = "postHookIndex"
+	statusPrePulledNodes           = "prePulledNodes"
+	statusPrePullFailure           = "prePullFailure"
+	statusCompletionCycles         = "completionCycles"
+	statusHealthChecksFailingSince = "healthChecksFailingSince"
 )
 
 // TalosClient defines the interface for Talos operations
@@ -77,6 +78,8 @@ type TalosClient interface {
 	GetNodePlatform(ctx context.Context, nodeIP string) (string, error)
 	PatchNodeInstallImage(ctx context.Context, nodeIP, newImage string) error
 	PullImage(ctx context.Context, nodeIP, imageRef string) error
+	CheckMachineReady(ctx context.Context, nodeIP string) error
+	CheckEtcdHealthy(ctx context.Context, controlPlaneIPs []string) error
 }
 
 // ImageChecker defines the interface for checking image availability
@@ -98,9 +101,8 @@ type Now interface {
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=talosupgrades/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=talosupgrades/finalizers,verbs=update
 // +kubebuilder:rbac:groups=tuppr.home-operations.com,resources=kubernetesupgrades,verbs=get;list;watch
-// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=batch,namespace=tuppr-system,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch
 // +kubebuilder:rbac:groups=storage.k8s.io,resources=volumeattachments,verbs=get;list;watch
@@ -122,10 +124,16 @@ type Reconciler struct {
 	Renderer            *notification.Renderer
 	Silencer            alerting.Silencer
 	Recorder            record.EventRecorder
+	// APIReader reads straight from the API server for checks a stale cache
+	// would defeat; defaults to the manager's API reader.
+	APIReader client.Reader
 
 	// silenceWarnings latches once-per-CR silence Warning events (see
 	// silenceWarnOnce) so steady-state conditions don't spam the apiserver.
 	silenceWarnings sync.Map
+
+	// clusterHealthTimeout overrides defaultClusterHealthTimeout when > 0.
+	clusterHealthTimeout time.Duration
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -204,6 +212,9 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			return fmt.Errorf("failed to create talos client: %w", err)
 		}
 		r.TalosClient = talosClient
+	}
+	if r.APIReader == nil {
+		r.APIReader = mgr.GetAPIReader()
 	}
 	if r.Now == nil {
 		r.Now = &nodeutil.Clock{}
@@ -317,6 +328,14 @@ func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, talosUpgrade *tupp
 		"conditions":   conditions,
 	}
 	maps.Copy(updates, extra)
+	// A failure streak spans one wait in HealthChecking. A run that moves on,
+	// or parks for a closed window, a suspend or an unreachable node, starts a
+	// new streak, so neither the backoff nor the wait metric counts that time.
+	// Cleared whatever the in-memory status says: the cache can lag a streak
+	// the previous reconcile wrote.
+	if phase != tupprv1alpha1.JobPhaseHealthChecking {
+		updates[statusHealthChecksFailingSince] = nil
+	}
 	applyPhaseAuditFields(&talosUpgrade.Status, updates, phase, metav1.Now(), talosUpgrade.Spec.Talos.Version)
 
 	if err := r.updateStatus(ctx, talosUpgrade, updates); err != nil {
@@ -326,6 +345,9 @@ func (r *Reconciler) setPhaseWithUpdates(ctx context.Context, talosUpgrade *tupp
 	talosUpgrade.Status.CurrentNodes = currentNodes
 	talosUpgrade.Status.Message = message
 	talosUpgrade.Status.Conditions = conditions
+	if phase != tupprv1alpha1.JobPhaseHealthChecking {
+		talosUpgrade.Status.HealthChecksFailingSince = nil
+	}
 	if prevPhase != phase {
 		keysAndValues := []any{"from", prevPhase, "to", phase, "reason", reason, "message", message}
 		if currentNode != "" {

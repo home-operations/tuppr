@@ -7,9 +7,9 @@
       matchPackageNames: [
         "github.com/siderolabs/talos/pkg/machinery",
         "ghcr.io/siderolabs/talos",
-        "talosctl",
+        // talosctl from mise; Renovate looks it up as this GitHub repo.
+        "siderolabs/talos",
       ],
-      minimumGroupSize: 3,
     },
   ],
   postUpdateOptions: ["gomodTidy", "gomodUpdateImportPaths"],

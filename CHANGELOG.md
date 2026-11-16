@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.5.13](https://github.com/home-operations/tuppr/compare/0.5.12...0.5.13) (2026-11-07)
+
+
+### Bug Fixes
+
+* **drain:** retry evictions a PodDisruptionBudget refuses ([#703](https://github.com/home-operations/tuppr/issues/703)) ([fcefa81](https://github.com/home-operations/tuppr/commit/fcefa8129ce13932a44bbe252ff5a201bb6bfef0))
+* **healthcheck:** evaluate health checks once per reconcile instead of blocking ([#683](https://github.com/home-operations/tuppr/issues/683)) ([a051c1b](https://github.com/home-operations/tuppr/commit/a051c1bcd84045ced7ec57e5c88d3522ea6bb034))
+* **talosupgrade:** upgrade one control-plane node at a time ([#669](https://github.com/home-operations/tuppr/issues/669)) ([7f1bd46](https://github.com/home-operations/tuppr/commit/7f1bd467f1d558535838277136f3e164bdf07917))
+
+
+### Miscellaneous Chores
+
+* **github-action:** update github-actions ([#704](https://github.com/home-operations/tuppr/issues/704)) ([2f8bd7f](https://github.com/home-operations/tuppr/commit/2f8bd7f3c17637b41cdc0d71a052fa3e19d055ab))
+* **go:** update module github.com/cosi-project/runtime (v1.16.4 → v1.17.0) ([#700](https://github.com/home-operations/tuppr/issues/700)) ([eb2bf37](https://github.com/home-operations/tuppr/commit/eb2bf375338bc5199429def224e91d2e11d8fc71))
+* **mise:** update mise tools ([#706](https://github.com/home-operations/tuppr/issues/706)) ([ab30b8a](https://github.com/home-operations/tuppr/commit/ab30b8ae83de10ad89909e64275f63f06db7d661))
+* **npm:** update dependency @astrojs/starlight (0.42.8 → 0.42.9) ([#705](https://github.com/home-operations/tuppr/issues/705)) ([6d5f55d](https://github.com/home-operations/tuppr/commit/6d5f55d50f523a6f9626e34dbda43bf7d0ab171b))
+* **npm:** update dependency @astrojs/starlight (0.42.9 → 0.42.10) ([#709](https://github.com/home-operations/tuppr/issues/709)) ([6e7143f](https://github.com/home-operations/tuppr/commit/6e7143fa01986ea9fa40a8c77d3db1f44d5d5cb1))
+* **npm:** update dependency astro (7.4.5 → 7.4.6) ([#707](https://github.com/home-operations/tuppr/issues/707)) ([3957c07](https://github.com/home-operations/tuppr/commit/3957c07af5d13f3d42d8c3a28e31e0c4e9225fbf))
+* **npm:** update dependency astro (7.4.6 → 7.4.7) ([#708](https://github.com/home-operations/tuppr/issues/708)) ([e42152c](https://github.com/home-operations/tuppr/commit/e42152cb390dff1a54c226112c7a25d931d0d6d9))
+* **npm:** update dependency mermaid (12.2.0 → 12.3.0) ([#701](https://github.com/home-operations/tuppr/issues/701)) ([c3e1009](https://github.com/home-operations/tuppr/commit/c3e1009da9f518ff58e79bca04cb35336792c600))
+
+## [0.5.12](https://github.com/home-operations/tuppr/compare/0.5.11...0.5.12) (2026-11-03)
+
+
+### Features
+
+* **rbac:** scope Secret and Job access to the controller namespace ([#698](https://github.com/home-operations/tuppr/issues/698)) ([5f6f6bb](https://github.com/home-operations/tuppr/commit/5f6f6bbeb8e4cc5651f83eefd79bb04b39a72469))
+* **talosupgrade:** wait for cluster health before each batch ([#668](https://github.com/home-operations/tuppr/issues/668)) ([a6c02c9](https://github.com/home-operations/tuppr/commit/a6c02c99e48dcc501046986ae4762ba985739cd1))
+* **webhook:** validate the Talos upgrade path and Kubernetes support per node ([#672](https://github.com/home-operations/tuppr/issues/672)) ([ad3efcb](https://github.com/home-operations/tuppr/commit/ad3efcbea5a8ab7bd7173c7c9858ec27f6f907a3))
+
+
+### Continuous Integration
+
+* **govulncheck:** run the scan on a schedule ([9352e38](https://github.com/home-operations/tuppr/commit/9352e3822b4498f59ce999fe2b7937a6a1db6265))
+* replace the shared workflow-lint action with zizmor-action ([2147d80](https://github.com/home-operations/tuppr/commit/2147d805c862a18124970dfdf817db295a7714c5))
+
+
+### Miscellaneous Chores
+
+* **go:** update module github.com/netresearch/go-cron (v0.18.0 → v0.19.0) ([#693](https://github.com/home-operations/tuppr/issues/693)) ([60df908](https://github.com/home-operations/tuppr/commit/60df908763c3faddb1c010a3342cc4aa1c39a276))
+* **go:** update module github.com/onsi/ginkgo/v2 (v2.33.1 → v2.34.0) ([#694](https://github.com/home-operations/tuppr/issues/694)) ([abda6b5](https://github.com/home-operations/tuppr/commit/abda6b54684c4fcff56b646b842df297056a7686))
+* **go:** update module github.com/siderolabs/talos/pkg/machinery (v1.14.4 → v1.14.5) ([#697](https://github.com/home-operations/tuppr/issues/697)) ([e2255cc](https://github.com/home-operations/tuppr/commit/e2255cc3b669abd544c5378cc420dccf43f9b53d))
+* **npm:** update dependency astro (7.4.4 → 7.4.5) ([#695](https://github.com/home-operations/tuppr/issues/695)) ([90752cb](https://github.com/home-operations/tuppr/commit/90752cb5a1fc38a6fcd6c1541f34148561a2d5de))
+* **renovate:** stop stranding lone Talos updates and match talosctl ([#696](https://github.com/home-operations/tuppr/issues/696)) ([459506b](https://github.com/home-operations/tuppr/commit/459506b449e106ba271702fd10866905bfded626))
+
 ## [0.5.11](https://github.com/home-operations/tuppr/compare/0.5.10...0.5.11) (2026-10-31)
 
 

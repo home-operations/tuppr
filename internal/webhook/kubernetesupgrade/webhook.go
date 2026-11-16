@@ -17,6 +17,10 @@ type Validator struct {
 	Client            client.Client
 	TalosConfigSecret string
 	Namespace         string
+	// APIReader reads the talosconfig Secret uncached. A cached read would
+	// start a Secret informer, which needs list/watch on Secrets in every
+	// namespace.
+	APIReader client.Reader
 }
 
 // +kubebuilder:webhook:path=/validate-tuppr-home-operations-com-v1alpha1-kubernetesupgrade,mutating=false,failurePolicy=fail,sideEffects=None,groups=tuppr.home-operations.com,resources=kubernetesupgrades,verbs=create;update,versions=v1alpha1,name=vkubernetesupgrade.kb.io,admissionReviewVersions=v1
@@ -68,7 +72,7 @@ func (v *Validator) validate(ctx context.Context, k *tupprv1alpha1.KubernetesUpg
 		return warnings, err
 	}
 
-	if _, err := validation.ValidateTalosConfigSecret(ctx, v.Client, v.TalosConfigSecret, v.Namespace); err != nil {
+	if _, err := validation.ValidateTalosConfigSecret(ctx, v.APIReader, v.TalosConfigSecret, v.Namespace); err != nil {
 		return warnings, err
 	}
 

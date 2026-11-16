@@ -2,6 +2,7 @@ package nodeutil
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -167,5 +168,72 @@ func TestControlPlaneEndpointIPs(t *testing.T) {
 	want := []string{cpIPA, cpIPB} // sorted by node name (cp-a, cp-b)
 	if !slices.Equal(got, want) {
 		t.Fatalf("ControlPlaneEndpointIPs() = %v, want %v", got, want)
+	}
+}
+
+func TestTalosVersionFromOSImage(t *testing.T) {
+	cases := []struct {
+		osImage string
+		want    string
+	}{
+		{"Talos (v1.13.0)", "v1.13.0"},
+		{"Talos (v1.7.5-pre.0)", "v1.7.5-pre.0"},
+		{"Talos (v1.15.0-alpha.2)", "v1.15.0-alpha.2"},
+		{"Talos (v1.14.0-beta.1)", "v1.14.0-beta.1"},
+		{"Talos (v1.14.0-rc.2)", "v1.14.0-rc.2"},
+		{"Talos v1.5.0", "v1.5.0"},
+		{"Talos (v1.10.6-amd64)", "v1.10.6-amd64"},
+		{"Ubuntu 22.04 LTS", ""},
+		{"k3OS v0.21.5-k3s2r1", ""},
+		{"Flatcar Talos (v1.13.0)", ""},
+		{"", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.osImage, func(t *testing.T) {
+			if got := TalosVersionFromOSImage(c.osImage); got != c.want {
+				t.Errorf("TalosVersionFromOSImage(%q) = %q, want %q", c.osImage, got, c.want)
+			}
+		})
+	}
+}
+
+func TestParseNodeSelector(t *testing.T) {
+	tests := []struct {
+		name     string
+		selector *metav1.LabelSelector
+		want     string
+		wantErr  bool
+	}{
+		{name: "nil selects every node", selector: nil, want: ""},
+		{name: "empty selects every node", selector: &metav1.LabelSelector{}, want: ""},
+		{
+			name:     "matchLabels",
+			selector: &metav1.LabelSelector{MatchLabels: map[string]string{"role": "worker"}},
+			want:     "role=worker",
+		},
+		{
+			name: "invalid operator",
+			selector: &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{
+				{Key: "role", Operator: "BadOperator"},
+			}},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseNodeSelector(tt.selector)
+			if tt.wantErr {
+				if !errors.Is(err, ErrInvalidNodeSelector) {
+					t.Fatalf("expected ErrInvalidNodeSelector, got: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got.String() != tt.want {
+				t.Errorf("ParseNodeSelector() = %q, want %q", got.String(), tt.want)
+			}
+		})
 	}
 }

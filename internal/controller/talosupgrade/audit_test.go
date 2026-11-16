@@ -14,6 +14,7 @@ import (
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
+	"github.com/home-operations/tuppr/internal/healthcheck"
 	"github.com/home-operations/tuppr/internal/metrics"
 )
 
@@ -323,22 +324,46 @@ func TestSyncLocalAuditFields_Talos(t *testing.T) {
 
 func TestRunHealthChecks_Talos_EmitsEvents(t *testing.T) {
 	check := tupprv1alpha1.HealthCheckSpec{APIVersion: "v1", Kind: "Node", Expr: "status != null"}
+	checkErr := errors.New("nodes not ready")
+	readErr := &healthcheck.Error{Reason: "check 0 (nodes Ready) evaluation error", Err: errors.New("read tcp 10.0.0.5:40001: connection reset by peer")}
+	nextReadErr := &healthcheck.Error{Reason: readErr.Reason, Err: errors.New("read tcp 10.0.0.5:40002: connection reset by peer")}
+	since := metav1.NewTime(time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC))
 	tests := []struct {
 		name       string
 		checks     []tupprv1alpha1.HealthCheckSpec
 		checkErr   error
+		status     tupprv1alpha1.TalosUpgradeStatus
 		wantEvents []string
 	}{
 		{
-			name:       "pass emits started and passed",
+			name:       "pass emits passed",
 			checks:     []tupprv1alpha1.HealthCheckSpec{check},
-			wantEvents: []string{"HealthChecksStarted", "HealthChecksPassed"},
+			wantEvents: []string{"HealthChecksPassed"},
 		},
 		{
-			name:       "failure emits started and warning",
+			name:       "first failure emits a warning",
 			checks:     []tupprv1alpha1.HealthCheckSpec{check},
-			checkErr:   errors.New("nodes not ready"),
-			wantEvents: []string{"HealthChecksStarted", "HealthChecksFailed"},
+			checkErr:   checkErr,
+			wantEvents: []string{"HealthChecksFailed"},
+		},
+		{
+			name:     "unchanged failure emits nothing",
+			checks:   []tupprv1alpha1.HealthCheckSpec{check},
+			checkErr: checkErr,
+			status:   tupprv1alpha1.TalosUpgradeStatus{HealthChecksFailingSince: &since, Message: healthCheckWaitMessage(checkErr)},
+		},
+		{
+			name:     "a new read error behind the same reason emits nothing",
+			checks:   []tupprv1alpha1.HealthCheckSpec{check},
+			checkErr: nextReadErr,
+			status:   tupprv1alpha1.TalosUpgradeStatus{HealthChecksFailingSince: &since, Message: healthCheckWaitMessage(readErr)},
+		},
+		{
+			name:       "changed failure emits a warning",
+			checks:     []tupprv1alpha1.HealthCheckSpec{check},
+			checkErr:   checkErr,
+			status:     tupprv1alpha1.TalosUpgradeStatus{HealthChecksFailingSince: &since, Message: "Waiting for health checks: something else"},
+			wantEvents: []string{"HealthChecksFailed"},
 		},
 		{
 			name: "no configured checks emits nothing",
@@ -348,6 +373,7 @@ func TestRunHealthChecks_Talos_EmitsEvents(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tu := newTalosUpgrade("test", func(tu *tupprv1alpha1.TalosUpgrade) {
 				tu.Spec.HealthChecks = tt.checks
+				tu.Status = tt.status
 			})
 			recorder := record.NewFakeRecorder(4)
 			r := &Reconciler{Recorder: recorder, HealthChecker: &mockHealthChecker{err: tt.checkErr}}
@@ -386,7 +412,7 @@ func TestRunHealthChecks_Talos_CountsOnlyRunChecks(t *testing.T) {
 	if err := r.runHealthChecks(context.Background(), tu, tu.Spec.HealthChecks[:1]); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, want := range []string{"Running 1 health check(s)", "All 1 health check(s) passed"} {
+	for _, want := range []string{"All 1 health check(s) passed"} {
 		select {
 		case ev := <-recorder.Events:
 			if !strings.Contains(ev, want) {

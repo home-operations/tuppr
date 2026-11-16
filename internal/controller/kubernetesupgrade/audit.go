@@ -2,12 +2,14 @@ package kubernetesupgrade
 
 import (
 	"context"
+	"errors"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	tupprv1alpha1 "github.com/home-operations/tuppr/api/v1alpha1"
 	"github.com/home-operations/tuppr/internal/controller/upgradeaudit"
+	"github.com/home-operations/tuppr/internal/healthcheck"
 )
 
 // CompletedAt != nil guard on terminal branch is idempotency against a stale
@@ -68,26 +70,33 @@ func syncLocalAuditFields(status *tupprv1alpha1.KubernetesUpgradeStatus, updates
 	}
 }
 
-// runHealthChecks wraps CheckHealth with start/result Events. CheckHealth
-// blocks polling until the checks pass or time out, and the HealthChecking
-// phase is only written after it returns, so the started event is the only
-// signal that a (possibly minutes-long) check attempt is in progress.
+// runHealthChecks evaluates the checks once. HealthChecksFailed is emitted
+// when checks start failing or the failure changes, not on every
+// re-evaluation: events on one object share a rate limit, and a run waiting
+// hours on a check would otherwise crowd out every other event.
 func (r *Reconciler) runHealthChecks(ctx context.Context, ku *tupprv1alpha1.KubernetesUpgrade) error {
-	emit := r.Recorder != nil && len(ku.Spec.HealthChecks) > 0
-	if emit {
-		r.Recorder.Eventf(ku, corev1.EventTypeNormal, "HealthChecksStarted",
-			"Running %d health check(s)", len(ku.Spec.HealthChecks))
-	}
 	checkErr := r.HealthChecker.CheckHealth(ctx, ku.Spec.HealthChecks)
-	if emit {
-		if checkErr != nil {
-			r.Recorder.Event(ku, corev1.EventTypeWarning, "HealthChecksFailed", checkErr.Error())
-		} else {
-			r.Recorder.Eventf(ku, corev1.EventTypeNormal, "HealthChecksPassed",
-				"All %d health check(s) passed", len(ku.Spec.HealthChecks))
-		}
+	if r.Recorder == nil || len(ku.Spec.HealthChecks) == 0 {
+		return checkErr
+	}
+	switch {
+	case checkErr == nil:
+		r.Recorder.Eventf(ku, corev1.EventTypeNormal, "HealthChecksPassed",
+			"All %d health check(s) passed", len(ku.Spec.HealthChecks))
+	case ku.Status.HealthChecksFailingSince == nil || ku.Status.Message != healthCheckWaitMessage(checkErr):
+		r.Recorder.Event(ku, corev1.EventTypeWarning, "HealthChecksFailed", checkErr.Error())
 	}
 	return checkErr
+}
+
+// healthCheckWaitMessage keeps the read errors out of status: they can change
+// between evaluations, and every status write triggers another reconcile.
+func healthCheckWaitMessage(checkErr error) string {
+	reason := checkErr.Error()
+	if failed, ok := errors.AsType[*healthcheck.Error](checkErr); ok {
+		reason = failed.Reason
+	}
+	return "Waiting for health checks: " + reason
 }
 
 func (r *Reconciler) emitPhaseEvent(ku *tupprv1alpha1.KubernetesUpgrade, prev, next tupprv1alpha1.JobPhase, message string) {

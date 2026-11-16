@@ -190,8 +190,9 @@ assuming.
 
 ## Security
 
-`govulncheck ./...` runs in CI as the `Go Vulncheck` job, via `mise run
-vulncheck` with the tool version pinned in `.mise/config.toml`. Run the
-same task locally before cutting a release; a new advisory that fails the
-job is an action item (upgrade the module or the Go toolchain), not noise
-to suppress.
+`govulncheck ./...` runs daily and on manual dispatch in
+`.github/workflows/govulncheck.yaml`, via `mise run vulncheck` with the
+tool version pinned in `.mise/config.toml`. It is not part of the
+`Build Success` merge gate. Run the same task locally before cutting a
+release. A new advisory that fails the job is an action item (upgrade the
+module or the Go toolchain), not noise to suppress.

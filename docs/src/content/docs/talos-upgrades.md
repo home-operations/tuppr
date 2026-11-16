@@ -17,17 +17,62 @@ metadata:
 spec:
   talos:
     # renovate: datasource=docker depName=ghcr.io/siderolabs/talos
-    version: v1.14.5
+    version: v1.14.6
 ```
 
 Everything below is optional and layers onto that. The full set of fields and
 defaults lives in the CRD schema; this page covers the ones you'll reach for.
 
+## Upgrade path validation
+
+When a `TalosUpgrade` is created, or its `talos.version` or `nodeSelector`
+changes, the admission webhook checks the target against what each selected
+node runs now (its `osImage` and `kubeletVersion`), using the compatibility
+tables Talos ships with its own tooling. It **rejects** the change when:
+
+- the node's Talos version can't be upgraded (or downgraded) straight to the
+  target. Talos's installer would refuse it anyway, but only after the node
+  was cordoned and drained.
+- the target Talos release doesn't support the Kubernetes version the node
+  runs. Talos only checks this when it validates the machine config, after
+  the node has already rebooted into the new version. Upgrade Kubernetes
+  first (or pick a Talos release that supports it).
+
+A node's own `tuppr.home-operations.com/version` annotation is its target (see
+[per-node overrides](#per-node-overrides)), and a rejection names the nodes
+it pins. An annotation must use the same `vX.Y.Z` format as `talos.version`,
+because tuppr uses it as the installer image tag, so the webhook rejects one
+that doesn't (for example `1.13.0` or `latest`). Pre-release targets such as
+`v1.14.0-alpha.1`, `v1.14.0-beta.0` and `v1.14.0-rc.2` are checked like the
+1.14 release. The webhook also rejects an invalid `nodeSelector`.
+
+The webhook warns when a node would be downgraded, and when the target isn't
+in the compatibility data the running tuppr release was built with (such as
+a Talos release newer than it). In the second case, the upgrade path and
+Kubernetes support aren't checked. If a `KubernetesUpgrade` is in progress,
+the target must support both the Kubernetes version each node runs now and
+that upgrade's target version. The `TalosUpgrade` waits for the
+`KubernetesUpgrade` to finish, but it starts anyway if that upgrade fails. If
+only the running version is unsupported, apply the `TalosUpgrade` again after
+the `KubernetesUpgrade` completes. Nodes that don't report a Talos version are
+skipped. If the nodes can't be listed, the check is skipped
+rather than blocking the change.
+
+The check runs at admission only. Changes on the Node side afterwards, such
+as a new annotation, a relabel that brings a node into the selector, or a
+node joining, aren't re-checked.
+
 ## Health checks
 
 Health checks are [CEL](https://cel.dev/) expressions evaluated against live
-cluster objects before an upgrade proceeds. They run concurrently, and (for a
-`TalosUpgrade`) before each node or batch.
+cluster objects before an upgrade proceeds (for a `TalosUpgrade`, before each
+node or batch). Every check must pass. While any fails, the run waits in
+`HealthChecking` and re-evaluates them every 30 seconds, backing off to every
+5 minutes while they keep failing. The status message names each failing
+check (by its `description`, or its kind, namespace and name or label
+selector), and `status.healthChecksFailingSince` says since when. A failing
+check never fails the upgrade, so the run waits until it passes or you change
+the spec. The `timeout` field has no effect.
 
 ```yaml
 spec:
@@ -36,7 +81,7 @@ spec:
     - apiVersion: v1
       kind: Node
       expr: status.conditions.filter(c, c.type == "Ready").all(c, c.status == "True")
-      timeout: 10m
+      description: all nodes Ready
 
     # A named Deployment fully rolled out
     - apiVersion: apps/v1
@@ -62,29 +107,73 @@ spec:
       expr: status.ceph.health in ["HEALTH_OK"]
 ```
 
-Each check attempt is emitted as Events on the resource (`HealthChecksStarted`,
-then `HealthChecksPassed` or a `HealthChecksFailed` warning), so a run waiting
-on failing checks is visible in `kubectl describe`. A check with
+Results are emitted as Events on the resource: a `HealthChecksFailed` warning
+when checks start failing or the failure changes, and `HealthChecksPassed`
+when they pass, so a run waiting on failing checks is visible in
+`kubectl describe`. The warning also gives the read or CEL error for each
+check that tuppr cannot evaluate. The status message does not include that
+error.
+A check with
 `skipAfterPreHooks: true` is left out of every run once
 [pre-hooks](#prepost-upgrade-hooks) have completed; a run with no checks left
 emits no Events.
 
 Health checks are also available on [`KubernetesUpgrade`](/kubernetes-upgrades/).
 
+### Built-in cluster health gate
+
+Before every batch, before the user health checks above, and before a run that
+upgraded nodes completes, a `TalosUpgrade` waits until the nodes it selects and
+every control-plane node are healthy:
+
+- the Kubernetes node is `Ready`;
+- the node's Talos `MachineStatus` is `running` and ready (what
+  `talosctl get machinestatus` shows: time sync, network, required services
+  including `etcd` on control-plane nodes, static pods, and the node);
+- etcd has exactly one voting member per control-plane node, none still a
+  learner, and every member reports a leader and no errors.
+
+Nodes outside the selection that are not control-plane nodes are not checked,
+so a powered-off node still registered in another pool does not block the run.
+
+A node that just upgraded reports its new version as soon as the Talos API is
+back, before it has rejoined etcd or Kubernetes. Talos 1.13 and newer accept an
+upgrade without checking etcd (only the legacy upgrade API used before 1.13 did),
+so nothing else stops the next control-plane reboot while etcd is still
+degraded. This gate holds the next batch,
+and the run's completion (which would unblock a queued `KubernetesUpgrade` and
+start post-hooks), until it has. While it waits, the run stays in
+`HealthChecking` with the failing condition in its message; the controller log
+has the underlying Talos error. Each check gives up after a minute and is
+retried 30 seconds later. If the maintenance window closes while the run waits,
+the run stays in `HealthChecking` until the nodes recover, because
+`MaintenanceWindow` does not hold back a `KubernetesUpgrade`.
+
+`skipAfterPreHooks` does not apply to the gate: a cluster that never becomes
+healthy keeps the run waiting rather than upgrading the next node.
+`spec.policy.force` skips the etcd check (the node checks still apply), which
+is the only way past an etcd that cannot become healthy.
+
+Control-plane nodes are found by the `node-role.kubernetes.io/control-plane`
+label; if no node carries it, the etcd membership check is skipped. A cluster
+with exactly two control-plane nodes passes the gate, but rebooting either of
+them loses etcd quorum until it is back: Talos older than 1.13 refuses that
+upgrade, 1.13 and newer do not. Run three or more control-plane nodes.
+
 ## Policy
 
 `spec.policy` tunes how the upgrade runs:
 
-| Field                 | Default   | Effect                                                                                                                                                                                                              |
-| --------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `debug`               | `false`   | Verbose upgrade logging.                                                                                                                                                                                            |
-| `force`               | `false`   | Skip etcd health checks. Dangerous - can break quorum.                                                                                                                                                              |
-| `placement`           | `hard`    | How strictly the upgrade Job avoids the target node (`hard` or `soft`).                                                                                                                                             |
-| `rebootMode`          | `default` | `default`, or `powercycle` for nodes that don't reboot cleanly.                                                                                                                                                     |
-| `stage`               | `false`   | Stage the upgrade and apply it on the next reboot (two reboots total).                                                                                                                                              |
-| `waitForVolumeDetach` | `false`   | Drain and wait for CSI volumes to detach before the reboot (see below).                                                                                                                                             |
-| `drainTimeout`        | unset     | Timeout for `talosctl`'s own node drain (talosctl 1.13+, default 5m). If the drain exceeds it the upgrade fails without rebooting; raise it for nodes hosting several PDB-gated workloads. Keep it below `timeout`. |
-| `timeout`             | `30m`     | Per-node upgrade timeout, including how long a node may take to become ready after its reboot before being marked failed.                                                                                           |
+| Field                 | Default   | Effect                                                                                                                                                                                                                                                                                                                           |
+| --------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `debug`               | `false`   | Verbose upgrade logging.                                                                                                                                                                                                                                                                                                         |
+| `force`               | `false`   | Skip etcd health checks: the etcd check of the [cluster health gate](#built-in-cluster-health-gate), and Talos's own, which run only on Talos's legacy upgrade API, which talosctl uses when the node or talosctl is older than Talos 1.13. One-at-a-time control-plane upgrades apply either way. Dangerous - can break quorum. |
+| `placement`           | `hard`    | How strictly the upgrade Job avoids the target node (`hard` or `soft`).                                                                                                                                                                                                                                                          |
+| `rebootMode`          | `default` | `default`, or `powercycle` for nodes that don't reboot cleanly.                                                                                                                                                                                                                                                                  |
+| `stage`               | `false`   | Stage the upgrade and apply it on the next reboot (two reboots total). Only takes effect on Talos's legacy upgrade API, which talosctl uses when the node or talosctl is older than Talos 1.13.                                                                                                                                  |
+| `waitForVolumeDetach` | `false`   | Drain and wait for CSI volumes to detach before the reboot (see below).                                                                                                                                                                                                                                                          |
+| `drainTimeout`        | unset     | Timeout for `talosctl`'s own node drain (talosctl 1.13+, default 5m). If the drain exceeds it the upgrade fails without rebooting; raise it for nodes hosting several PDB-gated workloads. Keep it below `timeout`.                                                                                                              |
+| `timeout`             | `30m`     | Per-node upgrade timeout, including how long a node may take to become ready after its reboot before being marked failed.                                                                                                                                                                                                        |
 
 :::tip[waitForVolumeDetach]
 Set this when a fast reboot could orphan a mount and pin a volume to the node -
@@ -123,7 +212,27 @@ spec:
 ```
 
 The webhook requires `parallelism >= 1` and no greater than the number of nodes
-the selector matches. When `parallelism > 1`:
+the selector matches.
+
+Parallelism applies to worker nodes only. Control-plane nodes are always
+upgraded one at a time, in a batch of their own, because each reboot takes an
+etcd member offline. Talos 1.13 and newer do not prevent two at once (only the
+legacy upgrade API before 1.13 did), so tuppr enforces it.
+
+Nodes are queued with the node running the tuppr controller first, then by name.
+A control-plane node at the front of the queue is upgraded alone. When a worker
+is at the front, the batch fills with the next workers in queue order, and
+control-plane nodes wait for their turn at the front.
+
+The rule also holds across `TalosUpgrade` resources: before starting a
+control-plane node, tuppr waits while any other control-plane node has an
+unfinished upgrade Job from any plan, or still carries the
+`tuppr.home-operations.com/upgrading` label. A plan does not wait on the label
+of a node it selects and has already upgraded. A label left behind on any other
+node (for example by a plan deleted mid-upgrade) holds every control-plane
+upgrade until you remove it. The run's message names the node.
+
+When `parallelism > 1`:
 
 - Health checks run once **before each batch**, not per node.
 - Drain (if configured) runs on all batch nodes before any upgrade Job starts.
@@ -191,6 +300,14 @@ to a single-node cluster, where `talosctl`'s own drain is disabled: evicted pods
 stay Pending until the node is uncordoned. `policy.waitForVolumeDetach` on its
 own never drains a single node.
 
+Unless `disableEviction` is set, evictions respect PodDisruptionBudgets. Pods are
+evicted concurrently, and an eviction that a budget refuses is retried every 5
+seconds, as `kubectl drain` does. That gives a budget time to allow it once
+another replica is ready, or an operator time to react to the cordon, such as a
+database switching its primary to another node. Retries and the wait for evicted
+pods to terminate share the node's 10-minute drain timeout. A drain that times
+out uncordons the node, and the run retries the batch a minute later.
+
 ## Pre/post-upgrade hooks
 
 Run side-effecting Jobs around the whole run - for example, set and clear Ceph
@@ -236,7 +353,7 @@ spec:
 - Health checks still run before every batch after the pre-hooks. A check the
   pre-hooks invalidate for the upgrade window (Ceph is `HEALTH_WARN` while
   `noout` is set) must set `skipAfterPreHooks: true`: it then gates only the
-  initial check before the hooks, otherwise every later run fails and the
+  initial check before the hooks, otherwise every later check fails and the
   upgrade stalls before its first batch. Other checks keep gating each batch,
   so a pre-hook that pauses CI runners doesn't switch off the Ceph check.
 - Each hook is a Job in the controller namespace with the same non-root,

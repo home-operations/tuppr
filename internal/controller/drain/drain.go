@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -34,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const daemonSetKind = "DaemonSet"
@@ -41,6 +43,11 @@ const daemonSetKind = "DaemonSet"
 // drainPollInterval is how often DrainNode re-checks the node for pods that
 // are still terminating after eviction.
 const drainPollInterval = 2 * time.Second
+
+// evictionRetryInterval is how long evictPod waits before retrying an eviction
+// that a PodDisruptionBudget refused, matching kubectl drain and Talos's own
+// drain. A var so tests can shorten it.
+var evictionRetryInterval = 5 * time.Second
 
 // Drainer handles node drain operations
 type Drainer struct {
@@ -119,13 +126,23 @@ func (d *Drainer) DrainNode(ctx context.Context, nodeName string, opts DrainOpti
 		return fmt.Errorf("failed to list pods: %w", err)
 	}
 
+	// Evict concurrently, as kubectl drain does, so a pod waiting on its
+	// PodDisruptionBudget doesn't delay the others. All evictions share the
+	// drain timeout.
+	g, gctx := errgroup.WithContext(ctx)
 	for _, pod := range pods {
 		if pod.DeletionTimestamp != nil {
 			continue
 		}
-		if err := d.evictPod(ctx, &pod, opts); err != nil {
-			return fmt.Errorf("failed to evict pod %s/%s: %w", pod.Namespace, pod.Name, err)
-		}
+		g.Go(func() error {
+			if err := d.evictPod(gctx, &pod, opts); err != nil {
+				return fmt.Errorf("failed to evict pod %s/%s: %w", pod.Namespace, pod.Name, err)
+			}
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
 	// Only the pods seen above are waited for, so a pod that lands on the
@@ -227,29 +244,56 @@ func isMirrorPod(pod *corev1.Pod) bool {
 	return ok
 }
 
-// evictPod evicts a single pod
+// evictPod evicts a single pod, retrying while a PodDisruptionBudget refuses.
 func (d *Drainer) evictPod(ctx context.Context, pod *corev1.Pod, opts DrainOptions) error {
 	eviction := &policyv1.Eviction{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pod.Name,
 			Namespace: pod.Namespace,
 		},
-	}
-
-	if opts.GracePeriod != nil {
-		eviction.DeleteOptions = &metav1.DeleteOptions{
+		// The UID precondition keeps a retry from evicting a pod that was
+		// recreated under the same name, possibly on another node, while this
+		// one's eviction was being refused.
+		DeleteOptions: &metav1.DeleteOptions{
 			GracePeriodSeconds: opts.GracePeriod,
-		}
+			Preconditions:      &metav1.Preconditions{UID: &pod.UID},
+		},
 	}
 
-	if err := d.client.SubResource("eviction").Create(ctx, pod, eviction); err != nil {
-		if !opts.RespectPDBs && apierrors.IsTooManyRequests(err) {
+	var refusal error
+	for {
+		err := d.client.SubResource("eviction").Create(ctx, pod, eviction)
+		switch {
+		case err == nil, apierrors.IsNotFound(err), apierrors.IsConflict(err):
+			// NotFound: the pod is already gone. Conflict: the UID precondition
+			// failed, so the pod was replaced and the replacement isn't ours to
+			// evict. Either way the original pod has left the node.
+			return nil
+		case refusal != nil && ctx.Err() != nil:
+			// The deadline hit during a retry; report the refusal, not the
+			// request's context error.
+			return fmt.Errorf("eviction still refused by a PodDisruptionBudget: %w", refusal)
+		case !apierrors.IsTooManyRequests(err):
+			return err
+		case !opts.RespectPDBs:
 			return d.deletePod(ctx, pod, opts.GracePeriod)
 		}
-		return err
-	}
+		if refusal == nil {
+			log.FromContext(ctx).Info("Eviction refused by a PodDisruptionBudget, retrying until the drain times out",
+				"pod", client.ObjectKeyFromObject(pod).String(), "retryInterval", evictionRetryInterval, "reason", err.Error())
+		}
+		refusal = err
 
-	return nil
+		// A PodDisruptionBudget refused the eviction. Budgets typically allow it
+		// once another replica becomes ready elsewhere or an operator reacts to
+		// the cordon (for example a database switching its primary off the
+		// node), so keep retrying until the drain times out.
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("eviction still refused by a PodDisruptionBudget: %w", refusal)
+		case <-time.After(evictionRetryInterval):
+		}
+	}
 }
 
 // deletePod forcefully deletes a pod when eviction is blocked by PDB

@@ -17,17 +17,59 @@ tests:
           path: roleRef.kind
           value: ClusterRole
 
-  - it: should create leader election Role when enabled
+  - it: should create the manager Role in the release namespace
     documentIndex: 2
     asserts:
       - isKind:
           of: Role
+      - equal:
+          path: metadata.namespace
+          value: NAMESPACE
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - batch
+            resources:
+              - jobs
+            verbs:
+              - create
+              - delete
+              - get
+              - list
+              - patch
+              - update
+              - watch
 
-  - it: should create leader election RoleBinding when enabled
+  - it: should bind the manager Role
     documentIndex: 3
     asserts:
       - isKind:
           of: RoleBinding
+      - equal:
+          path: roleRef.kind
+          value: Role
+      - equal:
+          path: metadata.namespace
+          value: NAMESPACE
+
+  - it: should create leader election Role when enabled
+    documentIndex: 4
+    asserts:
+      - isKind:
+          of: Role
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-tuppr-leader-election-role
+
+  - it: should create leader election RoleBinding when enabled
+    documentIndex: 5
+    asserts:
+      - isKind:
+          of: RoleBinding
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-tuppr-leader-election-rolebinding
 
   - it: should not create any resources when rbac disabled
     set:
@@ -41,7 +83,7 @@ tests:
       controller.leaderElection.enabled: false
     asserts:
       - hasDocuments:
-          count: 2
+          count: 4
 
   - it: should include webhook RBAC rules when webhook enabled
     set:
@@ -61,6 +103,98 @@ tests:
               - watch
               - patch
               - update
+
+  - it: should scope Secret access to the release namespace when webhook enabled
+    set:
+      webhook.enabled: true
+    documentIndex: 2
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - secrets
+            verbs:
+              - get
+              - list
+              - watch
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ""
+            resources:
+              - secrets
+            resourceNames:
+              - RELEASE-NAME-tuppr-webhook-server-cert
+            verbs:
+              - update
+              - patch
+
+  - it: should grant no Secret access when webhook disabled
+    set:
+      webhook.enabled: false
+    documentIndex: 2
+    asserts:
+      - lengthEqual:
+          path: rules
+          count: 1
+
+  - it: should not grant Secrets or Jobs in the ClusterRole beyond the health check rules
+    set:
+      rbac.healthCheckRules: []
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: rules[?(@.apiGroups[0] == "*")]
+      - notExists:
+          path: rules[?(@.resources[0] == "secrets")]
+      - notExists:
+          path: rules[?(@.resources[0] == "jobs")]
+
+  - it: should grant read on every resource for health checks by default
+    documentIndex: 0
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - "*"
+            resources:
+              - "*"
+            verbs:
+              - get
+              - list
+              - watch
+
+  - it: should replace the default health check rules
+    set:
+      rbac.healthCheckRules:
+        - apiGroups:
+            - ceph.rook.io
+          resources:
+            - cephclusters
+          verbs:
+            - get
+            - list
+            - watch
+    documentIndex: 0
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ceph.rook.io
+            resources:
+              - cephclusters
+            verbs:
+              - get
+              - list
+              - watch
+      - notExists:
+          path: rules[?(@.apiGroups[0] == "*")]
 
   - it: should add annotations
     set:

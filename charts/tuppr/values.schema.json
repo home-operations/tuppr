@@ -475,9 +475,67 @@
         },
         "create": {
           "default": true,
-          "description": "Create the ClusterRole + ClusterRoleBinding the controller needs to manage nodes and jobs.",
+          "description": "Create the ClusterRole, the Role in the release namespace, and their bindings that the controller needs to manage nodes and jobs.",
           "title": "create",
           "type": "boolean"
+        },
+        "healthCheckRules": {
+          "description": "ClusterRole rules for the resources that `healthChecks` read. The default lets the controller read every resource in the cluster, Secrets included. To limit it, replace it with read rules for only the kinds that your health checks use.",
+          "items": {
+            "anyOf": [
+              {
+                "properties": {
+                  "apiGroups": {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "required": []
+                    },
+                    "title": "apiGroups",
+                    "type": "array"
+                  },
+                  "resources": {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "required": []
+                    },
+                    "title": "resources",
+                    "type": "array"
+                  },
+                  "verbs": {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "required": []
+                    },
+                    "title": "verbs",
+                    "type": "array"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            ],
+            "required": []
+          },
+          "title": "healthCheckRules",
+          "type": "array"
         }
       },
       "required": [],

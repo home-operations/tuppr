@@ -10,15 +10,9 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 rules:
-# Health check permissions - read-only access to all resources
-- apiGroups:
-  - "*"
-  resources:
-  - "*"
-  verbs:
-  - get
-  - list
-  - watch
+{{- with .Values.rbac.healthCheckRules }}
+{{ toYaml . }}
+{{- end }}
 # Core resource permissions for controller operations
 - apiGroups:
   - ""
@@ -60,25 +54,22 @@ rules:
   - watch
   - patch
   - update
+# Drain resolves the volumes of evicted pods and waits for them to detach.
 - apiGroups:
   - ""
   resources:
-  - secrets
+  - persistentvolumeclaims
   verbs:
   - get
   - list
   - watch
 - apiGroups:
-  - batch
+  - storage.k8s.io
   resources:
-  - jobs
+  - volumeattachments
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - tuppr.home-operations.com
@@ -111,18 +102,6 @@ rules:
   - update
 
 {{- if .Values.webhook.enabled }}
-# Self-signed certificate management
-- apiGroups:
-  - ""
-  resources:
-  - secrets
-  verbs:
-  - create
-  - update
-  - patch
-  - get
-  - list
-  - watch
 - apiGroups:
   - admissionregistration.k8s.io
   resources:
@@ -148,6 +127,72 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
+  name: {{ include "tuppr.fullname" . }}-manager-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "tuppr.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "tuppr.fullname" . }}-manager-role
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tuppr.labels" . | nindent 4 }}
+  {{- with .Values.rbac.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+rules:
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+{{- if .Values.webhook.enabled }}
+# The cert rotator caches Secrets in this namespace, and the admission
+# webhooks read the talosconfig Secret.
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  resourceNames:
+  - {{ include "tuppr.webhookCertName" . }}
+  verbs:
+  - update
+  - patch
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "tuppr.fullname" . }}-manager-rolebinding
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tuppr.labels" . | nindent 4 }}
+  {{- with .Values.rbac.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
   name: {{ include "tuppr.fullname" . }}-manager-role
 subjects:
 - kind: ServiceAccount

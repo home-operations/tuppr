@@ -104,6 +104,14 @@ func (m *mockTalosClient) PullImage(ctx context.Context, nodeIP, imageRef string
 	return nil
 }
 
+func (m *mockTalosClient) CheckMachineReady(ctx context.Context, nodeIP string) error {
+	return nil
+}
+
+func (m *mockTalosClient) CheckEtcdHealthy(ctx context.Context, controlPlaneIPs []string) error {
+	return nil
+}
+
 func (m *mockTalosClient) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()

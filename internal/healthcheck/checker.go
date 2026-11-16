@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 	"time"
 
 	"cel.dev/cel-go/cel"
@@ -19,13 +20,45 @@ import (
 	"github.com/home-operations/tuppr/internal/metrics"
 )
 
-const DefaultHealthCheckTimeout = 10 * time.Minute
+// CheckTimeout bounds the API reads of one check, so a slow apiserver or a
+// large cluster-wide List can neither hold the reconcile worker nor use up the
+// time of the checks after it.
+const CheckTimeout = 10 * time.Second
+
+// Re-evaluation intervals while checks keep failing: RetryInterval at first,
+// growing to MaxRetryInterval. Each TalosUpgrade pass also queries every
+// pending node and the installer registry, so a run parked for hours on a
+// failing check shouldn't pay that every 30 seconds.
+const (
+	RetryInterval    = 30 * time.Second
+	MaxRetryInterval = 5 * time.Minute
+)
+
+// RetryAfter returns how long to wait before re-evaluating checks that have
+// kept failing for failingFor: a quarter of that, within RetryInterval and
+// MaxRetryInterval.
+func RetryAfter(failingFor time.Duration) time.Duration {
+	return min(max(failingFor/4, RetryInterval), MaxRetryInterval)
+}
 
 const celStatusKey = "status"
 
+// Error is a failed evaluation. Reason names each failing check and stays the
+// same while the same checks fail, so a caller can keep it in status without a
+// write, and the reconcile that write triggers, on every evaluation. Err adds
+// the read and CEL errors, whose text can change between evaluations: a reset
+// connection names its local port, for example.
+type Error struct {
+	Reason string
+	Err    error
+}
+
+func (e *Error) Error() string { return "health checks failed: " + e.Err.Error() }
+
+func (e *Error) Unwrap() error { return e.Err }
+
 // MetricsRecorder defines the interface for metrics the health checker needs
 type MetricsRecorder interface {
-	RecordHealthCheckDuration(upgradeType, upgradeName string, duration float64)
 	RecordHealthCheckFailure(upgradeType, upgradeName string, checkIndex int)
 }
 
@@ -41,6 +74,9 @@ func NewChecker(c client.Client, mr MetricsRecorder) *Checker {
 	}
 }
 
+// CheckHealth evaluates every check once against the current cluster state
+// and returns an error naming each check that failed or could not be read.
+// It never waits for checks to pass: the caller requeues while they fail.
 func (hc *Checker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1.HealthCheckSpec) error {
 	logger := log.FromContext(ctx)
 
@@ -48,132 +84,99 @@ func (hc *Checker) CheckHealth(ctx context.Context, healthChecks []tupprv1alpha1
 		return nil
 	}
 
-	upgradeType := ctx.Value(metrics.ContextKeyUpgradeType)
-	upgradeName := ctx.Value(metrics.ContextKeyUpgradeName)
-
-	startTime := time.Now()
-	defer func() {
-		if upgradeType != nil && upgradeName != nil {
-			duration := time.Since(startTime).Seconds()
-			if hc.MetricsReporter != nil {
-				hc.MetricsReporter.RecordHealthCheckDuration(
-					upgradeType.(string),
-					upgradeName.(string),
-					duration,
-				)
-			}
-		}
-	}()
-
 	if err := hc.validateHealthChecks(healthChecks); err != nil {
 		return fmt.Errorf("health check validation failed: %w", err)
 	}
 
-	logger.V(1).Info("Performing health checks", "count", len(healthChecks))
-
-	maxTimeout := DefaultHealthCheckTimeout
-	for _, check := range healthChecks {
-		if check.Timeout != nil && check.Timeout.Duration > maxTimeout {
-			maxTimeout = check.Timeout.Duration
-		}
-	}
-
-	timeoutCtx, cancel := context.WithTimeout(ctx, maxTimeout)
-	defer cancel()
-
 	programs := make([]cel.Program, len(healthChecks))
 	for i, check := range healthChecks {
-		env, err := cel.NewEnv(
-			cel.Variable("object", cel.DynType),
-			cel.Variable(celStatusKey, cel.DynType),
-		)
+		program, err := compileExpression(check.Expr)
 		if err != nil {
-			return fmt.Errorf("failed to create CEL environment for check %d: %w", i, err)
-		}
-
-		ast, issues := env.Compile(check.Expr)
-		if issues != nil && issues.Err() != nil {
-			return fmt.Errorf("failed to compile CEL expression for check %d: %w", i, issues.Err())
-		}
-
-		program, err := env.Program(ast)
-		if err != nil {
-			return fmt.Errorf("failed to create CEL program for check %d: %w", i, err)
+			return fmt.Errorf("failed to compile CEL expression for check %d: %w", i, err)
 		}
 		programs[i] = program
 	}
 
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
+	logger.V(1).Info("Performing health checks", "count", len(healthChecks))
 
-	var lastErrors []error
-	for {
-		select {
-		case <-timeoutCtx.Done():
-			if len(lastErrors) > 0 {
-				return fmt.Errorf("health checks failed: exceeded maximum timeout of %v: %w", maxTimeout, errors.Join(lastErrors...))
-			}
-			return fmt.Errorf("health checks failed: exceeded maximum timeout of %v", maxTimeout)
+	upgradeType, _ := ctx.Value(metrics.ContextKeyUpgradeType).(string)
+	upgradeName, _ := ctx.Value(metrics.ContextKeyUpgradeName).(string)
 
-		case <-ticker.C:
-			allPassed := true
-			var checkErrors []error
-
-			for i, check := range healthChecks {
-				passed, err := hc.evaluateExpression(timeoutCtx, check, programs[i])
-				if err != nil {
-					logger.V(1).Info("Health check evaluation failed",
-						"index", i,
-						"description", check.Description,
-						"apiVersion", check.APIVersion,
-						"kind", check.Kind,
-						"error", err)
-					checkErrors = append(checkErrors, fmt.Errorf("check %d evaluation error: %w", i, err))
-					allPassed = false
-
-					if upgradeType != nil && upgradeName != nil && hc.MetricsReporter != nil {
-						hc.MetricsReporter.RecordHealthCheckFailure(
-							upgradeType.(string),
-							upgradeName.(string),
-							i,
-						)
-					}
-					continue
-				}
-
-				if !passed {
-					logger.V(1).Info("Health check not satisfied",
-						"index", i,
-						"description", check.Description,
-						"apiVersion", check.APIVersion,
-						"kind", check.Kind,
-					)
-					allPassed = false
-
-					if upgradeType != nil && upgradeName != nil && hc.MetricsReporter != nil {
-						hc.MetricsReporter.RecordHealthCheckFailure(
-							upgradeType.(string),
-							upgradeName.(string),
-							i,
-						)
-					}
-				}
-			}
-
-			lastErrors = checkErrors
-			if len(checkErrors) > 0 {
-				logger.V(1).Info("Some health checks had evaluation errors (will retry)", "errorCount", len(checkErrors))
-				continue
-			}
-
-			if allPassed {
-				logger.V(1).Info("All health checks passed")
-				return nil
-			}
-
-			logger.V(1).Info("Not all health checks passed, will retry")
+	var reasons []string
+	var checkErrors []error
+	for i, check := range healthChecks {
+		passed, err := hc.evaluateCheck(ctx, check, programs[i])
+		if passed {
+			continue
+		}
+		name := fmt.Sprintf("check %d (%s)", i, describeCheck(check))
+		if err != nil {
+			logger.V(1).Info("Health check evaluation failed",
+				"index", i,
+				"description", check.Description,
+				"apiVersion", check.APIVersion,
+				"kind", check.Kind,
+				"error", err)
+			reasons = append(reasons, name+" evaluation error")
+			checkErrors = append(checkErrors, fmt.Errorf("%s evaluation error: %w", name, err))
+		} else {
+			logger.V(1).Info("Health check not satisfied",
+				"index", i,
+				"description", check.Description,
+				"apiVersion", check.APIVersion,
+				"kind", check.Kind,
+			)
+			reasons = append(reasons, name+" not satisfied")
+			checkErrors = append(checkErrors, errors.New(name+" not satisfied"))
+		}
+		if upgradeType != "" && upgradeName != "" && hc.MetricsReporter != nil {
+			hc.MetricsReporter.RecordHealthCheckFailure(upgradeType, upgradeName, i)
 		}
 	}
+
+	if len(checkErrors) > 0 {
+		return &Error{Reason: strings.Join(reasons, "; "), Err: errors.Join(checkErrors...)}
+	}
+	logger.V(1).Info("All health checks passed")
+	return nil
+}
+
+func (hc *Checker) evaluateCheck(ctx context.Context, check tupprv1alpha1.HealthCheckSpec, program cel.Program) (bool, error) {
+	checkCtx, cancel := context.WithTimeout(ctx, CheckTimeout)
+	defer cancel()
+	return hc.evaluateExpression(checkCtx, check, program)
+}
+
+func compileExpression(expr string) (cel.Program, error) {
+	env, err := cel.NewEnv(
+		cel.Variable("object", cel.DynType),
+		cel.Variable(celStatusKey, cel.DynType),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create CEL environment: %w", err)
+	}
+	ast, issues := env.Compile(expr)
+	if issues != nil && issues.Err() != nil {
+		return nil, issues.Err()
+	}
+	return env.Program(ast)
+}
+
+func describeCheck(check tupprv1alpha1.HealthCheckSpec) string {
+	if check.Description != "" {
+		return check.Description
+	}
+	target := check.Kind
+	if check.Name != "" {
+		target += " " + check.Name
+	}
+	if check.Namespace != "" {
+		target = check.Namespace + "/" + target
+	}
+	if check.LabelSelector != nil {
+		target += " " + metav1.FormatLabelSelector(check.LabelSelector)
+	}
+	return target
 }
 
 func (hc *Checker) evaluateExpression(ctx context.Context, check tupprv1alpha1.HealthCheckSpec, program cel.Program) (bool, error) {
