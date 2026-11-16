@@ -2,7 +2,7 @@
 go = "1.27.4"
 "go:golang.org/x/vuln/cmd/govulncheck" = "v1.9.0"
 golangci-lint = "2.15.0"
-helm = "4.3.1"
+helm = "4.3.2"
 cosign = "3.1.4"
 helm-docs = "1.14.2"
 jq = "1.8.2"
