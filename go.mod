@@ -3,7 +3,7 @@ module github.com/home-operations/tuppr
 go 1.26.5
 
 require (
-	cel.dev/cel-go v0.33.2
+	cel.dev/cel-go v0.33.4
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/cosi-project/runtime v1.17.1
 	github.com/go-logr/logr v1.4.4
