@@ -90,9 +90,9 @@ checksum = "sha256:91a44a2b8a716600ad94a4f143e156116620db8828086a6e3602291be9bd0
 url = "https://dl.google.com/go/go1.27.4.darwin-arm64.tar.gz"
 
 [[tools."go:golang.org/x/vuln/cmd/govulncheck"]]
-version = "1.9.0"
+version = "1.10.0"
 backend = "go:golang.org/x/vuln/cmd/govulncheck"
-specifiers = ["v1.9.0"]
+specifiers = ["v1.10.0"]
 
 [[tools.golangci-lint]]
 version = "2.15.0"
