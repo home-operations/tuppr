@@ -171,9 +171,9 @@ type HooksSpec struct {
 	// +optional
 	PreBatchRetry *HookRetrySpec `json:"preBatchRetry,omitempty"`
 
-	// Post runs sequentially after the upgrade reaches a terminal state.
-	// Always runs if any pre-hook was attempted; failures don't override the
-	// upgrade outcome.
+	// Post runs sequentially as cleanup after the last batch, and after a
+	// failed pre-hook or pre-batch hook; failures don't override the upgrade
+	// outcome.
 	// +optional
 	Post []HookSpec `json:"post,omitempty"`
 }

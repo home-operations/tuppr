@@ -366,7 +366,13 @@ func (r *Reconciler) observePreBatchHookJob(ctx context.Context, tu *tupprv1alph
 		next.FailingSince, next.RetryAt = nil, nil
 		message := fmt.Sprintf("Pre-batch hook %q succeeded for node(s) %s", hook.Name, nodes)
 		if next.Index >= len(tu.Spec.Hooks.PreBatch) {
-			next.CompletedAt = &metav1.Time{Time: now}
+			// The Job's own completion time, not when it was observed, so a
+			// result seen late (controller down, run suspended) isn't refreshed.
+			completedAt := now
+			if job.Status.CompletionTime != nil {
+				completedAt = job.Status.CompletionTime.Time
+			}
+			next.CompletedAt = &metav1.Time{Time: completedAt}
 			message = "Pre-batch hooks complete for node(s) " + nodes
 		}
 		return ctrl.Result{RequeueAfter: time.Second}, r.writePreBatchHooks(ctx, tu, next, message)

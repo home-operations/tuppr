@@ -187,9 +187,9 @@ spec:
                 properties:
                   post:
                     description: |-
-                      Post runs sequentially after the upgrade reaches a terminal state.
-                      Always runs if any pre-hook was attempted; failures don't override the
-                      upgrade outcome.
+                      Post runs sequentially as cleanup after the last batch, and after a
+                      failed pre-hook or pre-batch hook; failures don't override the upgrade
+                      outcome.
                     items:
                       description: HookSpec describes a Job to run around a TalosUpgrade
                         run or batch.

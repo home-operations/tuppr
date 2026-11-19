@@ -321,6 +321,35 @@ func TestPreBatchHooks_RecordedFailureFinalizesFromAnyPhase(t *testing.T) {
 	}
 }
 
+// A hook result observed late keeps the Job's completion time, so it can't
+// clear a batch more than preBatchHookValidity after the hook finished.
+func TestPreBatchHooks_LateObservedResultKeepsJobCompletionTime(t *testing.T) {
+	f := newPreBatchFixture(t, withPreBatchHooks(nil, preBatchHook(testHookDRBD)), withHealthChecks(nodeCheck()))
+	f.reconcile(t)
+	job := onePreBatchJob(t, f.cl)
+
+	finished := f.clock.t.Add(-preBatchHookValidity - time.Minute)
+	job.Status.CompletionTime = &metav1.Time{Time: finished}
+	markJobSucceeded(t, f.cl, job)
+	f.reconcile(t)
+	state := f.status(t).PreBatchHooks
+	if state == nil || state.CompletedAt == nil || !state.CompletedAt.Time.Equal(finished) {
+		t.Fatalf("expected CompletedAt %s from the job, got %+v", finished, state)
+	}
+
+	f.reconcile(t)
+	st := f.status(t)
+	if st.Phase == tupprv1alpha1.JobPhaseUpgrading {
+		t.Fatalf("expected the stale result not to start the batch, got %s (%s)", st.Phase, st.Message)
+	}
+	if st.PreBatchHooks == nil || st.PreBatchHooks.Index != 0 || st.PreBatchHooks.CompletedAt != nil {
+		t.Fatalf("expected the hooks restarted, got %+v", st.PreBatchHooks)
+	}
+	if f.hc.calls != 2 {
+		t.Fatalf("expected the health checks before the re-run, got %d calls", f.hc.calls)
+	}
+}
+
 func TestPreBatchHooks_RerunWhenResultDoesNotCoverBatch(t *testing.T) {
 	now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
