@@ -38,3 +38,7 @@ const (
 	TalosSecretName = "talosconfig"
 	TalosSecretKey  = "config"
 )
+
+// PreBatchNodesEnv is set on every pre-batch hook container to the batch's
+// node names, comma-separated.
+const PreBatchNodesEnv = "TUPPR_NODES"
