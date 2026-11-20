@@ -15,7 +15,7 @@ lefthook = "2.2.2"
 node = "26.13.1"
 "github:oxc-project/oxc" = { version = "0.78.0", version_prefix = "oxfmt_v", matching_regex = "^oxfmt-", rename_exe = "oxfmt" }
 pnpm = "12.21.0"
-setup-envtest = "0.25.2"
+setup-envtest = "0.25.3"
 shellcheck = "0.11.0"
 stern = "1.35.0"
 talosctl = "1.14.6"
