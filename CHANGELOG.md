@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.15](https://github.com/home-operations/tuppr/compare/0.5.14...0.5.15) (2026-11-20)
+
+
+### Miscellaneous Chores
+
+* **github-action:** update action jdx/mise-action (v5.2.8 → v5.2.9) ([#740](https://github.com/home-operations/tuppr/issues/740)) ([c6d0665](https://github.com/home-operations/tuppr/commit/c6d06650a4ac6b63764cbdd3ce5f44e39b94a5fb))
+* **go:** update module cel.dev/cel-go (v0.33.2 → v0.33.4) ([#737](https://github.com/home-operations/tuppr/issues/737)) ([9778d1f](https://github.com/home-operations/tuppr/commit/9778d1ff355de8724cf543da1402b1889a3af99c))
+* **mise:** install oxfmt from GitHub releases ([#735](https://github.com/home-operations/tuppr/issues/735)) ([8a70636](https://github.com/home-operations/tuppr/commit/8a7063673bfa336f5f4c7a1444b4741ab5ffea4d))
+* **mise:** update tool github:oxc-project/oxc (0.75.0 → 0.78.0) ([#738](https://github.com/home-operations/tuppr/issues/738)) ([70a3052](https://github.com/home-operations/tuppr/commit/70a3052d88b7a4fa8cd0287255e3cd6776641de8))
+* **mise:** update tool github:oxc-project/oxc (0.78.0 → 0.79.0) ([#743](https://github.com/home-operations/tuppr/issues/743)) ([a7be83b](https://github.com/home-operations/tuppr/commit/a7be83badf82fc70f65999971c1aa004865b1b4f))
+* **mise:** update tool go:golang.org/x/vuln/cmd/govulncheck (1.9.0 → v1.10.0) ([#739](https://github.com/home-operations/tuppr/issues/739)) ([217a919](https://github.com/home-operations/tuppr/commit/217a91945d2ce1bd0b3eef7e248c5d1643a47c94))
+* **mise:** update tool setup-envtest (0.25.2 → 0.25.3) ([#741](https://github.com/home-operations/tuppr/issues/741)) ([8a3688e](https://github.com/home-operations/tuppr/commit/8a3688edda7ac3fd6849188c591d04c6fd47f577))
+* **npm:** update dependency astro (7.4.12 → 7.4.13) ([#742](https://github.com/home-operations/tuppr/issues/742)) ([8166c53](https://github.com/home-operations/tuppr/commit/8166c53d3acc2a71b16d6a172025d0c5b57bc9a4))
+
 ## [0.5.14](https://github.com/home-operations/tuppr/compare/0.5.13...0.5.14) (2026-11-16)
 
 
