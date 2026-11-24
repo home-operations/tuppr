@@ -29,7 +29,7 @@ metadata:
 spec:
   talos:
     # renovate: datasource=docker depName=ghcr.io/siderolabs/talos
-    version: v1.14.6
+    version: v1.14.7
 ```
 
 tuppr health-checks the cluster, then upgrades each node in turn: drain →
