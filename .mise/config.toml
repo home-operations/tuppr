@@ -19,7 +19,7 @@ setup-envtest = "0.25.3"
 shellcheck = "0.11.0"
 stern = "1.35.0"
 talosctl = "1.14.6"
-zizmor = "1.33.0"
+zizmor = "1.33.1"
 "aqua:dadav/helm-schema" = "0.24.0"
 yq = "4.54.3"
 
