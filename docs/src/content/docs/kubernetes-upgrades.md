@@ -14,7 +14,7 @@ metadata:
 spec:
   kubernetes:
     # renovate: datasource=docker depName=ghcr.io/siderolabs/kubelet
-    version: v1.37.2
+    version: v1.37.3
 
     # Optional: pull control-plane component images (kube-apiserver,
     # kube-controller-manager, kube-scheduler, kube-proxy, kubelet) from a
