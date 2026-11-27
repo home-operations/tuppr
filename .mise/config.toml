@@ -11,7 +11,7 @@ jq = "1.8.2"
 kind = "0.33.0"
 kube-controller-tools = "v0.23.0"
 kubectl = "1.37.2"
-lefthook = "2.2.2"
+lefthook = "2.2.3"
 node = "26.13.1"
 "github:oxc-project/oxc" = { version = "0.80.0", version_prefix = "oxfmt_v", matching_regex = "^oxfmt-", rename_exe = "oxfmt" }
 pnpm = "12.23.0"
