@@ -203,17 +203,12 @@ func (r *Reconciler) handleBatchJobStatus(ctx context.Context, talosUpgrade *tup
 		}
 	}
 
-	// Determine final batch outcome
+	// Determine final batch outcome. A failed batch stops the run through the
+	// post-hooks, which undo what the pre-hooks set (e.g. Ceph noout).
 	if len(failedNodes) > 0 {
-		failedCount := len(failedNodes)
-		message := fmt.Sprintf("Batch upgrade stopped: %d nodes failed - stopping", failedCount)
-
-		if err := r.setPhase(ctx, talosUpgrade, tupprv1alpha1.JobPhaseFailed, message); err != nil {
-			return ctrl.Result{}, fmt.Errorf("update phase for batch failure: %w", err)
-		}
-
+		logger.Info("Batch upgrade stopped: node(s) failed", "failed", failedNodes)
 		r.MetricsReporter.RecordActiveJobs(metrics.UpgradeTypeTalos, 0)
-		return ctrl.Result{RequeueAfter: time.Minute * 10}, nil
+		return r.transitionToFinalize(ctx, talosUpgrade)
 	}
 
 	// All succeeded — ready for next batch
