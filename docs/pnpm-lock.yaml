@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@astrojs/starlight':
-        specifier: ^0.43.1
-        version: 0.43.1(astro@7.4.13(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2)
+        specifier: ^0.43.2
+        version: 0.43.2(astro@7.4.13(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2)
       astro:
         specifier: ^7.4.13
         version: 7.4.13(@types/node@24.19.2)(yaml@2.9.1)
@@ -22,7 +22,7 @@ importers:
         version: 12.3.0
       starlight-links-validator:
         specifier: ^0.27.0
-        version: 0.27.0(@astrojs/starlight@0.43.1(astro@7.4.13(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2))(astro@7.4.13(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2)
+        version: 0.27.0(@astrojs/starlight@0.43.2(astro@7.4.13(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2))(astro@7.4.13(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2)
 
 packages:
 
@@ -137,8 +137,8 @@ packages:
   '@astrojs/sitemap@3.7.4':
     resolution: {integrity: sha512-LbKNC24bdUWcQf/pThB6qLlSqHojxGjZDURIzFocY8rlWnAn2t74nnhnK6S5x0NHriHoAduLEpVjRykmeGiVvA==}
 
-  '@astrojs/starlight@0.43.1':
-    resolution: {integrity: sha512-GhTK+93UNejoQThnYbEkJAlRJiOtctxOCnFtLcUMSTraT75vzS1E89xdMtKOdKcUDD2wx+taJxsfrA3UBs0QgQ==}
+  '@astrojs/starlight@0.43.2':
+    resolution: {integrity: sha512-ZKNLpDdlExdVD3EugTUtJx4bUPcIBIZwgpm9sR4bDgHOn9u42x5GVgMQPlyPpXdechjadb0URJLQE6oPm0F3vw==}
     peerDependencies:
       '@astrojs/markdown-remark': ^7.3.0
       astro: ^7.2.10
@@ -2368,7 +2368,7 @@ snapshots:
       sitemap: 9.0.1
       zod: 4.6.7
 
-  '@astrojs/starlight@0.43.1(astro@7.4.13(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2)':
+  '@astrojs/starlight@0.43.2(astro@7.4.13(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2)':
     dependencies:
       '@astrojs/markdown-satteri': 0.4.10
       '@astrojs/mdx': 8.1.1(@astrojs/markdown-satteri@0.4.10)(astro@7.4.13(@types/node@24.19.2)(yaml@2.9.1))
@@ -2483,14 +2483,14 @@ snapshots:
     dependencies:
       '@emnapi/core': 1.11.1
       '@emnapi/runtime': 1.11.1
-      '@napi-rs/wasm-runtime': 1.2.6(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
+      '@napi-rs/wasm-runtime': 1.2.7(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
     optional: true
 
   '@bruits/satteri-wasm32-wasi@0.11.6':
     dependencies:
       '@emnapi/core': 1.11.1
       '@emnapi/runtime': 1.11.1
-      '@napi-rs/wasm-runtime': 1.2.6(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
+      '@napi-rs/wasm-runtime': 1.2.7(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
     optional: true
 
   '@bruits/satteri-win32-arm64-msvc@0.10.5':
@@ -2733,17 +2733,17 @@ snapshots:
     dependencies:
       '@chevrotain/types': 13.2.0
 
-  '@napi-rs/wasm-runtime@1.2.6(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)':
-    dependencies:
-      '@emnapi/core': 1.11.1
-      '@emnapi/runtime': 1.11.1
-      '@tybys/wasm-util': 0.10.4
-    optional: true
-
   '@napi-rs/wasm-runtime@1.2.6(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)':
     dependencies:
       '@emnapi/core': 2.0.0-beta.2
       '@emnapi/runtime': 2.0.0-beta.2
+      '@tybys/wasm-util': 0.10.4
+    optional: true
+
+  '@napi-rs/wasm-runtime@1.2.7(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)':
+    dependencies:
+      '@emnapi/core': 1.11.1
+      '@emnapi/runtime': 1.11.1
       '@tybys/wasm-util': 0.10.4
     optional: true
 
@@ -4487,10 +4487,10 @@ snapshots:
 
   space-separated-tokens@2.0.2: {}
 
-  starlight-links-validator@0.27.0(@astrojs/starlight@0.43.1(astro@7.4.13(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2))(astro@7.4.13(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2):
+  starlight-links-validator@0.27.0(@astrojs/starlight@0.43.2(astro@7.4.13(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2))(astro@7.4.13(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2):
     dependencies:
       '@astrojs/markdown-satteri': 0.4.5
-      '@astrojs/starlight': 0.43.1(astro@7.4.13(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2)
+      '@astrojs/starlight': 0.43.2(astro@7.4.13(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2)
       astro: 7.4.13(@types/node@24.19.2)(yaml@2.9.1)
       github-slugger: 2.0.0
       hast-util-from-html: 2.0.3
