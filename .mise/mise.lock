@@ -23,26 +23,26 @@ url = "https://github.com/dadav/helm-schema/releases/download/0.24.0/helm-schema
 url_api = "https://api.github.com/repos/dadav/helm-schema/releases/assets/654252875"
 
 [[tools.cosign]]
-version = "3.1.4"
+version = "3.1.5"
 backend = "aqua:sigstore/cosign"
-specifiers = ["3.1.4"]
+specifiers = ["3.1.5"]
 
 [tools.cosign."platforms.linux-arm64"]
-checksum = "sha256:ade83b7aac62e131cacfe96d958948b2150cc9efec46a570a2649b8e27dedad2"
-url = "https://github.com/sigstore/cosign/releases/download/v3.1.4/cosign-linux-arm64"
-url_api = "https://api.github.com/repos/sigstore/cosign/releases/assets/660068106"
+checksum = "sha256:516893301e9ec0f2594edfcf8f943ec3b3ba96f3aad2b507eff2b71e644e5fca"
+url = "https://github.com/sigstore/cosign/releases/download/v3.1.5/cosign-linux-arm64"
+url_api = "https://api.github.com/repos/sigstore/cosign/releases/assets/787761744"
 provenance = "cosign"
 
 [tools.cosign."platforms.linux-x64"]
-checksum = "sha256:424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa"
-url = "https://github.com/sigstore/cosign/releases/download/v3.1.4/cosign-linux-amd64"
-url_api = "https://api.github.com/repos/sigstore/cosign/releases/assets/660069428"
+checksum = "sha256:912502def4baf810eaf36b210a4f51e1da214f9f6d664e2a9a2154cfc67ee0d6"
+url = "https://github.com/sigstore/cosign/releases/download/v3.1.5/cosign-linux-amd64"
+url_api = "https://api.github.com/repos/sigstore/cosign/releases/assets/787764286"
 provenance = "cosign"
 
 [tools.cosign."platforms.macos-arm64"]
-checksum = "sha256:9f9b8cd557cf2e5b3df3373a00baa005a86b02391e3e06dd0ce37b3a1533d3a4"
-url = "https://github.com/sigstore/cosign/releases/download/v3.1.4/cosign-darwin-arm64"
-url_api = "https://api.github.com/repos/sigstore/cosign/releases/assets/660069257"
+checksum = "sha256:35cfceffe68448019f75bcbb2c470045ee2f4264cf5ad6d564f08f327f97d13f"
+url = "https://github.com/sigstore/cosign/releases/download/v3.1.5/cosign-darwin-arm64"
+url_api = "https://api.github.com/repos/sigstore/cosign/releases/assets/787761392"
 provenance = "cosign"
 
 [[tools."github:oxc-project/oxc"]]
