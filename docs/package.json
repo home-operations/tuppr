@@ -10,7 +10,7 @@
   "dependencies": {
     "@astrojs/starlight": "^0.43.2",
     "astro": "^7.4.13",
-    "astro-mermaid": "^2.2.0",
+    "astro-mermaid": "^2.2.1",
     "mermaid": "^12.3.0",
     "starlight-links-validator": "^0.27.1"
   }
