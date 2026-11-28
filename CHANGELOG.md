@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.5.15](https://github.com/home-operations/tuppr/compare/0.5.14...0.5.15) (2026-11-28)
+
+
+### Continuous Integration
+
+* **release:** compress image layers with zstd ([82e2156](https://github.com/home-operations/tuppr/commit/82e2156636cd69eaea09987e7839f64ccd9b15c9))
+
+
+### Miscellaneous Chores
+
+* **container:** update image ghcr.io/siderolabs/kubelet (v1.37.2 → v1.37.3) ([#752](https://github.com/home-operations/tuppr/issues/752)) ([120cd2c](https://github.com/home-operations/tuppr/commit/120cd2c4325325fa6536d7221c737c32ef6f52f4))
+* **container:** update talos group (v1.14.6 → v1.14.7) ([#748](https://github.com/home-operations/tuppr/issues/748)) ([6317ff4](https://github.com/home-operations/tuppr/commit/6317ff46d23f3e3e642deddaf63f61528e36c67b))
+* **github-action:** update action jdx/mise-action (v5.2.10 → v5.3.0) ([#749](https://github.com/home-operations/tuppr/issues/749)) ([700e8ca](https://github.com/home-operations/tuppr/commit/700e8ca7997f7c060f3ad820d1b068ff00ba34e1))
+* **github-action:** update action jdx/mise-action (v5.2.8 → v5.2.9) ([#740](https://github.com/home-operations/tuppr/issues/740)) ([c6d0665](https://github.com/home-operations/tuppr/commit/c6d06650a4ac6b63764cbdd3ce5f44e39b94a5fb))
+* **github-action:** update action zizmorcore/zizmor-action (v0.8.1 → v0.9.2) ([#755](https://github.com/home-operations/tuppr/issues/755)) ([2977b8c](https://github.com/home-operations/tuppr/commit/2977b8cfa24f3e4ea1f27573847ad8e6c808e570))
+* **github-action:** update github-actions ([#745](https://github.com/home-operations/tuppr/issues/745)) ([e76d3c8](https://github.com/home-operations/tuppr/commit/e76d3c87c7e1ef35c5df5cfdaef567fa9fb3ca63))
+* **github-release:** update release helm-unittest/helm-unittest (v1.2.1 → v1.3.0) ([#764](https://github.com/home-operations/tuppr/issues/764)) ([8aa1a23](https://github.com/home-operations/tuppr/commit/8aa1a23423508d21334ff5b783eafa8753c9d13a))
+* **go:** update kubernetes monorepo (v0.37.2 → v0.37.3) ([#753](https://github.com/home-operations/tuppr/issues/753)) ([47797ac](https://github.com/home-operations/tuppr/commit/47797ac9d1dde7da763136561708e8b0478c1f05))
+* **go:** update module cel.dev/cel-go (v0.33.2 → v0.33.4) ([#737](https://github.com/home-operations/tuppr/issues/737)) ([9778d1f](https://github.com/home-operations/tuppr/commit/9778d1ff355de8724cf543da1402b1889a3af99c))
+* **go:** update module github.com/unraid/apprise-go (v0.4.0 → v0.4.1) ([#754](https://github.com/home-operations/tuppr/issues/754)) ([39d1740](https://github.com/home-operations/tuppr/commit/39d17400f4d686bd85266ddf4a4fd48d0f6021c8))
+* **mise:** install oxfmt from GitHub releases ([#735](https://github.com/home-operations/tuppr/issues/735)) ([8a70636](https://github.com/home-operations/tuppr/commit/8a7063673bfa336f5f4c7a1444b4741ab5ffea4d))
+* **mise:** update mise tools ([#756](https://github.com/home-operations/tuppr/issues/756)) ([1225034](https://github.com/home-operations/tuppr/commit/12250347a0dbad27ab8663ef051158600f954a8f))
+* **mise:** update tool cosign (3.1.4 → 3.1.5) ([#763](https://github.com/home-operations/tuppr/issues/763)) ([3680fc3](https://github.com/home-operations/tuppr/commit/3680fc37274d5d41f9802e4c5b18c03406272ae3))
+* **mise:** update tool github:oxc-project/oxc (0.75.0 → 0.78.0) ([#738](https://github.com/home-operations/tuppr/issues/738)) ([70a3052](https://github.com/home-operations/tuppr/commit/70a3052d88b7a4fa8cd0287255e3cd6776641de8))
+* **mise:** update tool github:oxc-project/oxc (0.78.0 → 0.79.0) ([#743](https://github.com/home-operations/tuppr/issues/743)) ([a7be83b](https://github.com/home-operations/tuppr/commit/a7be83badf82fc70f65999971c1aa004865b1b4f))
+* **mise:** update tool github:oxc-project/oxc (0.79.0 → 0.80.0) ([#758](https://github.com/home-operations/tuppr/issues/758)) ([41d9819](https://github.com/home-operations/tuppr/commit/41d98192b82140b8d11694093850a0ae27c1bf6c))
+* **mise:** update tool go:golang.org/x/vuln/cmd/govulncheck (1.9.0 → v1.10.0) ([#739](https://github.com/home-operations/tuppr/issues/739)) ([217a919](https://github.com/home-operations/tuppr/commit/217a91945d2ce1bd0b3eef7e248c5d1643a47c94))
+* **mise:** update tool lefthook (2.2.2 → 2.2.3) ([#759](https://github.com/home-operations/tuppr/issues/759)) ([24fde23](https://github.com/home-operations/tuppr/commit/24fde23dc8199e835ac9906f0dca8ce72eb64ad1))
+* **mise:** update tool pnpm (12.21.0 → 12.22.0) ([#747](https://github.com/home-operations/tuppr/issues/747)) ([d93db3c](https://github.com/home-operations/tuppr/commit/d93db3c748c2fc9fab865ceadc490c790faa7aa6))
+* **mise:** update tool setup-envtest (0.25.2 → 0.25.3) ([#741](https://github.com/home-operations/tuppr/issues/741)) ([8a3688e](https://github.com/home-operations/tuppr/commit/8a3688edda7ac3fd6849188c591d04c6fd47f577))
+* **mise:** update tool talosctl (1.14.6 → 1.14.7) ([#760](https://github.com/home-operations/tuppr/issues/760)) ([5b7ef74](https://github.com/home-operations/tuppr/commit/5b7ef74fd4437bd67ae12e747ea1d4be8476f835))
+* **mise:** update tool zizmor (1.33.0 → 1.33.1) ([#757](https://github.com/home-operations/tuppr/issues/757)) ([7d47210](https://github.com/home-operations/tuppr/commit/7d47210529824b706b0af8b5a689d3e24f8d701b))
+* **npm:** update dependency @astrojs/starlight (0.43.1 → 0.43.2) ([#761](https://github.com/home-operations/tuppr/issues/761)) ([204e800](https://github.com/home-operations/tuppr/commit/204e800d4c783884511ebc07829102e971b70430))
+* **npm:** update dependency astro (7.4.12 → 7.4.13) ([#742](https://github.com/home-operations/tuppr/issues/742)) ([8166c53](https://github.com/home-operations/tuppr/commit/8166c53d3acc2a71b16d6a172025d0c5b57bc9a4))
+* **npm:** update dependency astro-mermaid (2.2.0 → 2.2.1) ([#765](https://github.com/home-operations/tuppr/issues/765)) ([bc1fa4e](https://github.com/home-operations/tuppr/commit/bc1fa4e5b2dadff97f8d19b959c4f22d70fa8410))
+* **npm:** update dependency starlight-links-validator (0.27.0 → 0.27.1) ([#762](https://github.com/home-operations/tuppr/issues/762)) ([56aa0d0](https://github.com/home-operations/tuppr/commit/56aa0d0eec2e652e203b8f18a300124d24b223f9))
+
 ## [0.5.14](https://github.com/home-operations/tuppr/compare/0.5.13...0.5.14) (2026-11-16)
 
 
